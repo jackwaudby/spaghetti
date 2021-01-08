@@ -1,8 +1,8 @@
 use crate::connection::Connection;
 use crate::shutdown::Shutdown;
 use crate::transaction::Transaction;
+use crate::Result;
 
-use serde::{Deserialize, Serialize};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio::sync::{broadcast, mpsc};
@@ -26,7 +26,7 @@ impl Listener {
         println!("Accepting inbound connections");
         loop {
             // Accept new socket
-            let (mut socket, _) = self.listener.accept().await?;
+            let (socket, _) = self.listener.accept().await?;
             println!("Accepted connection!");
             // Create per-connection handler state
             let mut handler = Handler {

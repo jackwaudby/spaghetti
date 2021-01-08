@@ -1,5 +1,5 @@
 //! This file is the entry point for the spaghetti server.
-use server::server;
+use spaghetti::server;
 
 #[tokio::main]
 async fn main() {

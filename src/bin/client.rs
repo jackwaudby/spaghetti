@@ -3,8 +3,8 @@
 use bytes::Bytes;
 use bytes::{Buf, BytesMut};
 use serde::{Deserialize, Serialize};
-use server::connection::Connection;
-use server::transaction::Transaction;
+use spaghetti::connection::Connection;
+use spaghetti::transaction::Transaction;
 use tokio::io::BufWriter;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
@@ -22,26 +22,24 @@ pub struct Client {
 }
 
 #[tokio::main]
-async fn main() -> server::Result<()> {
+async fn main() -> spaghetti::Result<()> {
     // establish a connection with the server
     let mut socket = TcpStream::connect("127.0.0.1:6142").await.unwrap();
     let connection = Connection::new(socket);
     let mut client = Client { connection };
 
     // generate the message to be sent
-    let t = Transaction::GetSubscriberData { s_id: 10 };
-
-    // write frame
-    client.connection.write_frame();
+    let t = Transaction::GetSubscriberData { s_id: 26 };
 
     // convert to frame
-    let f = t.into_frame();
+    let frame = t.into_frame();
 
     // Write data to stream in the background
     let write_task = tokio::spawn(async move {
-        client.connection.write_frame(f);
+        client.connection.write_frame(&frame).await;
     });
-    write_task.await?;
+
+    write_task.await;
 
     // Mpsc channel.
     // Produces send transactions to consumer.

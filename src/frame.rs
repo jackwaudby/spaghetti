@@ -1,15 +1,13 @@
 //! Provides a type representing a frame and utilities for parsing frames from a byte array.
 
-use bytes::{Buf, Bytes}; // byte array struct and traits for working with buffer implementations
-
+use bytes::{Buf, Bytes};
 use std::fmt;
 use std::io::Cursor;
-use std::io::Error as IoError;
 
 /// A frame in spaghetti's network protocol.
 #[derive(Debug, PartialEq)]
 pub struct Frame {
-    pub payload: Bytes, // serialise transaction into Bytes into_frame()
+    pub payload: Bytes,
 }
 
 impl Frame {
@@ -18,12 +16,13 @@ impl Frame {
         Frame { payload }
     }
 
+    /// Retrieve payload from frame.
     pub fn get_payload(&self) -> Bytes {
         Bytes::copy_from_slice(&self.payload)
     }
 
     /// Validates if an entire message can be decoded from the read buffer.
-    pub fn validate(src: &mut Cursor<&[u8]>) -> Result<(), Error> {
+    pub fn validate(src: &mut Cursor<&[u8]>) -> Result<(), ParseError> {
         println!("Starting to validate");
         match get_u8(src)? {
             b'$' => {
@@ -38,20 +37,20 @@ impl Frame {
             _ => {
                 println!("Invalid");
                 // Invalid start byte
-                Err(Error::new(ErrorKind::Invalid))
+                Err(ParseError::new(ParseErrorKind::Incomplete))
             }
         }
     }
 
     /// Parse message from validated read buffer.
-    pub fn parse(src: &mut Cursor<&[u8]>) -> Result<Frame, Error> {
+    pub fn parse(src: &mut Cursor<&[u8]>) -> Result<Frame, ParseError> {
         match get_u8(src)? {
             b'$' => {
                 let len = get_payload_length(src)?;
                 let n = len + 2;
                 // check again required data in buffer
                 if src.remaining() < n {
-                    return Err(Error::new(ErrorKind::Incomplete));
+                    return Err(ParseError::new(ParseErrorKind::Incomplete));
                 }
 
                 let start = src.position() as usize;
@@ -72,69 +71,59 @@ impl Frame {
     }
 }
 
-fn get_u8(src: &mut Cursor<&[u8]>) -> Result<u8, Error> {
+fn get_u8(src: &mut Cursor<&[u8]>) -> Result<u8, ParseError> {
     if !src.has_remaining() {
-        return Err(Error::new(ErrorKind::Incomplete));
+        return Err(ParseError::new(ParseErrorKind::Incomplete));
     }
 
     Ok(src.get_u8())
 }
 
 /// Represents a parsing frame error.
-#[derive(Debug, PartialEq)]
-pub struct Error {
-    kind: ErrorKind,
+#[derive(Debug)]
+pub struct ParseError {
+    pub kind: ParseErrorKind,
 }
 
-impl Error {
-    /// Create new parse error.
-    pub fn new(kind: ErrorKind) -> Error {
-        Error { kind }
-    }
-    // Get parse error type.
-    pub fn kind(&self) -> &ErrorKind {
-        &self.kind
+impl ParseError {
+    pub fn new(kind: ParseErrorKind) -> ParseError {
+        ParseError { kind }
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum ErrorKind {
+#[derive(Debug)]
+pub enum ParseErrorKind {
     /// Not enough data available in read buffer to parse message.
     Incomplete,
     /// Invalid message encoding.
     Invalid,
     /// Remote only sent a partial frame before closing.
     CorruptedFrame,
-    Other(String),
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let error_msg = match self.kind() {
-            ErrorKind::Incomplete => "Not enough data available in read buffer to parse message.",
-            ErrorKind::Invalid => "Invalid message encoding.",
-            ErrorKind::CorruptedFrame => "Remote connection closed during sending of a frame",
-            ErrorKind::Other(s) => s,
+        // Different error message per error type.
+        let err_msg = match self.kind {
+            ParseErrorKind::Incomplete => {
+                "Not enough data available in read buffer to parse message."
+            }
+            ParseErrorKind::Invalid => "Invalid message encoding.",
+            ParseErrorKind::CorruptedFrame => "Remote connection closed during sending of a frame",
         };
-        write!(f, "{}", error_msg)
+        write!(f, "{}", err_msg)
     }
 }
 
-impl From<IoError> for Error {
-    fn from(error: IoError) -> Self {
-        Error::new(ErrorKind::Other(error.to_string()))
-    }
-}
-
-impl std::error::Error for Error {}
+impl std::error::Error for ParseError {}
 
 /// Attempt to move the cursor forward `n` bytes.
 ///
 /// If the cursor can move forward less than `n` bytes an `Incomplete` error is returned.
-pub fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), Error> {
+pub fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), ParseError> {
     println!("Skip");
     if src.remaining() < n {
-        Err(Error::new(ErrorKind::Incomplete))
+        Err(ParseError::new(ParseErrorKind::Incomplete))
     } else {
         src.advance(n);
         Ok(())
@@ -142,7 +131,7 @@ pub fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), Error> {
 }
 
 /// Calulates the size of the payload in bytes.
-pub fn get_payload_length(src: &mut Cursor<&[u8]>) -> Result<usize, Error> {
+pub fn get_payload_length(src: &mut Cursor<&[u8]>) -> Result<usize, ParseError> {
     println!("Get payload");
     let line = get_line(src)?;
     let decoded: usize = bincode::deserialize(&line[..]).unwrap();
@@ -153,7 +142,7 @@ pub fn get_payload_length(src: &mut Cursor<&[u8]>) -> Result<usize, Error> {
 ///
 /// Receives an exclusive reference to a cursor which references the underlying read buffer.
 /// Returns an appropiate reference to the slice of the read buffer
-pub fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], Error> {
+pub fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], ParseError> {
     println!("Get line");
     // Get current position of cursor
     let start = src.position() as usize;
@@ -169,7 +158,7 @@ pub fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], Error> {
         }
     }
     // Not enough data in buffer to read complete line
-    Err(Error::new(ErrorKind::Incomplete))
+    Err(ParseError::new(ParseErrorKind::Incomplete))
 }
 
 #[cfg(test)]
@@ -211,7 +200,7 @@ mod tests {
 
         assert_eq!(
             validate(&mut buff).err().unwrap().kind(),
-            ErrorKind::Incomplete
+            ParseError::Incomplete
         );
     }
 
@@ -232,7 +221,7 @@ mod tests {
 
         assert_eq!(
             validate(&mut buff).err().unwrap().kind(),
-            ErrorKind::Invalid
+            ParseError::Invalid
         );
     }
 

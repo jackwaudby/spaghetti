@@ -1,5 +1,6 @@
-use crate::frame::{Error, ErrorKind, Frame};
-use crate::Result;
+use crate::frame::{Frame, ParseError, ParseErrorKind};
+use crate::SpagError;
+
 use bytes::{Buf, BytesMut}; // traits for working with buffer implementations
 use std::io::Cursor;
 use tokio::io::BufWriter; // acts as a write buffer around the tcp stream
@@ -29,14 +30,14 @@ impl Connection {
     // - Ok(Some(frame)) if frame can be read.
     // - Ok(None) if the connection is closed.
     // - Error if there has been an encoding error.
-    pub async fn read_frame(&mut self) -> Result<Option<Frame>> {
+    pub async fn read_frame(&mut self) -> Result<Option<Frame>, SpagError> {
         loop {
             println!("Attempt to parse");
             // Attempt to parse a frame from buffered data.
             match self.parse_frame() {
                 Ok(frame) => return Ok(Some(frame)),
-                Err(e) => match e.kind() {
-                    ErrorKind::Incomplete => {
+                Err(e) => match e.kind {
+                    ParseErrorKind::Incomplete => {
                         // Not enough buffered data to read a frame.
                         println!("Not enough data in buffer");
                         // Attempt to read more from the socket.
@@ -50,19 +51,18 @@ impl Connection {
                             } else {
                                 println!("Partial frame");
                                 // Remote closed while sending a frame.
-                                return Err(Error::new(ErrorKind::CorruptedFrame));
+                                return Err(ParseError::new(ParseErrorKind::CorruptedFrame).into());
                             }
                         }
                     }
-                    ErrorKind::CorruptedFrame => return Err(e),
-                    ErrorKind::Invalid => return Err(e),
-                    ErrorKind::Other(s) => return Err(e),
+                    ParseErrorKind::CorruptedFrame => return Err(Box::new(e)),
+                    ParseErrorKind::Invalid => return Err(Box::new(e)),
                 },
             }
         }
     }
 
-    fn parse_frame(&mut self) -> Result<Frame> {
+    fn parse_frame(&mut self) -> Result<Frame, ParseError> {
         println!("Attempting parse");
         // create cursor over buffer
         let mut buff = Cursor::new(&self.buffer[..]);
@@ -82,7 +82,7 @@ impl Connection {
         Ok(frame)
     }
 
-    pub async fn write_frame(&mut self, frame: &Frame) -> Result<()> {
+    pub async fn write_frame(&mut self, frame: &Frame) -> Result<(), std::io::Error> {
         // Get length and serialize
         let len = frame.payload.len();
         let mut lens: Vec<u8> = bincode::serialize(&len).unwrap().into();
