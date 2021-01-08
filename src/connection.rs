@@ -85,7 +85,7 @@ impl Connection {
     pub async fn write_frame(&mut self, frame: &Frame) -> Result<(), std::io::Error> {
         // Get length and serialize
         let len = frame.payload.len();
-        let mut lens: Vec<u8> = bincode::serialize(&len).unwrap().into();
+        let lens: Vec<u8> = bincode::serialize(&len).unwrap().into();
         // Write data to stream in the background
         self.stream.write_all(b"$").await?;
         self.stream.write_all(&lens[..]).await?;

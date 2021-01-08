@@ -32,7 +32,7 @@ impl Listener {
             let mut handler = Handler {
                 connection: Connection::new(socket),
                 shutdown: Shutdown::new(self.notify_shutdown_tx.subscribe()),
-                shutdown_complete: self.shutdown_complete_tx.clone(),
+                _shutdown_complete: self.shutdown_complete_tx.clone(),
             };
 
             // spawn new task to process the connection
@@ -56,7 +56,7 @@ struct Handler {
     shutdown: Shutdown,
 
     /// Implicitly dropped when handler is dropped (safely finished), nofities the listener.
-    shutdown_complete: mpsc::Sender<()>,
+    _shutdown_complete: mpsc::Sender<()>,
 }
 
 impl Handler {

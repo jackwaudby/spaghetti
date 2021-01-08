@@ -1,6 +1,13 @@
 use crate::frame::Frame;
+use crate::Result;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
+use tokio::sync::oneshot;
+
+pub struct Command {
+    pub transaction: Transaction,
+    pub resp: oneshot::Sender<Result<()>>,
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Debug)]
 pub enum Transaction {
