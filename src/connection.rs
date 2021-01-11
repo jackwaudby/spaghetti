@@ -6,6 +6,7 @@ use std::io::Cursor;
 use tokio::io::BufWriter; // acts as a write buffer around the tcp stream
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream; // byte stream between peers
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct Connection {
@@ -32,24 +33,24 @@ impl Connection {
     // - Error if there has been an encoding error.
     pub async fn read_frame(&mut self) -> Result<Option<Frame>, SpagError> {
         loop {
-            println!("Attempt to parse");
+            debug!("Attempt to parse");
             // Attempt to parse a frame from buffered data.
             match self.parse_frame() {
                 Ok(frame) => return Ok(Some(frame)),
                 Err(e) => match e.kind {
                     ParseErrorKind::Incomplete => {
                         // Not enough buffered data to read a frame.
-                        println!("Not enough data in buffer");
+                        debug!("Not enough data in buffer");
                         // Attempt to read more from the socket.
                         if 0 == self.stream.read_buf(&mut self.buffer).await? {
-                            println!("Socket is empty");
+                            debug!("Socket is empty");
                             // If socket is empty so should the buffer.
                             if self.buffer.is_empty() {
-                                println!("Buffer is empty");
+                                debug!("Buffer is empty");
                                 // Remote cleanly closed the connection.
                                 return Ok(None);
                             } else {
-                                println!("Partial frame");
+                                debug!("Partial frame");
                                 // Remote closed while sending a frame.
                                 return Err(ParseError::new(ParseErrorKind::CorruptedFrame).into());
                             }
@@ -63,17 +64,17 @@ impl Connection {
     }
 
     fn parse_frame(&mut self) -> Result<Frame, ParseError> {
-        println!("Attempting parse");
+        debug!("Attempting parse");
         // create cursor over buffer
         let mut buff = Cursor::new(&self.buffer[..]);
-        println!("Validating");
+        debug!("Validating");
         Frame::validate(&mut buff)?;
-        println!("Validated");
+        debug!("Validated");
         // Validate function advanced cursor to the end of the frame.
         let len = buff.position();
         // Reset cursor to 0, ready for parse.
         buff.set_position(0);
-        println!("Actual parse");
+        debug!("Actual parse");
         // Parse
         let frame = Frame::parse(&mut buff)?;
 

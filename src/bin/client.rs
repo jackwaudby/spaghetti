@@ -1,28 +1,43 @@
-/// A dedicated task manages the client resource. Tasks then send messages this manager, which handles sending the message and responds to the task with the message response.
+//! The entry point for a Spaghetti client.
+//! An mpsc channel is used to manage the client connection to the server.
+//! Producers send transaction requests to the consumer which sends the over its TCP connection.
+//! Producers send a oneshot channel with the request in order to receive the response to its request.
 use spaghetti::client::Client;
 use spaghetti::frame::Frame;
 use spaghetti::transaction::{Command, Transaction};
 
-use tokio::sync::mpsc::{self, Receiver, Sender}; // to send commands to manager
-use tokio::sync::oneshot; // to receive command response from manager
+use tokio::sync::mpsc::{self, Receiver, Sender};
+use tokio::sync::oneshot;
+
+use tracing::{info, Level};
+use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() -> spaghetti::Result<()> {
-    // Produces send transactions to consumer.
-    // Consumer manages client connection.
+    // All spans/events with a level higher than TRACE written to stdout.
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(Level::TRACE)
+        .finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
+    info!("Initialising client");
+
     let (tx, mut rx): (Sender<Command>, Receiver<Command>) = mpsc::channel(32);
 
-    // Spawn client resource manager task
+    // Spawn client resource manager task.
     let manager = tokio::spawn(async move {
-        // open a connection to the server
+        // Open a connection to the server.
         let mut client = Client::connect("127.0.0.1:6142").await.unwrap();
-        // receive messages from producer
+        // Receive messages from producer.
         while let Some(cmd) = rx.recv().await {
-            // receive transaction from producers
-            // convert to frame
+            info!("Receive transaction from a producer");
+            // Convert to frame.
             let frame = cmd.transaction.into_frame();
             // TODO: this should be a submit function that receives a response.
-            client.connection.write_frame(&frame).await;
+            info!("Submit message");
+            let reply = client.submit(&frame).await;
+            info!("Consumer received reply: {:?}", reply);
             // TODO: Ignore errors and send response back to producer, currently replies with unit struct
             let _ = cmd.resp.send(Ok(()));
         }
@@ -48,7 +63,7 @@ async fn main() -> spaghetti::Result<()> {
 
         // await response
         let res = resp_rx.await;
-        println!("GOT: {:?}", res);
+        info!("Producer 1 received reply: {:?}", res);
     });
 
     let t2 = tokio::spawn(async move {
@@ -68,7 +83,7 @@ async fn main() -> spaghetti::Result<()> {
 
         // await response
         let res = resp_rx.await;
-        println!("GOT: {:?}", res);
+        info!("Producer 2 received reply: {:?}", res);
     });
 
     t1.await.unwrap();

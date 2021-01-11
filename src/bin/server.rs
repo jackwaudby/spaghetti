@@ -1,74 +1,60 @@
 //! This file is the entry point for the spaghetti server.
+use clap::clap_app;
+use config::Config;
 use spaghetti::server;
+use std::sync::Arc;
+
+use tracing::Level;
+use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() {
-    server::run().await
+    // Read command line arguments using clap macro.
+    let matches = clap_app!( spag =>
+    (version: "0.1.0")
+    (author: "J. Waudby <j.waudby2@newcastle.ac.uk>")
+    (about: "Spaghetti server")
+    (@arg FILE: -c --config +takes_value "Set a custom config file")
+    (@arg PORT: -p --port +takes_value "Set port server listens on")
+    (@arg ADDRESS: -a --address +takes_value "Set server address")
+    (@arg LOG: -l --log +takes_value "Set log level")
+    )
+    .get_matches();
+
+    // Initialise configuration.
+    // If configuration file is not provided use the default in `Settings.toml`
+    let file = matches.value_of("config").unwrap_or("Settings.toml");
+    let mut settings = Config::default();
+    settings.merge(config::File::with_name(file)).unwrap();
+
+    // For each flag overwrite default with any supplied runtime value.
+    if let Some(p) = matches.value_of("port") {
+        settings.set("port", p).unwrap();
+    }
+
+    if let Some(a) = matches.value_of("address") {
+        settings.set("address", a).unwrap();
+    }
+
+    if let Some(l) = matches.value_of("log") {
+        settings.set("log", l).unwrap();
+    }
+
+    let level = match settings.get_str("log").unwrap().as_str() {
+        "info" => Level::INFO,
+        "debug" => Level::DEBUG,
+        "trace" => Level::TRACE,
+        _ => Level::WARN,
+    };
+
+    // Logger.
+    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
+
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+
+    // Wrap configuration in atomic shared reference.
+    // This is ok as configuration never changes at runtime.
+    let config = Arc::new(settings);
+
+    server::run(config.clone()).await
 }
-
-// loop {
-//     // " _" contains the IP and port of the new connection
-//     let (mut socket, _) = listener.accept().await.unwrap();
-
-//     // clone handle to database
-//     let db = db.clone();
-
-//     println!("Accepted connection!");
-
-//     // spawn a new task for each inbound socket
-//     tokio::spawn(async move {
-//         // process(socket, db).await;
-
-//         // echo server
-//         // read contents from socket into buffer
-//         let mut buf = vec![0; 1024];
-
-//         loop {
-//             match socket.read(&mut buf).await {
-//                 // return value of Ok(0) indicates the remote has closed
-//                 Ok(0) => return,
-//                 Ok(n) => {
-//                     // Copy data back to socket
-//                     if socket.write_all(&buf[..n]).await.is_err() {
-//                         // unexpected socket error
-//                         return;
-//                     }
-//                 }
-//                 Err(_) => {
-//                     return;
-//                 }
-//             }
-//         }
-//     });
-// }
-
-// async fn process(socket: TcpStream, db: Db) {
-//     // TODO: implement 'Connection' type that reads/writes frames instead of byte streams
-//     // methods: read_frame(), write_frame(frame: &Frame)
-//     let mut connection = Connection::new(socket);
-
-//     // loop to accept multiple transactions per connection
-//     while let Some(frame) = connection.read_frame().await.unwrap() {
-//         // parse command from frame
-//         // TODO: implement 'Frame' type
-//         // TODO: implement 'Command' type
-//         let response match Command::from_frame(frame).unwrap() {
-//             TransactionA(cmd) = > {
-//                 db.insert(cmd.param1().to_string()); // TODO: placeholder
-//                 Frame::Simple("OK".to_string());     // response
-//             },
-//             TransactionB(cmd) = > {
-//                  // TODO: placeholder
-//                 if let Some(value) = db.get(cmd.param1().to_string()){
-//                     Frame::Bulk(value.to_string());     // response
-//                 } else {
-//                     Frame::Null  // response
-//                 }
-//             },
-//             cmd => panic!("unimplemented {:?}",cmd),
-//         };
-
-//         // write response to client
-//         connection.write_frame(&response).await.unwrap();
-//     }
-// }

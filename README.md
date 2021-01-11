@@ -1,3 +1,22 @@
 # Spaghetti: Yet Another Concurrency Control Evaluation Framework
 
-## Client ##
+Set configuration in `Settings.toml`.
+```
+#build
+cargo build
+
+#run server
+./target/debug/spag-server
+
+#run client
+./target/debug/spag-client
+```
+
+## Framework Design ##
+
++ Communication between client and server is implemented using the `tokio` sync I/O crate.
++ Command line parsing is managed using the `clap` crate.
++ Configuration is managed using the `config` crate.
++ Logging use the `trace` crate.
+
+## Workloads ##

@@ -1,13 +1,19 @@
 use crate::connection::Connection;
+use crate::frame::Frame;
 use crate::shutdown::Shutdown;
 use crate::transaction::Transaction;
 use crate::Result;
 
+use bytes::Bytes;
+use config::Config;
+use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tokio::sync::{broadcast, mpsc};
+use tracing::{debug, error, info};
 
 /// Server listener state.
+#[derive(Debug)]
 struct Listener {
     /// TCP listener, address is currently hard coded.
     listener: TcpListener,
@@ -22,12 +28,12 @@ struct Listener {
 
 impl Listener {
     /// Run the server, listen for inbound connections.
-    pub async fn run(&mut self) -> Result<()> {
-        println!("Accepting inbound connections");
+    pub async fn run(&mut self, conf: Arc<Config>) -> Result<()> {
+        info!("Accepting new connections");
         loop {
             // Accept new socket
             let (socket, _) = self.listener.accept().await?;
-            println!("Accepted connection!");
+            info!("New connection accepted");
             // Create per-connection handler state
             let mut handler = Handler {
                 connection: Connection::new(socket),
@@ -35,19 +41,20 @@ impl Listener {
                 _shutdown_complete: self.shutdown_complete_tx.clone(),
             };
 
+            // Clone handle to config
+            let aconf = conf.clone();
             // spawn new task to process the connection
             tokio::spawn(async move {
-                println!("Run handler");
-                if let Err(err) = handler.run().await {
-                    println!("{:?}", err);
+                if let Err(err) = handler.run(aconf).await {
+                    info!("{:?}", err);
                 }
             });
-            println!("Closing connection!");
         }
     }
 }
 
 /// Per-connection handler
+#[derive(Debug)]
 struct Handler {
     /// TCP connection: Tcp stream with buffers and frame parsing utils/
     connection: Connection,
@@ -64,11 +71,12 @@ impl Handler {
     ///
     /// Frames are requested from the socket and then processed.
     /// Responses are written back to the socket.
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(&mut self, conf: Arc<Config>) -> Result<()> {
+        debug!("Processing connection");
         // While shutdown signal not received try to read frames.
         while !self.shutdown.is_shutdown() {
             // While reading a requested frame listen for shutdown.
-            println!("Read frames");
+            debug!("Attempting to read frames");
             let maybe_frame = tokio::select! {
                 res = self.connection.read_frame() => res?,
                 _ = self.shutdown.recv() => {
@@ -78,7 +86,6 @@ impl Handler {
                 }
             };
 
-            println!("{:?}", maybe_frame);
             // If None is returned from maybe frame then the socket has been closed.
             // Terminate task
             let frame = match maybe_frame {
@@ -86,13 +93,17 @@ impl Handler {
                 None => return Ok(()),
             };
 
-            // TODO: convert into command.
-            println!("{:?}", frame.get_payload());
-
             let decoded: Transaction = bincode::deserialize(&frame.get_payload()).unwrap();
-            println!("{:?}", decoded);
+            debug!("Received: {:?}", decoded);
+
+            // TODO: Execute transaction.
+            // TODO: Write response to connection.
+
+            let b = Bytes::copy_from_slice(b"ok");
+            let f = Frame::new(b); // Response placeholder
+            debug!("Sending reply: {:?}", f);
+            self.connection.write_frame(&f).await?;
         }
-        println!("Close connection");
         Ok(())
     }
 }
@@ -101,14 +112,20 @@ impl Handler {
 ///
 /// Accepts connection on the listener address, spawns handler for each.
 /// ctrl-c triggers the shutdown.
-pub async fn run() {
+pub async fn run(conf: Arc<Config>) {
     // broadcast channel for informing active connections of shutdown
     let (notify_shutdown_tx, _) = broadcast::channel(1);
     // mpsc channel to ensure server waits for connections to finish before shutting down
     let (shutdown_complete_tx, shutdown_complete_rx) = mpsc::channel(1);
 
+    // Get the address and port.
+    let add = conf.get_str("address").unwrap();
+    let port = conf.get_str("port").unwrap();
+    info!("Server listening on {:?}", format!("{}:{}", add, port));
     // initialise tcp listener
-    let listener = TcpListener::bind("127.0.0.1:6142").await.unwrap();
+    let listener = TcpListener::bind(format!("{}:{}", add, port))
+        .await
+        .unwrap();
     // initialise server listener state
     let mut server = Listener {
         listener,
@@ -119,14 +136,14 @@ pub async fn run() {
 
     // concurrently run the server and listen for the shutdown signal
     tokio::select! {
-        res = server.run() => {
+        res = server.run(conf) => {
             // All errors bubble up to here
             if let Err(err) = res {
-                println!("{:?}",err);
+                error!("{:?}",err);
             }
         }
         _ = signal::ctrl_c() => {
-            println!("shutting down");
+            info!("shutting down");
             // broadcast message to connections
         }
     }
