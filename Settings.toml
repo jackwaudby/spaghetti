@@ -1,3 +1,6 @@
 address = "127.0.0.1"
 port = 6142
 log = "info"
+
+producers = 2
+mpsc_size = 32
