@@ -1,6 +1,7 @@
 use crate::connection::Connection;
 use crate::frame::Frame;
 use crate::shutdown::Shutdown;
+use crate::tpcc::TpcC;
 use crate::transaction::Transaction;
 use crate::Result;
 
@@ -29,6 +30,20 @@ struct Listener {
 impl Listener {
     /// Run the server, listen for inbound connections.
     pub async fn run(&mut self, conf: Arc<Config>) -> Result<()> {
+        info!("Initialise workload");
+
+        let workload = match conf.get_str("workload").unwrap().as_str() {
+            "tpcc" => {
+                info!("Populate tables");
+                TpcC::init("tpcc_short_schema.txt", conf.clone()).unwrap()
+            }
+            _ => unimplemented!(),
+        };
+
+        let mut rng = rand::thread_rng();
+        workload.populate_tables(&mut rng);
+        info!("Tables loaded");
+
         info!("Accepting new connections");
         loop {
             // Accept new socket
@@ -94,7 +109,7 @@ impl Handler {
             };
 
             let decoded: Transaction = bincode::deserialize(&frame.get_payload()).unwrap();
-            debug!("Received: {:?}", decoded);
+            info!("Received: {:?}", decoded);
 
             // TODO: Execute transaction.
             // TODO: Write response to connection.

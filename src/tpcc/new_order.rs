@@ -1,8 +1,7 @@
 use crate::tpcc::helper;
-use std::fmt;
 
-use log::*;
 use rand::Rng;
+use std::fmt;
 
 const UNUSED: u64 = u64::MAX;
 

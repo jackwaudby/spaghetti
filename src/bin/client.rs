@@ -8,7 +8,7 @@ use clap::clap_app;
 use config::Config;
 use std::sync::Arc;
 
-use tracing::{debug, info, Level};
+use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]

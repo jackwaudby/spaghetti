@@ -1,37 +1,42 @@
+use config::Config;
 use rand::distributions::Alphanumeric;
 use rand::rngs::ThreadRng;
 use rand::Rng;
-
-use configuration::SETTINGS;
+use std::sync::Arc;
 
 /// Compute the primary key for a district.
-pub fn district_key(d_w_id: u64, d_id: u64) -> u64 {
-    let dpw = SETTINGS.get_districts();
-
-    (d_w_id * dpw) + d_id
+pub fn district_key(config: Arc<Config>, d_w_id: u64, d_id: u64) -> u64 {
+    let dpw = config.get_int("districts").unwrap();
+    (d_w_id * dpw as u64) + d_id
 }
 
 /// Compute the primary key for a customer.
-pub fn customer_key(c_w_id: u64, c_d_id: u64, c_id: u64) -> u64 {
-    let cpd = SETTINGS.get_customers();
-    (district_key(c_w_id, c_d_id) * cpd) + c_id
+pub fn customer_key(config: Arc<Config>, c_w_id: u64, c_d_id: u64, c_id: u64) -> u64 {
+    let cpd = config.get_int("customers").unwrap() as u64;
+    (district_key(config, c_w_id, c_d_id) * cpd) + c_id
 }
 
 /// Compute the primary key for an order line.
-pub fn order_line_key(ol_w_id: u64, ol_d_id: u64, ol_o_id: u64, ol_number: u64) -> u64 {
-    (district_key(ol_w_id, ol_d_id) * (ol_o_id * 15)) + ol_number
+pub fn order_line_key(
+    config: Arc<Config>,
+    ol_w_id: u64,
+    ol_d_id: u64,
+    ol_o_id: u64,
+    ol_number: u64,
+) -> u64 {
+    (district_key(config, ol_w_id, ol_d_id) * (ol_o_id * 15)) + ol_number
 }
 
 /// Compute the primary key for an order.
-pub fn order_key(o_w_id: u64, o_d_id: u64, o_id: u64) -> u64 {
-    district_key(o_w_id, o_d_id) * o_id
+pub fn order_key(config: Arc<Config>, o_w_id: u64, o_d_id: u64, o_id: u64) -> u64 {
+    district_key(config, o_w_id, o_d_id) * o_id
 }
 
 /// Compute the primary key for stock
-pub fn stock_key(s_w_id: u64, s_i_id: u64) -> u64 {
-    let max_items = SETTINGS.get_max_items();
+pub fn stock_key(config: Arc<Config>, s_w_id: u64, s_i_id: u64) -> u64 {
+    let max_items = config.get_int("max_items").unwrap();
 
-    (s_w_id * max_items) + s_i_id
+    (s_w_id * max_items as u64) + s_i_id
 }
 
 /// Generate a string of some length.

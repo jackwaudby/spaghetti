@@ -1,14 +1,3 @@
-//! Welcome to Spaghetti!
-//!
-//! Spaghetti is a (work in-progress) prototype database that will act as a test bed for comparing a new concurrency control protocol,
-//! mixed serialization graph testing, against various classic and contemporary concurrency control protocols.
-
-extern crate benchmarks;
-extern crate configuration;
-extern crate log;
-extern crate rand;
-extern crate server;
-
 use benchmarks::tpcc::helper;
 use benchmarks::tpcc::TpcC;
 use configuration::SETTINGS;
@@ -16,10 +5,6 @@ use server::system::workload::Workload;
 use std::sync::Arc;
 
 fn main() {
-    env_logger::init();
-
-    assert_eq!(SETTINGS.get_warehouses(), 5);
-
     let workload: String = SETTINGS.get_workload();
 
     let w = match workload.as_str() {

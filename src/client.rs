@@ -1,5 +1,6 @@
 use crate::connection::Connection;
 use crate::frame::Frame;
+use crate::transaction::NewOrderParams;
 use crate::transaction::{Command, Transaction};
 use crate::Result;
 
@@ -40,34 +41,41 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
 
     // Producers create transactions.
     let prod = conf.get_int("producers").unwrap();
+    let w = conf.get_int("districts").unwrap() as u64;
+    let d = conf.get_int("warehouses").unwrap() as u64;
+    let mut rng = rand::thread_rng();
     let mut handles = vec![];
 
-    for i in 0..prod {
-        // Transmitter end of mpsc.
-        let tx2 = tx.clone();
+    let params = NewOrderParams::new(1, w, d, &mut rng);
+    println!("{:?}", params);
 
-        let handle = tokio::spawn(async move {
-            // Spawn response channel
-            let (resp_tx, resp_rx) = oneshot::channel();
+    // for i in 0..prod {
+    // Transmitter end of mpsc.
+    let tx2 = tx.clone();
 
-            // Generate transaction
-            let t = Transaction::GetSubscriberData { s_id: 30 };
-            // wrap in command
-            let c = Command {
-                transaction: t,
-                resp: resp_tx,
-            };
+    let handle = tokio::spawn(async move {
+        // Spawn response channel
+        let (resp_tx, resp_rx) = oneshot::channel();
 
-            // Send transaction to client resource manager
-            tx2.send(c).await;
+        // Generate transaction
+        // let t = Transaction::GetSubscriberData { s_id: 30 };
+        let t = Transaction::NewOrder(params);
+        // wrap in command
+        let c = Command {
+            transaction: t,
+            resp: resp_tx,
+        };
 
-            // Await response
-            let res = resp_rx.await;
-            info!("Producer {:?} received reply: {:?}", i, res);
-        });
+        // Send transaction to client resource manager
+        tx2.send(c).await;
 
-        handles.push(handle);
-    }
+        // Await response
+        let res = resp_rx.await;
+        info!("Producer received reply: {:?}", res);
+    });
+
+    handles.push(handle);
+    //}
 
     for handle in handles {
         handle.await.unwrap();

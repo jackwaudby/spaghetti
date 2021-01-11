@@ -1,20 +1,18 @@
+use crate::storage::catalog::Catalog;
+use crate::storage::index::Index;
+use crate::storage::row::Row;
+use crate::storage::table::Table;
+use crate::Result;
+use config::Config;
 use rand::rngs::ThreadRng;
 use rand::Rng;
-use server::storage::catalog::Catalog;
-use server::storage::index::Index;
-use server::storage::row::Row;
-use server::storage::table::Table;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::sync::Arc;
-
-use server::system::workload::Workload;
-
-use configuration::SETTINGS;
+use tracing::info;
 
 pub mod helper;
 
@@ -24,11 +22,12 @@ pub mod new_order;
 pub struct TpcC {
     pub tables: Arc<HashMap<String, Arc<Table>>>,
     pub indexes: Arc<HashMap<String, Arc<Index>>>,
+    pub config: Arc<Config>,
 }
 
-impl Workload for TpcC {
+impl TpcC {
     /// Returns a workload with tables and indexes initialised.
-    fn init(filename: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn init(filename: &str, config: Arc<Config>) -> Result<TpcC> {
         let path = Path::new(filename);
         let mut file = File::open(&path)?;
         let mut contents = String::new();
@@ -94,10 +93,11 @@ impl Workload for TpcC {
         Ok(TpcC {
             tables: Arc::new(tables),
             indexes: Arc::new(indexes),
+            config,
         })
     }
 
-    fn populate_tables(&self, rng: &mut ThreadRng) {
+    pub fn populate_tables(&self, rng: &mut ThreadRng) {
         self.populate_warehouse_table(rng);
         // self.populate_item_table(rng);
         // self.populate_stock_table(rng);
@@ -112,13 +112,13 @@ impl TpcC {
     /// Schema: (int,i_id) (int,i_im_id) (string,i_name) (double,i_price) (string,i_data)
     /// Primary key: i_id
     fn populate_item_table(&self, rng: &mut ThreadRng) {
-        log::info!("loading item table");
+        info!("Loading item table");
         let t_name = String::from("item");
         let t = self.tables.get(&t_name).unwrap();
         let i_name = t.get_primary_index().unwrap();
         let i = self.indexes.get(&i_name).unwrap();
 
-        let max_items = SETTINGS.get_max_items();
+        let max_items = self.config.get_int("max_items").unwrap() as u64;
 
         for i_id in 0..max_items + 1 {
             let mut row = Row::new(Arc::clone(&t));
@@ -134,12 +134,13 @@ impl TpcC {
 
     /// Populate the `Warehouse` table.
     ///
-    /// Schema: (int,w_id) (string,w_name) (string,w_street_1) (string,w_street_2) (string,w_city) (string,w_state) (string,w_zip) (double,w_tax)
-    /// (double,w_ytd)
+    /// Schema: (int,w_id) (string,w_name) (string,w_street_1) (string,w_street_2) (string,w_city) (string,w_state) (string,w_zip)
+    /// (double,w_tax) (double,w_ytd)
     /// Primary key: w_id
     fn populate_warehouse_table(&self, rng: &mut ThreadRng) {
-        log::info!("loading warehouse table");
-        let n = SETTINGS.get_warehouses();
+        info!("Loading warehouse table");
+        let n = self.config.get_int("warehouses").unwrap() as u64;
+
         let t_name = String::from("warehouse");
         let t = self.tables.get(&t_name).unwrap();
         let i_name = t.get_primary_index().unwrap();
@@ -167,14 +168,14 @@ impl TpcC {
     /// (string,d_zip) (double,d_tax) (double,d_ytd) (int,d_next_o_id)
     /// Primary key:
     fn populate_district_table(&self, rng: &mut ThreadRng) {
-        log::info!("loading district table");
+        info!("Loading district table");
         let t_name = String::from("district");
         let t = self.tables.get(&t_name).unwrap();
         let i_name = t.get_primary_index().unwrap();
         let i = self.indexes.get(&i_name).unwrap();
+        let n = self.config.get_int("warehouses").unwrap() as u64;
+        let d = self.config.get_int("districts").unwrap() as u64;
 
-        let n = SETTINGS.get_warehouses();
-        let d = SETTINGS.get_districts();
         for w_id in 0..n {
             for d_id in 0..d {
                 let mut row = Row::new(Arc::clone(&t));
@@ -190,7 +191,7 @@ impl TpcC {
                 row.set_value("d_tax", helper::random_float(0.0, 0.2, 4, rng));
                 row.set_value("d_ytd", "30000.0".to_string());
                 row.set_value("d_next_o_id", "3001".to_string());
-                i.index_insert(helper::district_key(w_id, d_id), row);
+                i.index_insert(helper::district_key(self.config.clone(), w_id, d_id), row);
             }
         }
     }
@@ -200,14 +201,15 @@ impl TpcC {
     /// Schema: (int,s_i_id) (int,s_w_id) (int,s_quantity) (int,s_remote_cnt)
     /// Primary key: (s_i_id,s_w_id)
     fn populate_stock_table(&self, rng: &mut ThreadRng) {
-        log::info!("loading stock table");
+        info!("loading stock table");
         let t_name = String::from("stock");
         let t = self.tables.get(&t_name).unwrap();
         let i_name = t.get_primary_index().unwrap();
         let i = self.indexes.get(&i_name).unwrap();
 
-        let n = SETTINGS.get_warehouses();
-        let mi = SETTINGS.get_max_items();
+        let n = self.config.get_int("warehouses").unwrap() as u64;
+
+        let mi = self.config.get_int("max_items").unwrap() as u64;
 
         for w_id in 0..n {
             for s_i_id in 0..mi {
@@ -217,7 +219,7 @@ impl TpcC {
                 row.set_value("s_w_id", w_id.to_string());
                 row.set_value("s_quantity", rng.gen_range(10, 101).to_string());
                 row.set_value("s_remote_cnt", "0".to_string());
-                i.index_insert(helper::stock_key(w_id, s_i_id), row);
+                i.index_insert(helper::stock_key(self.config.clone(), w_id, s_i_id), row);
             }
         }
     }
@@ -228,15 +230,15 @@ impl TpcC {
     /// (double,c_balance) (double,c_ytd_payment) (int,c_payment_cnt)
     /// Primary key: c_id
     fn populate_customer_table(&self, rng: &mut ThreadRng) {
-        log::info!("loading customer table");
+        info!("Loading customer table");
         let t_name = String::from("customer");
         let t = self.tables.get(&t_name).unwrap();
         let i_name = t.get_primary_index().unwrap();
         let i = self.indexes.get(&i_name).unwrap();
 
-        let w = SETTINGS.get_warehouses();
-        let d = SETTINGS.get_districts();
-        let c = SETTINGS.get_customers();
+        let w = self.config.get_int("warehouses").unwrap() as u64;
+        let d = self.config.get_int("districts").unwrap() as u64;
+        let c = self.config.get_int("customers").unwrap() as u64;
 
         for w_id in 0..w {
             for d_id in 0..d {
@@ -251,7 +253,10 @@ impl TpcC {
                     row.set_value("c_balance", "-10.0".to_string());
                     row.set_value("c_ytd_payment", "10.0".to_string());
                     row.set_value("c_payment_cnt", "1".to_string());
-                    i.index_insert(helper::customer_key(w_id, d_id, c_id), row);
+                    i.index_insert(
+                        helper::customer_key(self.config.clone(), w_id, d_id, c_id),
+                        row,
+                    );
                 }
             }
         }
