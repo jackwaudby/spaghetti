@@ -22,3 +22,13 @@ cargo build
 ## Concurrency Control Protocols ##
 
 ## Workloads ##
+
+### Telecommunication Application Transaction Processing (TATP) Benchmark ###
+
++ Tables (0/4)
++ Transactions (0/7)
+
+### TPC Benchmark C  ###
+
++ Tables (0/?)
++ Transactions (0/5)
