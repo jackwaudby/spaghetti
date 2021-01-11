@@ -19,4 +19,6 @@ cargo build
 + Configuration is managed using the `config` crate.
 + Logging use the `trace` crate.
 
+## Concurrency Control Protocols ##
+
 ## Workloads ##
