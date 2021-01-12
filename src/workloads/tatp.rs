@@ -1,6 +1,6 @@
 use crate::storage::row::Row;
-
 use crate::workloads::Internal;
+use crate::workloads::Workload;
 
 use rand::rngs::ThreadRng;
 use rand::Rng;
@@ -71,6 +71,32 @@ pub fn to_sub_nbr(s_id: u64) -> String {
         num = format!("0{}", num);
     }
     num
+}
+
+pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> String {
+    info!(
+        "  SELECT s_id, sub_nbr,
+            bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
+            bit_8, bit_9, bit_10,
+            hex_1, hex_2, hex_3, hex_4, hex_5, hex_6, hex_7,
+            hex_8, hex_9, hex_10,
+            byte2_1, byte2_2, byte2_3, byte2_4, byte2_5,
+            byte2_6, byte2_7, byte2_8, byte2_9, byte2_10,
+            msc_location, vlr_location
+   FROM Subscriber
+   WHERE s_id = {:?};",
+        s_id
+    );
+
+    match *workload {
+        Workload::Tatp(ref internals) => {
+            let key = s_id;
+            let index = internals.indexes.get("sub_idx").unwrap();
+            let row = index.index_read(key).unwrap();
+            row.get_value("sub_nbr".to_string()).unwrap()
+        }
+        Workload::Tpcc(ref internals) => String::from("test"),
+    }
 }
 
 #[cfg(test)]

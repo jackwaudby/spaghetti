@@ -2,6 +2,7 @@ use crate::connection::Connection;
 use crate::frame::Frame;
 use crate::shutdown::Shutdown;
 use crate::transaction::Transaction;
+use crate::workloads::tatp;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -34,10 +35,24 @@ impl Listener {
             "Initialise {:?} workload",
             conf.get_str("workload").unwrap()
         );
-        let workload = Workload::new(conf.clone()).unwrap();
+        let workload = Arc::new(Workload::new(conf.clone()).unwrap());
         let mut rng = rand::thread_rng();
         workload.populate_tables(&mut rng);
         info!("Tables loaded");
+        info!(
+            "{}",
+            workload.get_internals().tables.get("subscriber").unwrap()
+        );
+        info!(
+            "{}",
+            workload
+                .get_internals()
+                .tables
+                .get("subscriber")
+                .unwrap()
+                .get_next_row_id()
+        );
+
         info!("Accepting new connections");
         loop {
             // Accept new socket
@@ -50,11 +65,11 @@ impl Listener {
                 _shutdown_complete: self.shutdown_complete_tx.clone(),
             };
 
-            // Clone handle to config
-            let aconf = conf.clone();
+            // Clone handle to workload
+            let w = workload.clone();
             // spawn new task to process the connection
             tokio::spawn(async move {
-                if let Err(err) = handler.run(aconf).await {
+                if let Err(err) = handler.run(w).await {
                     info!("{:?}", err);
                 }
             });
@@ -80,7 +95,7 @@ impl Handler {
     ///
     /// Frames are requested from the socket and then processed.
     /// Responses are written back to the socket.
-    pub async fn run(&mut self, _conf: Arc<Config>) -> Result<()> {
+    pub async fn run(&mut self, workload: Arc<Workload>) -> Result<()> {
         debug!("Processing connection");
         // While shutdown signal not received try to read frames.
         while !self.shutdown.is_shutdown() {
@@ -106,6 +121,8 @@ impl Handler {
             info!("Received: {:?}", decoded);
 
             // TODO: Execute transaction.
+            let resp = tatp::get_subscriber_data(5, workload.clone());
+            info!("{:?}", resp);
             // TODO: Write response to connection.
 
             let b = Bytes::copy_from_slice(b"ok");

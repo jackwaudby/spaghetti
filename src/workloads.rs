@@ -2,9 +2,9 @@ use crate::storage::catalog::Catalog;
 use crate::storage::index::Index;
 use crate::storage::table::Table;
 use crate::Result;
+
 use config::Config;
 use rand::rngs::ThreadRng;
-
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -18,6 +18,7 @@ pub mod tpcc;
 pub mod tatp;
 
 // Type of workload.
+#[derive(Debug)]
 pub enum Workload {
     Tatp(Internal),
     Tpcc(Internal),
@@ -48,9 +49,18 @@ impl Workload {
             Tpcc(ref i) => tpcc::populate_tables(i, rng),
         }
     }
+
+    pub fn get_internals(&self) -> &Internal {
+        use Workload::*;
+        match *self {
+            Tatp(ref i) => &i,
+            Tpcc(ref i) => &i,
+        }
+    }
 }
 
 // Represents a workload's information.
+#[derive(Debug)]
 pub struct Internal {
     pub tables: Arc<HashMap<String, Arc<Table>>>,
     pub indexes: Arc<HashMap<String, Arc<Index>>>,

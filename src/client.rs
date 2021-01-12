@@ -57,8 +57,8 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
         let (resp_tx, resp_rx) = oneshot::channel();
 
         // Generate transaction
-        // let t = Transaction::GetSubscriberData { s_id: 30 };
-        let t = Transaction::NewOrder(params);
+        let t = Transaction::GetSubscriberData { s_id: 30 };
+        // let t = Transaction::NewOrder(params);
         // wrap in command
         let c = Command {
             transaction: t,
