@@ -157,8 +157,6 @@ mod tests {
 
     #[test]
     fn gen_params() {
-        env_logger::init();
-
         let mut rng = StdRng::seed_from_u64(42);
 
         let ol_rbk = OrderLine::new(10, 1, true, &mut rng);
@@ -169,7 +167,7 @@ mod tests {
         let ol_home = OrderLine::new(10, 2, false, &mut rng);
         assert_eq!(format!("{}", ol_home), "[17185,2,9]".to_string());
 
-        let no = NewOrder::new(1, 10, 10, &mut rng);
+        let no = NewOrderParams::new(1, 10, 10, &mut rng);
         assert_eq!(format!("{}", no), "[1,5,2238,15,63]".to_string());
     }
 }

@@ -1,6 +1,7 @@
 use crate::connection::Connection;
 use crate::frame::Frame;
 use crate::shutdown::Shutdown;
+use crate::tatp::Tatp;
 use crate::tpcc::TpcC;
 use crate::transaction::Transaction;
 use crate::Result;
@@ -33,15 +34,20 @@ impl Listener {
         info!("Initialise workload");
 
         let workload = match conf.get_str("workload").unwrap().as_str() {
-            "tpcc" => {
+            // "tpcc" => {
+            //     info!("Populate tables");
+            //     TpcC::init("tpcc_short_schema.txt", conf.clone()).unwrap()
+            // }
+            "tatp" => {
                 info!("Populate tables");
-                TpcC::init("tpcc_short_schema.txt", conf.clone()).unwrap()
+                Tatp::init("tatp_schema.txt", conf.clone()).unwrap()
             }
             _ => unimplemented!(),
         };
 
         let mut rng = rand::thread_rng();
         workload.populate_tables(&mut rng);
+        debug!("Yes");
         info!("Tables loaded");
 
         info!("Accepting new connections");
@@ -86,7 +92,7 @@ impl Handler {
     ///
     /// Frames are requested from the socket and then processed.
     /// Responses are written back to the socket.
-    pub async fn run(&mut self, conf: Arc<Config>) -> Result<()> {
+    pub async fn run(&mut self, _conf: Arc<Config>) -> Result<()> {
         debug!("Processing connection");
         // While shutdown signal not received try to read frames.
         while !self.shutdown.is_shutdown() {

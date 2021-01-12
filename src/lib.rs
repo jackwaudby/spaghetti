@@ -1,5 +1,7 @@
 pub mod tpcc;
 
+pub mod tatp;
+
 pub mod storage;
 
 pub mod client;

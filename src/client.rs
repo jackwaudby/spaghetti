@@ -40,14 +40,13 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
     });
 
     // Producers create transactions.
-    let prod = conf.get_int("producers").unwrap();
+    let _prod = conf.get_int("producers").unwrap(); // fixed at 1.
     let w = conf.get_int("districts").unwrap() as u64;
     let d = conf.get_int("warehouses").unwrap() as u64;
     let mut rng = rand::thread_rng();
     let mut handles = vec![];
 
     let params = NewOrderParams::new(1, w, d, &mut rng);
-    println!("{:?}", params);
 
     // for i in 0..prod {
     // Transmitter end of mpsc.

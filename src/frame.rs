@@ -91,7 +91,7 @@ impl ParseError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ParseErrorKind {
     /// Not enough data available in read buffer to parse message.
     Incomplete,
@@ -164,6 +164,7 @@ pub fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], ParseError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::{BufMut, BytesMut};
     use serde::{Deserialize, Serialize};
 
     #[test]
@@ -181,7 +182,7 @@ mod tests {
         // cursor
         let mut buff = Cursor::new(&buf[..]);
 
-        assert_eq!(validate(&mut buff).unwrap(), ());
+        assert_eq!(Frame::validate(&mut buff).unwrap(), ());
     }
 
     #[test]
@@ -199,8 +200,8 @@ mod tests {
         let mut buff = Cursor::new(&buf[..]);
 
         assert_eq!(
-            validate(&mut buff).err().unwrap().kind(),
-            ParseError::Incomplete
+            Frame::validate(&mut buff).err().unwrap().kind,
+            ParseErrorKind::Incomplete
         );
     }
 
@@ -220,8 +221,8 @@ mod tests {
         let mut buff = Cursor::new(&buf[..]);
 
         assert_eq!(
-            validate(&mut buff).err().unwrap().kind(),
-            ParseError::Invalid
+            Frame::validate(&mut buff).err().unwrap().kind,
+            ParseErrorKind::Invalid
         );
     }
 
@@ -243,6 +244,6 @@ mod tests {
         // expected frame
         let f = Frame::new(Bytes::copy_from_slice(&b"ok"[..]));
 
-        assert_eq!(parse(&mut buff).unwrap(), f);
+        assert_eq!(Frame::parse(&mut buff).unwrap(), f);
     }
 }

@@ -59,7 +59,12 @@ impl Row {
         let col_name = String::from(col_name);
         let table = Arc::clone(&self.table);
 
-        let field_index = table.schema().column_position_by_name(col_name).unwrap();
+        let temp = col_name.clone();
+
+        let field_index = match table.schema().column_position_by_name(col_name) {
+            Some(f) => f,
+            Nonw => panic!("field does not exist: {:?}", temp),
+        };
         let field_type = table.schema().column_type_by_index(field_index);
 
         let x = match field_type {

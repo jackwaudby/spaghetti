@@ -16,8 +16,6 @@ use tracing::info;
 
 pub mod helper;
 
-pub mod new_order;
-
 #[derive(Debug)]
 pub struct TpcC {
     pub tables: Arc<HashMap<String, Arc<Table>>>,
