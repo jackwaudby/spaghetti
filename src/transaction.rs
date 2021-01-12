@@ -1,5 +1,5 @@
 use crate::frame::Frame;
-use crate::tpcc::helper;
+use crate::workloads::tpcc::helper;
 use crate::Result;
 use bytes::Bytes;
 use rand::Rng;

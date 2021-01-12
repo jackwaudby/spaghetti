@@ -1,7 +1,3 @@
-pub mod tpcc;
-
-pub mod tatp;
-
 pub mod storage;
 
 pub mod client;
@@ -15,6 +11,8 @@ pub mod frame;
 pub mod connection;
 
 pub mod transaction;
+
+pub mod workloads;
 
 /// Error handling approach: boxing errors.
 /// Pros: simple and allows original errors to be preserved.
