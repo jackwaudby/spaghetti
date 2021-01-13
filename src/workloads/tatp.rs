@@ -1,12 +1,24 @@
+use crate::frame::Frame;
+use crate::parameter_generation::Generator;
 use crate::storage::row::Row;
+use crate::transaction::Transaction;
 use crate::workloads::Internal;
 use crate::workloads::Workload;
 
+use bytes::Bytes;
 use rand::rngs::ThreadRng;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
+use std::any::Any;
 
 use std::sync::Arc;
 use tracing::info;
+
+pub mod helper;
+
+//////////////////////////////
+/// Table Loaders. ///
+//////////////////////////////
 
 /// Populate the `Subscriber` table.
 ///
@@ -24,7 +36,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut ThreadRng) {
         let mut row = Row::new(Arc::clone(&t));
         row.set_primary_key(s_id);
         row.set_value("s_id", s_id.to_string());
-        row.set_value("sub_nbr", to_sub_nbr(s_id));
+        row.set_value("sub_nbr", helper::to_sub_nbr(s_id));
         row.set_value("bit_1", rng.gen_range(0, 1 + 1).to_string());
         row.set_value("bit_2", rng.gen_range(0, 1 + 1).to_string());
         row.set_value("bit_3", rng.gen_range(0, 1 + 1).to_string());
@@ -61,17 +73,9 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut ThreadRng) {
     }
 }
 
-// TODO: move to helper
-pub fn to_sub_nbr(s_id: u64) -> String {
-    let mut num = s_id.to_string();
-    for _i in 0..15 {
-        if num.len() == 15 {
-            break;
-        }
-        num = format!("0{}", num);
-    }
-    num
-}
+/////////////////////////////////////
+/// Stored Procedures. ///
+/////////////////////////////////////
 
 pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> String {
     info!(
@@ -96,6 +100,69 @@ pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> String {
             row.get_value("sub_nbr".to_string()).unwrap()
         }
         Workload::Tpcc(ref internals) => String::from("test"),
+    }
+}
+
+/////////////////////////////////////////
+/// Parameter Generator. ///
+////////////////////////////////////////
+
+pub struct TatpGenerator {
+    pub subscribers: u64,
+}
+
+impl TatpGenerator {
+    fn new(subscribers: u64) -> TatpGenerator {
+        TatpGenerator { subscribers }
+    }
+}
+
+impl Generator<TatpTransaction> for TatpGenerator {
+    fn generate(&self) -> Box<TatpTransaction> {
+        Box::new(TatpTransaction::GetSubscriberData(GetSubscriberData {
+            s_id: 10,
+        }))
+    }
+}
+
+///////////////////////////////////////
+/// Transaction Profiles. ///
+//////////////////////////////////////
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct GetSubscriberData {
+    pub s_id: u64,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct GetNewDestination {
+    s_id: u64,
+    sf_type: u8,
+    start_time: u8,
+    end_time: u8,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub struct GetAccessData {
+    s_id: u64,
+    ai_type: u8,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug)]
+pub enum TatpTransaction {
+    GetSubscriberData(GetSubscriberData),
+    GetNewDestination(GetNewDestination),
+    GetAccessData(GetAccessData),
+}
+
+impl Transaction for TatpTransaction {
+    fn into_frame(&self) -> Frame {
+        // Serialize transaction
+        let s: Bytes = bincode::serialize(&self).unwrap().into();
+        // Create frame
+        Frame::new(s)
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 

@@ -1,14 +1,15 @@
 use crate::connection::Connection;
 use crate::frame::Frame;
-use crate::transaction::NewOrderParams;
-use crate::transaction::{Command, Transaction};
+use crate::parameter_generation::ParameterGenerator;
+use crate::workloads::tatp::{TatpGenerator, TatpTransaction};
+use crate::workloads::tpcc::TpccGenerator;
 use crate::Result;
 
 use config::Config;
 use std::sync::Arc;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio::sync::oneshot;
+// use tokio::sync::oneshot;
 use tracing::{debug, info};
 
 /// Runs the client.
@@ -29,57 +30,83 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
         while let Some(cmd) = rx.recv().await {
             debug!("Receive transaction from a producer");
             // Convert to frame.
-            let frame = cmd.transaction.into_frame();
+            // let frame = cmd.transaction.into_frame();
             // TODO: this should be a submit function that receives a response.
-            info!("Send message: {:?}", frame);
-            let reply = client.submit(&frame).await;
-            info!("Consumer received reply: {:?}", reply);
+            // info!("Send message: {:?}", frame);
+            // let reply = client.submit(&frame).await;
+            // info!("Consumer received reply: {:?}", reply);
             // TODO: Ignore errors and send response back to producer, currently replies with unit struct
-            let _ = cmd.resp.send(Ok(()));
+            // let _ = cmd.resp.send(Ok(()));
         }
     });
 
-    // Producers create transactions.
-    let _prod = conf.get_int("producers").unwrap(); // fixed at 1.
-    let w = conf.get_int("districts").unwrap() as u64;
-    let d = conf.get_int("warehouses").unwrap() as u64;
-    let mut rng = rand::thread_rng();
-    let mut handles = vec![];
+    // A producer creates transactions.
+    // Example output from generator
+    let workload = "tpcc";
 
-    let params = NewOrderParams::new(1, w, d, &mut rng);
+    let pg = match workload {
+        "tatp" => {
+            let tatp_gen = TatpGenerator { subscribers: 10 };
+            ParameterGenerator::Tatp(tatp_gen)
+        }
+        "tpcc" => {
+            let tpcc_gen = TpccGenerator {
+                warehouses: 10,
+                districts: 10,
+            };
+            ParameterGenerator::Tpcc(tpcc_gen)
+        }
+        _ => unimplemented!(),
+    };
+    let out = pg.get_transaction();
 
-    // for i in 0..prod {
-    // Transmitter end of mpsc.
-    let tx2 = tx.clone();
+    let o: &TatpTransaction = match out.as_any().downcast_ref::<TatpTransaction>() {
+        Some(o) => {
+            info!("downcast: {:?}", o);
+            o
+        }
+        None => panic!("&out isn't a TatpTransaction"),
+    };
 
-    let handle = tokio::spawn(async move {
+    // let gen = ParameterGenerator::Tatp(TatpGenerator::new(10));
+    // let t = gen.get_transaction();
+    // print_if_string(t);
+
+    // Get generation parameters from config
+    // let gen = match conf.get_str("workload").unwrap().as_str() {
+    //     "tatp" => {
+    //         let subscribers = conf.get_int("subscribers").unwrap() as u64;
+    //         ParameterGenerator::Tatp(TatpGen::new(subscribers))
+    //     }
+    //     "tpcc" => {
+    //         let districts = conf.get_int("districts").unwrap() as u64;
+    //         let warehouses = conf.get_int("warehouses").unwrap() as u64;
+    //         ParameterGenerator::Tpcc(TpccGen::new(districts, warehouses))
+    //     }
+    //     _ => unimplemented!(),
+    // };
+
+    let producer = tokio::spawn(async move {
         // Spawn response channel
-        let (resp_tx, resp_rx) = oneshot::channel();
+        // let (resp_tx, resp_rx) = oneshot::channel();
 
         // Generate transaction
-        let t = Transaction::GetSubscriberData { s_id: 30 };
-        // let t = Transaction::NewOrder(params);
-        // wrap in command
-        let c = Command {
-            transaction: t,
-            resp: resp_tx,
-        };
+        // let params = gen.get_transaction();
+        // Wrap in command
+        // let c = Command {
+        //     transaction: Box::new(t),
+        //     resp: resp_tx,
+        // };
 
-        // Send transaction to client resource manager
-        tx2.send(c).await;
+        // // Send transaction to client resource manager
+        // tx.send(c).await;
 
-        // Await response
-        let res = resp_rx.await;
-        info!("Producer received reply: {:?}", res);
+        // // Await response
+        // let res = resp_rx.await;
+        // info!("Producer received reply: {:?}", res);
     });
 
-    handles.push(handle);
-    //}
-
-    for handle in handles {
-        handle.await.unwrap();
-    }
-
+    producer.await.unwrap();
     manager.await.unwrap();
 
     Ok(())
@@ -109,3 +136,5 @@ impl Client {
         // Ok(rframe)
     }
 }
+
+struct Command {}

@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::sync::Arc;
-use tracing::info;
+// use tracing::info;
 
 pub mod tpcc;
 

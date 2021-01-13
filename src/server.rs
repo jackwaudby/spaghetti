@@ -1,7 +1,7 @@
 use crate::connection::Connection;
 use crate::frame::Frame;
 use crate::shutdown::Shutdown;
-use crate::transaction::Transaction;
+// use crate::transaction::Transaction;
 use crate::workloads::tatp;
 use crate::workloads::Workload;
 use crate::Result;
@@ -117,8 +117,8 @@ impl Handler {
                 None => return Ok(()),
             };
 
-            let decoded: Transaction = bincode::deserialize(&frame.get_payload()).unwrap();
-            info!("Received: {:?}", decoded);
+            // let decoded: Transaction = bincode::deserialize(&frame.get_payload()).unwrap();
+            // info!("Received: {:?}", decoded);
 
             // TODO: Execute transaction.
             let resp = tatp::get_subscriber_data(5, workload.clone());
