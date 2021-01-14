@@ -25,6 +25,7 @@ pub mod helper;
 pub fn populate_tables(data: &Internal, rng: &mut ThreadRng) {
     populate_subscriber_table(data, rng);
     populate_access_info(data, rng);
+    populate_special_facility_call_forwarding(data, rng);
 }
 
 /// Populate the `Subscriber` table.
@@ -63,7 +64,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut ThreadRng) {
         debug!("{}", row);
         i.index_insert(s_id, row);
     }
-    info!("Loaded: {} rows", t.get_next_row_id());
+    info!("Loaded {} rows into subscriber", t.get_next_row_id());
 }
 
 /// Populate the `AccessInfo` table.
@@ -102,30 +103,49 @@ pub fn populate_access_info(data: &Internal, rng: &mut ThreadRng) {
             i.index_insert(pk, row);
         }
     }
-    info!("Loaded: {} rows", t.get_next_row_id());
+    info!("Loaded {} rows into access_info", t.get_next_row_id());
 }
 
-/// Populate the `SpecialFacility` table.
+/// Populate the `SpecialFacility` table and `CallForwarding` table.
+///
+/// SpecialFacility
 ///
 /// Schema: (int,s_id) (int,sf_type) (int,is_active) (int,error_cntrl) (string,data_a) (string,data_b)
 /// Primary key: (s_id, sf_type,is_active)
-pub fn populate_special_facility(data: &Internal, rng: &mut ThreadRng) {
+///
+/// CallForwarding
+///
+/// Schema:
+///
+/// Primary key:
+pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut ThreadRng) {
     info!("Loading special_facility table");
+    info!("Loading call_forwarding table");
     // Get handle to `Table` and `Index`.
     let sf_name = String::from("special_facility");
     let t = data.tables.get(&sf_name).unwrap();
     let i_name = t.get_primary_index().unwrap();
     let i = data.indexes.get(&i_name).unwrap();
 
+    // Get handle to `CallForwarding` and `Index`.
+    let cf_name = String::from("call_forwarding");
+    let cf_t = data.tables.get(&cf_name).unwrap();
+    let cf_i_name = cf_t.get_primary_index().unwrap();
+    let cf_i = data.indexes.get(&cf_i_name).unwrap();
+
     // Range of values for ai_type records.
     let sf_type_values = vec![1, 2, 3, 4];
+
+    // Range of values for start_time.
+    let start_time_values = vec![0, 8, 16];
+
     let subscribers = data.config.get_int("subscribers").unwrap() as u64;
     for s_id in 0..subscribers {
         // Generate number of records for a given s_id.
         let n_sf = rng.gen_range(1..=4);
         // Randomly sample w.o. replacement from range of ai_type values.
         let sample = sf_type_values.iter().choose_multiple(rng, n_sf);
-        for record in 1..n_sf {
+        for record in 0..n_sf {
             // Initialise empty row.
             let mut row = Row::new(Arc::clone(&t));
             // Calculate is_active
@@ -136,14 +156,44 @@ pub fn populate_special_facility(data: &Internal, rng: &mut ThreadRng) {
             row.set_value("s_id", s_id.to_string());
             row.set_value("sf_type", sample[record].to_string());
             row.set_value("is_active", is_active.to_string());
-            row.set_value("error_control", rng.gen_range(0..=255).to_string());
+            row.set_value("error_cntrl", rng.gen_range(0..=255).to_string());
             row.set_value("data_a", rng.gen_range(0..=255).to_string());
             row.set_value("data_b", helper::get_data_x(5, rng));
             debug!("{}", row);
             i.index_insert(pk, row);
+
+            // For each row, insert [0,3] into call forwarding table
+            // Generate the number to insert
+            let n_cf = rng.gen_range(0..=3);
+            // Randomly sample w.o. replacement from range of ai_type values.
+            let start_times = start_time_values.iter().choose_multiple(rng, n_cf);
+            for i in 0..n_cf {
+                // s_id from above
+                // sf_type from above
+                let st = *start_times[i];
+                let et = st + rng.gen_range(1..=8);
+                let nx = helper::get_number_x(rng);
+
+                // Calculate primary key
+                let pk = helper::call_forwarding_key(s_id, *sample[record], st);
+
+                // Initialise empty row.
+                let mut row = Row::new(Arc::clone(&cf_t));
+                row.set_primary_key(pk);
+                row.set_value("s_id", s_id.to_string());
+                row.set_value("start_time", st.to_string());
+                row.set_value("end_time", et.to_string());
+                row.set_value("number_x", nx);
+                debug!("{}", row);
+                cf_i.index_insert(pk, row);
+            }
         }
     }
-    info!("Loaded: {} rows", t.get_next_row_id());
+    info!("Loaded {} rows into special facility", t.get_next_row_id());
+    info!(
+        "Loaded {} rows into call_forwarding",
+        cf_t.get_next_row_id()
+    );
 }
 
 /////////////////////////////////////
