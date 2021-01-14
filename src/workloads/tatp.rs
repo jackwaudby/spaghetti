@@ -68,7 +68,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut ThreadRng) {
 
 /// Populate the `AccessInfo` table.
 ///
-/// Schema: (int,s_id) (int,ai_type) (int,data1) (int,data2) (string,data3) (string,data4)
+/// Schema: (int,s_id) (int,ai_type) (int,data_1) (int,data_2) (string,data_3) (string,data_4)
 /// Primary key: (s_id, ai_type)
 pub fn populate_access_info(data: &Internal, rng: &mut ThreadRng) {
     info!("Loading access_info table");
@@ -98,6 +98,47 @@ pub fn populate_access_info(data: &Internal, rng: &mut ThreadRng) {
             row.set_value("data_2", rng.gen_range(0..=255).to_string());
             row.set_value("data_3", helper::get_data_x(3, rng));
             row.set_value("data_4", helper::get_data_x(5, rng));
+            debug!("{}", row);
+            i.index_insert(pk, row);
+        }
+    }
+    info!("Loaded: {} rows", t.get_next_row_id());
+}
+
+/// Populate the `SpecialFacility` table.
+///
+/// Schema: (int,s_id) (int,sf_type) (int,is_active) (int,error_cntrl) (string,data_a) (string,data_b)
+/// Primary key: (s_id, sf_type,is_active)
+pub fn populate_special_facility(data: &Internal, rng: &mut ThreadRng) {
+    info!("Loading special_facility table");
+    // Get handle to `Table` and `Index`.
+    let sf_name = String::from("special_facility");
+    let t = data.tables.get(&sf_name).unwrap();
+    let i_name = t.get_primary_index().unwrap();
+    let i = data.indexes.get(&i_name).unwrap();
+
+    // Range of values for ai_type records.
+    let sf_type_values = vec![1, 2, 3, 4];
+    let subscribers = data.config.get_int("subscribers").unwrap() as u64;
+    for s_id in 0..subscribers {
+        // Generate number of records for a given s_id.
+        let n_sf = rng.gen_range(1..=4);
+        // Randomly sample w.o. replacement from range of ai_type values.
+        let sample = sf_type_values.iter().choose_multiple(rng, n_sf);
+        for record in 1..n_sf {
+            // Initialise empty row.
+            let mut row = Row::new(Arc::clone(&t));
+            // Calculate is_active
+            let is_active = helper::is_active(rng);
+            // Calculate primary key
+            let pk = helper::special_facility_key(s_id, *sample[record], is_active);
+            row.set_primary_key(pk);
+            row.set_value("s_id", s_id.to_string());
+            row.set_value("sf_type", sample[record].to_string());
+            row.set_value("is_active", is_active.to_string());
+            row.set_value("error_control", rng.gen_range(0..=255).to_string());
+            row.set_value("data_a", rng.gen_range(0..=255).to_string());
+            row.set_value("data_b", helper::get_data_x(5, rng));
             debug!("{}", row);
             i.index_insert(pk, row);
         }

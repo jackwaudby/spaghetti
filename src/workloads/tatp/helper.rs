@@ -27,6 +27,20 @@ pub fn access_info_key(s_id: u64, ai_type: u64) -> u64 {
     (s_id * 10) + ai_type
 }
 
+/// Compute the primary key for a `SpecialFacility` record.
+pub fn special_facility_key(s_id: u64, sf_type: u64, is_active: u64) -> u64 {
+    (s_id * 10) + sf_type + (is_active * 5)
+}
+
+pub fn is_active(rng: &mut ThreadRng) -> u64 {
+    let f: f32 = rng.gen();
+    if f < 0.15 {
+        0
+    } else {
+        1
+    }
+}
+
 /// Generate random string from upper case A-Z of length `n`.
 pub fn get_data_x(n: usize, rng: &mut ThreadRng) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
