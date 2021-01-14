@@ -11,7 +11,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::sync::Arc;
-// use tracing::info;
+use tracing::info;
 
 pub mod tpcc;
 
@@ -112,6 +112,7 @@ impl Internal {
                 }
                 let table = Table::init(catalog);
                 let table = Arc::new(table);
+                info!("Initialise table: {}", table.get_table_name());
                 tables.insert(table_name, table);
             } else if line.starts_with("INDEX") {
                 let index_name: String = match line.strip_prefix("INDEX=") {
@@ -137,6 +138,7 @@ impl Internal {
                 }
 
                 let index = Arc::new(Index::init(&index_name));
+                info!("Initialise index: {}", index);
 
                 indexes.insert(index_name, index);
             }
