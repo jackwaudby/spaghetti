@@ -25,8 +25,9 @@ cargo build
 
 ### Telecommunication Application Transaction Processing (TATP) Benchmark ###
 
-+ Tables (1/4)
-+ Transactions (0/7)
++ Table loaders (3/4)
++ Parameter generation (0/7)
++ Stored procedures (0/7)
 
 ### TPC Benchmark C  ###
 
