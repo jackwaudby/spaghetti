@@ -51,7 +51,7 @@ fn populate_item_table(data: &Internal, rng: &mut ThreadRng) {
         let mut row = Row::new(Arc::clone(&t));
         row.set_primary_key(i_id);
         row.set_value("i_id", i_id.to_string());
-        row.set_value("i_im_id", rng.gen_range(1, 10000 + 1).to_string());
+        row.set_value("i_im_id", rng.gen_range(1..=10000).to_string());
         row.set_value("i_name", helper::random_string(14, 24, rng));
         row.set_value("i_price", helper::random_float(1.0, 100.0, 2, rng));
         row.set_value("i_data", helper::item_data(rng));
@@ -144,7 +144,7 @@ fn populate_stock_table(data: &Internal, rng: &mut ThreadRng) {
             row.set_primary_key(s_i_id);
             row.set_value("s_i_id", s_i_id.to_string());
             row.set_value("s_w_id", w_id.to_string());
-            row.set_value("s_quantity", rng.gen_range(10, 101).to_string());
+            row.set_value("s_quantity", rng.gen_range(10..=100).to_string());
             row.set_value("s_remote_cnt", "0".to_string());
             i.index_insert(helper::stock_key(data.config.clone(), w_id, s_i_id), row);
         }

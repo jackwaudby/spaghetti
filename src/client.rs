@@ -42,11 +42,11 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
 
     // A producer creates transactions.
     // Example output from generator
-    let workload = "tpcc";
+    let workload = conf.get_str("workload").unwrap();
 
-    let pg = match workload {
+    let pg = match workload.as_str() {
         "tatp" => {
-            let tatp_gen = TatpGenerator { subscribers: 10 };
+            let tatp_gen = TatpGenerator::new(10);
             ParameterGenerator::Tatp(tatp_gen)
         }
         "tpcc" => {

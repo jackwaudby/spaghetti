@@ -18,7 +18,7 @@ path = "src/bin/server.rs"
 
 [dependencies]
 chashmap = "2.2.2"
-rand = "0.7.3"
+rand = "0.8.0"
 rust-ini = "0.16.0"
 lazy_static = "1.4.0"
 log="0.4"

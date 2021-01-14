@@ -41,14 +41,17 @@ pub fn stock_key(config: Arc<Config>, s_w_id: u64, s_i_id: u64) -> u64 {
 
 /// Generate a string of some length.
 pub fn random_string(lower: u32, upper: u32, rng: &mut ThreadRng) -> String {
-    let size = rng.gen_range(lower, upper + 1);
+    let size = rng.gen_range(lower..=upper);
 
-    rng.sample_iter(&Alphanumeric).take(size as usize).collect()
+    rng.sample_iter(Alphanumeric)
+        .take(size as usize)
+        .map(char::from)
+        .collect()
 }
 
 /// Generate a decimal between some interval.
 pub fn random_float(lower: f32, upper: f32, dp: usize, rng: &mut ThreadRng) -> String {
-    let f = rng.gen_range(lower, upper);
+    let f = rng.gen_range(lower..upper);
     format!("{:.1$}", f, dp)
 }
 
@@ -59,7 +62,7 @@ pub fn zip(rng: &mut ThreadRng) -> String {
 
     let base_zip: String = (0..LEN)
         .map(|_| {
-            let idx = rng.gen_range(0, CHARSET.len());
+            let idx = rng.gen_range(0..CHARSET.len());
             CHARSET[idx] as char
         })
         .collect();
@@ -74,7 +77,7 @@ pub fn last_name(c_id: u64, rng: &mut ThreadRng) -> String {
 
     let num;
     if c_id < 1000 {
-        num = rng.gen_range(0, 1000).to_string();
+        num = rng.gen_range(0..1000).to_string();
     } else {
         num = nu_rand(0, 999, rng).to_string();
     }
@@ -95,7 +98,7 @@ pub fn last_name(c_id: u64, rng: &mut ThreadRng) -> String {
 
 /// Generate a random number between [x, y].
 pub fn rand<T: Rng>(x: u64, y: u64, rng: &mut T) -> u64 {
-    rng.gen_range(x, y + 1)
+    rng.gen_range(x..=y)
 }
 
 /// Generate a non-uniform random number.
@@ -107,9 +110,9 @@ pub fn nu_rand<T: Rng>(x: u64, y: u64, rng: &mut T) -> u64 {
         _ => panic!("invalid nurand range"),
     };
 
-    let c = rng.gen_range(0, a + 1);
+    let c = rng.gen_range(0..=a);
 
-    let p1 = (rng.gen_range(0, a + 1) | rng.gen_range(x, y + 1)) + c;
+    let p1 = (rng.gen_range(0..a) | rng.gen_range(x..=y)) + c;
     let p2 = y - x + 1;
 
     let res = (((p1 % p2) + p2) % p2) + x; // TODO: off by 1 error, hack for now.
@@ -124,13 +127,18 @@ pub fn nu_rand<T: Rng>(x: u64, y: u64, rng: &mut T) -> u64 {
 pub fn item_data(rng: &mut ThreadRng) -> String {
     let og: f32 = rng.gen();
     if og <= 0.1 {
-        let size = rng.gen_range(26, 50 + 1);
-        let pos = rng.gen_range(0, size - 8 + 1);
-        let start: String = rng.sample_iter(&Alphanumeric).take(pos as usize).collect();
+        let size = rng.gen_range(26..=50);
+        let pos = rng.gen_range(0..=size - 8);
+        let start: String = rng
+            .sample_iter(&Alphanumeric)
+            .take(pos as usize)
+            .map(char::from)
+            .collect();
         let middle = "ORIGINAL";
         let end: String = rng
             .sample_iter(&Alphanumeric)
             .take((size - (pos + 8)) as usize)
+            .map(char::from)
             .collect();
         format!("{}{}{}", start, middle, end)
     } else {

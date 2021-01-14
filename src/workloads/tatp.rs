@@ -37,38 +37,38 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut ThreadRng) {
         row.set_primary_key(s_id);
         row.set_value("s_id", s_id.to_string());
         row.set_value("sub_nbr", helper::to_sub_nbr(s_id));
-        row.set_value("bit_1", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("bit_2", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("bit_3", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("bit_4", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("bit_5", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("bit_6", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("bit_7", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("bit_8", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("bit_9", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("bit_10", rng.gen_range(0, 1 + 1).to_string());
-        row.set_value("hex_1", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("hex_2", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("hex_3", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("hex_4", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("hex_5", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("hex_6", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("hex_7", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("hex_8", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("hex_9", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("hex_10", rng.gen_range(0, 15 + 1).to_string());
-        row.set_value("byte_2_1", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("byte_2_2", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("byte_2_3", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("byte_2_4", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("byte_2_5", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("byte_2_6", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("byte_2_7", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("byte_2_8", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("byte_2_9", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("byte_2_10", rng.gen_range(0, 255 + 1).to_string());
-        row.set_value("msc_location", rng.gen_range(1, 2 ^ 32 - 1).to_string());
-        row.set_value("vlr_location", rng.gen_range(1, 2 ^ 32 - 1).to_string());
+        row.set_value("bit_1", rng.gen_range(0..=1).to_string());
+        row.set_value("bit_2", rng.gen_range(0..=1).to_string());
+        row.set_value("bit_3", rng.gen_range(0..=1).to_string());
+        row.set_value("bit_4", rng.gen_range(0..=1).to_string());
+        row.set_value("bit_5", rng.gen_range(0..=1).to_string());
+        row.set_value("bit_6", rng.gen_range(0..=1).to_string());
+        row.set_value("bit_7", rng.gen_range(0..=1).to_string());
+        row.set_value("bit_8", rng.gen_range(0..=1).to_string());
+        row.set_value("bit_9", rng.gen_range(0..=1).to_string());
+        row.set_value("bit_10", rng.gen_range(0..=1).to_string());
+        row.set_value("hex_1", rng.gen_range(0..=15).to_string());
+        row.set_value("hex_2", rng.gen_range(0..=15).to_string());
+        row.set_value("hex_3", rng.gen_range(0..=15).to_string());
+        row.set_value("hex_4", rng.gen_range(0..=15).to_string());
+        row.set_value("hex_5", rng.gen_range(0..=15).to_string());
+        row.set_value("hex_6", rng.gen_range(0..=15).to_string());
+        row.set_value("hex_7", rng.gen_range(0..=15).to_string());
+        row.set_value("hex_8", rng.gen_range(0..=15).to_string());
+        row.set_value("hex_9", rng.gen_range(0..=15).to_string());
+        row.set_value("hex_10", rng.gen_range(0..=15).to_string());
+        row.set_value("byte_2_1", rng.gen_range(0..=255).to_string());
+        row.set_value("byte_2_2", rng.gen_range(0..=255).to_string());
+        row.set_value("byte_2_3", rng.gen_range(0..=255).to_string());
+        row.set_value("byte_2_4", rng.gen_range(0..=255).to_string());
+        row.set_value("byte_2_5", rng.gen_range(0..=255).to_string());
+        row.set_value("byte_2_6", rng.gen_range(0..=255).to_string());
+        row.set_value("byte_2_7", rng.gen_range(0..=255).to_string());
+        row.set_value("byte_2_8", rng.gen_range(0..=255).to_string());
+        row.set_value("byte_2_9", rng.gen_range(0..=255).to_string());
+        row.set_value("byte_2_10", rng.gen_range(0..=255).to_string());
+        row.set_value("msc_location", rng.gen_range(1..=2 ^ 32 - 1).to_string());
+        row.set_value("vlr_location", rng.gen_range(1..=2 ^ 32 - 1).to_string());
         i.index_insert(s_id, row);
     }
 }
@@ -112,13 +112,15 @@ pub struct TatpGenerator {
 }
 
 impl TatpGenerator {
-    fn new(subscribers: u64) -> TatpGenerator {
+    pub fn new(subscribers: u64) -> TatpGenerator {
         TatpGenerator { subscribers }
     }
 }
 
 impl Generator<TatpTransaction> for TatpGenerator {
     fn generate(&self) -> Box<TatpTransaction> {
+        // Generate random
+
         Box::new(TatpTransaction::GetSubscriberData(GetSubscriberData {
             s_id: 10,
         }))

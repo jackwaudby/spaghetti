@@ -36,6 +36,7 @@ impl Listener {
             conf.get_str("workload").unwrap()
         );
         let workload = Arc::new(Workload::new(conf.clone()).unwrap());
+        // Handle to the thread-local generator.
         let mut rng = rand::thread_rng();
         workload.populate_tables(&mut rng);
         info!("Tables loaded");
