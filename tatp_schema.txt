@@ -35,5 +35,16 @@ TABLE=SUBSCRIBER
    1,int,MSC_LOCATION
    1,int,VLR_LOCATION
 
+TABLE=ACCESS_INFO
+    8,int,S_ID
+    1,int,AI_TYPE
+    1,int,DATA_1
+    1,int,DATA_2
+    1,string,DATA_3
+    1,string,DATA_4
+
 INDEX=SUB_IDX
     SUBSCRIBER,0
+
+INDEX=ACCESS_IDX
+    ACCESS_INFO,0

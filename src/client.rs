@@ -44,7 +44,7 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
     // Example output from generator
     let workload = conf.get_str("workload").unwrap();
 
-    let pg = match workload.as_str() {
+    let mut pg = match workload.as_str() {
         "tatp" => {
             let tatp_gen = TatpGenerator::new(10);
             ParameterGenerator::Tatp(tatp_gen)

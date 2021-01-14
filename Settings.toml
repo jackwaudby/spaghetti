@@ -1,6 +1,6 @@
 address = "127.0.0.1"
 port = 6142
-log = "info"
+log = "debug"
 
 mpsc_size = 32
 
@@ -10,4 +10,4 @@ districts = 10
 customers = 100
 max_items = 100
 
-subscribers = 10
+subscribers = 2

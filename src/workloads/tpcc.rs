@@ -211,7 +211,7 @@ impl TpccGenerator {
 }
 
 impl Generator<TpccTransaction> for TpccGenerator {
-    fn generate(&self) -> Box<TpccTransaction> {
+    fn generate(&mut self) -> Box<TpccTransaction> {
         Box::new(TpccTransaction::NewOrder(NewOrder { w_id: 1 }))
     }
 }

@@ -40,19 +40,6 @@ impl Listener {
         let mut rng = rand::thread_rng();
         workload.populate_tables(&mut rng);
         info!("Tables loaded");
-        info!(
-            "{}",
-            workload.get_internals().tables.get("subscriber").unwrap()
-        );
-        info!(
-            "{}",
-            workload
-                .get_internals()
-                .tables
-                .get("subscriber")
-                .unwrap()
-                .get_next_row_id()
-        );
 
         info!("Accepting new connections");
         loop {

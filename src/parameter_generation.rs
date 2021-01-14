@@ -11,17 +11,17 @@ pub enum ParameterGenerator {
 }
 
 impl ParameterGenerator {
-    pub fn get_transaction(&self) -> Box<dyn Transaction + Send> {
+    pub fn get_transaction(&mut self) -> Box<dyn Transaction + Send> {
         use ParameterGenerator::*;
         match self {
-            Tatp(ref gen) => gen.generate(),
-            Tpcc(ref gen) => gen.generate(),
+            Tatp(ref mut gen) => gen.generate(),
+            Tpcc(ref mut gen) => gen.generate(),
         }
     }
 }
 
 pub trait Generator<T> {
-    fn generate(&self) -> Box<T>
+    fn generate(&mut self) -> Box<T>
     where
         T: Transaction;
 }

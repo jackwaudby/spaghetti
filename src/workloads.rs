@@ -45,7 +45,9 @@ impl Workload {
     pub fn populate_tables(&self, rng: &mut ThreadRng) {
         use Workload::*;
         match *self {
-            Tatp(ref i) => tatp::populate_subscriber_table(i, rng),
+            Tatp(ref i) => {
+                tatp::populate_tables(i, rng);
+            }
             Tpcc(ref i) => tpcc::populate_tables(i, rng),
         }
     }
