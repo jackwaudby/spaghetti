@@ -36,14 +36,18 @@ Given a table name, the list of tables are consulted in order to get the name of
 
 ## Concurrency Control Protocols ##
 
+- [ ] 2PL 
+- [ ] SGT 
+- [ ] Hit list 
+- [ ] Mixed SGT 
+
 ## Workloads ##
 
 ### Telecommunication Application Transaction Processing (TATP) Benchmark ###
 
-
 + Table loaders (4/4)
 + Parameter generation (7/7)
-+ Stored procedures (0/7)
++ Stored procedures (1/7)
 
 ### TPC Benchmark C  ###
 
