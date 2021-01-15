@@ -333,12 +333,12 @@ impl Generator<TatpTransaction> for TatpGenerator {
 ///////////////////////////////////////
 /// Transaction Profiles. ///
 //////////////////////////////////////
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GetSubscriberData {
     s_id: u64,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GetNewDestination {
     s_id: u64,
     sf_type: u8,
@@ -346,13 +346,13 @@ pub struct GetNewDestination {
     end_time: u8,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GetAccessData {
     s_id: u64,
     ai_type: u8,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct UpdateSubscriberData {
     s_id: u64,
     sf_type: u8,
@@ -360,13 +360,13 @@ pub struct UpdateSubscriberData {
     data_a: u8,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct UpdateLocationData {
     s_id: u64,
     vlr_location: u8,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct InsertCallForwarding {
     s_id: u64,
     sf_type: u8,
@@ -375,14 +375,14 @@ pub struct InsertCallForwarding {
     number_x: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct DeleteCallForwarding {
     s_id: u64,
     sf_type: u8,
     start_time: u8,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum TatpTransaction {
     GetSubscriberData(GetSubscriberData),
     GetNewDestination(GetNewDestination),

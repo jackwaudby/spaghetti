@@ -105,11 +105,12 @@ impl Handler {
                 None => return Ok(()),
             };
 
-            // let decoded: Transaction = bincode::deserialize(&frame.get_payload()).unwrap();
-            // info!("Received: {:?}", decoded);
+            let decoded: tatp::TatpTransaction =
+                bincode::deserialize(&frame.get_payload()).unwrap();
+            info!("Received: {:?}", decoded);
 
             // TODO: Execute transaction.
-            let resp = tatp::get_subscriber_data(5, workload.clone());
+            let resp = tatp::get_subscriber_data(0, workload.clone());
             info!("{:?}", resp);
             // TODO: Write response to connection.
 

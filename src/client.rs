@@ -1,53 +1,63 @@
 use crate::connection::Connection;
+use crate::connection::ReadConnection;
+use crate::connection::WriteConnection;
 use crate::frame::Frame;
 use crate::parameter_generation::ParameterGenerator;
+use crate::transaction::Transaction;
 use crate::workloads::tatp::{TatpGenerator, TatpTransaction};
 use crate::workloads::tpcc::TpccGenerator;
 use crate::Result;
 
 use config::Config;
 use std::sync::Arc;
+use tokio::io::{self, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
+use tokio::net::tcp::WriteHalf;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-// use tokio::sync::oneshot;
+use tokio::sync::oneshot;
 use tracing::{debug, info};
 
 /// Runs the client.
 pub async fn run(conf: Arc<Config>) -> Result<()> {
-    // Mpsc.
-    let mpsc_size = conf.get_int("mpsc_size").unwrap();
-    let (tx, mut rx): (Sender<Command>, Receiver<Command>) = mpsc::channel(mpsc_size as usize);
-
-    // Spawn client resource manager task.
+    // Open a connection to the server.
     let add = conf.get_str("address").unwrap();
     let port = conf.get_str("port").unwrap();
-    let manager = tokio::spawn(async move {
-        // Open a connection to the server.
-        let mut client = Client::connect(&format!("{}:{}", add, port)[..])
-            .await
-            .unwrap();
+    let socket = TcpStream::connect(&format!("{}:{}", add, port)[..]).await?;
+    info!("Client connected to server at {}:{}", add, port);
+
+    // Split socket into reader and writer handlers.
+    let (mut rd, mut wr) = io::split(socket);
+    let mut w = WriteConnection::new(wr);
+    let mut r = ReadConnection::new(rd);
+
+    // Initialise the mpsc.
+    let mpsc_size = conf.get_int("mpsc_size").unwrap();
+    let (tx, mut rx): (Sender<TatpTransaction>, Receiver<TatpTransaction>) =
+        mpsc::channel(mpsc_size as usize);
+    // Spawn task to manage writer.
+    let w_manager = tokio::spawn(async move {
         // Receive messages from producer.
-        while let Some(cmd) = rx.recv().await {
-            debug!("Receive transaction from a producer");
+        while let Some(transaction) = rx.recv().await {
+            debug!(
+                "Write half received transaction {:?} from generator",
+                transaction
+            );
             // Convert to frame.
-            // let frame = cmd.transaction.into_frame();
-            // TODO: this should be a submit function that receives a response.
-            // info!("Send message: {:?}", frame);
-            // let reply = client.submit(&frame).await;
-            // info!("Consumer received reply: {:?}", reply);
-            // TODO: Ignore errors and send response back to producer, currently replies with unit struct
-            // let _ = cmd.resp.send(Ok(()));
+            let frame = transaction.into_frame();
+            w.write_frame(&frame).await;
+            debug!("Message written to socket");
         }
+        info!("Closing write connection");
     });
 
-    // A producer creates transactions.
-    // Example output from generator
+    // initialise parameter generator
+    // TODO: share rng across tasks
     let workload = conf.get_str("workload").unwrap();
-
     let mut pg = match workload.as_str() {
         "tatp" => {
-            let tatp_gen = TatpGenerator::new(10);
-            ParameterGenerator::Tatp(tatp_gen)
+            let subscribers = conf.get_int("subscribers").unwrap();
+            let gen = TatpGenerator::new(subscribers as u64);
+            ParameterGenerator::Tatp(gen)
         }
         "tpcc" => {
             let tpcc_gen = TpccGenerator {
@@ -58,56 +68,53 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
         }
         _ => unimplemented!(),
     };
-    let out = pg.get_transaction();
 
-    let o: &TatpTransaction = match out.as_any().downcast_ref::<TatpTransaction>() {
-        Some(o) => {
-            info!("downcast: {:?}", o);
-            o
-        }
-        None => panic!("&out isn't a TatpTransaction"),
-    };
+    // Generate a transaction
+    let transaction = pg.get_transaction();
 
-    // let gen = ParameterGenerator::Tatp(TatpGenerator::new(10));
-    // let t = gen.get_transaction();
-    // print_if_string(t);
+    // Verify it is a tatp trasaction.
+    let transaction: &TatpTransaction = transaction
+        .as_any()
+        .downcast_ref::<TatpTransaction>()
+        .expect("not a TatpTransaction");
+    let x = transaction.clone();
 
-    // Get generation parameters from config
-    // let gen = match conf.get_str("workload").unwrap().as_str() {
-    //     "tatp" => {
-    //         let subscribers = conf.get_int("subscribers").unwrap() as u64;
-    //         ParameterGenerator::Tatp(TatpGen::new(subscribers))
-    //     }
-    //     "tpcc" => {
-    //         let districts = conf.get_int("districts").unwrap() as u64;
-    //         let warehouses = conf.get_int("warehouses").unwrap() as u64;
-    //         ParameterGenerator::Tpcc(TpccGen::new(districts, warehouses))
-    //     }
-    //     _ => unimplemented!(),
-    // };
-
+    // Spawn producer that sends transaction to writer.
     let producer = tokio::spawn(async move {
-        // Spawn response channel
-        // let (resp_tx, resp_rx) = oneshot::channel();
+        info!("Generating transactions");
+        // Send transaction to write connection.
+        tx.send(x).await;
+        debug!("Send transaction to write connection.");
+    });
 
-        // Generate transaction
-        // let params = gen.get_transaction();
-        // Wrap in command
-        // let c = Command {
-        //     transaction: Box::new(t),
-        //     resp: resp_tx,
-        // };
+    // Spawn task to manage read connection.
+    let (tx1, mut rx1): (Sender<Frame>, Receiver<Frame>) = mpsc::channel(mpsc_size as usize);
+    let r_manager = tokio::spawn(async move {
+        // Receive messages from producer.
+        while let Ok(message) = r.read_frame().await {
+            let f = match message {
+                Some(frame) => {
+                    debug!(" Received frame: {:?}", frame);
+                    frame
+                }
+                None => panic!("Server closed connection"),
+            };
+            tx1.send(f).await;
+            debug!("Send response to response consumer task.");
+        }
+        info!("Closing read connection");
+    });
 
-        // // Send transaction to client resource manager
-        // tx.send(c).await;
-
-        // // Await response
-        // let res = resp_rx.await;
-        // info!("Producer received reply: {:?}", res);
+    let consumer = tokio::spawn(async move {
+        while let Some(message) = rx1.recv().await {
+            info!("Client received {:?} from server", message);
+        }
     });
 
     producer.await.unwrap();
-    manager.await.unwrap();
+    w_manager.await.unwrap();
+    r_manager.await.unwrap();
+    consumer.await.unwrap();
 
     Ok(())
 }
@@ -136,5 +143,3 @@ impl Client {
         // Ok(rframe)
     }
 }
-
-struct Command {}
