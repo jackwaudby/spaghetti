@@ -28,6 +28,9 @@ Spaghetti uses a simple in-memory storage layer to store data. The smallest unit
 
 Given a table name, the list of tables are consulted in order to get the name of the index on this table. The index is then retrieved from the list of indexes. After the primary key for the desired row is calculated it can be retrieved from the index. Retrieving a specific field from the row uses information stored in its corresponding catalog to identify the index in the row from the desired column. 
 
+### Transaction Manager ###
+
+### Misc ###
 
 + Command line parsing is managed using the `clap` crate.
 + Configuration is managed using the `config` crate.
@@ -36,14 +39,18 @@ Given a table name, the list of tables are consulted in order to get the name of
 
 ## Concurrency Control Protocols ##
 
+- [ ] 2PL 
+- [ ] SGT 
+- [ ] Hit list 
+- [ ] Mixed SGT 
+
 ## Workloads ##
 
 ### Telecommunication Application Transaction Processing (TATP) Benchmark ###
 
-
 + Table loaders (4/4)
 + Parameter generation (7/7)
-+ Stored procedures (0/7)
++ Stored procedures (1/7)
 
 ### TPC Benchmark C  ###
 
