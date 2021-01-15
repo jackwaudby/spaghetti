@@ -201,7 +201,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
 /////////////////////////////////////
 
 pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> String {
-    info!(
+    debug!(
         "  SELECT s_id, sub_nbr,
             bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
             bit_8, bit_9, bit_10,

@@ -32,16 +32,18 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
 
     // Initialise the mpsc.
     let mpsc_size = conf.get_int("mpsc_size").unwrap();
-    let (tx, mut rx): (Sender<TatpTransaction>, Receiver<TatpTransaction>) =
-        mpsc::channel(mpsc_size as usize);
+    let (tx, mut rx): (
+        Sender<Box<dyn Transaction + Send>>,
+        Receiver<Box<dyn Transaction + Send>>,
+    ) = mpsc::channel(mpsc_size as usize);
     // Spawn task to manage writer.
     let w_manager = tokio::spawn(async move {
         // Receive messages from producer.
         while let Some(transaction) = rx.recv().await {
-            debug!(
-                "Write half received transaction {:?} from generator",
-                transaction
-            );
+            // debug!(
+            //     "Write half received transaction {:?} from generator",
+            //     transaction
+            // );
             // Convert to frame.
             let frame = transaction.into_frame();
             w.write_frame(&frame).await;
@@ -50,8 +52,7 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
         info!("Closing write connection");
     });
 
-    // initialise parameter generator
-    // TODO: share rng across tasks
+    // Initialise parameter generator.
     let workload = conf.get_str("workload").unwrap();
     let mut pg = match workload.as_str() {
         "tatp" => {
@@ -71,19 +72,19 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
 
     // Spawn producer that sends transaction to writer.
     let producer = tokio::spawn(async move {
+        info!("Generating transactions");
         // Generate a transaction
         let transaction = pg.get_transaction();
 
         // Verify it is a tatp trasaction.
-        let transaction: &TatpTransaction = transaction
+        let t: &TatpTransaction = transaction
             .as_any()
             .downcast_ref::<TatpTransaction>()
             .expect("not a TatpTransaction");
-        let x = transaction.clone();
+        info!("Generated: {:?}", t);
 
-        info!("Generating transactions");
         // Send transaction to write connection.
-        tx.send(x).await;
+        tx.send(transaction).await;
         debug!("Send transaction to write connection.");
     });
 

@@ -1,8 +1,9 @@
 use crate::connection::Connection;
 use crate::frame::Frame;
 use crate::shutdown::Shutdown;
-// use crate::transaction::Transaction;
+use crate::transaction::Transaction;
 use crate::workloads::tatp;
+use crate::workloads::tpcc;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -107,9 +108,21 @@ impl Handler {
                 None => return Ok(()),
             };
 
-            let decoded: tatp::TatpTransaction =
-                bincode::deserialize(&frame.get_payload()).unwrap();
-            info!("Received: {:?}", decoded);
+            // Initialise parameter generator.
+            let w = workload.get_internals().config.get_str("workload").unwrap();
+            match w.as_str() {
+                "tatp" => {
+                    let decoded: tatp::TatpTransaction =
+                        bincode::deserialize(&frame.get_payload()).unwrap();
+                    info!("Received: {:?}", decoded);
+                }
+                "tpcc" => {
+                    let decoded: tpcc::TpccTransaction =
+                        bincode::deserialize(&frame.get_payload()).unwrap();
+                    info!("Received: {:?}", decoded);
+                }
+                _ => unimplemented!(),
+            };
 
             // TODO: Execute transaction.
             let resp = tatp::get_subscriber_data(0, workload.clone());
