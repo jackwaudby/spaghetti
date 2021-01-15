@@ -37,7 +37,7 @@ impl Frame {
             _ => {
                 debug!("Invalid");
                 // Invalid start byte
-                Err(ParseError::new(ParseErrorKind::Incomplete))
+                Err(ParseError::new(ParseErrorKind::Invalid))
             }
         }
     }
@@ -165,7 +165,6 @@ pub fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], ParseError> 
 mod tests {
     use super::*;
     use bytes::{BufMut, BytesMut};
-    use serde::{Deserialize, Serialize};
 
     #[test]
     fn validate_buffer_with_complete_frame() {
