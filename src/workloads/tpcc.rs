@@ -10,7 +10,7 @@ use crate::transaction::Transaction;
 use crate::workloads::Internal;
 
 use bytes::Bytes;
-use rand::rngs::ThreadRng;
+use rand::rngs::StdRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::any::Any;
@@ -26,7 +26,7 @@ const UNUSED: u64 = u64::MAX;
 //////////////////////////////
 
 /// Populate tables.
-pub fn populate_tables(data: &Internal, rng: &mut ThreadRng) {
+pub fn populate_tables(data: &Internal, rng: &mut StdRng) {
     populate_warehouse_table(data, rng);
     // self.populate_item_table(rng);
     // self.populate_stock_table(rng);
@@ -38,7 +38,7 @@ pub fn populate_tables(data: &Internal, rng: &mut ThreadRng) {
 ///
 /// Schema: (int,i_id) (int,i_im_id) (string,i_name) (double,i_price) (string,i_data)
 /// Primary key: i_id
-fn populate_item_table(data: &Internal, rng: &mut ThreadRng) {
+fn populate_item_table(data: &Internal, rng: &mut StdRng) {
     info!("Loading item table");
     let t_name = String::from("item");
     let t = data.tables.get(&t_name).unwrap();
@@ -64,7 +64,7 @@ fn populate_item_table(data: &Internal, rng: &mut ThreadRng) {
 /// Schema: (int,w_id) (string,w_name) (string,w_street_1) (string,w_street_2) (string,w_city) (string,w_state) (string,w_zip)
 /// (double,w_tax) (double,w_ytd)
 /// Primary key: w_id
-fn populate_warehouse_table(data: &Internal, rng: &mut ThreadRng) {
+fn populate_warehouse_table(data: &Internal, rng: &mut StdRng) {
     info!("Loading warehouse table");
     let n = data.config.get_int("warehouses").unwrap() as u64;
 
@@ -94,7 +94,7 @@ fn populate_warehouse_table(data: &Internal, rng: &mut ThreadRng) {
 /// Schema: (int,d_id) (int,d_w_id) (string,d_name) (string,d_street_1) (string,d_street_2) (string,d_city) (string,d_state)
 /// (string,d_zip) (double,d_tax) (double,d_ytd) (int,d_next_o_id)
 /// Primary key:
-fn populate_district_table(data: &Internal, rng: &mut ThreadRng) {
+fn populate_district_table(data: &Internal, rng: &mut StdRng) {
     info!("Loading district table");
     let t_name = String::from("district");
     let t = data.tables.get(&t_name).unwrap();
@@ -127,7 +127,7 @@ fn populate_district_table(data: &Internal, rng: &mut ThreadRng) {
 ///
 /// Schema: (int,s_i_id) (int,s_w_id) (int,s_quantity) (int,s_remote_cnt)
 /// Primary key: (s_i_id,s_w_id)
-fn populate_stock_table(data: &Internal, rng: &mut ThreadRng) {
+fn populate_stock_table(data: &Internal, rng: &mut StdRng) {
     info!("loading stock table");
     let t_name = String::from("stock");
     let t = data.tables.get(&t_name).unwrap();
@@ -156,7 +156,7 @@ fn populate_stock_table(data: &Internal, rng: &mut ThreadRng) {
 /// Schema: (int,c_id) (int,c_d_id) (int,c_w_id) (string,c_middle) (string,c_last) (string,c_state) (string,c_credit) (int,c_discount)
 /// (double,c_balance) (double,c_ytd_payment) (int,c_payment_cnt)
 /// Primary key: c_id
-fn populate_customer_table(data: &Internal, rng: &mut ThreadRng) {
+fn populate_customer_table(data: &Internal, rng: &mut StdRng) {
     info!("Loading customer table");
     let t_name = String::from("customer");
     let t = data.tables.get(&t_name).unwrap();

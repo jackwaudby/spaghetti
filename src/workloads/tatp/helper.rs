@@ -1,4 +1,4 @@
-use rand::rngs::ThreadRng;
+use rand::rngs::StdRng;
 use rand::Rng;
 
 pub fn to_sub_nbr(s_id: u64) -> String {
@@ -12,7 +12,7 @@ pub fn to_sub_nbr(s_id: u64) -> String {
     num
 }
 
-pub fn get_start_time(rng: &mut ThreadRng) -> u8 {
+pub fn get_start_time(rng: &mut StdRng) -> u8 {
     let n: f32 = rng.gen();
 
     match n {
@@ -44,7 +44,7 @@ pub fn call_forwarding_key(s_id: u64, sf_type: u64, start_time: u64) -> u64 {
     (base * 10) + x
 }
 
-pub fn is_active(rng: &mut ThreadRng) -> u64 {
+pub fn is_active(rng: &mut StdRng) -> u64 {
     let f: f32 = rng.gen();
     if f < 0.15 {
         0
@@ -53,7 +53,7 @@ pub fn is_active(rng: &mut ThreadRng) -> u64 {
     }
 }
 
-pub fn get_number_x(rng: &mut ThreadRng) -> String {
+pub fn get_number_x(rng: &mut StdRng) -> String {
     const CHARSET: &[u8] = b"0123456789";
     const LEN: usize = 15;
 
@@ -67,7 +67,7 @@ pub fn get_number_x(rng: &mut ThreadRng) -> String {
 }
 
 /// Generate random string from upper case A-Z of length `n`.
-pub fn get_data_x(n: usize, rng: &mut ThreadRng) -> String {
+pub fn get_data_x(n: usize, rng: &mut StdRng) -> String {
     const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
     // const LEN: usize = 3;
 

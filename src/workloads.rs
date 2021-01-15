@@ -4,7 +4,7 @@ use crate::storage::table::Table;
 use crate::Result;
 
 use config::Config;
-use rand::rngs::ThreadRng;
+use rand::rngs::StdRng;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -42,7 +42,7 @@ impl Workload {
         }
     }
 
-    pub fn populate_tables(&self, rng: &mut ThreadRng) {
+    pub fn populate_tables(&self, rng: &mut StdRng) {
         use Workload::*;
         match *self {
             Tatp(ref i) => {

@@ -1,6 +1,6 @@
 use config::Config;
 use rand::distributions::Alphanumeric;
-use rand::rngs::ThreadRng;
+use rand::rngs::StdRng;
 use rand::Rng;
 use std::sync::Arc;
 
@@ -40,7 +40,7 @@ pub fn stock_key(config: Arc<Config>, s_w_id: u64, s_i_id: u64) -> u64 {
 }
 
 /// Generate a string of some length.
-pub fn random_string(lower: u32, upper: u32, rng: &mut ThreadRng) -> String {
+pub fn random_string(lower: u32, upper: u32, rng: &mut StdRng) -> String {
     let size = rng.gen_range(lower..=upper);
 
     rng.sample_iter(Alphanumeric)
@@ -50,13 +50,13 @@ pub fn random_string(lower: u32, upper: u32, rng: &mut ThreadRng) -> String {
 }
 
 /// Generate a decimal between some interval.
-pub fn random_float(lower: f32, upper: f32, dp: usize, rng: &mut ThreadRng) -> String {
+pub fn random_float(lower: f32, upper: f32, dp: usize, rng: &mut StdRng) -> String {
     let f = rng.gen_range(lower..upper);
     format!("{:.1$}", f, dp)
 }
 
 /// Generate a zip code.
-pub fn zip(rng: &mut ThreadRng) -> String {
+pub fn zip(rng: &mut StdRng) -> String {
     const CHARSET: &[u8] = b"0123456789";
     const LEN: usize = 4;
 
@@ -70,7 +70,7 @@ pub fn zip(rng: &mut ThreadRng) -> String {
 }
 
 /// Generate a last name.
-pub fn last_name(c_id: u64, rng: &mut ThreadRng) -> String {
+pub fn last_name(c_id: u64, rng: &mut StdRng) -> String {
     const NAMESET: &[&str] = &[
         "BAR", "OUGHT", "ABLE", "PRI", "PRES", "ESE", "ANTI", "CALLY", "ATION", "EING",
     ];
@@ -124,7 +124,7 @@ pub fn nu_rand<T: Rng>(x: u64, y: u64, rng: &mut T) -> u64 {
 }
 
 /// Generate item data `i_data`.
-pub fn item_data(rng: &mut ThreadRng) -> String {
+pub fn item_data(rng: &mut StdRng) -> String {
     let og: f32 = rng.gen();
     if og <= 0.1 {
         let size = rng.gen_range(26..=50);

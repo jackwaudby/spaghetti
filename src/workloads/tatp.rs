@@ -6,9 +6,9 @@ use crate::workloads::Internal;
 use crate::workloads::Workload;
 
 use bytes::Bytes;
-use rand::rngs::ThreadRng;
+use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 
@@ -22,7 +22,7 @@ pub mod helper;
 //////////////////////////////
 
 /// Populate tables.
-pub fn populate_tables(data: &Internal, rng: &mut ThreadRng) {
+pub fn populate_tables(data: &Internal, rng: &mut StdRng) {
     populate_subscriber_table(data, rng);
     populate_access_info(data, rng);
     populate_special_facility_call_forwarding(data, rng);
@@ -32,7 +32,7 @@ pub fn populate_tables(data: &Internal, rng: &mut ThreadRng) {
 ///
 /// Schema:
 /// Primary key: s_id
-pub fn populate_subscriber_table(data: &Internal, rng: &mut ThreadRng) {
+pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) {
     info!("Loading subscriber table");
     let s_name = String::from("subscriber");
     let t = data.tables.get(&s_name).unwrap();
@@ -71,7 +71,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut ThreadRng) {
 ///
 /// Schema: (int,s_id) (int,ai_type) (int,data_1) (int,data_2) (string,data_3) (string,data_4)
 /// Primary key: (s_id, ai_type)
-pub fn populate_access_info(data: &Internal, rng: &mut ThreadRng) {
+pub fn populate_access_info(data: &Internal, rng: &mut StdRng) {
     info!("Loading access_info table");
     // Get handle to `Table` and `Index`.
     let ai_name = String::from("access_info");
@@ -118,7 +118,7 @@ pub fn populate_access_info(data: &Internal, rng: &mut ThreadRng) {
 /// Schema:
 ///
 /// Primary key:
-pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut ThreadRng) {
+pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdRng) {
     info!("Loading special_facility table");
     info!("Loading call_forwarding table");
     // Get handle to `Table` and `Index`.
@@ -232,13 +232,14 @@ pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> String {
 
 pub struct TatpGenerator {
     subscribers: u64,
-    rng: ThreadRng,
+    rng: StdRng,
 }
 
 impl TatpGenerator {
     pub fn new(subscribers: u64) -> TatpGenerator {
         // Initialise the thread local rng.
-        let rng = rand::thread_rng();
+        let rng: StdRng = SeedableRng::from_entropy();
+
         TatpGenerator { subscribers, rng }
     }
 }

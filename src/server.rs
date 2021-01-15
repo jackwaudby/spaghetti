@@ -8,6 +8,8 @@ use crate::Result;
 
 use bytes::Bytes;
 use config::Config;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -37,7 +39,7 @@ impl Listener {
         );
         let workload = Arc::new(Workload::new(conf.clone()).unwrap());
         // Handle to the thread-local generator.
-        let mut rng = rand::thread_rng();
+        let mut rng: StdRng = SeedableRng::from_entropy();
         workload.populate_tables(&mut rng);
         info!("Tables loaded");
 

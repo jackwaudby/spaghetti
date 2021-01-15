@@ -69,18 +69,18 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
         _ => unimplemented!(),
     };
 
-    // Generate a transaction
-    let transaction = pg.get_transaction();
-
-    // Verify it is a tatp trasaction.
-    let transaction: &TatpTransaction = transaction
-        .as_any()
-        .downcast_ref::<TatpTransaction>()
-        .expect("not a TatpTransaction");
-    let x = transaction.clone();
-
     // Spawn producer that sends transaction to writer.
     let producer = tokio::spawn(async move {
+        // Generate a transaction
+        let transaction = pg.get_transaction();
+
+        // Verify it is a tatp trasaction.
+        let transaction: &TatpTransaction = transaction
+            .as_any()
+            .downcast_ref::<TatpTransaction>()
+            .expect("not a TatpTransaction");
+        let x = transaction.clone();
+
         info!("Generating transactions");
         // Send transaction to write connection.
         tx.send(x).await;
