@@ -10,11 +10,9 @@ use crate::Result;
 
 use config::Config;
 use std::sync::Arc;
-use tokio::io::{self, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
-use tokio::net::tcp::WriteHalf;
+use tokio::io;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use tokio::sync::oneshot;
 use tracing::{debug, info};
 
 /// Runs the client.
@@ -26,7 +24,7 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
     info!("Client connected to server at {}:{}", add, port);
 
     // Split socket into reader and writer handlers.
-    let (mut rd, mut wr) = io::split(socket);
+    let (rd, wr) = io::split(socket);
     let mut w = WriteConnection::new(wr);
     let mut r = ReadConnection::new(rd);
 
@@ -46,7 +44,7 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
             // );
             // Convert to frame.
             let frame = transaction.into_frame();
-            w.write_frame(&frame).await;
+            w.write_frame(&frame).await.unwrap();
             debug!("Message written to socket");
         }
         info!("Closing write connection");
@@ -100,7 +98,7 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
                 }
                 None => panic!("Server closed connection"),
             };
-            tx1.send(f).await;
+            tx1.send(f).await.unwrap();
             debug!("Send response to response consumer task.");
         }
         info!("Closing read connection");

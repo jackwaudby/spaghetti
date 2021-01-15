@@ -1,16 +1,14 @@
 use crate::connection::Connection;
 use crate::frame::Frame;
 use crate::shutdown::Shutdown;
-use crate::transaction::Transaction;
-use crate::workloads::tatp;
-use crate::workloads::tpcc;
-use crate::workloads::Workload;
+use crate::workloads::{tatp, Workload};
 use crate::Result;
 
 use bytes::Bytes;
 use config::Config;
+use crossbeam_queue::ArrayQueue;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -38,11 +36,15 @@ impl Listener {
             "Initialise {:?} workload",
             conf.get_str("workload").unwrap()
         );
+        // Initialise tables and indexes.
         let workload = Arc::new(Workload::new(conf.clone()).unwrap());
-        // Handle to the thread-local generator.
+        // Handle to rng.
         let mut rng: StdRng = SeedableRng::from_entropy();
+        // Populate tables and indexes.
         workload.populate_tables(&mut rng);
         info!("Tables loaded");
+        // Initialise work queue.
+        let work_queue = Arc::new(ArrayQueue::<tatp::TatpTransaction>::new(5));
 
         info!("Accepting new connections");
         loop {
@@ -56,11 +58,14 @@ impl Listener {
                 _shutdown_complete: self.shutdown_complete_tx.clone(),
             };
 
+            // Clone handle to queue
+            let q = work_queue.clone();
+
             // Clone handle to workload
             let w = workload.clone();
             // spawn new task to process the connection
             tokio::spawn(async move {
-                if let Err(err) = handler.run(w).await {
+                if let Err(err) = handler.run(w, q).await {
                     info!("{:?}", err);
                 }
             });
@@ -86,7 +91,11 @@ impl Handler {
     ///
     /// Frames are requested from the socket and then processed.
     /// Responses are written back to the socket.
-    pub async fn run(&mut self, workload: Arc<Workload>) -> Result<()> {
+    pub async fn run(
+        &mut self,
+        workload: Arc<Workload>,
+        work_queue: Arc<ArrayQueue<tatp::TatpTransaction>>,
+    ) -> Result<()> {
         debug!("Processing connection");
         // While shutdown signal not received try to read frames.
         while !self.shutdown.is_shutdown() {
@@ -108,21 +117,30 @@ impl Handler {
                 None => return Ok(()),
             };
 
-            // Initialise parameter generator.
-            let w = workload.get_internals().config.get_str("workload").unwrap();
-            match w.as_str() {
-                "tatp" => {
-                    let decoded: tatp::TatpTransaction =
-                        bincode::deserialize(&frame.get_payload()).unwrap();
-                    info!("Received: {:?}", decoded);
-                }
-                "tpcc" => {
-                    let decoded: tpcc::TpccTransaction =
-                        bincode::deserialize(&frame.get_payload()).unwrap();
-                    info!("Received: {:?}", decoded);
-                }
-                _ => unimplemented!(),
-            };
+            // // Get workload type.
+            // let w = workload.get_internals().config.get_str("workload").unwrap();
+            // // Deserialise to transaction.
+            // let match w.as_str() {
+            //     "tatp" => {
+            //         let decoded: tatp::TatpTransaction =
+            //             bincode::deserialize(&frame.get_payload()).unwrap();
+            //         info!("Received: {:?}", decoded);
+            //     }
+            //     "tpcc" => {
+            //         let decoded: tpcc::TpccTransaction =
+            //             bincode::deserialize(&frame.get_payload()).unwrap();
+            //         info!("Received: {:?}", decoded);
+            //     }
+            //     _ => unimplemented!(),
+            // };
+
+            let decoded: tatp::TatpTransaction =
+                bincode::deserialize(&frame.get_payload()).unwrap();
+            info!("Received: {:?}", decoded);
+
+            // Place in work queue.
+            work_queue.push(decoded).unwrap();
+            info!("{:?}", work_queue);
 
             // TODO: Execute transaction.
             let resp = tatp::get_subscriber_data(0, workload.clone());

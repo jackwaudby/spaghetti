@@ -19,7 +19,7 @@ use tracing::info;
 
 pub mod helper;
 
-const UNUSED: u64 = u64::MAX;
+// const UNUSED: u64 = u64::MAX;
 
 //////////////////////////////
 /// Table Loaders. ///
@@ -28,8 +28,8 @@ const UNUSED: u64 = u64::MAX;
 /// Populate tables.
 pub fn populate_tables(data: &Internal, rng: &mut StdRng) {
     populate_warehouse_table(data, rng);
-    // self.populate_item_table(rng);
-    // self.populate_stock_table(rng);
+    populate_item_table(data, rng);
+    populate_stock_table(data, rng);
     populate_district_table(data, rng);
     populate_customer_table(data, rng);
 }
@@ -202,12 +202,12 @@ pub struct TpccGenerator {
 }
 
 impl TpccGenerator {
-    fn new(warehouses: u64, districts: u64) -> TpccGenerator {
-        TpccGenerator {
-            warehouses,
-            districts,
-        }
-    }
+    // fn new(warehouses: u64, districts: u64) -> TpccGenerator {
+    //     TpccGenerator {
+    //         warehouses,
+    //         districts,
+    //     }
+    // }
 }
 
 impl Generator<TpccTransaction> for TpccGenerator {

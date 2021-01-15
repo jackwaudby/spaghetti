@@ -222,7 +222,7 @@ pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> String {
             let row = index.index_read(key).unwrap();
             row.get_value("sub_nbr".to_string()).unwrap()
         }
-        Workload::Tpcc(ref internals) => String::from("test"),
+        Workload::Tpcc(ref _internals) => String::from("test"),
     }
 }
 

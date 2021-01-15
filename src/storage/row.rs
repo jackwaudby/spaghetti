@@ -63,7 +63,7 @@ impl Row {
 
         let field_index = match table.schema().column_position_by_name(col_name) {
             Some(f) => f,
-            Nonw => panic!("field does not exist: {:?}", temp),
+            None => panic!("field does not exist: {:?}", temp),
         };
         let field_type = table.schema().column_type_by_index(field_index);
 
