@@ -358,116 +358,116 @@ impl Transaction for TpccTransaction {
 //     }
 // }
 
-#[cfg(test)]
-mod tests {
+// #[cfg(test)]
+// mod tests {
 
-    use super::*;
+//     use super::*;
 
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
-    use std::sync::Arc;
+//     use rand::rngs::StdRng;
+//     use rand::SeedableRng;
+//     use std::sync::Arc;
 
-    #[test]
-    fn gen_params() {
-        let mut rng = StdRng::seed_from_u64(42);
+//     #[test]
+//     fn gen_params() {
+//         let mut rng = StdRng::seed_from_u64(42);
 
-        let ol_rbk = OrderLine::new(10, 1, true, &mut rng);
-        assert_eq!(
-            format!("{}", ol_rbk),
-            "[18446744073709551615,1,5]".to_string()
-        );
-        let ol_home = OrderLine::new(10, 2, false, &mut rng);
-        assert_eq!(format!("{}", ol_home), "[17185,2,9]".to_string());
+//         let ol_rbk = OrderLine::new(10, 1, true, &mut rng);
+//         assert_eq!(
+//             format!("{}", ol_rbk),
+//             "[18446744073709551615,1,5]".to_string()
+//         );
+//         let ol_home = OrderLine::new(10, 2, false, &mut rng);
+//         assert_eq!(format!("{}", ol_home), "[17185,2,9]".to_string());
 
-        let no = NewOrderParams::new(1, 10, 10, &mut rng);
-        assert_eq!(format!("{}", no), "[1,5,2238,15,63]".to_string());
-    }
+//         let no = NewOrderParams::new(1, 10, 10, &mut rng);
+//         assert_eq!(format!("{}", no), "[1,5,2238,15,63]".to_string());
+//     }
 
-    #[test]
-    fn tpcc() {
-        // TABLE=WAREHOUSE
-        //     int64_t,W_ID
-        //     string,W_NAME
-        //     string,W_STREET_1
-        //     string,W_STREET_2
-        //     string,W_CITY
-        //     string,W_STATE
-        //     string,W_ZIP
-        //     double,W_TAX
-        //     double,W_YTD
+//     #[test]
+//     fn tpcc() {
+//         // TABLE=WAREHOUSE
+//         //     int64_t,W_ID
+//         //     string,W_NAME
+//         //     string,W_STREET_1
+//         //     string,W_STREET_2
+//         //     string,W_CITY
+//         //     string,W_STATE
+//         //     string,W_ZIP
+//         //     double,W_TAX
+//         //     double,W_YTD
 
-        // 0. Create atomic table map
-        let mut tables = HashMap::new(); // String: table_name, table: Table
+//         // 0. Create atomic table map
+//         let mut tables = HashMap::new(); // String: table_name, table: Table
 
-        // 1. Create schema and table
-        let table_name = String::from("warehouse");
-        let mut catalog = Catalog::init(&table_name, 1);
-        catalog.add_column(("w_id", "int"));
-        catalog.add_column(("w_name", "string"));
-        catalog.add_column(("w_street_1", "string"));
-        catalog.add_column(("w_street_2", "string"));
-        catalog.add_column(("w_city", "string"));
-        catalog.add_column(("w_state", "string"));
-        catalog.add_column(("w_zip", "string"));
-        catalog.add_column(("w_tax", "double"));
-        catalog.add_column(("w_ytd", "double"));
-        let w_table = Table::init(catalog);
+//         // 1. Create schema and table
+//         let table_name = String::from("warehouse");
+//         let mut catalog = Catalog::init(&table_name, 1);
+//         catalog.add_column(("w_id", "int"));
+//         catalog.add_column(("w_name", "string"));
+//         catalog.add_column(("w_street_1", "string"));
+//         catalog.add_column(("w_street_2", "string"));
+//         catalog.add_column(("w_city", "string"));
+//         catalog.add_column(("w_state", "string"));
+//         catalog.add_column(("w_zip", "string"));
+//         catalog.add_column(("w_tax", "double"));
+//         catalog.add_column(("w_ytd", "double"));
+//         let w_table = Table::init(catalog);
 
-        // 2. Create index for table
-        let w_index = Index::init("warehouse_idx");
-        w_table.set_primary_index("warehouse_idx");
+//         // 2. Create index for table
+//         let w_index = Index::init("warehouse_idx");
+//         w_table.set_primary_index("warehouse_idx");
 
-        // 3. Allow table multiple owners
-        let w_table = Arc::new(w_table);
+//         // 3. Allow table multiple owners
+//         let w_table = Arc::new(w_table);
 
-        // 4. Put in table map
-        tables.insert(table_name, Arc::clone(&w_table));
+//         // 4. Put in table map
+//         tables.insert(table_name, Arc::clone(&w_table));
 
-        // 5. Generate row and set fields
-        let mut row = Row::new(Arc::clone(&w_table));
-        row.set_value("w_id", "1".to_string());
-        row.set_value("w_name", "main".to_string());
-        row.set_value("w_street_1", "church lane".to_string());
-        row.set_value("w_street_2", "hedon".to_string());
-        row.set_value("w_city", "hull".to_string());
-        row.set_value("w_state", "east yorkshire".to_string());
-        row.set_value("w_zip", "hu11 8uz".to_string());
-        row.set_value("w_tax", "0.2".to_string());
-        row.set_value("w_ytd", "1000.0".to_string());
+//         // 5. Generate row and set fields
+//         let mut row = Row::new(Arc::clone(&w_table));
+//         row.set_value("w_id", "1".to_string());
+//         row.set_value("w_name", "main".to_string());
+//         row.set_value("w_street_1", "church lane".to_string());
+//         row.set_value("w_street_2", "hedon".to_string());
+//         row.set_value("w_city", "hull".to_string());
+//         row.set_value("w_state", "east yorkshire".to_string());
+//         row.set_value("w_zip", "hu11 8uz".to_string());
+//         row.set_value("w_tax", "0.2".to_string());
+//         row.set_value("w_ytd", "1000.0".to_string());
 
-        let mut row2 = Row::new(Arc::clone(&w_table));
-        row2.set_value("w_id", "2".to_string());
-        row2.set_value("w_name", "backup".to_string());
-        row2.set_value("w_street_1", "ganstead lane".to_string());
-        row2.set_value("w_street_2", "ganstead".to_string());
-        row2.set_value("w_city", "hull".to_string());
-        row2.set_value("w_state", "east yorkshire".to_string());
-        row2.set_value("w_zip", "hu11 4bg".to_string());
-        row2.set_value("w_tax", "0.2".to_string());
-        row2.set_value("w_ytd", "2000.0".to_string());
+//         let mut row2 = Row::new(Arc::clone(&w_table));
+//         row2.set_value("w_id", "2".to_string());
+//         row2.set_value("w_name", "backup".to_string());
+//         row2.set_value("w_street_1", "ganstead lane".to_string());
+//         row2.set_value("w_street_2", "ganstead".to_string());
+//         row2.set_value("w_city", "hull".to_string());
+//         row2.set_value("w_state", "east yorkshire".to_string());
+//         row2.set_value("w_zip", "hu11 4bg".to_string());
+//         row2.set_value("w_tax", "0.2".to_string());
+//         row2.set_value("w_ytd", "2000.0".to_string());
 
-        // 6. Assign row to index
-        w_index.index_insert(1, row);
-        w_index.index_insert(2, row2);
+//         // 6. Assign row to index
+//         w_index.index_insert(1, row);
+//         w_index.index_insert(2, row2);
 
-        // 7. Change row field
-        w_index
-            .index_read_mut(1)
-            .unwrap()
-            .set_value("w_ytd", "3000.0".to_string());
+//         // 7. Change row field
+//         w_index
+//             .index_read_mut(1)
+//             .unwrap()
+//             .set_value("w_ytd", "3000.0".to_string());
 
-        assert_eq!(
-            format!("{}", *w_index.index_read(1).unwrap()),
-            String::from(
-                "[0, 0, warehouse, 1, main, church lane, hedon, hull, east yorkshire, hu11 8uz, 0.2, 3000]"
-            )
-        );
+//         assert_eq!(
+//             format!("{}", *w_index.index_read(1).unwrap()),
+//             String::from(
+//                 "[0, 0, warehouse, 1, main, church lane, hedon, hull, east yorkshire, hu11 8uz, 0.2, 3000]"
+//             )
+//         );
 
-        assert_eq!(
-            format!("{}", *w_index.index_read(2).unwrap()),
-            String::from(
-                "[1, 0, warehouse, 2, backup, ganstead lane, ganstead, hull, east yorkshire, hu11 4bg, 0.2, 2000]"
-            )
-        );
-    }
-}
+//         assert_eq!(
+//             format!("{}", *w_index.index_read(2).unwrap()),
+//             String::from(
+//                 "[1, 0, warehouse, 2, backup, ganstead lane, ganstead, hull, east yorkshire, hu11 4bg, 0.2, 2000]"
+//             )
+//         );
+//     }
+// }

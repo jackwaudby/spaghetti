@@ -414,7 +414,7 @@ mod tests {
     #[test]
     fn to_sub_nbr_test() {
         let s_id = 40958;
-        let sub_nbr = to_sub_nbr(s_id);
+        let sub_nbr = helper::to_sub_nbr(s_id);
         info!("{:?}", sub_nbr.to_string().len());
         assert_eq!(sub_nbr.len(), 15);
     }
