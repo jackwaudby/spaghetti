@@ -5,14 +5,39 @@ use std::sync::{Arc, Condvar, Mutex};
 use tracing::debug;
 
 struct Scheduler {
+    // Database record, lockinfo.
     lock_table: Arc<CHashMap<String, LockInfo>>,
+    // Transaction ID, locks held.
+    active_transactions: Arc<CHashMap<String, Vec<String>>>,
 }
 
 impl Scheduler {
     /// Initialise scheduler with empty lock table.
     fn new() -> Scheduler {
         let lock_table = Arc::new(CHashMap::<String, LockInfo>::new());
-        Scheduler { lock_table }
+        let active_transactions = Arc::new(CHashMap::<String, Vec<String>>::new());
+
+        Scheduler {
+            lock_table,
+            active_transactions,
+        }
+    }
+
+    /// Register a transaction with the scheduler.
+    fn register(&self, transaction_name: &str) -> () {
+        match self
+            .active_transactions
+            .insert(transaction_name.to_string(), Vec::new())
+        {
+            Some(_) => panic!("Transaction already registered"),
+            None => (),
+        }
+    }
+
+    /// Register lock with a transaction.
+    fn register_lock(&self, transaction_name: &str, key: &str) {
+        let mut locks_held = self.active_transactions.get_mut(transaction_name).unwrap();
+        locks_held.push(key.to_string());
     }
 
     /// Attempt to acquire lock.
@@ -42,6 +67,7 @@ impl Scheduler {
             lock_info.add_entry(entry);
             // Insert into lock table
             self.lock_table.insert_new(key.to_string(), lock_info);
+            self.register_lock(transaction_name, key);
             return LockRequest::Granted;
         }
 
@@ -82,6 +108,7 @@ impl Scheduler {
                             let held = lock_info.granted.unwrap();
                             lock_info.granted = Some(held + 1);
                             // Grant lock.
+                            self.register_lock(transaction_name, key);
                             return LockRequest::Granted;
                         }
                         LockMode::Write => {
@@ -148,6 +175,7 @@ impl Scheduler {
             lock_info.timestamp = Some(transaction_ts);
             // Increment granted.
             lock_info.granted = Some(1);
+            self.register_lock(transaction_name, key);
             return LockRequest::Granted;
         }
     }
@@ -217,6 +245,8 @@ impl Scheduler {
                         let mut started = lock.lock().unwrap();
                         *started = true;
                         cvar.notify_all();
+                        // Register lock with transaction
+                        self.register_lock(&e.name, key);
                     }
                     // Set new lock information.
                     lock_info.timestamp = Some(new_lock_timestamp);
@@ -243,6 +273,8 @@ impl Scheduler {
                     let mut started = lock.lock().unwrap();
                     *started = true;
                     cvar.notify_all();
+                    // Register lock with transaction
+                    self.register_lock(&lock_info.list[0].name, key);
                 }
             }
             LockMode::Read => {
@@ -266,6 +298,7 @@ impl Scheduler {
                     if lock_info.list.len() as u32 == lock_info.granted.unwrap() {
                         lock_info.waiting = false;
                     }
+                    // Wake up thread.
                     let cond = Arc::clone(
                         lock_info.list[next_write_entry_index]
                             .waiting
@@ -276,11 +309,25 @@ impl Scheduler {
                     let mut started = lock.lock().unwrap();
                     *started = true;
                     cvar.notify_all();
+                    // Register lock with transaction
+                    self.register_lock(&lock_info.list[next_write_entry_index].name, key);
                 } else {
                     panic!("Next waiting request is a Read");
                 }
             }
         }
+    }
+
+    fn release_locks(&self, transaction_name: &str) {
+        let held_locks = self.active_transactions.get(transaction_name).unwrap();
+
+        for lock in held_locks.iter() {
+            self.release_lock(lock, transaction_name);
+        }
+    }
+
+    fn cleanup(&self, transaction_name: &str) {
+        self.active_transactions.remove(transaction_name);
     }
 }
 
@@ -396,16 +443,21 @@ impl Error for Abort {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Once;
     use std::{thread, time};
     use tracing::{info, Level};
     use tracing_subscriber::FmtSubscriber;
 
+    static LOG: Once = Once::new();
+
     fn logging() {
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(Level::DEBUG)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
+        LOG.call_once(|| {
+            let subscriber = FmtSubscriber::builder()
+                .with_max_level(Level::DEBUG)
+                .finish();
+            tracing::subscriber::set_global_default(subscriber)
+                .expect("setting default subscriber failed");
+        });
     }
 
     #[test]
@@ -415,10 +467,12 @@ mod tests {
         // Initialise scheduler
         let scheduler = Arc::new(Scheduler::new());
         let scheduler1 = scheduler.clone();
+        // Register transaction
+        scheduler.register("txn_1");
         // Lock
         let req = scheduler.request_lock("table_1_row_12", LockMode::Read, "txn_1", 2);
         assert_eq!(req, LockRequest::Granted);
-
+        // Check
         {
             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
             assert_eq!(
@@ -435,6 +489,7 @@ mod tests {
 
         // Unlock
         scheduler.release_lock("table_1_row_12", "txn_1");
+        // Check
         {
             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
             assert_eq!(
@@ -458,6 +513,7 @@ mod tests {
         let scheduler = Arc::new(Scheduler::new());
         let scheduler1 = scheduler.clone();
         // Lock
+        scheduler.register("txn_1");
         let req = scheduler.request_lock("table_1_row_12", LockMode::Write, "txn_1", 2);
         assert_eq!(req, LockRequest::Granted);
 
@@ -498,6 +554,9 @@ mod tests {
         logging();
         let scheduler = Arc::new(Scheduler::new());
         let scheduler1 = scheduler.clone();
+        scheduler.register("txn_1");
+        scheduler.register("txn_2");
+
         let handle = thread::spawn(move || {
             debug!("Request Read lock");
             scheduler1.request_lock("table_1_row_12", LockMode::Read, "txn_1", 2);
