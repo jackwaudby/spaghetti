@@ -336,7 +336,7 @@ impl Generator<TatpTransaction> for TatpGenerator {
 //////////////////////////////////////
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct GetSubscriberData {
-    s_id: u64,
+    pub s_id: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

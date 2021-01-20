@@ -18,6 +18,7 @@ pub mod transaction;
 
 pub mod workloads;
 
+pub mod manager;
 /// Error handling approach: boxing errors.
 /// Pros: simple and allows original errors to be preserved.
 /// Cons: the underlying error type is only know at runtime and is not statically determined.

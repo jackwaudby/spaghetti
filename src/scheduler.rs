@@ -1,43 +1,99 @@
+use crate::workloads::Workload;
+use crate::Result;
+
 use chashmap::CHashMap;
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Condvar, Mutex};
-use tracing::debug;
+use tracing::{debug, info};
 
-struct Scheduler {
-    // Database record, lockinfo.
+#[derive(Debug)]
+pub struct Scheduler {
+    // Maps of record and their lock information.
     lock_table: Arc<CHashMap<String, LockInfo>>,
-    // Transaction ID, locks held.
+    // Map of active transactions and locks they hold.
     active_transactions: Arc<CHashMap<String, Vec<String>>>,
+    // Handle to storage layer.
+    data: Arc<Workload>,
 }
 
 impl Scheduler {
-    /// Initialise scheduler with empty lock table.
-    fn new() -> Scheduler {
+    /// Creates a new scheduler with an empty lock table.
+    pub fn new(workload: Arc<Workload>) -> Scheduler {
         let lock_table = Arc::new(CHashMap::<String, LockInfo>::new());
         let active_transactions = Arc::new(CHashMap::<String, Vec<String>>::new());
 
         Scheduler {
             lock_table,
             active_transactions,
+            data: workload,
+        }
+    }
+
+    /// Attempts to read a database record.
+    ///
+    /// If the read operation fails, an error is returned.
+    pub fn read(&self, key: &str, transaction_name: &str, transaction_ts: u32) -> Result<String> {
+        // Request lock.
+        let req = self.request_lock(key, LockMode::Read, transaction_name, transaction_ts);
+        match req {
+            LockRequest::Granted => {
+                info!("Read lock granted");
+                let index = self.data.get_internals().indexes.get("sub_idx").unwrap();
+                let pk = key.parse::<u64>().unwrap();
+                let row = index.index_read(pk).unwrap();
+                let value = row.get_value("sub_nbr".to_string()).unwrap();
+                // Associate lock with transaction.
+                self.register_lock(transaction_name, key);
+                Ok(value)
+            }
+            LockRequest::Delay(pair) => {
+                info!("Waiting for read lock");
+                let (lock, cvar) = &*pair;
+                let mut waiting = lock.lock().unwrap();
+                while !*waiting {
+                    waiting = cvar.wait(waiting).unwrap();
+                }
+                info!("Read lock granted");
+                let index = self.data.get_internals().indexes.get("sub_idx").unwrap();
+                let row = index.index_read(1).unwrap();
+                let value = row.get_value("sub_nbr".to_string()).unwrap();
+                Ok(value)
+            }
+            LockRequest::Denied => {
+                info!("Read lock denied");
+                Err(Box::new(Abort))
+            }
         }
     }
 
     /// Register a transaction with the scheduler.
-    fn register(&self, transaction_name: &str) -> () {
+    /// TODO: Add error type.
+    pub fn register(&self, transaction_name: &str) -> Result<()> {
+        info!("Register transaction: {:?}", transaction_name);
         match self
             .active_transactions
             .insert(transaction_name.to_string(), Vec::new())
         {
-            Some(_) => panic!("Transaction already registered"),
-            None => (),
+            Some(_) => Err(Box::new(TwoPhaseLockingError::new(
+                TwoPhaseLockingErrorKind::TransactionAlreadyRegistered,
+            ))),
+            None => Ok(()),
         }
     }
 
     /// Register lock with a transaction.
-    fn register_lock(&self, transaction_name: &str, key: &str) {
-        let mut locks_held = self.active_transactions.get_mut(transaction_name).unwrap();
+    fn register_lock(&self, transaction_name: &str, key: &str) -> Result<()> {
+        let mut locks_held = self
+            .active_transactions
+            .get_mut(transaction_name)
+            .expect("Key not registered");
         locks_held.push(key.to_string());
+        info!(
+            "Register lock for {:?} with transaction {:?}",
+            key, transaction_name
+        );
+        Ok(())
     }
 
     /// Attempt to acquire lock.
@@ -427,8 +483,40 @@ enum LockMode {
     Write,
 }
 
-/// An `Abort` error is returned when a read or write scheuler operation fails for some reason.
+/// An `Abort` error is returned when a read or write scheuler operation fails.
 #[derive(Debug, PartialEq)]
+pub struct TwoPhaseLockingError {
+    kind: TwoPhaseLockingErrorKind,
+}
+
+impl TwoPhaseLockingError {
+    pub fn new(kind: TwoPhaseLockingErrorKind) -> TwoPhaseLockingError {
+        TwoPhaseLockingError { kind }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TwoPhaseLockingErrorKind {
+    TransactionAlreadyRegistered,
+    LockingError,
+}
+
+impl fmt::Display for TwoPhaseLockingError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use TwoPhaseLockingErrorKind::*;
+        let err_msg = match self.kind {
+            TransactionAlreadyRegistered => {
+                "Transaction already registered in active transaction table"
+            }
+            LockingError => "Unable to get lock in table",
+        };
+        write!(f, "{}", err_msg)
+    }
+}
+
+impl Error for TwoPhaseLockingError {}
+
+#[derive(Debug)]
 struct Abort;
 
 impl fmt::Display for Abort {
