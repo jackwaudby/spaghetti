@@ -87,7 +87,7 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) {
         let n_ai = rng.gen_range(1..=4);
         // Randomly sample w.o. replacement from range of ai_type values.
         let sample = ai_type_values.iter().choose_multiple(rng, n_ai);
-        for record in 1..n_ai {
+        for record in 0..n_ai {
             // Initialise empty row.
             let mut row = Row::new(Arc::clone(&t));
             // Calculate primary key
