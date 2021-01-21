@@ -6,6 +6,7 @@ use crate::transaction::Transaction;
 use crate::workloads::tatp::TatpTransaction;
 use crate::workloads::{tatp, tpcc, Workload};
 use crate::Result;
+use std::sync::mpsc::{Receiver, Sender};
 
 use config::Config;
 use core::fmt::Debug;
@@ -43,6 +44,7 @@ impl Listener {
     pub async fn run(
         &mut self,
         notify_tm_tx: std::sync::mpsc::Sender<()>,
+        notify_tm_job_tx: std::sync::mpsc::Sender<tatp::TatpTransaction>,
         config: Arc<Config>,
     ) -> Result<()> {
         info!("Accepting new connections");
@@ -55,6 +57,7 @@ impl Listener {
             let mut handler = Handler {
                 connection: Connection::new(socket),
                 shutdown: Shutdown::new(self.notify_handlers_tx.subscribe()),
+                notify_tm_job_tx: notify_tm_job_tx.clone(),
                 _notify_tm_tx: notify_tm_tx.clone(),
             };
 
@@ -79,6 +82,8 @@ struct Handler {
 
     /// Listen for server shutdown notifications.
     shutdown: Shutdown,
+
+    notify_tm_job_tx: std::sync::mpsc::Sender<tatp::TatpTransaction>,
 
     /// Notify transaction manager of shutdown.
     /// Implicitly dropped when handler is dropped (safely finished).
@@ -134,10 +139,12 @@ impl Handler {
 
             // TODO: fixed as GetSubscriberData transaction.
             let dat = tatp::GetSubscriberData { s_id: 0 };
-            let t = Box::new(tatp::TatpTransaction::GetSubscriberData(dat));
+            // let t = Box::new(tatp::TatpTransaction::GetSubscriberData(dat));
+            let t = tatp::TatpTransaction::GetSubscriberData(dat);
 
             info!("Pushed transaction to work queue");
             // TODO: Needs hooking up.
+            self.notify_tm_job_tx.send(t);
             // self.work_queue.push(t);
 
             // Response placeholder.
@@ -184,8 +191,14 @@ pub async fn run(config: Arc<Config>) {
     // Mpsc channel between transaction manager and listener, S -> A.
     let (notify_main_tx, main_listener_rx) = tokio::sync::mpsc::unbounded_channel();
 
+    // Mpsc channel between handler and transaction manager for sending jobs, A -> S.
+    let (notify_tm_job_tx, tm_listener_job_rx): (
+        Sender<tatp::TatpTransaction>,
+        Receiver<tatp::TatpTransaction>,
+    ) = std::sync::mpsc::channel();
+
     // Initialise server listener state.
-    let mut server = Listener {
+    let mut listener = Listener {
         listener,
         notify_handlers_tx,
         tm_listener_rx: main_listener_rx,
@@ -194,17 +207,18 @@ pub async fn run(config: Arc<Config>) {
 
     info!("Initialise transaction manager");
     // Create transaction manager.
-    let mut tm = TransactionManager::new(2, tm_listener_rx, notify_main_tx);
+    let mut tm = TransactionManager::new(2, tm_listener_job_rx, tm_listener_rx, notify_main_tx);
     // Create scheduler.
-    // let s = Scheduler::new(Arc::clone(&workload));
+    let s = Arc::new(Scheduler::new(Arc::clone(&workload)));
+    let cc = Arc::clone(&config);
     thread::spawn(move || {
         info!("Start transaction manager");
-        tm.run();
+        tm.run(s, cc);
     });
-
+7
     // Concurrently run the server and listen for the shutdown signal.
     tokio::select! {
-        res = server.run(notify_tm_tx, Arc::clone(&config)) => {
+        res = listener.run(notify_tm_tx, notify_tm_job_tx, Arc::clone(&config)) => {
             // All errors bubble up to here.
             if let Err(err) = res {
                 error!("{:?}",err);
