@@ -1,8 +1,9 @@
 //! `Shutdown؀` is used by `Handler` to listen for the server shutdown signal.
 //!
-//! A shutdown is triggered by the server listener which owns the Sender half of a broadcast channel.
+//! A shutdown is triggered by the server listener which owns the `Sender` half of a broadcast//! channel.
 
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
+use tracing::info;
 
 #[derive(Debug)]
 pub struct Shutdown {
@@ -38,5 +39,16 @@ impl Shutdown {
         let _ = self.notify.recv().await;
 
         self.shutdown = true;
+    }
+}
+
+#[derive(Debug)]
+pub struct NotifyTransactionManager {
+    pub sender: mpsc::Sender<()>,
+}
+
+impl Drop for NotifyTransactionManager {
+    fn drop(&mut self) {
+        info!("Handler sending shutdown notification to transaction manager");
     }
 }

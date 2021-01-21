@@ -1,7 +1,7 @@
 use crate::connection::Connection;
 use crate::manager::TransactionManager;
 use crate::scheduler::Scheduler;
-use crate::shutdown::Shutdown;
+use crate::shutdown::{NotifyTransactionManager, Shutdown};
 use crate::workloads::{tatp, Workload};
 use crate::Result;
 
@@ -27,10 +27,9 @@ struct Listener {
 
     /// Broadcasts a shutdown signal to all active connections (`Handlers`).
     notify_shutdown_tx: broadcast::Sender<()>,
-
-    /// Ensure that active connections have safely completed.
-    shutdown_complete_rx: mpsc::Receiver<()>,
-    shutdown_complete_tx: mpsc::Sender<()>,
+    // Ensure that active connections have safely completed.
+    shutdown_tm_complete_rx: mpsc::Receiver<()>,
+    // shutdown_complete_tx: mpsc::Sender<()>,
 }
 
 impl Listener {
@@ -38,18 +37,21 @@ impl Listener {
     ///
     /// Initialise the workload and populates tables and indexes.
     /// Listens for inbound connections.
-    pub async fn run(&mut self) -> Result<()> {
+    pub async fn run(&mut self, handler_shutdown_sender: mpsc::Sender<()>) -> Result<()> {
         info!("Accepting new connections");
         loop {
             // Accept new socket.
             let (socket, _) = self.listener.accept().await?;
             info!("New connection accepted");
             // Create per-connection handler state.
+            let ntm = NotifyTransactionManager {
+                sender: handler_shutdown_sender.clone(),
+            };
             let mut handler = Handler {
                 connection: Connection::new(socket),
-                shutdown: Shutdown::new(self.notify_shutdown_tx.subscribe()),
-                _shutdown_complete: self.shutdown_complete_tx.clone(),
                 work_queue: Arc::clone(&self.work_queue),
+                shutdown: Shutdown::new(self.notify_shutdown_tx.subscribe()),
+                _notify_transaction_manager: ntm,
             };
 
             // Spawn new task to process the connection.
@@ -71,11 +73,11 @@ struct Handler {
     /// Handle to the work queue,
     work_queue: Arc<ArrayQueue<tatp::TatpTransaction>>,
 
-    /// Listen for shutdown notifications.
+    /// Listen for server shutdown notifications.
     shutdown: Shutdown,
 
-    /// Implicitly dropped when handler is dropped (safely finished), nofities the listener.
-    _shutdown_complete: mpsc::Sender<()>,
+    /// Implicitly dropped when handler is dropped (safely finished), nofities the transaction manager.
+    _notify_transaction_manager: NotifyTransactionManager,
 }
 
 // TODO: split into read and write channels.
@@ -176,13 +178,17 @@ pub async fn run(conf: Arc<Config>) {
     let (notify_shutdown_tx, _) = broadcast::channel(1);
     // Mpsc channel to ensure server waits for connections to finish before shutting down.
     let (shutdown_complete_tx, shutdown_complete_rx) = mpsc::channel(1);
+
+    // Mpsc channel to ensure server waits for connections to finish before shutting down.
+    let (tm_listener_tx, tm_listener_rx) = mpsc::channel(1);
+
     // Initialise server listener state.
     let mut server = Listener {
         listener,
         work_queue: Arc::clone(&work_queue),
         notify_shutdown_tx,
-        shutdown_complete_rx,
-        shutdown_complete_tx,
+        shutdown_tm_complete_rx: tm_listener_rx,
+        // shutdown_complete_tx,
     };
     info!("Server listening on {:?}", format!("{}:{}", add, port));
 
@@ -191,17 +197,17 @@ pub async fn run(conf: Arc<Config>) {
     let w1 = Arc::clone(&workload);
     // Get handle to work queue.
     let wq = Arc::clone(&work_queue);
-    // Start transaction manager's thread.
-    let jh = thread::spawn(move || {
+    // Spawn task for the transaction manager.
+    let jh = tokio::spawn(async move {
         info!("Started transaction manager");
         // TODO: Get threads from config.
-        let tm = TransactionManager::new(2);
+        let mut tm = TransactionManager::new(2, shutdown_complete_rx, tm_listener_tx);
         info!("Started scheduler");
         let scheduler = Arc::new(Scheduler::new(w1));
-        // TODO: Graceful shutdown of threadpool.
-        loop {
+        // While transaction manager has not received shutdown signal from each handler.
+        while !tm.is_shutdown() {
             // If work queue is not empty.
-            if !wq.is_empty() {
+            while !wq.is_empty() {
                 // Pop job from work queue.
                 let job = wq.pop().unwrap();
                 // Get handle to scheduler.
@@ -222,19 +228,20 @@ pub async fn run(conf: Arc<Config>) {
                     }
                 })
             }
+            tm.recv().await;
         }
     });
 
     // Concurrently run the server and listen for the shutdown signal.
     tokio::select! {
-        res = server.run() => {
+        res = server.run(shutdown_complete_tx) => {
             // All errors bubble up to here.
             if let Err(err) = res {
                 error!("{:?}",err);
             }
         }
         _ = signal::ctrl_c() => {
-            info!("shutting down");
+            info!("Shutting down server");
             // Broadcast message to connections.
         }
     }
@@ -243,15 +250,16 @@ pub async fn run(conf: Arc<Config>) {
 
     // Destructure server listener to extract broadcast receiver/transmitter and mpsc transmitter.
     let Listener {
-        mut shutdown_complete_rx,
-        shutdown_complete_tx,
+        // mut shutdown_complete_rx,
+        // shutdown_complete_tx,
         notify_shutdown_tx,
         ..
     } = server;
     // Drop broadcast transmitter.
     drop(notify_shutdown_tx);
     // Drop listener's mpsc transmitter.
-    drop(shutdown_complete_tx);
-    // Wait until all transmitters on the mpsc channel have closed.
-    let _ = shutdown_complete_rx.recv().await;
+    // drop(shutdown_complete_tx);
+    // // Wait until all transmitters on the mpsc channel have closed.
+    // let _ = shutdown_complete_rx.recv().await;
+    let _ = server.shutdown_tm_complete_rx.recv().await;
 }

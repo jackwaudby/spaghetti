@@ -7,12 +7,56 @@ use tracing::info;
 #[derive(Debug)]
 pub struct TransactionManager {
     pub pool: ThreadPool,
+    pub shutdown_rx: tokio::sync::mpsc::Receiver<()>,
+    pub shutdown: bool,
+    _notify_main: NotifyMainThread,
+}
+
+#[derive(Debug)]
+struct NotifyMainThread {
+    sender: tokio::sync::mpsc::Sender<()>,
+}
+
+impl Drop for NotifyMainThread {
+    fn drop(&mut self) {
+        info!("Transaction manager sending shutdown notification to main");
+    }
 }
 
 impl TransactionManager {
-    pub fn new(size: usize) -> TransactionManager {
+    pub fn new(
+        size: usize,
+        shutdown_rx: tokio::sync::mpsc::Receiver<()>,
+        _notify_main: tokio::sync::mpsc::Sender<()>,
+    ) -> TransactionManager {
         let pool = ThreadPool::new(size);
-        TransactionManager { pool }
+        let nmt = NotifyMainThread {
+            sender: _notify_main,
+        };
+        TransactionManager {
+            pool,
+            shutdown_rx,
+            shutdown: false,
+            _notify_main: nmt,
+        }
+    }
+    /// Returns `true` if the shutdown signal has been received.
+    pub fn is_shutdown(&self) -> bool {
+        self.shutdown
+    }
+
+    /// Receive the shutdown notice, waiting if necessary.
+    ///
+    /// This is a wrapper around the channels recv() fn.
+    pub async fn recv(&mut self) {
+        // Check if already received
+        if self.shutdown {
+            return;
+        }
+
+        let _ = self.shutdown_rx.recv().await;
+
+        self.shutdown = true;
     }
 }
 
@@ -77,12 +121,14 @@ impl Drop for ThreadPool {
         info!("Shutting down all workers.");
 
         for worker in &mut self.workers {
-            info!("Shutting down worker {}", worker.id);
+            debug!("Shutting down worker {}", worker.id);
 
             if let Some(thread) = worker.thread.take() {
                 thread.join().unwrap();
             }
         }
+
+        info!("Workers shutdown.");
     }
 }
 
@@ -112,7 +158,7 @@ impl Worker {
                     job.call_box();
                 }
                 Message::Terminate => {
-                    info!("Worker {} was told to terminate.", id);
+                    debug!("Worker {} was told to terminate.", id);
 
                     break;
                 }
