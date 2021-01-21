@@ -1,20 +1,23 @@
-use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
-use tracing::info;
+use tracing::{debug, info};
 
 #[derive(Debug)]
 pub struct TransactionManager {
+    /// Thread pool.
     pub pool: ThreadPool,
-    pub shutdown_rx: tokio::sync::mpsc::Receiver<()>,
-    pub shutdown: bool,
-    _notify_main: NotifyMainThread,
+
+    /// Listen for shutdown notifications from handlers
+    pub listener_handler_rx: std::sync::mpsc::Receiver<()>,
+
+    /// Notify main thread of shutdown
+    _notify_main_tx: NotifyMainThread,
 }
 
 #[derive(Debug)]
 struct NotifyMainThread {
-    sender: tokio::sync::mpsc::Sender<()>,
+    sender: tokio::sync::mpsc::UnboundedSender<()>,
 }
 
 impl Drop for NotifyMainThread {
@@ -24,39 +27,41 @@ impl Drop for NotifyMainThread {
 }
 
 impl TransactionManager {
+    /// Create transaction manager.
     pub fn new(
         size: usize,
-        shutdown_rx: tokio::sync::mpsc::Receiver<()>,
-        _notify_main: tokio::sync::mpsc::Sender<()>,
+        listener_handler_rx: std::sync::mpsc::Receiver<()>,
+        _notify_main_tx: tokio::sync::mpsc::UnboundedSender<()>,
     ) -> TransactionManager {
         let pool = ThreadPool::new(size);
         let nmt = NotifyMainThread {
-            sender: _notify_main,
+            sender: _notify_main_tx,
         };
         TransactionManager {
             pool,
-            shutdown_rx,
-            shutdown: false,
-            _notify_main: nmt,
+            listener_handler_rx,
+            _notify_main_tx: nmt,
         }
     }
-    /// Returns `true` if the shutdown signal has been received.
-    pub fn is_shutdown(&self) -> bool {
-        self.shutdown
-    }
 
-    /// Receive the shutdown notice, waiting if necessary.
-    ///
-    /// This is a wrapper around the channels recv() fn.
-    pub async fn recv(&mut self) {
-        // Check if already received
-        if self.shutdown {
-            return;
+    pub fn run(&mut self) {
+        loop {
+            match self.listener_handler_rx.try_recv() {
+                Ok(_) => panic!("Should not receive message on this channel"),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    continue;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    info!("Transaction manager received shutdown notification from handlers");
+                    break;
+                }
+            }
         }
 
-        let _ = self.shutdown_rx.recv().await;
+        while !self.listener_handler_rx.try_recv().is_err() {
 
-        self.shutdown = true;
+            // do stuff
+        }
     }
 }
 
@@ -64,7 +69,7 @@ impl TransactionManager {
 #[derive(Debug)]
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Message>,
+    sender: std::sync::mpsc::Sender<Message>,
 }
 
 impl ThreadPool {
@@ -80,7 +85,7 @@ impl ThreadPool {
         assert!(size > 0);
 
         // Job queue, thread pool keeps sending end.
-        let (sender, receiver) = mpsc::channel();
+        let (sender, receiver) = std::sync::mpsc::channel();
 
         // Wrap receiver so can be shared across worker threads.
         let receiver = Arc::new(Mutex::new(receiver));
@@ -147,7 +152,7 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
+    fn new(id: usize, receiver: Arc<Mutex<std::sync::mpsc::Receiver<Message>>>) -> Worker {
         let thread = thread::spawn(move || loop {
             let message = receiver.lock().unwrap().recv().unwrap();
 
