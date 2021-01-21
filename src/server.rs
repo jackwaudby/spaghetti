@@ -1,13 +1,10 @@
 use crate::connection::Connection;
-use crate::frame::Frame;
-use crate::manager::ThreadPool;
 use crate::manager::TransactionManager;
 use crate::scheduler::Scheduler;
 use crate::shutdown::Shutdown;
 use crate::workloads::{tatp, Workload};
 use crate::Result;
 
-use bytes::Bytes;
 use config::Config;
 use crossbeam_queue::ArrayQueue;
 use rand::rngs::StdRng;
@@ -41,7 +38,7 @@ impl Listener {
     ///
     /// Initialise the workload and populates tables and indexes.
     /// Listens for inbound connections.
-    pub async fn run(&mut self, conf: Arc<Config>) -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         info!("Accepting new connections");
         loop {
             // Accept new socket.
@@ -109,7 +106,7 @@ impl Handler {
                 None => return Ok(()),
             };
 
-            // // Get workload type.
+            // TODO: Deserialise based on workload.
             // let w = workload.get_internals().config.get_str("workload").unwrap();
             // // Deserialise to transaction.
             // let match w.as_str() {
@@ -126,11 +123,12 @@ impl Handler {
             //     _ => unimplemented!(),
             // };
 
+            // Deserialise transaction.
             let decoded: tatp::TatpTransaction =
                 bincode::deserialize(&frame.get_payload()).unwrap();
             info!("Received: {:?}", decoded);
 
-            // TODO: fix as subscriber
+            // TODO: fixed as GetSubscriberData transaction.
             let dat = tatp::GetSubscriberData { s_id: 0 };
             let t = tatp::TatpTransaction::GetSubscriberData(dat);
 
@@ -188,30 +186,33 @@ pub async fn run(conf: Arc<Config>) {
     };
     info!("Server listening on {:?}", format!("{}:{}", add, port));
 
-    // Start transaction manager.
     info!("Initialise transaction manager");
+    // Get handle to workload.
     let w1 = Arc::clone(&workload);
-    let wq1 = Arc::clone(&work_queue);
-    // Move to its own thread.
+    // Get handle to work queue.
+    let wq = Arc::clone(&work_queue);
+    // Start transaction manager's thread.
     let jh = thread::spawn(move || {
         info!("Started transaction manager");
-        let tm = Arc::new(TransactionManager::new());
-        let s = Arc::new(Scheduler::new(w1));
+        // TODO: Get threads from config.
+        let tm = TransactionManager::new(2);
+        info!("Started scheduler");
+        let scheduler = Arc::new(Scheduler::new(w1));
+        // TODO: Graceful shutdown of threadpool.
         loop {
-            // If work queue is not empty
-            if !wq1.is_empty() {
-                // Pop work work queue
-                let job = wq1.pop().unwrap();
-                let tm1 = Arc::clone(&tm);
-                let s1 = Arc::clone(&s);
-
-                // Execute transaction
+            // If work queue is not empty.
+            if !wq.is_empty() {
+                // Pop job from work queue.
+                let job = wq.pop().unwrap();
+                // Get handle to scheduler.
+                let s = Arc::clone(&scheduler);
+                // Pass job to thread pool.
                 tm.pool.execute(move || {
                     info!("Execute {:?}", job);
                     match job {
                         tatp::TatpTransaction::GetSubscriberData(payload) => {
-                            s1.register("txn1");
-                            let v = s1.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
+                            s.register("txn1").unwrap();
+                            let v = s.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
                             info!("{:?}", v);
                         }
                         _ => unimplemented!(),
@@ -223,7 +224,7 @@ pub async fn run(conf: Arc<Config>) {
 
     // Concurrently run the server and listen for the shutdown signal.
     tokio::select! {
-        res = server.run(conf) => {
+        res = server.run() => {
             // All errors bubble up to here.
             if let Err(err) = res {
                 error!("{:?}",err);
@@ -234,6 +235,8 @@ pub async fn run(conf: Arc<Config>) {
             // Broadcast message to connections.
         }
     }
+
+    jh.join().unwrap();
 
     // Destructure server listener to extract broadcast receiver/transmitter and mpsc transmitter.
     let Listener {

@@ -44,7 +44,7 @@ impl Scheduler {
                 let row = index.index_read(pk).unwrap();
                 let value = row.get_value("sub_nbr".to_string()).unwrap();
                 // Associate lock with transaction.
-                self.register_lock(transaction_name, key);
+                self.register_lock(transaction_name, key).unwrap();
                 Ok(value)
             }
             LockRequest::Delay(pair) => {
@@ -123,7 +123,7 @@ impl Scheduler {
             lock_info.add_entry(entry);
             // Insert into lock table
             self.lock_table.insert_new(key.to_string(), lock_info);
-            self.register_lock(transaction_name, key);
+            self.register_lock(transaction_name, key).unwrap();
             return LockRequest::Granted;
         }
 
@@ -132,7 +132,7 @@ impl Scheduler {
         let mut lock_info = self.lock_table.get_mut(key).unwrap();
         // The lock may be in use or not.
         // If in-use, consult the granted lock.
-        if let Some(n) = lock_info.granted {
+        if let Some(_) = lock_info.granted {
             // Consult the lock's group mode.
             //
             // If request is a `Read` then:
@@ -164,7 +164,7 @@ impl Scheduler {
                             let held = lock_info.granted.unwrap();
                             lock_info.granted = Some(held + 1);
                             // Grant lock.
-                            self.register_lock(transaction_name, key);
+                            self.register_lock(transaction_name, key).unwrap();
                             return LockRequest::Granted;
                         }
                         LockMode::Write => {
@@ -231,7 +231,7 @@ impl Scheduler {
             lock_info.timestamp = Some(transaction_ts);
             // Increment granted.
             lock_info.granted = Some(1);
-            self.register_lock(transaction_name, key);
+            self.register_lock(transaction_name, key).unwrap();
             return LockRequest::Granted;
         }
     }
@@ -302,7 +302,7 @@ impl Scheduler {
                         *started = true;
                         cvar.notify_all();
                         // Register lock with transaction
-                        self.register_lock(&e.name, key);
+                        self.register_lock(&e.name, key).unwrap();
                     }
                     // Set new lock information.
                     lock_info.timestamp = Some(new_lock_timestamp);
@@ -330,7 +330,7 @@ impl Scheduler {
                     *started = true;
                     cvar.notify_all();
                     // Register lock with transaction
-                    self.register_lock(&lock_info.list[0].name, key);
+                    self.register_lock(&lock_info.list[0].name, key).unwrap();
                 }
             }
             LockMode::Read => {
@@ -366,7 +366,8 @@ impl Scheduler {
                     *started = true;
                     cvar.notify_all();
                     // Register lock with transaction
-                    self.register_lock(&lock_info.list[next_write_entry_index].name, key);
+                    self.register_lock(&lock_info.list[next_write_entry_index].name, key)
+                        .unwrap();
                 } else {
                     panic!("Next waiting request is a Read");
                 }
