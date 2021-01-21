@@ -86,7 +86,7 @@ impl Handler {
     /// Responses are written back to the socket.
     pub async fn run(&mut self) -> Result<()> {
         debug!("Processing connection");
-        // While shutdown signal not received try to read frames.0
+        // While shutdown signal not received try to read frames.
         while !self.shutdown.is_shutdown() {
             // While reading a requested frame listen for shutdown.
             debug!("Attempting to read frames");
@@ -213,7 +213,10 @@ pub async fn run(conf: Arc<Config>) {
                         tatp::TatpTransaction::GetSubscriberData(payload) => {
                             s.register("txn1").unwrap();
                             let v = s.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
+                            s.commit("txn1");
                             info!("{:?}", v);
+
+                            // TODO: Send to response queue.
                         }
                         _ => unimplemented!(),
                     }
@@ -236,7 +239,7 @@ pub async fn run(conf: Arc<Config>) {
         }
     }
 
-    jh.join().unwrap();
+    // jh.join().unwrap();
 
     // Destructure server listener to extract broadcast receiver/transmitter and mpsc transmitter.
     let Listener {

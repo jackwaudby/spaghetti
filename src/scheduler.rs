@@ -30,21 +30,31 @@ impl Scheduler {
         }
     }
 
+    pub fn commit(&self, transaction_name: &str) {
+        info!("Commit transaction {:?}", transaction_name);
+        self.release_locks(transaction_name);
+        self.cleanup(transaction_name);
+    }
+
     /// Attempts to read a database record.
     ///
     /// If the read operation fails, an error is returned.
     pub fn read(&self, key: &str, transaction_name: &str, transaction_ts: u32) -> Result<String> {
-        // Request lock.
+        info!(
+            "Transaction {:?} requesting read lock on {:?}",
+            transaction_name, key
+        );
         let req = self.request_lock(key, LockMode::Read, transaction_name, transaction_ts);
         match req {
             LockRequest::Granted => {
-                info!("Read lock granted");
+                info!(
+                    "Read lock for {:?} granted to transaction {:?}",
+                    key, transaction_name
+                );
                 let index = self.data.get_internals().indexes.get("sub_idx").unwrap();
                 let pk = key.parse::<u64>().unwrap();
                 let row = index.index_read(pk).unwrap();
                 let value = row.get_value("sub_nbr".to_string()).unwrap();
-                // Associate lock with transaction.
-                self.register_lock(transaction_name, key).unwrap();
                 Ok(value)
             }
             LockRequest::Delay(pair) => {
@@ -70,7 +80,7 @@ impl Scheduler {
     /// Register a transaction with the scheduler.
     /// TODO: Add error type.
     pub fn register(&self, transaction_name: &str) -> Result<()> {
-        info!("Register transaction: {:?}", transaction_name);
+        info!("Register transaction {:?} with scheduler", transaction_name);
         match self
             .active_transactions
             .insert(transaction_name.to_string(), Vec::new())
@@ -87,7 +97,7 @@ impl Scheduler {
         let mut locks_held = self
             .active_transactions
             .get_mut(transaction_name)
-            .expect("Key not registered");
+            .expect("Transaction not registered");
         locks_held.push(key.to_string());
         info!(
             "Register lock for {:?} with transaction {:?}",
@@ -242,7 +252,12 @@ impl Scheduler {
     fn release_lock(&self, key: &str, transaction_name: &str) {
         debug!("Retrieve lock information for {}", key);
         let mut lock_info = self.lock_table.get_mut(key).unwrap();
-        debug!("Releasing {:?} lock", lock_info.group_mode.unwrap());
+        info!("{:?}", lock_info);
+        // info!(
+        //     "Releasing {:?} lock for transaction {:?}",
+        //     lock_info.group_mode.unwrap(),
+        //     transaction_name
+        // );
         // If 1 granted lock and no waiting requests, reset lock and return.
         if lock_info.granted.unwrap() == 1 && !lock_info.waiting {
             debug!("1 lock held and no waiting locks");
@@ -376,14 +391,17 @@ impl Scheduler {
     }
 
     fn release_locks(&self, transaction_name: &str) {
+        info!("Release locks for {:?}", transaction_name);
         let held_locks = self.active_transactions.get(transaction_name).unwrap();
-
+        info!("Locks held: {:?}", held_locks);
         for lock in held_locks.iter() {
+            info!("Release lock: {:?}", lock);
             self.release_lock(lock, transaction_name);
         }
     }
 
     fn cleanup(&self, transaction_name: &str) {
+        info!("Clean up {:?}", transaction_name);
         self.active_transactions.remove(transaction_name);
     }
 }
