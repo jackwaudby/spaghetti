@@ -1,5 +1,6 @@
 use crate::connection::{ReadConnection, WriteConnection};
 use crate::handler::{ReadHandler, WriteHandler};
+use crate::handler::{Request, Response};
 use crate::shutdown::Shutdown;
 use crate::workloads::tatp;
 use crate::Result;
@@ -36,7 +37,7 @@ impl Listener {
     pub async fn run(
         &mut self,
         notify_tm_tx: std::sync::mpsc::Sender<()>,
-        notify_tm_job_tx: std::sync::mpsc::Sender<tatp::TatpTransaction>,
+        work_tx: std::sync::mpsc::Sender<Request>,
         config: Arc<Config>,
     ) -> Result<()> {
         info!("Accepting new connections");
@@ -44,18 +45,34 @@ impl Listener {
             // Accept new incoming connection from tcp listener.
             let (socket, _) = self.listener.accept().await?;
             info!("New connection accepted");
+
+            // For each `Handler` a `Response` channel is created.
+            // This enables the `TransactionManager`s `Worker`s to send the response for a
+            // request to the correct client.
+            // A `Handler` wraps a transaction with a clone of the `Sender` to its response
+            // channel into a `Request`.
+            // Communication between sync code and async code (S -> A).
+            // Use mpsc unbounded channel.
+            let (response_tx, response_rx): (
+                tokio::sync::mpsc::UnboundedSender<Response>,
+                tokio::sync::mpsc::UnboundedReceiver<Response>,
+            ) = tokio::sync::mpsc::unbounded_channel();
+
             // Create per-connection handler state.
             // Split socket into reader and writer handlers.
             let (rd, wr) = io::split(socket);
+
             let mut read_handler = ReadHandler {
                 connection: ReadConnection::new(rd),
                 shutdown: Shutdown::new(self.notify_handlers_tx.subscribe()),
-                notify_tm_job_tx: notify_tm_job_tx.clone(),
+                response_tx,
+                work_tx: work_tx.clone(),
                 _notify_tm_tx: notify_tm_tx.clone(),
             };
 
             let mut write_handler = WriteHandler {
                 connection: WriteConnection::new(wr),
+                response_rx,
             };
 
             // Get handle to config.

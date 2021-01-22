@@ -1,3 +1,4 @@
+use crate::handler::Request;
 use crate::listener::Listener;
 use crate::manager::{self, TransactionManager};
 use crate::scheduler::Scheduler;
@@ -38,21 +39,22 @@ pub async fn run(config: Arc<Config>) {
     let listener = TcpListener::bind(format!("{}:{}", add, port))
         .await
         .unwrap();
+    ////// Shutdown //////
     // Broadcast channel between listener and handlers, informing active connections of
     // shutdown. A -> A.
     let (notify_handlers_tx, _) = tokio::sync::broadcast::channel(1);
-
     // Mpsc channel between handlers and transaction manager, A-> S.
-    let (notify_tm_tx, tm_listener_rx) = std::sync::mpsc::channel();
-
+    let (notify_tm_tx, tm_shutdown_rx) = std::sync::mpsc::channel();
     // Mpsc channel between transaction manager and listener, S -> A.
     let (notify_main_tx, main_listener_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    // Mpsc channel between handler and transaction manager for sending jobs, A -> S.
-    let (notify_tm_job_tx, tm_listener_job_rx): (
-        Sender<tatp::TatpTransaction>,
-        Receiver<tatp::TatpTransaction>,
-    ) = std::sync::mpsc::channel();
+    ///// Work sending /////
+    // Mpsc channel between handlers (producers) and transaction manager (consumer).
+    // Each `Handler` gets a clone of the  `Sender` end.
+    // `TransactionManager` gets the `Receiver` end.
+    // Communication between async code and sync code (A -> S).
+    // Use std unbounded channel.
+    let (work_tx, work_rx): (Sender<Request>, Receiver<Request>) = std::sync::mpsc::channel();
 
     // Initialise server listener state.
     let mut list = Listener {
@@ -64,14 +66,14 @@ pub async fn run(config: Arc<Config>) {
 
     info!("Initialise transaction manager");
     // Create transaction manager.
-    let tm = TransactionManager::new(2, tm_listener_job_rx, tm_listener_rx, notify_main_tx);
+    let tm = TransactionManager::new(2, work_rx, tm_shutdown_rx, notify_main_tx);
     // Create scheduler.
     let s = Arc::new(Scheduler::new(Arc::clone(&workload)));
     manager::run(tm, s);
 
     // Concurrently run the server and listen for the shutdown signal.
     tokio::select! {
-        res = list.run(notify_tm_tx, notify_tm_job_tx, Arc::clone(&config)) => {
+        res = list.run(notify_tm_tx, work_tx,Arc::clone(&config)) => {
             // All errors bubble up to here.
             if let Err(err) = res {
                 error!("{:?}",err);

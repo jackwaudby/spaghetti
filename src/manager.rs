@@ -1,3 +1,4 @@
+use crate::handler::{Request, Response};
 use crate::pool::ThreadPool;
 use crate::scheduler::Scheduler;
 use crate::workloads::tatp;
@@ -13,13 +14,13 @@ pub struct TransactionManager {
     pub pool: ThreadPool,
 
     /// Work queue.
-    queue: ArrayQueue<tatp::TatpTransaction>,
+    queue: ArrayQueue<Request>,
 
     /// Worker listener.
-    work_listener_rx: std::sync::mpsc::Receiver<tatp::TatpTransaction>,
+    work_rx: std::sync::mpsc::Receiver<Request>,
 
     /// Listen for shutdown notifications from handlers
-    pub listener_handler_rx: std::sync::mpsc::Receiver<()>,
+    pub shutdown_rx: std::sync::mpsc::Receiver<()>,
 
     /// Notify main thread of shutdown
     _notify_main_tx: NotifyMainThread,
@@ -40,20 +41,20 @@ impl TransactionManager {
     /// Create transaction manager.
     pub fn new(
         size: usize,
-        work_listener_rx: std::sync::mpsc::Receiver<tatp::TatpTransaction>,
-        listener_handler_rx: std::sync::mpsc::Receiver<()>,
+        work_rx: std::sync::mpsc::Receiver<Request>,
+        shutdown_rx: std::sync::mpsc::Receiver<()>,
         _notify_main_tx: tokio::sync::mpsc::UnboundedSender<()>,
     ) -> TransactionManager {
         let pool = ThreadPool::new(size);
         let nmt = NotifyMainThread {
             sender: _notify_main_tx,
         };
-        let queue = ArrayQueue::<tatp::TatpTransaction>::new(100);
+        let queue = ArrayQueue::<Request>::new(100);
         TransactionManager {
             pool,
             queue,
-            work_listener_rx,
-            listener_handler_rx,
+            work_rx,
+            shutdown_rx,
             _notify_main_tx: nmt,
         }
     }
@@ -61,7 +62,7 @@ impl TransactionManager {
     pub fn run(&mut self, scheduler: Arc<Scheduler>) {
         loop {
             // Check if shutdown.
-            match self.listener_handler_rx.try_recv() {
+            match self.shutdown_rx.try_recv() {
                 Ok(_) => panic!("Should not receive message on this channel"),
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
@@ -71,7 +72,7 @@ impl TransactionManager {
             }
 
             // Fill job queue.
-            if let Ok(job) = self.work_listener_rx.try_recv() {
+            if let Ok(job) = self.work_rx.try_recv() {
                 info!("Got job {:?}", job);
                 self.queue.push(job).unwrap();
             };
@@ -84,14 +85,16 @@ impl TransactionManager {
                     let s = Arc::clone(&scheduler);
                     self.pool.execute(move || {
                         info!("Execute {:?}", job);
-                        match job {
+                        match job.transaction {
                             tatp::TatpTransaction::GetSubscriberData(payload) => {
                                 // Register with scheduler.
                                 s.register("txn1").unwrap();
                                 let v = s.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
                                 s.commit("txn1");
                                 info!("{:?}", v);
+                                let resp = Response { payload: v };
                                 // TODO: Send to response queue.
+                                job.response_sender.send(resp);
                             }
                             _ => unimplemented!(),
                         }

@@ -20,9 +20,13 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
     /// Listen for server shutdown notifications.
     pub shutdown: Shutdown,
 
+    /// Channel for sending response from the trasaction manager.
+    /// Each new request gets a clone of it.
+    pub response_tx: tokio::sync::mpsc::UnboundedSender<Response>,
+
     /// Channnel for sending transaction request to the transaction manager.
     /// Communication channel between async and sync code.
-    pub notify_tm_job_tx: std::sync::mpsc::Sender<tatp::TatpTransaction>,
+    pub work_tx: std::sync::mpsc::Sender<Request>,
 
     /// Channel for notify the transaction manager of shutdown.
     /// Implicitly dropped when handler is dropped (safely finished).
@@ -76,9 +80,13 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
             // let t = Box::new(tatp::TatpTransaction::GetSubscriberData(dat));
             let t = tatp::TatpTransaction::GetSubscriberData(dat);
 
-            info!("Pushed transaction to work queue");
-            // TODO: change type of channel to trait bound.
-            self.notify_tm_job_tx.send(t).unwrap();
+            info!("Forward request to transaction manager");
+            let req = Request {
+                transaction: t,
+                response_sender: self.response_tx.clone(),
+            };
+
+            self.work_tx.send(req).unwrap();
             // self.work_queue.push(t);
 
             // Response placeholder.
@@ -97,6 +105,9 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
 pub struct WriteHandler<R: AsyncWrite + Unpin> {
     /// Write half of tcp stream with buffers.
     pub connection: WriteConnection<R>,
+
+    // Channel receives responses from transaction manager workers.
+    pub response_rx: tokio::sync::mpsc::UnboundedReceiver<Response>,
     // Listen for server shutdown notifications.
     // pub shutdown: Shutdown,
 
@@ -116,12 +127,29 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
     /// Frames are requested from the socket and then processed.
     /// Responses are written back to the socket.
     pub async fn run(&mut self, _config: Arc<Config>) -> Result<()> {
+        // Get a response from the channel.
+        let response = self.response_rx.recv().await;
+        //TODO: serialize and send.
+        info!("Response is: {:?}", response);
+
         // Response placeholder.
-        let b = Bytes::copy_from_slice(b"ok");
+        // let b = Bytes::copy_from_slice(b"ok");
+        let b = Bytes::copy_from_slice(&response.unwrap().payload[..].as_bytes());
         let f = Frame::new(b); // Response placeholder
                                // debug!("Sending reply: {:?}", f);
         self.connection.write_frame(&f).await?;
 
         Ok(())
     }
+}
+
+#[derive(Debug)]
+pub struct Request {
+    pub transaction: tatp::TatpTransaction,
+    pub response_sender: tokio::sync::mpsc::UnboundedSender<Response>,
+}
+
+#[derive(Debug)]
+pub struct Response {
+    pub payload: String,
 }
