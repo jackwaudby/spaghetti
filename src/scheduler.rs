@@ -547,152 +547,152 @@ impl fmt::Display for Abort {
 
 impl Error for Abort {}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Once;
-    use std::{thread, time};
-    use tracing::{info, Level};
-    use tracing_subscriber::FmtSubscriber;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use std::sync::Once;
+//     use std::{thread, time};
+//     use tracing::{info, Level};
+//     use tracing_subscriber::FmtSubscriber;
 
-    static LOG: Once = Once::new();
+//     static LOG: Once = Once::new();
 
-    fn logging() {
-        LOG.call_once(|| {
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(Level::DEBUG)
-                .finish();
-            tracing::subscriber::set_global_default(subscriber)
-                .expect("setting default subscriber failed");
-        });
-    }
+//     fn logging() {
+//         LOG.call_once(|| {
+//             let subscriber = FmtSubscriber::builder()
+//                 .with_max_level(Level::DEBUG)
+//                 .finish();
+//             tracing::subscriber::set_global_default(subscriber)
+//                 .expect("setting default subscriber failed");
+//         });
+//     }
 
-    #[test]
-    fn lock_unlock_read() {
-        logging();
+//     // #[test]
+//     fn lock_unlock_read() {
+//         logging();
 
-        // Initialise scheduler
-        let scheduler = Arc::new(Scheduler::new());
-        let scheduler1 = scheduler.clone();
-        // Register transaction
-        scheduler.register("txn_1");
-        // Lock
-        let req = scheduler.request_lock("table_1_row_12", LockMode::Read, "txn_1", 2);
-        assert_eq!(req, LockRequest::Granted);
-        // Check
-        {
-            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
-            assert_eq!(
-                lock.group_mode == Some(LockMode::Read)
-                    && !lock.waiting
-                    && lock.list.len() as u32 == 1
-                    && lock.timestamp == Some(2)
-                    && lock.granted == Some(1),
-                true,
-                "{:?}",
-                lock
-            );
-        }
+//         // Initialise scheduler
+//         let scheduler = Arc::new(Scheduler::new());
+//         let scheduler1 = scheduler.clone();
+//         // Register transaction
+//         scheduler.register("txn_1");
+//         // Lock
+//         let req = scheduler.request_lock("table_1_row_12", LockMode::Read, "txn_1", 2);
+//         assert_eq!(req, LockRequest::Granted);
+//         // Check
+//         {
+//             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+//             assert_eq!(
+//                 lock.group_mode == Some(LockMode::Read)
+//                     && !lock.waiting
+//                     && lock.list.len() as u32 == 1
+//                     && lock.timestamp == Some(2)
+//                     && lock.granted == Some(1),
+//                 true,
+//                 "{:?}",
+//                 lock
+//             );
+//         }
 
-        // Unlock
-        scheduler.release_lock("table_1_row_12", "txn_1");
-        // Check
-        {
-            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
-            assert_eq!(
-                lock.group_mode == None
-                    && !lock.waiting
-                    && lock.list.len() as u32 == 0
-                    && lock.timestamp == None
-                    && lock.granted == None,
-                true,
-                "{:?}",
-                lock
-            );
-        }
-    }
+//         // Unlock
+//         scheduler.release_lock("table_1_row_12", "txn_1");
+//         // Check
+//         {
+//             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+//             assert_eq!(
+//                 lock.group_mode == None
+//                     && !lock.waiting
+//                     && lock.list.len() as u32 == 0
+//                     && lock.timestamp == None
+//                     && lock.granted == None,
+//                 true,
+//                 "{:?}",
+//                 lock
+//             );
+//         }
+//     }
 
-    #[test]
-    fn lock_unlock_write() {
-        logging();
+//     // #[test]
+//     fn lock_unlock_write() {
+//         logging();
 
-        // Initialise scheduler
-        let scheduler = Arc::new(Scheduler::new());
-        let scheduler1 = scheduler.clone();
-        // Lock
-        scheduler.register("txn_1");
-        let req = scheduler.request_lock("table_1_row_12", LockMode::Write, "txn_1", 2);
-        assert_eq!(req, LockRequest::Granted);
+//         // Initialise scheduler
+//         let scheduler = Arc::new(Scheduler::new());
+//         let scheduler1 = scheduler.clone();
+//         // Lock
+//         scheduler.register("txn_1");
+//         let req = scheduler.request_lock("table_1_row_12", LockMode::Write, "txn_1", 2);
+//         assert_eq!(req, LockRequest::Granted);
 
-        {
-            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
-            assert_eq!(
-                lock.group_mode == Some(LockMode::Write)
-                    && !lock.waiting
-                    && lock.list.len() as u32 == 1
-                    && lock.timestamp == Some(2)
-                    && lock.granted == Some(1)
-                    && lock.list[0].lock_mode == LockMode::Write,
-                true,
-                "{:?}",
-                lock
-            );
-        }
+//         {
+//             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+//             assert_eq!(
+//                 lock.group_mode == Some(LockMode::Write)
+//                     && !lock.waiting
+//                     && lock.list.len() as u32 == 1
+//                     && lock.timestamp == Some(2)
+//                     && lock.granted == Some(1)
+//                     && lock.list[0].lock_mode == LockMode::Write,
+//                 true,
+//                 "{:?}",
+//                 lock
+//             );
+//         }
 
-        // Unlock
-        scheduler.release_lock("table_1_row_12", "txn_1");
-        {
-            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
-            assert_eq!(
-                lock.group_mode == None
-                    && !lock.waiting
-                    && lock.list.len() as u32 == 0
-                    && lock.timestamp == None
-                    && lock.granted == None,
-                true,
-                "{:?}",
-                lock
-            );
-        }
-    }
+//         // Unlock
+//         scheduler.release_lock("table_1_row_12", "txn_1");
+//         {
+//             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+//             assert_eq!(
+//                 lock.group_mode == None
+//                     && !lock.waiting
+//                     && lock.list.len() as u32 == 0
+//                     && lock.timestamp == None
+//                     && lock.granted == None,
+//                 true,
+//                 "{:?}",
+//                 lock
+//             );
+//         }
+//     }
 
-    #[test]
-    fn lock_table_test() {
-        logging();
-        let scheduler = Arc::new(Scheduler::new());
-        let scheduler1 = scheduler.clone();
-        scheduler.register("txn_1");
-        scheduler.register("txn_2");
+//     // #[test]
+//     fn lock_table_test() {
+//         logging();
+//         let scheduler = Arc::new(Scheduler::new());
+//         let scheduler1 = scheduler.clone();
+//         scheduler.register("txn_1");
+//         scheduler.register("txn_2");
 
-        let handle = thread::spawn(move || {
-            debug!("Request Read lock");
-            scheduler1.request_lock("table_1_row_12", LockMode::Read, "txn_1", 2);
-            debug!("Request Write lock");
-            if let LockRequest::Delay(pair) =
-                scheduler1.request_lock("table_1_row_12", LockMode::Write, "txn_2", 1)
-            {
-                let (lock, cvar) = &*pair;
-                let mut waiting = lock.lock().unwrap();
-                while !*waiting {
-                    waiting = cvar.wait(waiting).unwrap();
-                }
-                debug!("Write lock granted");
-            };
-        });
+//         let handle = thread::spawn(move || {
+//             debug!("Request Read lock");
+//             scheduler1.request_lock("table_1_row_12", LockMode::Read, "txn_1", 2);
+//             debug!("Request Write lock");
+//             if let LockRequest::Delay(pair) =
+//                 scheduler1.request_lock("table_1_row_12", LockMode::Write, "txn_2", 1)
+//             {
+//                 let (lock, cvar) = &*pair;
+//                 let mut waiting = lock.lock().unwrap();
+//                 while !*waiting {
+//                     waiting = cvar.wait(waiting).unwrap();
+//                 }
+//                 debug!("Write lock granted");
+//             };
+//         });
 
-        let ms = time::Duration::from_secs(2);
-        thread::sleep(ms);
-        scheduler.release_lock("table_1_row_12", "txn_1");
-        let lock = scheduler.lock_table.get("table_1_row_12").unwrap();
-        assert_eq!(
-            lock.group_mode == Some(LockMode::Write)
-                && !lock.waiting
-                && lock.list.len() as u32 == 1
-                && lock.timestamp == Some(1)
-                && lock.granted == Some(1),
-            true,
-            "{:?}",
-            *lock
-        );
-    }
-}
+//         let ms = time::Duration::from_secs(2);
+//         thread::sleep(ms);
+//         scheduler.release_lock("table_1_row_12", "txn_1");
+//         let lock = scheduler.lock_table.get("table_1_row_12").unwrap();
+//         assert_eq!(
+//             lock.group_mode == Some(LockMode::Write)
+//                 && !lock.waiting
+//                 && lock.list.len() as u32 == 1
+//                 && lock.timestamp == Some(1)
+//                 && lock.granted == Some(1),
+//             true,
+//             "{:?}",
+//             *lock
+//         );
+//     }
+// }

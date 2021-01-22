@@ -90,12 +90,11 @@ pub async fn run(config: Arc<Config>) {
         notify_handlers_tx,
         ..
     } = list;
-    // Drop broadcast transmitter.
+    // Drop broadcast transmitter, notifies handlers, which terminate and drop
+    // which notifies tm which terminates and drops
+    // which notifies listener here and everything is done!
     drop(notify_handlers_tx);
-    // Drop listener's mpsc transmitter.
-    // drop(shutdown_complete_tx);
-    // // Wait until all transmitters on the mpsc channel have closed.
-    // let _ = shutdown_complete_rx.recv().await;
+
     let _ = list.tm_listener_rx.recv().await;
 }
 
@@ -104,84 +103,3 @@ impl Debug for dyn Transaction + Send {
         write!(f, "Test")
     }
 }
-
-// async fn tm_run(
-//     queue: Arc<ArrayQueue<Box<dyn Transaction + Send>>>,
-//     config: Arc<Config>,
-//     scheduler: Arc<Scheduler>,
-//     tm: Arc<TransactionManager>,
-// ) {
-//     loop {
-//         let job = match queue.pop() {
-//             Some(job) => {
-//                 let w = config.get_str("workload").unwrap();
-//                 match w.as_str() {
-//                     "tatp" => {
-//                         let transaction: &TatpTransaction = job
-//                             .as_any()
-//                             .downcast_ref::<TatpTransaction>()
-//                             .expect("not a TatpTransaction");
-//                         let t = transaction.clone();
-//                         let s = Arc::clone(&scheduler);
-//                         tm.pool.execute(move || {
-//                             match t {
-//                                 tatp::TatpTransaction::GetSubscriberData(payload) => {
-//                                     s.register("txn1").unwrap();
-//                                     let v = s.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
-//                                     s.commit("txn1");
-//                                     info!("{:?}", v);
-//                                     // TODO: Send to response queue.
-//                                 }
-//                                 _ => unimplemented!(),
-//                             }
-//                         })
-//                     }
-//                     "tpcc" => {}
-//                     _ => unimplemented!(),
-//                 }
-//             }
-//             None => {}
-//         };
-//     }
-// }
-
-// //
-// Pop job from work queue.
-//     let job = match wq.pop() {
-//         Some(job) => {
-//             let w = c1.get_str("workload").unwrap();
-//             match w.as_str() {
-//                 "tatp" => {
-//                     let transaction: &TatpTransaction = job
-//                         .as_any()
-//                         .downcast_ref::<TatpTransaction>()
-//                         .expect("not a TatpTransaction");
-//                     let t = transaction.clone();
-
-//                     // Get handle to scheduler.
-//                     let s = Arc::clone(&scheduler);
-//                     // Pass job to thread pool.
-//                     tm.pool.execute(move || {
-//                         // info!("Execute {:?}", job);
-//                         match t {
-//                             tatp::TatpTransaction::GetSubscriberData(payload) => {
-//                                 s.register("txn1").unwrap();
-//                                 let v =
-//                                     s.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
-//                                 s.commit("txn1");
-//                                 info!("{:?}", v);
-//                                 // TODO: Send to response queue.
-//                             }
-//                             _ => unimplemented!(),
-//                         }
-//                     })
-//                 }
-//                 "tpcc" => {}
-//                 _ => unimplemented!(),
-//             }
-//         },
-//         None =>    {},
-//     };
-// }
-
-// }

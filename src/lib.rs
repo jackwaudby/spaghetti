@@ -8,6 +8,8 @@ pub mod scheduler;
 
 pub mod storage;
 
+pub mod queue;
+
 pub mod client;
 
 pub mod server;
