@@ -1,5 +1,5 @@
 use crate::listener::Listener;
-use crate::manager::TransactionManager;
+use crate::manager::{self, TransactionManager};
 use crate::scheduler::Scheduler;
 use crate::transaction::Transaction;
 use crate::workloads::{tatp, Workload};
@@ -10,7 +10,6 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
-use std::thread;
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{error, info};
@@ -65,14 +64,10 @@ pub async fn run(config: Arc<Config>) {
 
     info!("Initialise transaction manager");
     // Create transaction manager.
-    let mut tm = TransactionManager::new(2, tm_listener_job_rx, tm_listener_rx, notify_main_tx);
+    let tm = TransactionManager::new(2, tm_listener_job_rx, tm_listener_rx, notify_main_tx);
     // Create scheduler.
     let s = Arc::new(Scheduler::new(Arc::clone(&workload)));
-
-    thread::spawn(move || {
-        info!("Start transaction manager");
-        tm.run(s);
-    });
+    manager::run(tm, s);
 
     // Concurrently run the server and listen for the shutdown signal.
     tokio::select! {

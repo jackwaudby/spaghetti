@@ -4,6 +4,7 @@ use crate::workloads::tatp;
 
 use crossbeam_queue::ArrayQueue;
 use std::sync::Arc;
+use std::thread;
 use tracing::info;
 
 #[derive(Debug)]
@@ -103,4 +104,11 @@ impl TransactionManager {
             }
         }
     }
+}
+
+pub fn run(mut tm: TransactionManager, s: Arc<Scheduler>) {
+    thread::spawn(move || {
+        info!("Start transaction manager");
+        tm.run(s);
+    });
 }
