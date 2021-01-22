@@ -1,161 +1,19 @@
-use crate::connection::Connection;
+use crate::listener::Listener;
 use crate::manager::TransactionManager;
 use crate::scheduler::Scheduler;
-use crate::shutdown::{NotifyTransactionManager, Shutdown};
 use crate::transaction::Transaction;
-use crate::workloads::tatp::TatpTransaction;
-use crate::workloads::{tatp, tpcc, Workload};
-use crate::Result;
-use std::sync::mpsc::{Receiver, Sender};
+use crate::workloads::{tatp, Workload};
 
 use config::Config;
 use core::fmt::Debug;
-use crossbeam_queue::ArrayQueue;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use std::thread;
 use tokio::net::TcpListener;
 use tokio::signal;
-use tracing::{debug, error, info};
-
-/// Server listener state.
-#[derive(Debug)]
-struct Listener {
-    /// TCP listener.
-    listener: TcpListener,
-
-    /// Broadcasts a shutdown signal to all active connections (`Handlers`).
-    ///
-    /// This is communication between async code.
-    notify_handlers_tx: tokio::sync::broadcast::Sender<()>,
-
-    /// This is dropped when the transaction manager has cleaned up.
-    ///
-    /// This is communication from sync code to async code.
-    tm_listener_rx: tokio::sync::mpsc::UnboundedReceiver<()>,
-}
-
-impl Listener {
-    /// Runs the server.
-    ///
-    /// Initialise the workload and populates tables and indexes.
-    /// Listens for inbound connections.
-    pub async fn run(
-        &mut self,
-        notify_tm_tx: std::sync::mpsc::Sender<()>,
-        notify_tm_job_tx: std::sync::mpsc::Sender<tatp::TatpTransaction>,
-        config: Arc<Config>,
-    ) -> Result<()> {
-        info!("Accepting new connections");
-        loop {
-            // Accept new socket.
-            let (socket, _) = self.listener.accept().await?;
-            info!("New connection accepted");
-            // Create per-connection handler state.
-
-            let mut handler = Handler {
-                connection: Connection::new(socket),
-                shutdown: Shutdown::new(self.notify_handlers_tx.subscribe()),
-                notify_tm_job_tx: notify_tm_job_tx.clone(),
-                _notify_tm_tx: notify_tm_tx.clone(),
-            };
-
-            // Get handle to config.
-            let c = Arc::clone(&config);
-
-            // Spawn new task to process the connection.
-            tokio::spawn(async move {
-                if let Err(err) = handler.run(c).await {
-                    info!("{:?}", err);
-                }
-            });
-        }
-    }
-}
-
-/// Per-connection handler
-#[derive(Debug)]
-struct Handler {
-    /// TCP connection: Tcp stream with buffers and frame parsing utils/
-    connection: Connection,
-
-    /// Listen for server shutdown notifications.
-    shutdown: Shutdown,
-
-    notify_tm_job_tx: std::sync::mpsc::Sender<tatp::TatpTransaction>,
-
-    /// Notify transaction manager of shutdown.
-    /// Implicitly dropped when handler is dropped (safely finished).
-    ///
-    /// This is communication from async to sync.
-    _notify_tm_tx: std::sync::mpsc::Sender<()>,
-}
-
-// TODO: split into read and write channels.
-impl Handler {
-    /// Process a single connection.
-    ///
-    /// Frames are requested from the socket and then processed.
-    /// Responses are written back to the socket.
-    pub async fn run(&mut self, config: Arc<Config>) -> Result<()> {
-        debug!("Processing connection");
-        // While shutdown signal not received try to read frames.
-        while !self.shutdown.is_shutdown() {
-            // While reading a requested frame listen for shutdown.
-            debug!("Attempting to read frames");
-            let maybe_frame = tokio::select! {
-                res = self.connection.read_frame() => res?,
-                _ = self.shutdown.recv() => {
-                    // shutdown signal received, return from handler's run.
-                    // this terminates the task
-                    return Ok(());
-                }
-            };
-
-            // If None is returned from maybe frame then the socket has been closed.
-            // Terminate task
-            let frame = match maybe_frame {
-                Some(frame) => frame,
-                None => return Ok(()),
-            };
-
-            // TODO: Deserialise based on workload.
-            let w = config.get_str("workload").unwrap();
-            // Deserialise to transaction.
-            let txn = match w.as_str() {
-                "tatp" => {
-                    let decoded: tatp::TatpTransaction =
-                        bincode::deserialize(&frame.get_payload()).unwrap();
-                    info!("Received: {:?}", decoded);
-                }
-                "tpcc" => {
-                    let decoded: tpcc::TpccTransaction =
-                        bincode::deserialize(&frame.get_payload()).unwrap();
-                    info!("Received: {:?}", decoded);
-                }
-                _ => unimplemented!(),
-            };
-
-            // TODO: fixed as GetSubscriberData transaction.
-            let dat = tatp::GetSubscriberData { s_id: 0 };
-            // let t = Box::new(tatp::TatpTransaction::GetSubscriberData(dat));
-            let t = tatp::TatpTransaction::GetSubscriberData(dat);
-
-            info!("Pushed transaction to work queue");
-            // TODO: Needs hooking up.
-            self.notify_tm_job_tx.send(t);
-            // self.work_queue.push(t);
-
-            // Response placeholder.
-            // let b = Bytes::copy_from_slice(b"ok");
-            // let f = Frame::new(b); // Response placeholder
-            // debug!("Sending reply: {:?}", f);
-            // self.connection.write_frame(&f).await?;
-        }
-        Ok(())
-    }
-}
+use tracing::{error, info};
 
 /// Runs the server.
 ///
@@ -198,7 +56,7 @@ pub async fn run(config: Arc<Config>) {
     ) = std::sync::mpsc::channel();
 
     // Initialise server listener state.
-    let mut listener = Listener {
+    let mut list = Listener {
         listener,
         notify_handlers_tx,
         tm_listener_rx: main_listener_rx,
@@ -210,15 +68,15 @@ pub async fn run(config: Arc<Config>) {
     let mut tm = TransactionManager::new(2, tm_listener_job_rx, tm_listener_rx, notify_main_tx);
     // Create scheduler.
     let s = Arc::new(Scheduler::new(Arc::clone(&workload)));
-    let cc = Arc::clone(&config);
+
     thread::spawn(move || {
         info!("Start transaction manager");
-        tm.run(s, cc);
+        tm.run(s);
     });
-7
+
     // Concurrently run the server and listen for the shutdown signal.
     tokio::select! {
-        res = listener.run(notify_tm_tx, notify_tm_job_tx, Arc::clone(&config)) => {
+        res = list.run(notify_tm_tx, notify_tm_job_tx, Arc::clone(&config)) => {
             // All errors bubble up to here.
             if let Err(err) = res {
                 error!("{:?}",err);
@@ -236,14 +94,14 @@ pub async fn run(config: Arc<Config>) {
         // shutdown_complete_tx,
         notify_handlers_tx,
         ..
-    } = server;
+    } = list;
     // Drop broadcast transmitter.
     drop(notify_handlers_tx);
     // Drop listener's mpsc transmitter.
     // drop(shutdown_complete_tx);
     // // Wait until all transmitters on the mpsc channel have closed.
     // let _ = shutdown_complete_rx.recv().await;
-    let _ = server.tm_listener_rx.recv().await;
+    let _ = list.tm_listener_rx.recv().await;
 }
 
 impl Debug for dyn Transaction + Send {

@@ -82,7 +82,10 @@ pub async fn run(conf: Arc<Config>) -> Result<()> {
         info!("Generated: {:?}", t);
 
         // Send transaction to write connection.
-        tx.send(transaction).await;
+        match tx.send(transaction).await {
+            Ok(_) => {}
+            Err(_) => panic!("TODO"),
+        };
         debug!("Send transaction to write connection.");
     });
 
