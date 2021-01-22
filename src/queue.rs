@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{sync, thread, time};
-use tracing::{info, Level};
+use tracing::info;
 
 // TODO: Add crossbeam queue.
 // TODO: Link with handlers and transaction manager, messages and shutdown.
@@ -76,40 +76,40 @@ impl Drop for WorkQueue {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Once;
-    use std::{thread, time};
-    use tracing::{info, Level};
-    use tracing_subscriber::FmtSubscriber;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use std::sync::Once;
+//     use std::{thread, time};
+//     use tracing::{info, Level};
+//     use tracing_subscriber::FmtSubscriber;
 
-    static LOG: Once = Once::new();
+//     static LOG: Once = Once::new();
 
-    fn logging() {
-        LOG.call_once(|| {
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(Level::DEBUG)
-                .finish();
-            tracing::subscriber::set_global_default(subscriber)
-                .expect("setting default subscriber failed");
-        });
-    }
+//     fn logging() {
+//         LOG.call_once(|| {
+//             let subscriber = FmtSubscriber::builder()
+//                 .with_max_level(Level::DEBUG)
+//                 .finish();
+//             tracing::subscriber::set_global_default(subscriber)
+//                 .expect("setting default subscriber failed");
+//         });
+//     }
 
-    #[test]
-    fn work_queue() {
-        logging();
+//     #[test]
+//     fn work_queue() {
+//         logging();
 
-        let (tx, rx) = std::sync::mpsc::channel();
-        let mut wq = WorkQueue::new(rx);
-        {
-            wq.start(|| info!("Hello, World!"));
-        }
+//         let (tx, rx) = std::sync::mpsc::channel();
+//         let mut wq = WorkQueue::new(rx);
+//         {
+//             wq.start(|| info!("Hello, World!"));
+//         }
 
-        thread::sleep(time::Duration::from_millis(100));
+//         thread::sleep(time::Duration::from_millis(100));
 
-        info!("Sending shutdown notification!");
-        tx.send()).unwrap();
-        assert_eq!(true, true);
-    }
-}
+//         info!("Sending shutdown notification!");
+//         tx.send()).unwrap();
+//         assert_eq!(true, true);
+//     }
+// }

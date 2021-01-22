@@ -1,3 +1,5 @@
+pub mod handler;
+
 pub mod parameter_generation;
 
 pub mod pool;
