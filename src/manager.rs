@@ -13,27 +13,29 @@ pub struct TransactionManager {
     /// Thread pool.
     pub pool: ThreadPool,
 
-    /// Work queue.
-    queue: ArrayQueue<Request>,
-
     /// Worker listener.
     work_rx: std::sync::mpsc::Receiver<Request>,
 
     /// Listen for shutdown notifications from handlers
     pub shutdown_rx: std::sync::mpsc::Receiver<()>,
 
-    /// Notify main thread of shutdown
-    _notify_main_tx: NotifyMainThread,
+    /// Notify `WriteHandler`s of shutdown.
+    _notify_wh_tx: NotifyWriteHandlers,
 }
+
+// Graceful shutdown.
+// `ReadHandler`s and the `TransactionManager` are linked by a std mpsc channel.
+// Each spawned `ReadHandler` gets a `Sender` which is dropped when it receives a
+// shutdown notification.
 
 #[derive(Debug)]
-struct NotifyMainThread {
-    sender: tokio::sync::mpsc::UnboundedSender<()>,
+struct NotifyWriteHandlers {
+    sender: tokio::sync::broadcast::Sender<()>,
 }
 
-impl Drop for NotifyMainThread {
+impl Drop for NotifyWriteHandlers {
     fn drop(&mut self) {
-        info!("Transaction manager sending shutdown notification to main");
+        info!("Transaction manager broadcasting shutdown notification to write handlers.");
     }
 }
 
@@ -43,66 +45,78 @@ impl TransactionManager {
         size: usize,
         work_rx: std::sync::mpsc::Receiver<Request>,
         shutdown_rx: std::sync::mpsc::Receiver<()>,
-        _notify_main_tx: tokio::sync::mpsc::UnboundedSender<()>,
+        _notify_wh_tx: tokio::sync::broadcast::Sender<()>,
     ) -> TransactionManager {
         let pool = ThreadPool::new(size);
-        let nmt = NotifyMainThread {
-            sender: _notify_main_tx,
+        let nwhs = NotifyWriteHandlers {
+            sender: _notify_wh_tx,
         };
-        let queue = ArrayQueue::<Request>::new(100);
+
         TransactionManager {
             pool,
-            queue,
             work_rx,
             shutdown_rx,
-            _notify_main_tx: nmt,
+            _notify_wh_tx: nwhs,
         }
     }
 
     pub fn run(&mut self, scheduler: Arc<Scheduler>) {
         loop {
-            // Check if shutdown.
-            match self.shutdown_rx.try_recv() {
-                Ok(_) => panic!("Should not receive message on this channel"),
-                Err(std::sync::mpsc::TryRecvError::Empty) => {}
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    info!("Transaction manager received shutdown notification from handlers");
-                    break;
-                }
-            }
-
-            // Fill job queue.
-            if let Ok(job) = self.work_rx.try_recv() {
-                info!("Got job {:?}", job);
-                self.queue.push(job).unwrap();
-            };
-
-            // Pop job from work queue.
-            match self.queue.pop() {
-                Some(job) => {
-                    info!("Do job");
-                    // Pass to thread pool.
+            // Check if shutdown initiated.
+            // All `ReadHandler`s must have closed, dropping their `Sender` handles.
+            if let Err(std::sync::mpsc::TryRecvError::Disconnected) = self.shutdown_rx.try_recv() {
+                info!("Transaction manager received shutdown notification from all read handlers");
+                // Drain remainder of `Request`s sent from `ReadHandler`s.
+                while let Ok(request) = self.work_rx.recv() {
+                    info!("Pass request to thread pool");
+                    // Get handle to scheduler.
                     let s = Arc::clone(&scheduler);
                     self.pool.execute(move || {
-                        info!("Execute {:?}", job);
-                        match job.transaction {
+                        info!("Execute request: {:?}", request);
+                        match request.transaction {
                             tatp::TatpTransaction::GetSubscriberData(payload) => {
                                 // Register with scheduler.
                                 s.register("txn1").unwrap();
+                                // Stored procedure.
                                 let v = s.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
+                                // Commit transaction.
                                 s.commit("txn1");
-                                info!("{:?}", v);
+                                // Package response.
                                 let resp = Response { payload: v };
-                                // TODO: Send to response queue.
-                                job.response_sender.send(resp);
+                                // Send to corresponding `WriteHandler`.
+                                request.response_sender.send(resp);
                             }
                             _ => unimplemented!(),
                         }
                     });
                 }
-                None => {
-                    // Another channel between
-                    continue;
+
+                assert!(self.work_rx.try_iter().next().is_none());
+                info!("Request queue empty");
+                break;
+            } else {
+                // Normal operation.
+                if let Ok(request) = self.work_rx.try_recv() {
+                    // Pass to thread pool.
+                    let s = Arc::clone(&scheduler);
+                    self.pool.execute(move || {
+                        info!("Execute {:?}", request);
+                        match request.transaction {
+                            tatp::TatpTransaction::GetSubscriberData(payload) => {
+                                // Register with scheduler.
+                                s.register("txn1").unwrap();
+                                // Stored procedure.
+                                let v = s.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
+                                // Commit transaction.
+                                s.commit("txn1");
+                                // Package response.
+                                let resp = Response { payload: v };
+                                // Send to corresponding `WriteHandler`.
+                                request.response_sender.send(resp);
+                            }
+                            _ => unimplemented!(),
+                        }
+                    });
                 }
             }
         }
@@ -114,4 +128,7 @@ pub fn run(mut tm: TransactionManager, s: Arc<Scheduler>) {
         info!("Start transaction manager");
         tm.run(s);
     });
+    // Transaction Manager dropped here.
+    // First threadpool is dropped which cleans itself up after finishing request.
+    // Send message to each Write Handler says no more requests/
 }

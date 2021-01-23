@@ -34,6 +34,12 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
     pub _notify_tm_tx: std::sync::mpsc::Sender<()>,
 }
 
+impl<R: AsyncRead + Unpin> Drop for ReadHandler<R> {
+    fn drop(&mut self) {
+        info!("Drop read handler");
+    }
+}
+
 impl<R: AsyncRead + Unpin> ReadHandler<R> {
     /// Process a single connection.
     ///
@@ -87,13 +93,6 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
             };
 
             self.work_tx.send(req).unwrap();
-            // self.work_queue.push(t);
-
-            // Response placeholder.
-            // let b = Bytes::copy_from_slice(b"ok");
-            // let f = Frame::new(b); // Response placeholder
-            // debug!("Sending reply: {:?}", f);
-            // self.connection.write_frame(&f).await?;
         }
         Ok(())
     }
@@ -108,9 +107,9 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
 
     // Channel receives responses from transaction manager workers.
     pub response_rx: tokio::sync::mpsc::UnboundedReceiver<Response>,
-    // Listen for server shutdown notifications.
-    // pub shutdown: Shutdown,
 
+    // Listen for server shutdown notifications.
+    pub shutdown: Shutdown,
     // Channnel for sending transaction request to the transaction manager.
     // Communication channel between async and sync code.
     // pub notify_tm_job_tx: std::sync::mpsc::Sender<tatp::TatpTransaction>,
@@ -118,28 +117,40 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     // Channel for notify the transaction manager of shutdown.
     // Implicitly dropped when handler is dropped (safely finished).
     // Communication channel between async and sync code.
-    // pub _notify_tm_tx: std::sync::mpsc::Sender<()>,
+    pub _notify_listener_tx: tokio::sync::mpsc::UnboundedSender<()>,
 }
 
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
-    /// Process a single connection.
-    ///
-    /// Frames are requested from the socket and then processed.
-    /// Responses are written back to the socket.
     pub async fn run(&mut self, _config: Arc<Config>) -> Result<()> {
-        // Get a response from the channel.
-        let response = self.response_rx.recv().await;
-        //TODO: serialize and send.
-        info!("Response is: {:?}", response);
+        while !self.shutdown.is_shutdown() {
+            let response = tokio::select! {
+                res = self.response_rx.recv() => res,
+                _ = self.shutdown.recv() => {
+                    // Shutdown signal received, terminate the task.
+                    return Ok(());
+                }
+            };
 
-        // Response placeholder.
-        // let b = Bytes::copy_from_slice(b"ok");
-        let b = Bytes::copy_from_slice(&response.unwrap().payload[..].as_bytes());
-        let f = Frame::new(b); // Response placeholder
-                               // debug!("Sending reply: {:?}", f);
-        self.connection.write_frame(&f).await?;
-
+            //TODO: serialize and send.
+            match response {
+                Some(response) => {
+                    // Response placeholder.
+                    // let b = Bytes::copy_from_slice(b"ok");
+                    let b = Bytes::copy_from_slice(&response.payload[..].as_bytes());
+                    let f = Frame::new(b); // Response placeholder
+                                           // debug!("Sending reply: {:?}", f);
+                    self.connection.write_frame(&f).await?;
+                }
+                None => {}
+            }
+        }
         Ok(())
+    }
+}
+
+impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
+    fn drop(&mut self) {
+        info!("Drop write handler");
     }
 }
 

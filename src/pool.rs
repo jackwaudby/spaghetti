@@ -58,14 +58,14 @@ impl ThreadPool {
 
 impl Drop for ThreadPool {
     fn drop(&mut self) {
-        info!("Sending terminate message to all workers.");
-
         // Send a terminate message for each worker.
+        // Happens after request queue drained into threadpool job queue, so no requests
+        // should be missed.
         for _ in &mut self.workers {
             self.sender.send(Message::Terminate).unwrap();
         }
 
-        info!("Shutting down all workers.");
+        info!("Terminating workers.");
 
         for worker in &mut self.workers {
             debug!("Shutting down worker {}", worker.id);

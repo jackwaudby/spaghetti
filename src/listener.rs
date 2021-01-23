@@ -18,15 +18,21 @@ pub struct Listener {
     /// TCP listener.
     pub listener: TcpListener,
 
-    /// Broadcasts a shutdown signal to all active connections (`Handlers`).
-    ///
-    /// This is communication between async code.
+    /// Broadcast channel between the `Listener` and all active connections (`Handlers`).
+    /// The `Listener' retains `Sender` and each `Handler` gets a `Receiver` handle.
+    /// When the server is shutdown this `Sender` is explicitly dropped, closing the channel,
+    /// and triggering the shutdown process.
+    /// This is communication between async code (A -> A).
     pub notify_handlers_tx: tokio::sync::broadcast::Sender<()>,
 
-    /// This is dropped when the transaction manager has cleaned up.
-    ///
-    /// This is communication from sync code to async code.
-    pub tm_listener_rx: tokio::sync::mpsc::UnboundedReceiver<()>,
+    pub listener_rx: tokio::sync::mpsc::UnboundedReceiver<()>,
+
+    // TEST
+    pub rh_tx: std::sync::mpsc::Sender<()>,
+
+    pub wh_rx: tokio::sync::broadcast::Receiver<()>,
+
+    pub listener_tx: tokio::sync::mpsc::UnboundedSender<()>,
 }
 
 impl Listener {
@@ -38,6 +44,8 @@ impl Listener {
         &mut self,
         notify_tm_tx: std::sync::mpsc::Sender<()>,
         work_tx: std::sync::mpsc::Sender<Request>,
+        notify_wh_tx: tokio::sync::broadcast::Sender<()>,
+        notify_listener_tx: tokio::sync::mpsc::UnboundedSender<()>,
         config: Arc<Config>,
     ) -> Result<()> {
         info!("Accepting new connections");
@@ -73,6 +81,8 @@ impl Listener {
             let mut write_handler = WriteHandler {
                 connection: WriteConnection::new(wr),
                 response_rx,
+                shutdown: Shutdown::new(notify_wh_tx.subscribe()),
+                _notify_listener_tx: notify_listener_tx.clone(),
             };
 
             // Get handle to config.

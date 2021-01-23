@@ -1,15 +1,15 @@
-//! `Shutdown؀` is used by `Handler` to listen for the server shutdown signal.
-//!
-//! A shutdown is triggered by the server listener which owns the `Sender` half of a broadcast//! channel.
-
+use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc};
 use tracing::info;
 
+/// `Shutdown؀` is used by `Handler` to listen for the server shutdown signal.
+/// A `Listener` owns the `Sender` half of a broadcast channel.
+/// The `Handler` is shutdown when the listener closes the `Sender` half.
 #[derive(Debug)]
 pub struct Shutdown {
-    // true if the shutdown notification has been received.
+    // Indicates if shutdown notification has been received from the `Listener`.
     shutdown: bool,
-    // Reciever half of a broadcast channel used to listen for the notification.
+    // Reciever half of a broadcast channel between `Handler` and `Listener`.
     notify: broadcast::Receiver<()>,
 }
 
@@ -36,7 +36,13 @@ impl Shutdown {
             return;
         }
 
-        let _ = self.notify.recv().await;
+        let r = self.notify.recv().await;
+        // Only `RecvError::Closed` can be received on this channel.
+        match r {
+            Ok(()) => panic!("No message should be recieved on this channel"),
+            Err(RecvError::Closed) => info!("No more active senders"),
+            Err(RecvError::Lagged(_)) => panic!("No messages are sent so not receiver should lag"),
+        }
 
         self.shutdown = true;
     }
