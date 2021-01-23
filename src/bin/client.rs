@@ -7,8 +7,9 @@ use spaghetti::client;
 use clap::clap_app;
 use config::Config;
 use std::sync::Arc;
+use tokio::signal;
 
-use tracing::{info, Level};
+use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
@@ -62,7 +63,20 @@ async fn main() -> spaghetti::Result<()> {
     // This is ok as configuration never changes at runtime.
     let config = Arc::new(settings);
 
-    client::run(config).await?;
+    tokio::select! {
+        res = client::run(config) => {
+            // All errors bubble up to here.
+            if let Err(err) = res {
+                error!("{:?}",err);
+            }
+        }
+        _ = signal::ctrl_c() => {
+            info!("Shutting down client");
+            // Broadcast message to connections.
+        }
+    }
+
+    // client::run(config).await?;
 
     Ok(())
 }
