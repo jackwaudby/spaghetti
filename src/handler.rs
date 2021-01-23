@@ -8,6 +8,7 @@ use config::Config;
 use core::fmt::Debug;
 use std::marker::Unpin;
 use std::sync::Arc;
+use tokio::io::AsyncWriteExt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, info};
 
@@ -127,6 +128,7 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                 res = self.response_rx.recv() => res,
                 _ = self.shutdown.recv() => {
                     // Shutdown signal received, terminate the task.
+                    //TODO: drain response queue here
                     return Ok(());
                 }
             };
