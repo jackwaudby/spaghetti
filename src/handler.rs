@@ -1,14 +1,14 @@
 use crate::connection::{ReadConnection, WriteConnection};
-use crate::frame::Frame;
+
+use crate::message::Response;
 use crate::shutdown::Shutdown;
 use crate::transaction::Transaction;
 use crate::workloads::{tatp, tpcc};
 use crate::Result;
-use bytes::Bytes;
+
 use config::Config;
 use core::fmt::Debug;
-use serde::{Deserialize, Serialize};
-use std::any::Any;
+
 use std::marker::Unpin;
 
 use std::sync::Arc;
@@ -92,7 +92,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
                         }
                         Err(_) => {
                             // Received a closed connection message.
-                            let closed: bincode::Result<crate::client::CloseConnection> =
+                            let closed: bincode::Result<crate::message::CloseConnection> =
                                 bincode::deserialize(&frame.get_payload());
                             match closed {
                                 Ok(cc) => {
@@ -169,7 +169,7 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
             if let Ok(requests) = self.listen_rh_requests.try_recv() {
                 info!("Write handler received expected responses: {:?}", requests);
                 self.expected_responses_sent = Some(requests);
-                let closed = crate::client::ConnectionClosed;
+                let closed = crate::message::ConnectionClosed;
                 let c = closed.into_frame();
                 info!("Send connection closed message");
 
@@ -232,21 +232,4 @@ impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
 pub struct Request {
     pub transaction: tatp::TatpTransaction,
     pub response_sender: tokio::sync::mpsc::UnboundedSender<Response>,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct Response {
-    pub payload: String,
-}
-
-impl Transaction for Response {
-    fn into_frame(&self) -> Frame {
-        // Serialize transaction
-        let s: Bytes = bincode::serialize(&self).unwrap().into();
-        // Create frame
-        Frame::new(s)
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
 }

@@ -1,6 +1,7 @@
 use crate::connection::{ReadConnection, WriteConnection};
+use crate::handler::Request;
 use crate::handler::{ReadHandler, WriteHandler};
-use crate::handler::{Request, Response};
+use crate::message::Response;
 use crate::shutdown::Shutdown;
 use crate::Result;
 

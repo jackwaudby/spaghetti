@@ -1,4 +1,5 @@
-use crate::handler::{Request, Response};
+use crate::handler::Request;
+use crate::message::Response;
 use crate::pool::ThreadPool;
 use crate::scheduler::Scheduler;
 use crate::workloads::tatp;

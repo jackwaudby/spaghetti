@@ -4,7 +4,7 @@ use crate::transaction::Transaction;
 use crate::workloads::tatp::TatpGenerator;
 use crate::workloads::tpcc::TpccGenerator;
 
-use crate::client::Message;
+use crate::message::Message;
 
 /// Parameter generator.
 pub enum ParameterGenerator {
