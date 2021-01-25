@@ -1,6 +1,6 @@
-use crate::message::{CloseConnection, Message};
-use crate::parameter_generation::ParameterGenerator;
-use crate::shutdown::Shutdown;
+use crate::common::message::{CloseConnection, Message};
+use crate::common::parameter_generation::ParameterGenerator;
+use crate::common::shutdown::Shutdown;
 use crate::workloads::tatp::TatpGenerator;
 use crate::workloads::tpcc::TpccGenerator;
 use crate::Result;

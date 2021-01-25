@@ -1,7 +1,7 @@
-use crate::frame::Frame;
-use crate::parameter_generation::Generator;
-use crate::storage::row::Row;
-use crate::transaction::Transaction;
+use crate::common::frame::Frame;
+use crate::common::parameter_generation::Generator;
+use crate::common::transaction::Transaction;
+use crate::server::storage::row::Row;
 use crate::workloads::Internal;
 use crate::workloads::Workload;
 
@@ -11,7 +11,6 @@ use rand::seq::IteratorRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
-
 use std::sync::Arc;
 use tracing::{debug, info};
 

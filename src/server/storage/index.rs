@@ -2,7 +2,7 @@ extern crate chashmap;
 
 use std::fmt;
 
-use crate::storage::row::Row;
+use crate::server::storage::row::Row;
 use chashmap::CHashMap;
 use chashmap::{ReadGuard, WriteGuard};
 

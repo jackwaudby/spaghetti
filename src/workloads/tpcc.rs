@@ -3,10 +3,10 @@
 //! + Parameter generator.
 //! + Stored procedures.
 
-use crate::frame::Frame;
-use crate::parameter_generation::Generator;
-use crate::storage::row::Row;
-use crate::transaction::Transaction;
+use crate::common::frame::Frame;
+use crate::common::parameter_generation::Generator;
+use crate::common::transaction::Transaction;
+use crate::server::storage::row::Row;
 use crate::workloads::Internal;
 
 use bytes::Bytes;

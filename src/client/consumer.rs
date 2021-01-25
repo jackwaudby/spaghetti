@@ -1,5 +1,5 @@
-use crate::message::Response;
-use crate::shutdown::Shutdown;
+use crate::common::message::Response;
+use crate::common::shutdown::Shutdown;
 use crate::Result;
 
 use tracing::info;

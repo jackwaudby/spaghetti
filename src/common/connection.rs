@@ -1,4 +1,4 @@
-use crate::frame::{Frame, ParseError, ParseErrorKind};
+use crate::common::frame::{Frame, ParseError, ParseErrorKind};
 use crate::SpagError;
 
 use bytes::{Buf, BytesMut}; // traits for working with buffer implementations

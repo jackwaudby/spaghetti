@@ -1,6 +1,6 @@
 //! This trait is implemented on workloads transaction profiles.
 
-use crate::frame::Frame;
+use crate::common::frame::Frame;
 
 use std::any::Any;
 

@@ -1,7 +1,7 @@
-use crate::handler::Request;
-use crate::message::Response;
-use crate::pool::ThreadPool;
-use crate::scheduler::Scheduler;
+use crate::common::message::Response;
+use crate::server::handler::Request;
+use crate::server::pool::ThreadPool;
+use crate::server::scheduler::Scheduler;
 use crate::workloads::tatp;
 
 use std::sync::Arc;

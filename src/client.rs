@@ -1,9 +1,9 @@
 use crate::client::consumer::Consumer;
 use crate::client::handlers::{ReadHandler, WriteHandler};
 use crate::client::producer::Producer;
-use crate::connection::{ReadConnection, WriteConnection};
-use crate::message::{CloseConnection, Message, Response};
-use crate::transaction::Transaction;
+use crate::common::connection::{ReadConnection, WriteConnection};
+use crate::common::message::{CloseConnection, Message, Response};
+use crate::common::transaction::Transaction;
 use crate::Result;
 
 use config::Config;

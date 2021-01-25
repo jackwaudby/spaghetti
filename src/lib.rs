@@ -1,34 +1,11 @@
-pub mod message;
-
-pub mod handler;
-
-pub mod parameter_generation;
-
-pub mod pool;
-
-pub mod listener;
-
-pub mod scheduler;
-
-pub mod storage;
-
-pub mod queue;
+pub mod common;
 
 pub mod client;
 
 pub mod server;
 
-pub mod shutdown;
-
-pub mod frame;
-
-pub mod connection;
-
-pub mod transaction;
-
 pub mod workloads;
 
-pub mod manager;
 /// Error handling approach: boxing errors.
 /// Pros: simple and allows original errors to be preserved.
 /// Cons: the underlying error type is only know at runtime and is not statically determined.

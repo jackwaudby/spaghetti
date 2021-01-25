@@ -1,5 +1,5 @@
-use crate::frame::Frame;
-use crate::transaction::Transaction;
+use crate::common::frame::Frame;
+use crate::common::transaction::Transaction;
 use crate::workloads::tatp::TatpTransaction;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};

@@ -1,7 +1,7 @@
-use crate::storage::catalog::ColumnKind;
-use crate::storage::datatype::Data;
-use crate::storage::datatype::Field;
-use crate::storage::table::Table;
+use crate::server::storage::catalog::ColumnKind;
+use crate::server::storage::datatype::Data;
+use crate::server::storage::datatype::Field;
+use crate::server::storage::table::Table;
 
 use std::fmt;
 

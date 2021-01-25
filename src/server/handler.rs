@@ -1,16 +1,13 @@
-use crate::connection::{ReadConnection, WriteConnection};
-
-use crate::message::Response;
-use crate::shutdown::Shutdown;
-use crate::transaction::Transaction;
+use crate::common::connection::{ReadConnection, WriteConnection};
+use crate::common::message::{CloseConnection, ConnectionClosed, Response};
+use crate::common::shutdown::Shutdown;
+use crate::common::transaction::Transaction;
 use crate::workloads::{tatp, tpcc};
 use crate::Result;
 
 use config::Config;
-use core::fmt::Debug;
-
+use std::fmt::Debug;
 use std::marker::Unpin;
-
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::{debug, info};
@@ -92,7 +89,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
                         }
                         Err(_) => {
                             // Received a closed connection message.
-                            let closed: bincode::Result<crate::message::CloseConnection> =
+                            let closed: bincode::Result<CloseConnection> =
                                 bincode::deserialize(&frame.get_payload());
                             match closed {
                                 Ok(cc) => {
@@ -169,7 +166,7 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
             if let Ok(requests) = self.listen_rh_requests.try_recv() {
                 info!("Write handler received expected responses: {:?}", requests);
                 self.expected_responses_sent = Some(requests);
-                let closed = crate::message::ConnectionClosed;
+                let closed = ConnectionClosed;
                 let c = closed.into_frame();
                 info!("Send connection closed message");
 

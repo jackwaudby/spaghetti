@@ -6,7 +6,7 @@
 use std::fmt;
 use std::sync::Mutex;
 
-use crate::storage::catalog::Catalog;
+use crate::server::storage::catalog::Catalog;
 
 #[derive(Debug)]
 pub struct Table {

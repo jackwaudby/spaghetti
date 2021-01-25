@@ -1,10 +1,10 @@
 //! Used by client to generate transaction parameters.
 
-use crate::transaction::Transaction;
+use crate::common::transaction::Transaction;
 use crate::workloads::tatp::TatpGenerator;
 use crate::workloads::tpcc::TpccGenerator;
 
-use crate::message::Message;
+use crate::common::message::Message;
 
 /// Parameter generator.
 pub enum ParameterGenerator {

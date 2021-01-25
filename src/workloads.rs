@@ -1,6 +1,6 @@
-use crate::storage::catalog::Catalog;
-use crate::storage::index::Index;
-use crate::storage::table::Table;
+use crate::server::storage::catalog::Catalog;
+use crate::server::storage::index::Index;
+use crate::server::storage::table::Table;
 use crate::Result;
 
 use config::Config;
