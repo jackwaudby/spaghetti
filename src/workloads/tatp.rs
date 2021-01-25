@@ -327,6 +327,11 @@ impl Generator<TatpTransaction> for TatpGenerator {
                 TatpTransaction::DeleteCallForwarding(payload)
             }
         };
+
+        // TODO: Remove.
+        let dat = GetSubscriberData { s_id: 0 };
+        let transaction = TatpTransaction::GetSubscriberData(dat);
+
         Box::new(transaction)
     }
 }

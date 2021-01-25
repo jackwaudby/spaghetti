@@ -3,7 +3,7 @@ use crate::listener::Listener;
 use crate::manager::{self, TransactionManager};
 use crate::scheduler::Scheduler;
 use crate::transaction::Transaction;
-use crate::workloads::{tatp, Workload};
+use crate::workloads::Workload;
 
 use config::Config;
 use core::fmt::Debug;
@@ -11,7 +11,6 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
-use std::{thread, time};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{error, info};

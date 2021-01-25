@@ -1,5 +1,4 @@
 //! A custom threadpool implementation based on the example in the Rust book.
-use crate::workloads::tatp;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use tracing::{debug, info};

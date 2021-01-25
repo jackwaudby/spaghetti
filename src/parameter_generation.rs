@@ -4,6 +4,8 @@ use crate::transaction::Transaction;
 use crate::workloads::tatp::TatpGenerator;
 use crate::workloads::tpcc::TpccGenerator;
 
+use crate::client::Message;
+
 /// Parameter generator.
 pub enum ParameterGenerator {
     Tatp(TatpGenerator),
@@ -11,7 +13,7 @@ pub enum ParameterGenerator {
 }
 
 impl ParameterGenerator {
-    pub fn get_transaction(&mut self) -> Box<dyn Transaction + Send> {
+    pub fn get_transaction(&mut self) -> Message {
         use ParameterGenerator::*;
         match self {
             Tatp(ref mut gen) => gen.generate(),

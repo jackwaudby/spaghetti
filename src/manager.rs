@@ -3,7 +3,6 @@ use crate::pool::ThreadPool;
 use crate::scheduler::Scheduler;
 use crate::workloads::tatp;
 
-use crossbeam_queue::ArrayQueue;
 use std::sync::Arc;
 use std::thread;
 use tracing::info;
@@ -84,7 +83,7 @@ impl TransactionManager {
                                 // Package response.
                                 let resp = Response { payload: v };
                                 // Send to corresponding `WriteHandler`.
-                                request.response_sender.send(resp);
+                                request.response_sender.send(resp).unwrap();
                             }
                             _ => unimplemented!(),
                         }
@@ -97,10 +96,10 @@ impl TransactionManager {
             } else {
                 // Normal operation.
                 if let Ok(request) = self.work_rx.try_recv() {
-                    // Pass to thread pool.
+                    info!("Transaction manager received {:?}", request.transaction);
+                    info!("Submit to workers.");
                     let s = Arc::clone(&scheduler);
                     self.pool.execute(move || {
-                        info!("Execute {:?}", request);
                         match request.transaction {
                             tatp::TatpTransaction::GetSubscriberData(payload) => {
                                 // Register with scheduler.
@@ -111,8 +110,8 @@ impl TransactionManager {
                                 s.commit("txn1");
                                 // Package response.
                                 let resp = Response { payload: v };
-                                // Send to corresponding `WriteHandler`.
-                                request.response_sender.send(resp);
+                                info!("Send response {:?} to write handler", resp);
+                                request.response_sender.send(resp).unwrap();
                             }
                             _ => unimplemented!(),
                         }

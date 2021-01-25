@@ -252,7 +252,6 @@ impl Scheduler {
     fn release_lock(&self, key: &str, transaction_name: &str) {
         debug!("Retrieve lock information for {}", key);
         let mut lock_info = self.lock_table.get_mut(key).unwrap();
-        info!("{:?}", lock_info);
         // info!(
         //     "Releasing {:?} lock for transaction {:?}",
         //     lock_info.group_mode.unwrap(),

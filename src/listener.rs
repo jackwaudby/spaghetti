@@ -2,7 +2,6 @@ use crate::connection::{ReadConnection, WriteConnection};
 use crate::handler::{ReadHandler, WriteHandler};
 use crate::handler::{Request, Response};
 use crate::shutdown::Shutdown;
-use crate::workloads::tatp;
 use crate::Result;
 
 use config::Config;
@@ -66,14 +65,18 @@ impl Listener {
                 tokio::sync::mpsc::UnboundedReceiver<Response>,
             ) = tokio::sync::mpsc::unbounded_channel();
 
+            let (sender, receiver) = tokio::sync::oneshot::channel::<u32>();
+
             // Create per-connection handler state.
             // Split socket into reader and writer handlers.
             let (rd, wr) = io::split(socket);
 
             let mut read_handler = ReadHandler {
                 connection: ReadConnection::new(rd),
-                shutdown: Shutdown::new(self.notify_handlers_tx.subscribe()),
+                requests: 0,
+                shutdown: Shutdown::new_broadcast(self.notify_handlers_tx.subscribe()),
                 response_tx,
+                notify_wh_requests: Some(sender),
                 work_tx: work_tx.clone(),
                 _notify_tm_tx: notify_tm_tx.clone(),
             };
@@ -81,7 +84,10 @@ impl Listener {
             let mut write_handler = WriteHandler {
                 connection: WriteConnection::new(wr),
                 response_rx,
-                shutdown: Shutdown::new(notify_wh_tx.subscribe()),
+                responses_sent: 0,
+                expected_responses_sent: None,
+                listen_rh_requests: receiver,
+                shutdown: Shutdown::new_broadcast(notify_wh_tx.subscribe()),
                 _notify_listener_tx: notify_listener_tx.clone(),
             };
 
