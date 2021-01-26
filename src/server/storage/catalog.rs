@@ -152,7 +152,7 @@ mod tests {
     use crate::common::error::SpaghettiError;
 
     #[test]
-    fn schema() {
+    fn catalog() {
         // create  column
         let int = Column::new("id", ColumnKind::Int);
 
