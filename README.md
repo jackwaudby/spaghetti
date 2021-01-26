@@ -1,4 +1,4 @@
-[![Build Status](https://github.com/jackwaudby/spaghetti/workflows/ci/badge.svg)](https://github.com/jackwaudby/spaghetti/actions)
+[![Build Status](https://img.shields.io/github/workflow/status/jackwaudby/spaghetti/actions)]
 
 # Spaghetti: Yet Another Concurrency Control Evaluation Framework
 
