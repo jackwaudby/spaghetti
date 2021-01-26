@@ -42,7 +42,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     info!("Populate tables and indexes");
     let mut rng: StdRng = SeedableRng::from_entropy();
-    workload.populate_tables(&mut rng);
+    workload.populate_tables(&mut rng)?;
     info!("Tables loaded");
 
     info!("Initialise listener");

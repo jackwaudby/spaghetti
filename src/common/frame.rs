@@ -80,7 +80,7 @@ fn get_u8(src: &mut Cursor<&[u8]>) -> Result<u8, ParseError> {
 }
 
 /// Represents a parsing frame error.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct ParseError {
     pub kind: ParseErrorKind,
 }

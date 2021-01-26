@@ -9,7 +9,7 @@ use std::error;
 use std::fmt;
 
 // Represents a Spaghetti error.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SpaghettiError {
     /// Not enough data available in read buffer to parse message.
     Incomplete,
@@ -51,7 +51,15 @@ impl fmt::Display for SpaghettiError {
     }
 }
 
-impl error::Error for SpaghettiError {}
+impl error::Error for SpaghettiError {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        use SpaghettiError::*;
+        match *self {
+            ColumnNotFound => Some(self),
+            _ => unimplemented!(),
+        }
+    }
+}
 
 // Implement the conversion from ParseError to SpaghettiError
 impl From<ParseError> for SpaghettiError {

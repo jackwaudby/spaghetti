@@ -105,7 +105,7 @@ mod tests {
 
     use super::*;
 
-    use crate::storage::row::Row;
+    use crate::server::storage::row::Row;
     use std::sync::Arc;
 
     #[test]

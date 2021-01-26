@@ -110,7 +110,7 @@ impl fmt::Display for Row {
 mod tests {
 
     use super::*;
-    use crate::storage::catalog::Catalog;
+    use crate::server::storage::catalog::Catalog;
 
     #[test]
     fn row() {
@@ -124,12 +124,12 @@ mod tests {
         let mut row = Row::new(Arc::new(table));
         assert_eq!(row.get_primary_key(), 0);
         assert_eq!(row.get_row_id(), 0);
-        assert_eq!(row.get_value("name".to_string()), None);
-        row.set_value("year", "2019".to_string());
-        assert_eq!(row.get_value("year".to_string()), Some("2019".to_string()));
-        row.set_value("name", "el camino".to_string());
+        assert_eq!(row.get_value("name").unwrap(), None);
+        row.set_value("year", "2019").unwrap();
+        assert_eq!(row.get_value("year").unwrap(), Some("2019".to_string()));
+        row.set_value("name", "el camino").unwrap();
         assert_eq!(
-            row.get_value("name".to_string()),
+            row.get_value("name").unwrap(),
             Some("el camino".to_string())
         );
     }

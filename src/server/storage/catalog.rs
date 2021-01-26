@@ -149,6 +149,7 @@ impl fmt::Display for ColumnKind {
 mod tests {
 
     use super::*;
+    use crate::common::error::SpaghettiError;
 
     #[test]
     fn schema() {
@@ -165,17 +166,18 @@ mod tests {
         catalog.add_column(("desc", "string"));
 
         assert_eq!(catalog.columns.len(), 3);
+        assert_eq!(catalog.column_position_by_name("price").unwrap(), 1);
         assert_eq!(
-            catalog.column_position_by_name("price".to_string()),
-            Some(1)
+            *catalog
+                .column_position_by_name("location")
+                .unwrap_err()
+                .downcast::<SpaghettiError>()
+                .unwrap(),
+            SpaghettiError::ColumnNotFound
         );
         assert_eq!(
-            catalog.column_position_by_name("location".to_string()),
-            None
-        );
-        assert_eq!(
-            catalog.column_type_by_name("desc".to_string()),
-            Some(&ColumnKind::VarChar)
+            catalog.column_type_by_name("desc").unwrap(),
+            &ColumnKind::VarChar
         );
     }
 }
