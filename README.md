@@ -1,3 +1,5 @@
+[![Build Status](https://github.com/jackwaudby/spaghetti/workflows/ci/badge.svg)](https://github.com/jackwaudby/spaghetti/actions)
+
 # Spaghetti: Yet Another Concurrency Control Evaluation Framework
 
 Set configuration in `Settings.toml`.
