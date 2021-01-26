@@ -1,4 +1,5 @@
 ![GitHub Workflow Status](https://img.shields.io/github/workflow/status/jackwaudby/spaghetti/Rust?logo=Github)
+![Codecov](https://img.shields.io/codecov/c/github/jackwaudby/spaghetti?logo=codecov)
 
 # Spaghetti: Yet Another Concurrency Control Evaluation Framework
 
