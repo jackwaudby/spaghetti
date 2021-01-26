@@ -77,7 +77,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
 
             // Attempt to deserialise `Frame`.
             // If  `CloseConnection` then exit break
-            let workload = config.get_str("workload").unwrap();
+            let workload = config.get_str("workload")?;
             match workload.as_str() {
                 "tatp" => {
                     let decoded: bincode::Result<tatp::TatpTransaction> =

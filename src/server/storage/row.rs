@@ -2,7 +2,7 @@ use crate::server::storage::catalog::ColumnKind;
 use crate::server::storage::datatype::Data;
 use crate::server::storage::datatype::Field;
 use crate::server::storage::table::Table;
-
+use crate::Result;
 use std::fmt;
 
 use std::sync::Arc;
@@ -55,37 +55,33 @@ impl Row {
     }
 
     /// Set the value of a field in a row.
-    pub fn set_value(&mut self, col_name: &str, col_value: String) {
-        let col_name = String::from(col_name);
+    pub fn set_value(&mut self, col_name: &str, col_value: &str) -> Result<()> {
+        // Get handle to table.
         let table = Arc::clone(&self.table);
-
-        let temp = col_name.clone();
-
-        let field_index = match table.schema().column_position_by_name(col_name) {
-            Some(f) => f,
-            None => panic!("field does not exist: {:?}", temp),
-        };
+        // Get index of field in row.
+        let field_index = table.schema().column_position_by_name(col_name)?;
         let field_type = table.schema().column_type_by_index(field_index);
-
-        let x = match field_type {
-            ColumnKind::VarChar => Data::VarChar(col_value),
-            ColumnKind::Int => Data::Int(match col_value.parse::<i64>() {
-                Ok(val) => val,
-                Err(e) => panic!("{}", e),
-            }),
-            ColumnKind::Double => Data::Double(col_value.parse::<f64>().unwrap()),
+        // Convert value to spaghetti data type.
+        let value = match field_type {
+            ColumnKind::VarChar => Data::VarChar(col_value.to_string()),
+            ColumnKind::Int => Data::Int(col_value.parse::<i64>()?),
+            ColumnKind::Double => Data::Double(col_value.parse::<f64>()?),
         };
-
-        self.fields[field_index].set(x);
+        // Set value.
+        self.fields[field_index].set(value);
+        Ok(())
     }
 
     /// Get the value of a field in a row.
-    pub fn get_value(&self, col_name: String) -> Option<String> {
+    pub fn get_value(&self, col_name: &str) -> Result<Option<String>> {
+        // Get reference to table row resides in.
         let table = Arc::clone(&self.table);
-
-        let field_index = table.schema().column_position_by_name(col_name).unwrap();
+        // Get index of field in row.
+        let field_index = table.schema().column_position_by_name(col_name)?;
+        // Get field.
         let field = &self.fields[field_index];
-        field.get()
+        // Copy value.
+        Ok(field.get())
     }
 }
 

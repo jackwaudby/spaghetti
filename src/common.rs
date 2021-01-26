@@ -9,3 +9,5 @@ pub mod transaction;
 pub mod parameter_generation;
 
 pub mod frame;
+
+pub mod error;

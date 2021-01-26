@@ -4,11 +4,11 @@ use config::Config;
 use spaghetti::server;
 use std::sync::Arc;
 
-use tracing::Level;
+use tracing::{error, Level};
 use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> spaghetti::Result<()> {
     // Read command line arguments using clap macro.
     let matches = clap_app!( spag =>
     (version: "0.1.0")
@@ -25,22 +25,22 @@ async fn main() {
     // If configuration file is not provided use the default in `Settings.toml`
     let file = matches.value_of("config").unwrap_or("Settings.toml");
     let mut settings = Config::default();
-    settings.merge(config::File::with_name(file)).unwrap();
+    settings.merge(config::File::with_name(file))?;
 
     // For each flag overwrite default with any supplied runtime value.
     if let Some(p) = matches.value_of("port") {
-        settings.set("port", p).unwrap();
+        settings.set("port", p)?;
     }
 
     if let Some(a) = matches.value_of("address") {
-        settings.set("address", a).unwrap();
+        settings.set("address", a)?;
     }
 
     if let Some(l) = matches.value_of("log") {
-        settings.set("log", l).unwrap();
+        settings.set("log", l)?;
     }
 
-    let level = match settings.get_str("log").unwrap().as_str() {
+    let level = match settings.get_str("log")?.as_str() {
         "info" => Level::INFO,
         "debug" => Level::DEBUG,
         "trace" => Level::TRACE,
@@ -56,5 +56,8 @@ async fn main() {
     // This is ok as configuration never changes at runtime.
     let config = Arc::new(settings);
 
-    server::run(config.clone()).await
+    server::run(config.clone()).await.unwrap_or_else(|error| {
+        error!("{:?}", error);
+    });
+    Ok(())
 }

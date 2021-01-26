@@ -1,5 +1,7 @@
 //! A `Catalog` contains the schema of a `Table`.
 
+use crate::common::error::SpaghettiError;
+use crate::Result;
 use std::fmt;
 
 #[derive(Debug)]
@@ -46,17 +48,18 @@ impl Catalog {
     }
 
     /// Given a column name returns the column position.
-    pub fn column_position_by_name(&self, name: String) -> Option<usize> {
-        self.columns.iter().position(|x| *x.name() == name)
+    pub fn column_position_by_name(&self, name: &str) -> Result<usize> {
+        match self.columns.iter().position(|x| *x.name() == name) {
+            Some(pos) => Ok(pos),
+            None => Err(Box::new(SpaghettiError::ColumnNotFound)),
+        }
     }
 
     /// Given a column name returns the column type.
-    pub fn column_type_by_name(&self, col_name: String) -> Option<&ColumnKind> {
-        let pos = self.column_position_by_name(col_name);
-        match pos {
-            Some(i) => Some(&self.columns[i].kind()),
-            None => None,
-        }
+    pub fn column_type_by_name(&self, col_name: &str) -> Result<&ColumnKind> {
+        let pos = self.column_position_by_name(col_name)?;
+        let column_type = self.columns[pos].kind();
+        Ok(column_type)
     }
 
     /// Given a column position returns the column type.

@@ -4,6 +4,7 @@ use crate::common::transaction::Transaction;
 use crate::server::storage::row::Row;
 use crate::workloads::Internal;
 use crate::workloads::Workload;
+use crate::Result;
 
 use bytes::Bytes;
 use rand::rngs::StdRng;
@@ -21,66 +22,68 @@ pub mod helper;
 //////////////////////////////
 
 /// Populate tables.
-pub fn populate_tables(data: &Internal, rng: &mut StdRng) {
-    populate_subscriber_table(data, rng);
-    populate_access_info(data, rng);
-    populate_special_facility_call_forwarding(data, rng);
+pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
+    populate_subscriber_table(data, rng)?;
+    populate_access_info(data, rng)?;
+    populate_special_facility_call_forwarding(data, rng)?;
+    Ok(())
 }
 
 /// Populate the `Subscriber` table.
 ///
 /// Schema:
 /// Primary key: s_id
-pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) {
+pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     info!("Loading subscriber table");
-    let s_name = String::from("subscriber");
-    let t = data.tables.get(&s_name).unwrap();
-    let i_name = t.get_primary_index().unwrap();
-    let i = data.indexes.get(&i_name).unwrap();
+    let s_name = "subscriber";
+    let t = data.get_table(s_name)?;
+    let i_name = t.get_primary_index()?;
+    let i = data.get_index(&i_name)?;
 
-    let subs = data.config.get_int("subscribers").unwrap() as u64;
+    let subs = data.config.get_int("subscribers")? as u64;
     for s_id in 0..subs {
         let mut row = Row::new(Arc::clone(&t));
         row.set_primary_key(s_id);
-        row.set_value("s_id", s_id.to_string());
-        row.set_value("sub_nbr", helper::to_sub_nbr(s_id));
+        row.set_value("s_id", &s_id.to_string())?;
+        row.set_value("sub_nbr", &helper::to_sub_nbr(s_id))?;
         for i in 1..10 {
             row.set_value(
                 format!("bit_{}", i).as_str(),
-                rng.gen_range(0..=1).to_string(),
-            );
+                &rng.gen_range(0..=1).to_string(),
+            )?;
             row.set_value(
                 format!("hex_{}", i).as_str(),
-                rng.gen_range(0..=15).to_string(),
-            );
+                &rng.gen_range(0..=15).to_string(),
+            )?;
             row.set_value(
                 format!("byte_2_{}", i).as_str(),
-                rng.gen_range(0..=255).to_string(),
-            );
+                &rng.gen_range(0..=255).to_string(),
+            )?;
         }
-        row.set_value("msc_location", rng.gen_range(1..=2 ^ 32 - 1).to_string());
-        row.set_value("vlr_location", rng.gen_range(1..=2 ^ 32 - 1).to_string());
+        row.set_value("msc_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
+        row.set_value("vlr_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
         debug!("{}", row);
         i.index_insert(s_id, row);
     }
     info!("Loaded {} rows into subscriber", t.get_next_row_id());
+    Ok(())
 }
 
 /// Populate the `AccessInfo` table.
 ///
 /// Schema: (int,s_id) (int,ai_type) (int,data_1) (int,data_2) (string,data_3) (string,data_4)
 /// Primary key: (s_id, ai_type)
-pub fn populate_access_info(data: &Internal, rng: &mut StdRng) {
+pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
     info!("Loading access_info table");
     // Get handle to `Table` and `Index`.
-    let ai_name = String::from("access_info");
-    let t = data.tables.get(&ai_name).unwrap();
-    let i_name = t.get_primary_index().unwrap();
-    let i = data.indexes.get(&i_name).unwrap();
+    let ai_name = "access_info";
+    let t = data.get_table(ai_name)?;
+    let i_name = t.get_primary_index()?;
+    let i = data.get_index(&i_name)?;
 
     // Range of values for ai_type records.
     let ai_type_values = vec![1, 2, 3, 4];
-    let subscribers = data.config.get_int("subscribers").unwrap() as u64;
+    let subscribers = data.config.get_int("subscribers")? as u64;
     for s_id in 0..subscribers {
         // Generate number of records for a given s_id.
         let n_ai = rng.gen_range(1..=4);
@@ -92,17 +95,18 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) {
             // Calculate primary key
             let pk = helper::access_info_key(s_id, *sample[record]);
             row.set_primary_key(pk);
-            row.set_value("s_id", s_id.to_string());
-            row.set_value("ai_type", sample[record].to_string());
-            row.set_value("data_1", rng.gen_range(0..=255).to_string());
-            row.set_value("data_2", rng.gen_range(0..=255).to_string());
-            row.set_value("data_3", helper::get_data_x(3, rng));
-            row.set_value("data_4", helper::get_data_x(5, rng));
+            row.set_value("s_id", &s_id.to_string())?;
+            row.set_value("ai_type", &sample[record].to_string())?;
+            row.set_value("data_1", &rng.gen_range(0..=255).to_string())?;
+            row.set_value("data_2", &rng.gen_range(0..=255).to_string())?;
+            row.set_value("data_3", &helper::get_data_x(3, rng))?;
+            row.set_value("data_4", &helper::get_data_x(5, rng))?;
             debug!("{}", row);
             i.index_insert(pk, row);
         }
     }
     info!("Loaded {} rows into access_info", t.get_next_row_id());
+    Ok(())
 }
 
 /// Populate the `SpecialFacility` table and `CallForwarding` table.
@@ -117,20 +121,20 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) {
 /// Schema:
 ///
 /// Primary key:
-pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdRng) {
+pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdRng) -> Result<()> {
     info!("Loading special_facility table");
     info!("Loading call_forwarding table");
     // Get handle to `Table` and `Index`.
-    let sf_name = String::from("special_facility");
-    let t = data.tables.get(&sf_name).unwrap();
-    let i_name = t.get_primary_index().unwrap();
-    let i = data.indexes.get(&i_name).unwrap();
+    let sf_name = "special_facility";
+    let t = data.get_table(sf_name)?;
+    let i_name = t.get_primary_index()?;
+    let i = data.get_index(&i_name)?;
 
     // Get handle to `CallForwarding` and `Index`.
-    let cf_name = String::from("call_forwarding");
-    let cf_t = data.tables.get(&cf_name).unwrap();
-    let cf_i_name = cf_t.get_primary_index().unwrap();
-    let cf_i = data.indexes.get(&cf_i_name).unwrap();
+    let cf_name = "call_forwarding";
+    let cf_t = data.get_table(cf_name)?;
+    let cf_i_name = cf_t.get_primary_index()?;
+    let cf_i = data.get_index(&cf_i_name)?;
 
     // Range of values for ai_type records.
     let sf_type_values = vec![1, 2, 3, 4];
@@ -138,7 +142,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
     // Range of values for start_time.
     let start_time_values = vec![0, 8, 16];
 
-    let subscribers = data.config.get_int("subscribers").unwrap() as u64;
+    let subscribers = data.config.get_int("subscribers")? as u64;
     for s_id in 0..subscribers {
         // Generate number of records for a given s_id.
         let n_sf = rng.gen_range(1..=4);
@@ -152,12 +156,12 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
             // Calculate primary key
             let pk = helper::special_facility_key(s_id, *sample[record], is_active);
             row.set_primary_key(pk);
-            row.set_value("s_id", s_id.to_string());
-            row.set_value("sf_type", sample[record].to_string());
-            row.set_value("is_active", is_active.to_string());
-            row.set_value("error_cntrl", rng.gen_range(0..=255).to_string());
-            row.set_value("data_a", rng.gen_range(0..=255).to_string());
-            row.set_value("data_b", helper::get_data_x(5, rng));
+            row.set_value("s_id", &s_id.to_string())?;
+            row.set_value("sf_type", &sample[record].to_string())?;
+            row.set_value("is_active", &is_active.to_string())?;
+            row.set_value("error_cntrl", &rng.gen_range(0..=255).to_string())?;
+            row.set_value("data_a", &rng.gen_range(0..=255).to_string())?;
+            row.set_value("data_b", &helper::get_data_x(5, rng))?;
             debug!("{}", row);
             i.index_insert(pk, row);
 
@@ -179,10 +183,10 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                 // Initialise empty row.
                 let mut row = Row::new(Arc::clone(&cf_t));
                 row.set_primary_key(pk);
-                row.set_value("s_id", s_id.to_string());
-                row.set_value("start_time", st.to_string());
-                row.set_value("end_time", et.to_string());
-                row.set_value("number_x", nx);
+                row.set_value("s_id", &s_id.to_string())?;
+                row.set_value("start_time", &st.to_string())?;
+                row.set_value("end_time", &et.to_string())?;
+                row.set_value("number_x", &nx)?;
                 debug!("{}", row);
                 cf_i.index_insert(pk, row);
             }
@@ -193,13 +197,14 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
         "Loaded {} rows into call_forwarding",
         cf_t.get_next_row_id()
     );
+    Ok(())
 }
 
 /////////////////////////////////////
 /// Stored Procedures. ///
 /////////////////////////////////////
 
-pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> String {
+pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> Result<String> {
     debug!(
         "  SELECT s_id, sub_nbr,
             bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
@@ -214,14 +219,19 @@ pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> String {
         s_id
     );
 
-    match *workload {
+    let result = match *workload {
         Workload::Tatp(ref internals) => {
             let key = s_id;
-            let index = internals.indexes.get("sub_idx").unwrap();
+            let index = internals.get_index("sub_idx")?;
             let row = index.index_read(key).unwrap();
-            row.get_value("sub_nbr".to_string()).unwrap()
+            row.get_value("sub_nbr")?
         }
-        Workload::Tpcc(ref _internals) => String::from("test"),
+        Workload::Tpcc(ref _internals) => Some(String::from("test")),
+    };
+
+    match result {
+        Some(res) => Ok(res),
+        None => Ok("null".to_string()),
     }
 }
 

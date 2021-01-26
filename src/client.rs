@@ -3,7 +3,6 @@ use crate::client::handlers::{ReadHandler, WriteHandler};
 use crate::client::producer::Producer;
 use crate::common::connection::{ReadConnection, WriteConnection};
 use crate::common::message::{CloseConnection, Message, Response};
-use crate::common::transaction::Transaction;
 use crate::Result;
 
 use config::Config;
@@ -19,7 +18,7 @@ pub mod consumer;
 
 pub mod handlers;
 
-/// Runs the client.
+/// Run `spaghetti` client.
 pub async fn run(config: Arc<Config>) -> Result<()> {
     //// Shutdown channels. ////
     // `Producer` to `WriteHandler`.
@@ -31,7 +30,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     //// Work channels. ////
     // `Producer` to `WriteHandler`.
-    let mpsc_size = config.get_int("mpsc_size").unwrap();
+    let mpsc_size = config.get_int("mpsc_size")?;
     let (write_task_tx, write_task_rx): (Sender<Message>, Receiver<Message>) =
         mpsc::channel(mpsc_size as usize);
     // `ReadHandler` to `Consumer`.
@@ -44,15 +43,13 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         write_task_tx,
         notify_wh_tx,
         listen_c_rx,
-    );
+    )?;
 
     //// Handlers ////
     // Open a connection to the server.
-    let add = config.get_str("address").unwrap();
-    let port = config.get_str("port").unwrap();
-    let socket = TcpStream::connect(&format!("{}:{}", add, port)[..])
-        .await
-        .unwrap();
+    let add = config.get_str("address")?;
+    let port = config.get_str("port")?;
+    let socket = TcpStream::connect(&format!("{}:{}", add, port)[..]).await?;
     info!("Client connected to server at {}:{}", add, port);
     // Split socket into reader and writer handlers.
     let (rd, wr) = io::split(socket);
@@ -121,12 +118,12 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     //// Consumer ////
     let mut c = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx);
     tokio::spawn(async move {
-        c.run().await;
+        c.run().await.unwrap();
     });
 
     // Run producer.
     info!("Start producer");
-    producer.run().await.unwrap();
+    producer.run().await?;
 
     // Drop shutdown channel to write handler.
     let Producer {

@@ -54,7 +54,7 @@ impl Scheduler {
                 let index = self.data.get_internals().indexes.get("sub_idx").unwrap();
                 let pk = key.parse::<u64>().unwrap();
                 let row = index.index_read(pk).unwrap();
-                let value = row.get_value("sub_nbr".to_string()).unwrap();
+                let value = row.get_value("sub_nbr").unwrap().unwrap();
                 Ok(value)
             }
             LockRequest::Delay(pair) => {
@@ -67,7 +67,7 @@ impl Scheduler {
                 info!("Read lock granted");
                 let index = self.data.get_internals().indexes.get("sub_idx").unwrap();
                 let row = index.index_read(1).unwrap();
-                let value = row.get_value("sub_nbr".to_string()).unwrap();
+                let value = row.get_value("sub_nbr").unwrap().unwrap();
                 Ok(value)
             }
             LockRequest::Denied => {

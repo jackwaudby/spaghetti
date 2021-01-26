@@ -1,5 +1,4 @@
 //! A `Field` contains `Data` and is stored in a `Row`.
-
 use std::fmt;
 
 #[derive(Debug)]

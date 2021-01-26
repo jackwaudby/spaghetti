@@ -1,13 +1,8 @@
-//! The entry point for a Spaghetti client.
-//! An mpsc channel is used to manage the client connection to the server.
-//! Producers send transaction requests to the consumer which sends the over its TCP connection.
-//! Producers send a oneshot channel with the request in order to receive the response to its request.
-use spaghetti::client;
-
+//! Entry point for a `spaghetti` client.
 use clap::clap_app;
 use config::Config;
+use spaghetti::client;
 use std::sync::Arc;
-
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -30,39 +25,38 @@ async fn main() -> spaghetti::Result<()> {
     // If configuration file is not provided use the default in `Settings.toml`
     let file = matches.value_of("config").unwrap_or("Settings.toml");
     let mut settings = Config::default();
-    settings.merge(config::File::with_name(file)).unwrap();
+    settings.merge(config::File::with_name(file))?;
 
     // For each flag overwrite default with any supplied runtime value.
     if let Some(p) = matches.value_of("port") {
-        settings.set("port", p).unwrap();
+        settings.set("port", p)?;
     }
 
     if let Some(a) = matches.value_of("address") {
-        settings.set("address", a).unwrap();
+        settings.set("address", a)?;
     }
 
     if let Some(l) = matches.value_of("log") {
-        settings.set("log", l).unwrap();
+        settings.set("log", l)?;
     }
 
-    let level = match settings.get_str("log").unwrap().as_str() {
+    let level = match settings.get_str("log")?.as_str() {
         "info" => Level::INFO,
         "debug" => Level::DEBUG,
         "trace" => Level::TRACE,
         _ => Level::WARN,
     };
 
-    // All spans/events with a level higher than TRACE written to stdout.
+    // Initialise logging.
     let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
-
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     info!("Initialising client");
     // Wrap configuration in atomic shared reference.
-    // This is ok as configuration never changes at runtime.
+    // Ok as configuration never changes at runtime.
     let config = Arc::new(settings);
 
-    client::run(config).await;
+    client::run(config).await?;
 
     Ok(())
 }

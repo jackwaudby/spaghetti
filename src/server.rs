@@ -4,6 +4,7 @@ use crate::server::listener::Listener;
 use crate::server::manager::TransactionManager;
 use crate::server::scheduler::Scheduler;
 use crate::workloads::Workload;
+use crate::Result;
 
 use config::Config;
 use core::fmt::Debug;
@@ -33,14 +34,11 @@ pub mod manager;
 ///
 /// Accepts connection on the listener address, spawns handler for each.
 /// ctrl-c triggers the shutdown.
-pub async fn run(config: Arc<Config>) {
-    info!(
-        "Initialise {:?} workload",
-        config.get_str("workload").unwrap()
-    );
+pub async fn run(config: Arc<Config>) -> Result<()> {
+    info!("Initialise {:?} workload", config.get_str("workload")?);
 
     info!("Initialise tables and indexes");
-    let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
+    let workload = Arc::new(Workload::new(Arc::clone(&config))?);
 
     info!("Populate tables and indexes");
     let mut rng: StdRng = SeedableRng::from_entropy();
@@ -48,11 +46,10 @@ pub async fn run(config: Arc<Config>) {
     info!("Tables loaded");
 
     info!("Initialise listener");
-    let add = config.get_str("address").unwrap();
-    let port = config.get_str("port").unwrap();
-    let listener = TcpListener::bind(format!("{}:{}", add, port))
-        .await
-        .unwrap();
+    let add = config.get_str("address")?;
+    let port = config.get_str("port")?;
+    let listener = TcpListener::bind(format!("{}:{}", add, port)).await?;
+
     ////// Shutdown //////
     // Broadcast channel between listener and handlers, informing active connections of
     // shutdown. A -> A.
@@ -133,6 +130,7 @@ pub async fn run(config: Arc<Config>) {
 
     listener_rx.recv().await;
     info!("Clean shutdown");
+    Ok(())
 }
 
 impl Debug for dyn Transaction + Send {

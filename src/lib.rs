@@ -16,7 +16,6 @@ pub mod workloads;
 /// std::error::Error is implemented for parse::Error so it can be converted to a boxed error.
 ///
 /// TODO: explore using a specific error type for spaghetti, wrapping all errors.
-pub type SpagError = Box<dyn std::error::Error + Send + Sync>;
 
 /// Result type alias.
-pub type Result<T> = std::result::Result<T, SpagError>;
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;

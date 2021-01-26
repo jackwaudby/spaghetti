@@ -1,3 +1,4 @@
+use crate::common::error::SpaghettiError;
 use crate::common::message::{CloseConnection, Message};
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::shutdown::Shutdown;
@@ -10,8 +11,11 @@ use std::sync::Arc;
 use tokio::signal;
 use tracing::info;
 
-// Spawned by client's main thread.
-// Shutdown broadcast channel: main -> producer.
+/// `Producer` generates transactions and sends them to the `client`s write socket.
+///
+/// Spawned by `client` and lives on its main thread.
+/// Generates transactions until the specified amount is produced or the `client`
+/// receives a keyboard interrupt.
 pub struct Producer {
     /// Parameter generator.
     generator: ParameterGenerator,
@@ -36,14 +40,14 @@ impl Producer {
         write_task_tx: tokio::sync::mpsc::Sender<Message>,
         notify_wh_tx: tokio::sync::mpsc::Sender<()>,
         listen_c_rx: tokio::sync::mpsc::Receiver<()>,
-    ) -> Producer {
+    ) -> Result<Producer> {
         // Get workload type.
-        let workload = configuration.get_str("workload").unwrap();
+        let workload = configuration.get_str("workload")?;
         // Create generator.
         let generator = match workload.as_str() {
             "tatp" => {
                 // Get necessary initialise parameters.
-                let subscribers = configuration.get_int("subscribers").unwrap();
+                let subscribers = configuration.get_int("subscribers")?;
                 let gen = TatpGenerator::new(subscribers as u64);
                 ParameterGenerator::Tatp(gen)
             }
@@ -55,19 +59,19 @@ impl Producer {
                 };
                 ParameterGenerator::Tpcc(tpcc_gen)
             }
-            _ => panic!("Workload not recognised, parameter generator can not be initialised."),
+            _ => return Err(Box::new(SpaghettiError::IncorrectWorkload)),
         };
         // Get transaction to generate.
-        let transactions = configuration.get_int("transactions").unwrap() as u32;
+        let transactions = configuration.get_int("transactions")? as u32;
         // Create shutdown listener.
         let listen_c_rx = Shutdown::new_mpsc(listen_c_rx);
-        Producer {
+        Ok(Producer {
             generator,
             transactions,
             write_task_tx,
             notify_wh_tx,
             listen_c_rx,
-        }
+        })
     }
 
     /// Run the producer.

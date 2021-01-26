@@ -1,5 +1,4 @@
 use crate::common::frame::{Frame, ParseError, ParseErrorKind};
-use crate::SpagError;
 
 use bytes::{Buf, BytesMut}; // traits for working with buffer implementations
 use std::io::Cursor;
@@ -31,7 +30,7 @@ impl Connection {
     // - Ok(Some(frame)) if frame can be read.
     // - Ok(None) if the connection is closed.
     // - Error if there has been an encoding error.
-    pub async fn read_frame(&mut self) -> Result<Option<Frame>, SpagError> {
+    pub async fn read_frame(&mut self) -> crate::Result<Option<Frame>> {
         loop {
             debug!("Attempt to parse");
             // Attempt to parse a frame from buffered data.
@@ -52,12 +51,15 @@ impl Connection {
                             } else {
                                 debug!("Partial frame");
                                 // Remote closed while sending a frame.
-                                return Err(ParseError::new(ParseErrorKind::CorruptedFrame).into());
+                                return Err(Box::new(ParseError::new(
+                                    ParseErrorKind::CorruptedFrame,
+                                )));
                             }
                         }
                     }
                     ParseErrorKind::CorruptedFrame => return Err(Box::new(e)),
                     ParseErrorKind::Invalid => return Err(Box::new(e)),
+                    ParseErrorKind::Serialisation(_) => return Err(Box::new(e)),
                 },
             }
         }
@@ -83,10 +85,10 @@ impl Connection {
         Ok(frame)
     }
 
-    pub async fn write_frame(&mut self, frame: &Frame) -> Result<(), std::io::Error> {
+    pub async fn write_frame(&mut self, frame: &Frame) -> crate::Result<()> {
         // Get length and serialize
         let len = frame.payload.len();
-        let lens: Vec<u8> = bincode::serialize(&len).unwrap().into();
+        let lens: Vec<u8> = bincode::serialize(&len)?.into();
         // Write data to stream in the background
         self.stream.write_all(b"$").await?;
         self.stream.write_all(&lens[..]).await?;
@@ -94,7 +96,8 @@ impl Connection {
         self.stream.write_all(&frame.payload).await?;
         self.stream.write_all(b"\r\n").await?;
         // Flush from buffer to socket
-        self.stream.flush().await
+        self.stream.flush().await?;
+        Ok(())
     }
 }
 
@@ -110,11 +113,11 @@ impl<W: AsyncWrite + Unpin> WriteConnection<W> {
         WriteConnection { stream }
     }
 
-    pub async fn write_frame(&mut self, frame: &Frame) -> Result<(), SpagError> {
+    pub async fn write_frame(&mut self, frame: &Frame) -> crate::Result<()> {
         info!("Serializing.");
         // Get length and serialize
         let len = frame.payload.len();
-        let lens: Vec<u8> = bincode::serialize(&len).unwrap().into();
+        let lens: Vec<u8> = bincode::serialize(&len)?.into();
         // Write data to stream in the background
         self.stream.write_all(b"$").await?;
         self.stream.write_all(&lens[..]).await?;
@@ -124,7 +127,8 @@ impl<W: AsyncWrite + Unpin> WriteConnection<W> {
         // Flush from buffer to socket
         info!("Flushing to stream.");
 
-        self.stream.flush().await.map_err(|e| e.into())
+        self.stream.flush().await?;
+        Ok(())
     }
 }
 
@@ -148,7 +152,7 @@ impl<R: AsyncRead + Unpin> ReadConnection<R> {
     // - Ok(Some(frame)) if frame can be read.
     // - Ok(None) if the connection is closed.
     // - Error if there has been an encoding error.
-    pub async fn read_frame(&mut self) -> Result<Option<Frame>, SpagError> {
+    pub async fn read_frame(&mut self) -> crate::Result<Option<Frame>> {
         loop {
             debug!("Attempt to parse");
             // Attempt to parse a frame from buffered data.
@@ -175,6 +179,7 @@ impl<R: AsyncRead + Unpin> ReadConnection<R> {
                     }
                     ParseErrorKind::CorruptedFrame => return Err(Box::new(e)),
                     ParseErrorKind::Invalid => return Err(Box::new(e)),
+                    ParseErrorKind::Serialisation(_) => return Err(Box::new(e)),
                 },
             }
         }

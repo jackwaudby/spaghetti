@@ -91,7 +91,7 @@ impl ParseError {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum ParseErrorKind {
     /// Not enough data available in read buffer to parse message.
     Incomplete,
@@ -99,6 +99,20 @@ pub enum ParseErrorKind {
     Invalid,
     /// Remote only sent a partial frame before closing.
     CorruptedFrame,
+    Serialisation(bincode::Error),
+}
+
+impl PartialEq for ParseErrorKind {
+    fn eq(&self, other: &Self) -> bool {
+        use ParseErrorKind::*;
+        match (self, other) {
+            (&Incomplete, &Incomplete) => true,
+            (&Invalid, &Invalid) => true,
+            (&CorruptedFrame, &CorruptedFrame) => true,
+            (&Serialisation(_), &Serialisation(_)) => true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for ParseError {
@@ -110,12 +124,20 @@ impl fmt::Display for ParseError {
             }
             ParseErrorKind::Invalid => "Invalid message encoding.",
             ParseErrorKind::CorruptedFrame => "Remote connection closed during sending of a frame",
+            ParseErrorKind::Serialisation(_) => "Serialisation error",
         };
         write!(f, "{}", err_msg)
     }
 }
 
 impl std::error::Error for ParseError {}
+
+impl From<bincode::Error> for ParseError {
+    fn from(error: bincode::Error) -> Self {
+        let kind = ParseErrorKind::Serialisation(error);
+        ParseError::new(kind)
+    }
+}
 
 /// Attempt to move the cursor forward `n` bytes.
 ///
@@ -134,7 +156,7 @@ pub fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), ParseError> {
 pub fn get_payload_length(src: &mut Cursor<&[u8]>) -> Result<usize, ParseError> {
     debug!("Retreive payload from buffer");
     let line = get_line(src)?;
-    let decoded: usize = bincode::deserialize(&line[..]).unwrap();
+    let decoded: usize = bincode::deserialize(&line[..])?;
     Ok(decoded)
 }
 

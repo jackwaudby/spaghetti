@@ -3,10 +3,11 @@
 //! Ownership is then passed to the index.
 //! Tables do own Catalog and contain reference to indexes
 
+use crate::common::error::SpaghettiError;
+use crate::server::storage::catalog::Catalog;
+use crate::Result;
 use std::fmt;
 use std::sync::Mutex;
-
-use crate::server::storage::catalog::Catalog;
 
 #[derive(Debug)]
 pub struct Table {
@@ -57,11 +58,11 @@ impl Table {
     }
 
     /// Get the primary index for a table
-    pub fn get_primary_index(&self) -> Option<String> {
+    pub fn get_primary_index(&self) -> Result<String> {
         let lock = self.primary_index.lock().unwrap();
         match &*lock {
-            Some(pi) => Some(pi.clone()),
-            None => None,
+            Some(pi) => Ok(pi.clone()),
+            None => Err(Box::new(SpaghettiError::NoPrimaryIndex)),
         }
     }
 
@@ -86,8 +87,8 @@ impl Table {
 impl fmt::Display for Table {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let pi = match self.get_primary_index() {
-            Some(p) => p,
-            None => "null".to_string(),
+            Ok(p) => p,
+            Err(_) => "null".to_string(),
         };
 
         let si = match self.get_secondary_index() {

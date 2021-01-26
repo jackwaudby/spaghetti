@@ -4,10 +4,9 @@
 //! (2) Box errors which preserve the underlying errors. This is to be avoided in any hot path.
 //! (3) Wrap errors with spaghetti's error type, defining an enum of causes
 
+use crate::common::frame::ParseError;
 use std::error;
-use std::error::Error;
 use std::fmt;
-use tokio::io::Error as TokioIoError;
 
 // Represents a Spaghetti error.
 #[derive(Debug)]
@@ -18,42 +17,45 @@ pub enum SpaghettiError {
     Invalid,
     /// Remote only sent a partial frame before closing.
     CorruptedFrame,
-    /// Tokio errors
-    Tokio(TokioIoError),
+    /// Parsing error.
+    Parse(ParseError),
+    /// Workload not recognised
+    IncorrectWorkload,
+    /// Table does not exist
+    TableNotFound,
+    /// Index does not exist
+    IndexNotFound,
+    /// No primary index on table.
+    NoPrimaryIndex,
+    /// Column does not exist in table.
+    ColumnNotFound,
 }
 
 impl fmt::Display for SpaghettiError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use SpaghettiError::*;
         match *self {
-            SpaghettiError::Incomplete => write!(
+            Incomplete => write!(
                 f,
                 "Not enough data available in read buffer to parse message."
             ),
-            SpaghettiError::Invalid => write!(f, "Invalid message encoding."),
-            SpaghettiError::CorruptedFrame => {
-                write!(f, "Remote connection closed during sending of a frame")
-            }
-            SpaghettiError::Tokio(..) => write!(f, "Tokio error"),
+            Invalid => write!(f, "Invalid message encoding."),
+            CorruptedFrame => write!(f, "Remote connection closed during sending of a frame"),
+            IncorrectWorkload => write!(f, "Workload not recognised"),
+            Parse(_) => write!(f, "Parsing error"),
+            TableNotFound => write!(f, "Table not found"),
+            IndexNotFound => write!(f, "Index not found"),
+            NoPrimaryIndex => write!(f, "No primary index on table"),
+            ColumnNotFound => write!(f, "Column not found"),
         }
     }
 }
 
-impl error::Error for SpaghettiError {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            SpaghettiError::Incomplete => None,
-            SpaghettiError::CorruptedFrame => None,
-            SpaghettiError::Invalid => None,
-            // The cause is the underlying implementation error type.
-            // Implicitly cast to the trait object as already implements the Error trait.
-            SpaghettiError::Tokio(ref e) => Some(e),
-        }
-    }
-}
+impl error::Error for SpaghettiError {}
 
-// Implement the conversion from tokio::io::Error to Error
-impl From<tokio::io::Error> for SpaghettiError {
-    fn from(error: TokioIoError) -> Self {
-        SpaghettiError::Tokio(error)
+// Implement the conversion from ParseError to SpaghettiError
+impl From<ParseError> for SpaghettiError {
+    fn from(error: ParseError) -> Self {
+        SpaghettiError::Parse(error)
     }
 }

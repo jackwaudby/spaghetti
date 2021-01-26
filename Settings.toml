@@ -5,7 +5,7 @@ log = "info"
 transactions = 1
 mpsc_size = 32
 
-workload = "tatp"
+workload = "ttp"
 warehouses = 5
 districts = 10
 customers = 100
