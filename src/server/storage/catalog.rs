@@ -152,20 +152,23 @@ mod tests {
     use crate::common::error::SpaghettiError;
 
     #[test]
-    fn catalog() {
-        // create  column
+    fn catalog_test() {
+        // Create column.
         let int = Column::new("id", ColumnKind::Int);
 
         assert_eq!(int.name(), &String::from("id"));
         assert_eq!(int.kind(), &ColumnKind::Int);
 
-        // create schema
+        // Create schema.x
         let mut catalog = Catalog::init("products", 1);
         catalog.add_column(("id", "int"));
         catalog.add_column(("price", "double"));
         catalog.add_column(("desc", "string"));
 
-        assert_eq!(catalog.columns.len(), 3);
+        assert_eq!(catalog.table_id(), 1);
+        assert_eq!(catalog.table_name(), &String::from("products"));
+
+        assert_eq!(catalog.column_cnt(), 3);
         assert_eq!(catalog.column_position_by_name("price").unwrap(), 1);
         assert_eq!(
             *catalog
@@ -175,9 +178,12 @@ mod tests {
                 .unwrap(),
             SpaghettiError::ColumnNotFound
         );
+
         assert_eq!(
             catalog.column_type_by_name("desc").unwrap(),
             &ColumnKind::VarChar
         );
+        assert_eq!(catalog.column_type_by_index(2), &ColumnKind::VarChar);
+        assert_eq!(catalog.column_name_by_index(2), "desc".to_string());
     }
 }
