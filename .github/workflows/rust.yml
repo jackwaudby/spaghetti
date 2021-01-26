@@ -23,6 +23,5 @@ jobs:
     - uses: actions/checkout@master
     - uses: codecov/codecov-action@v1
       with:
-         token: 7383b7eb-b21b-4f13-b7f2-b25ef508799b
-
+        token: ${{ secrets.CODECOV_TOKEN }} 
         
