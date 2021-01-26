@@ -20,6 +20,5 @@ jobs:
       run: cargo build --verbose
     - name: Run tests
       run: cargo test --verbose
-    - uses: jackwaudby/spaghetti@v1
- 
-        
+    - name Upload to Codecov
+      run: bash <(curl -s https://codecov.io/bash)
