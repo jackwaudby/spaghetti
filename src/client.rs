@@ -2,7 +2,7 @@ use crate::client::consumer::Consumer;
 use crate::client::handlers::{ReadHandler, WriteHandler};
 use crate::client::producer::Producer;
 use crate::common::connection::{ReadConnection, WriteConnection};
-use crate::common::message::{CloseConnection, Message, Response};
+use crate::common::message::Message;
 use crate::Result;
 
 use config::Config;
@@ -70,7 +70,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
                 wh.connection.write_frame(&frame).await.unwrap();
 
                 // If message is a close connection message then write to socket and drop.
-                if let Some(CloseConnection) = message.as_any().downcast_ref::<CloseConnection>() {
+                if let Message::CloseConnection = message {
                     info!("Closing write handler");
                     wh.close_sent = true;
                 }
@@ -97,21 +97,17 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
             // Deserialize the response.
             let response = match message {
                 Some(frame) => {
-                    let decoded: bincode::Result<Response> =
-                        bincode::deserialize(&frame.get_payload());
+                    let decoded: Message = bincode::deserialize(&frame.get_payload()).unwrap();
                     match decoded {
-                        Ok(response) => response,
-                        Err(_) => {
-                            info!("Received ClosedConnection message.");
-                            // Received a closed connection message.
-                            break;
-                        }
+                        Message::ConnectionClosed => break,
+                        Message::Response(response) => Message::Response(response),
+                        _ => panic!("Unexpected message"),
                     }
                 }
                 None => panic!("Server closed connection"),
             };
             info!("Received {:?}", response);
-            rh.read_task_tx.send(Box::new(response)).await.unwrap();
+            rh.read_task_tx.send(response).await.unwrap();
         }
     });
 

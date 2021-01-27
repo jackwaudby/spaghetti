@@ -1,5 +1,5 @@
 use crate::common::error::SpaghettiError;
-use crate::common::message::{CloseConnection, Message};
+use crate::common::message::Message;
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::shutdown::Shutdown;
 use crate::workloads::tatp::TatpGenerator;
@@ -108,7 +108,7 @@ impl Producer {
 
     /// Send `CloseConnection` message.
     async fn terminate(&mut self) -> Result<()> {
-        let message = Box::new(CloseConnection);
+        let message = Message::CloseConnection;
         info!("Send {:?}", message);
         self.write_task_tx.send(message).await?;
         Ok(())

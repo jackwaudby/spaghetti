@@ -1,17 +1,14 @@
-use crate::common::frame::Frame;
-use crate::common::message::{Message, Sendable};
+use crate::common::message::Message;
 use crate::common::parameter_generation::Generator;
 use crate::server::storage::row::Row;
 use crate::workloads::Internal;
 use crate::workloads::Workload;
 use crate::Result;
 
-use bytes::Bytes;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 use std::sync::Arc;
 use tracing::{debug, info};
 
@@ -257,7 +254,7 @@ impl Generator for TatpGenerator {
     fn generate(&mut self) -> Message {
         let n: f32 = self.rng.gen();
 
-        let transaction = match n {
+        let _transaction = match n {
             x if x < 0.35 => {
                 // GET_SUBSCRIBER_DATA
                 // TODO: implement non-uniform distribution.
@@ -341,7 +338,7 @@ impl Generator for TatpGenerator {
         let dat = GetSubscriberData { s_id: 0 };
         let transaction = TatpTransaction::GetSubscriberData(dat);
 
-        Box::new(transaction)
+        Message::TatpTransaction(transaction)
     }
 }
 
@@ -406,18 +403,6 @@ pub enum TatpTransaction {
     UpdateLocationData(UpdateLocationData),
     InsertCallForwarding(InsertCallForwarding),
     DeleteCallForwarding(DeleteCallForwarding),
-}
-
-impl Sendable for TatpTransaction {
-    fn into_frame(&self) -> Frame {
-        // Serialize transaction
-        let s: Bytes = bincode::serialize(&self).unwrap().into();
-        // Create frame
-        Frame::new(s)
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
 }
 
 #[cfg(test)]

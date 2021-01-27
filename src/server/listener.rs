@@ -1,5 +1,5 @@
 use crate::common::connection::{ReadConnection, WriteConnection};
-use crate::common::message::Response;
+use crate::common::message::Message;
 use crate::common::shutdown::Shutdown;
 use crate::server::handler::Request;
 use crate::server::handler::{ReadHandler, WriteHandler};
@@ -62,8 +62,8 @@ impl Listener {
             // Communication between sync code and async code (S -> A).
             // Use mpsc unbounded channel.
             let (response_tx, response_rx): (
-                tokio::sync::mpsc::UnboundedSender<Response>,
-                tokio::sync::mpsc::UnboundedReceiver<Response>,
+                tokio::sync::mpsc::UnboundedSender<Message>,
+                tokio::sync::mpsc::UnboundedReceiver<Message>,
             ) = tokio::sync::mpsc::unbounded_channel();
 
             let (sender, receiver) = tokio::sync::oneshot::channel::<u32>();
@@ -93,11 +93,10 @@ impl Listener {
             };
 
             // Get handle to config.
-            let cr = Arc::clone(&config);
             let cw = Arc::clone(&config);
             // Spawn new task to process the connection.
             tokio::spawn(async move {
-                if let Err(err) = read_handler.run(cr).await {
+                if let Err(err) = read_handler.run().await {
                     info!("{:?}", err);
                 }
             });

@@ -1,5 +1,5 @@
 use crate::common::connection::{ReadConnection, WriteConnection};
-use crate::common::message::{Message, Response};
+use crate::common::message::Message;
 use crate::common::shutdown::Shutdown;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tracing::info;
