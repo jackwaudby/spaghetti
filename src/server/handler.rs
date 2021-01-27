@@ -1,7 +1,7 @@
 use crate::common::connection::{ReadConnection, WriteConnection};
+use crate::common::message::Sendable;
 use crate::common::message::{CloseConnection, ConnectionClosed, Response};
 use crate::common::shutdown::Shutdown;
-use crate::common::transaction::Transaction;
 use crate::workloads::{tatp, tpcc};
 use crate::Result;
 

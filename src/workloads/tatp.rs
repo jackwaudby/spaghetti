@@ -1,6 +1,6 @@
 use crate::common::frame::Frame;
+use crate::common::message::{Message, Sendable};
 use crate::common::parameter_generation::Generator;
-use crate::common::transaction::Transaction;
 use crate::server::storage::row::Row;
 use crate::workloads::Internal;
 use crate::workloads::Workload;
@@ -253,8 +253,8 @@ impl TatpGenerator {
     }
 }
 
-impl Generator<TatpTransaction> for TatpGenerator {
-    fn generate(&mut self) -> Box<TatpTransaction> {
+impl Generator for TatpGenerator {
+    fn generate(&mut self) -> Message {
         let n: f32 = self.rng.gen();
 
         let transaction = match n {
@@ -408,7 +408,7 @@ pub enum TatpTransaction {
     DeleteCallForwarding(DeleteCallForwarding),
 }
 
-impl Transaction for TatpTransaction {
+impl Sendable for TatpTransaction {
     fn into_frame(&self) -> Frame {
         // Serialize transaction
         let s: Bytes = bincode::serialize(&self).unwrap().into();

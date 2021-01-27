@@ -1,4 +1,3 @@
-use crate::common::transaction::Transaction;
 use crate::server::handler::Request;
 use crate::server::listener::Listener;
 use crate::server::manager::TransactionManager;
@@ -7,7 +6,6 @@ use crate::workloads::Workload;
 use crate::Result;
 
 use config::Config;
-use core::fmt::Debug;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::sync::mpsc::{Receiver, Sender};
@@ -133,8 +131,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     Ok(())
 }
 
-impl Debug for dyn Transaction + Send {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        write!(f, "Test")
-    }
-}
+// impl Debug for dyn Transaction + Send {
+//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+//         write!(f, "Test")
+//     }
+// }

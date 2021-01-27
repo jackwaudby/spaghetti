@@ -1,5 +1,4 @@
 use crate::common::frame::Frame;
-use crate::common::transaction::Transaction;
 use crate::workloads::tatp::TatpTransaction;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -7,7 +6,7 @@ use std::any::Any;
 
 use std::fmt::Debug;
 
-pub type Message = Box<dyn Transaction + Sync + Send + 'static>;
+pub type Message = Box<dyn Sendable + Sync + Send + 'static>;
 
 impl Debug for Message {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
@@ -27,7 +26,7 @@ impl Debug for Message {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct CloseConnection;
 
-impl Transaction for CloseConnection {
+impl Sendable for CloseConnection {
     fn into_frame(&self) -> Frame {
         // Serialize transaction
         let s: Bytes = bincode::serialize(&self).unwrap().into();
@@ -42,7 +41,7 @@ impl Transaction for CloseConnection {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct ConnectionClosed;
 
-impl Transaction for ConnectionClosed {
+impl Sendable for ConnectionClosed {
     fn into_frame(&self) -> Frame {
         // Serialize transaction
         let s: Bytes = bincode::serialize(&self).unwrap().into();
@@ -59,7 +58,7 @@ pub struct Response {
     pub payload: String,
 }
 
-impl Transaction for Response {
+impl Sendable for Response {
     fn into_frame(&self) -> Frame {
         // Serialize transaction
         let s: Bytes = bincode::serialize(&self).unwrap().into();
@@ -69,4 +68,10 @@ impl Transaction for Response {
     fn as_any(&self) -> &dyn Any {
         self
     }
+}
+
+// All transactions should be able to be converted into a `Frame`.
+pub trait Sendable {
+    fn into_frame(&self) -> Frame;
+    fn as_any(&self) -> &dyn Any;
 }

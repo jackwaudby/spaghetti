@@ -43,7 +43,7 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
     // Read half of tcp stream.
     pub connection: ReadConnection<R>,
     // `Message` channel to `Consumer`.
-    pub read_task_tx: tokio::sync::mpsc::Sender<Response>,
+    pub read_task_tx: tokio::sync::mpsc::Sender<Message>,
     /// Notify `Consumer` of shutdown.
     _notify_c_tx: tokio::sync::mpsc::Sender<()>,
 }
@@ -51,7 +51,7 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
 impl<R: AsyncRead + Unpin> ReadHandler<R> {
     pub fn new(
         connection: ReadConnection<R>,
-        read_task_tx: tokio::sync::mpsc::Sender<Response>,
+        read_task_tx: tokio::sync::mpsc::Sender<Message>,
         _notify_c_tx: tokio::sync::mpsc::Sender<()>,
     ) -> ReadHandler<R> {
         ReadHandler {

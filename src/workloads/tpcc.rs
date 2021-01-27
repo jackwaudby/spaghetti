@@ -4,8 +4,8 @@
 //! + Stored procedures.
 
 use crate::common::frame::Frame;
+use crate::common::message::{Message, Sendable};
 use crate::common::parameter_generation::Generator;
-use crate::common::transaction::Transaction;
 use crate::server::storage::row::Row;
 use crate::workloads::Internal;
 
@@ -216,8 +216,8 @@ impl TpccGenerator {
     // }
 }
 
-impl Generator<TpccTransaction> for TpccGenerator {
-    fn generate(&mut self) -> Box<TpccTransaction> {
+impl Generator for TpccGenerator {
+    fn generate(&mut self) -> Message {
         Box::new(TpccTransaction::NewOrder(NewOrder { w_id: 1 }))
     }
 }
@@ -245,7 +245,7 @@ pub enum TpccTransaction {
     Payment(Payment),
 }
 
-impl Transaction for TpccTransaction {
+impl Sendable for TpccTransaction {
     fn into_frame(&self) -> Frame {
         // Serialize transaction
         let s: Bytes = bincode::serialize(&self).unwrap().into();

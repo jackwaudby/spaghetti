@@ -34,7 +34,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let (write_task_tx, write_task_rx): (Sender<Message>, Receiver<Message>) =
         mpsc::channel(mpsc_size as usize);
     // `ReadHandler` to `Consumer`.
-    let (read_task_tx, read_task_rx): (Sender<Response>, Receiver<Response>) =
+    let (read_task_tx, read_task_rx): (Sender<Message>, Receiver<Message>) =
         mpsc::channel(mpsc_size as usize);
 
     //// Producer ////
@@ -111,7 +111,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
                 None => panic!("Server closed connection"),
             };
             info!("Received {:?}", response);
-            rh.read_task_tx.send(response).await.unwrap();
+            rh.read_task_tx.send(Box::new(response)).await.unwrap();
         }
     });
 
