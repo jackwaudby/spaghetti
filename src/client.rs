@@ -1,6 +1,7 @@
 use crate::client::consumer::Consumer;
-use crate::client::handlers::{ReadHandler, WriteHandler};
 use crate::client::producer::Producer;
+use crate::client::read_handler::ReadHandler;
+use crate::client::write_handler::WriteHandler;
 use crate::common::connection::{ReadConnection, WriteConnection};
 use crate::common::message::Message;
 use crate::Result;
@@ -16,7 +17,9 @@ pub mod producer;
 
 pub mod consumer;
 
-pub mod handlers;
+pub mod write_handler;
+
+pub mod read_handler;
 
 /// Run `spaghetti` client.
 pub async fn run(config: Arc<Config>) -> Result<()> {
@@ -91,7 +94,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     //// ReadHandler ////
     let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
-    let rhh = handlers::run_read_handler(rh);
+    let rhh = read_handler::run_read_handler(rh);
 
     //// Consumer ////
     let mut c = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx);
