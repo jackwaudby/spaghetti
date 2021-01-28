@@ -106,7 +106,7 @@ mod tests {
     #[tokio::test]
     async fn run_drain_test() {
         // Init logging.
-        logging();
+        // logging();
         // Delete file.
         std::fs::remove_file("result.txt").expect("could not remove file");
 
