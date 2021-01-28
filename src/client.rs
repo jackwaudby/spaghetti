@@ -94,7 +94,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     //// ReadHandler ////
     let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
-    let rhh = read_handler::run_read_handler(rh);
+    let rhh = read_handler::run(rh);
 
     //// Consumer ////
     let mut c = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx);

@@ -4,19 +4,20 @@ use crate::common::frame::{ParseError, ParseErrorKind};
 use crate::common::message::Message;
 use crate::Result;
 use tokio::io::AsyncRead;
-use tracing::info;
+use tracing::debug;
 
-/// Manages the read half of a tcp stream.
+/// Manages the read half of the `client` TCP stream.
 pub struct ReadHandler<R: AsyncRead + Unpin> {
-    // Read half of tcp stream.
+    /// Read half of TCP stream wrapped with buffers.
     pub connection: ReadConnection<R>,
-    // `Message` channel to `Consumer`.
+    /// `Message` channel to `Consumer`.
     pub read_task_tx: tokio::sync::mpsc::Sender<Message>,
     /// Notify `Consumer` of shutdown.
     _notify_c_tx: tokio::sync::mpsc::Sender<()>,
 }
 
 impl<R: AsyncRead + Unpin> ReadHandler<R> {
+    /// Create new `ReadHandler`.
     pub fn new(
         connection: ReadConnection<R>,
         read_task_tx: tokio::sync::mpsc::Sender<Message>,
@@ -32,16 +33,22 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
 
 impl<R: AsyncRead + Unpin> Drop for ReadHandler<R> {
     fn drop(&mut self) {
-        info!("Drop ReadHandler");
+        debug!("Drop client's read handler");
     }
 }
 
-pub async fn run_read_handler<R: AsyncRead + Unpin + Send + 'static>(
-    mut rh: ReadHandler<R>,
-) -> Result<()> {
+/// Run `ReadHandler`.
+///
+/// # Errors
+///
+/// + Returns `ConnectionUnexpectedlyClosed` if the TCP stream has been unexpectedly
+/// closed.
+/// + Returns  `Parse(ParseError)` if a message can not be correctly parsed from the TCP/// stream.
+/// + Returns `UnexpectedMessage` if the client receives an unanticipated message.
+pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) -> Result<()> {
     // Spawn tokio task.
     let handle = tokio::spawn(async move {
-        // Attempt to read frame from connection.
+        // Attempt to read frame from connection until error or connection is closed.
         loop {
             if let Ok(message) = rh.connection.read_frame().await {
                 // Deserialize the response.
@@ -79,9 +86,10 @@ pub async fn run_read_handler<R: AsyncRead + Unpin + Send + 'static>(
             }
         }
     });
-
-    let val = handle.await;
-    match val {
+    // Get value from future.
+    let value = handle.await;
+    // Return () or error.
+    match value {
         Ok(res) => match res {
             Ok(_) => return Ok(()),
             Err(e) => return Err(Box::new(e)),
