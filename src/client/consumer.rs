@@ -42,8 +42,6 @@ impl Consumer {
                     return Ok(());
                 }
             };
-
-            info!("Client received {:?} from server", message);
         }
         Ok(())
     }

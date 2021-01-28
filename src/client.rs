@@ -60,37 +60,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let r = ReadConnection::new(rd);
 
     //// WriteHandler ////
-    let mut wh = WriteHandler::new(w, write_task_rx, listen_p_rx);
-    tokio::spawn(async move {
-        // While no client shutdown message (keyboard trigger).
-        while !wh.listen_p_rx.is_shutdown() && !wh.close_sent {
-            // Receive messages from producer.
-            if let Some(message) = wh.write_task_rx.recv().await {
-                info!("Writing {:?} to socket", message);
-                // Convert to frame.
-                let frame = message.into_frame();
-                // Write to socket.
-                wh.connection.write_frame(&frame).await.unwrap();
-
-                // If message is a close connection message then write to socket and drop.
-                if let Message::CloseConnection = message {
-                    info!("Closing write handler");
-                    wh.close_sent = true;
-                }
-            }
-        }
-        // Drain outstanding messages
-        if !wh.close_sent {
-            while let Some(message) = wh.write_task_rx.recv().await {
-                info!("Writing {:?} to socket", message);
-                // Convert to frame.
-                let frame = message.into_frame();
-                // Write to socket.
-                wh.connection.write_frame(&frame).await.unwrap();
-            }
-        }
-        info!("Write handler dropped");
-    });
+    let wh = WriteHandler::new(w, write_task_rx, listen_p_rx);
+    let whh = write_handler::run(wh);
 
     //// ReadHandler ////
     let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
@@ -102,11 +73,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         c.run().await.unwrap();
     });
 
-    let (_p, _wh) = tokio::join!(producer.run(), rhh);
-
-    // Run producer.
-    // info!("Start producer");
-    // producer.run().await?;
+    // Run tasks.
+    let (_p, _rh, _wh) = tokio::join!(producer.run(), rhh, whh);
 
     // Drop shutdown channel to write handler.
     let Producer {

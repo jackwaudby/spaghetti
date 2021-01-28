@@ -5,7 +5,7 @@ use std::io::Cursor;
 use std::marker::Unpin;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
 use tokio::net::TcpStream; // byte stream between peers
-use tracing::{debug, info};
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct Connection {
@@ -114,7 +114,7 @@ impl<W: AsyncWrite + Unpin> WriteConnection<W> {
     }
 
     pub async fn write_frame(&mut self, frame: &Frame) -> crate::Result<()> {
-        info!("Serializing.");
+        debug!("Serializing.");
         // Get length and serialize
         let len = frame.payload.len();
         let lens: Vec<u8> = bincode::serialize(&len)?.into();
@@ -125,7 +125,7 @@ impl<W: AsyncWrite + Unpin> WriteConnection<W> {
         self.stream.write_all(&frame.payload).await?;
         self.stream.write_all(b"\r\n").await?;
         // Flush from buffer to socket
-        info!("Flushing to stream.");
+        debug!("Flushing to stream.");
 
         self.stream.flush().await?;
         Ok(())
