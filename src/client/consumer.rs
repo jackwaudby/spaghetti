@@ -1,4 +1,4 @@
-use crate::common::message::Response;
+use crate::common::message::Message;
 use crate::common::shutdown::Shutdown;
 use crate::Result;
 
@@ -6,7 +6,7 @@ use tracing::info;
 
 pub struct Consumer {
     // Channel from read handler.
-    read_task_rx: tokio::sync::mpsc::Receiver<Response>,
+    read_task_rx: tokio::sync::mpsc::Receiver<Message>,
     // Listen for shutdown from read handler.
     listen_rh_rx: Shutdown<tokio::sync::mpsc::Receiver<()>>,
     // Notify producer of consumer's shutdown.
@@ -16,7 +16,7 @@ pub struct Consumer {
 impl Consumer {
     /// Create new `Consumer`.
     pub fn new(
-        read_task_rx: tokio::sync::mpsc::Receiver<Response>,
+        read_task_rx: tokio::sync::mpsc::Receiver<Message>,
         listen_rh_rx: tokio::sync::mpsc::Receiver<()>,
         _notify_p_tx: tokio::sync::mpsc::Sender<()>,
     ) -> Consumer {

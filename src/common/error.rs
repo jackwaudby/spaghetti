@@ -29,6 +29,10 @@ pub enum SpaghettiError {
     NoPrimaryIndex,
     /// Column does not exist in table.
     ColumnNotFound,
+    /// Unexpected message received.
+    UnexpectedMessage,
+    /// Connection unexpectedly closed.
+    ConnectionUnexpectedlyClosed,
 }
 
 impl fmt::Display for SpaghettiError {
@@ -37,7 +41,7 @@ impl fmt::Display for SpaghettiError {
         match *self {
             Incomplete => write!(
                 f,
-                "Not enough data available in read buffer to parse message."
+                "Not enough data available in read buffer to xbparse message."
             ),
             Invalid => write!(f, "Invalid message encoding."),
             CorruptedFrame => write!(f, "Remote connection closed during sending of a frame"),
@@ -47,6 +51,8 @@ impl fmt::Display for SpaghettiError {
             IndexNotFound => write!(f, "Index not found"),
             NoPrimaryIndex => write!(f, "No primary index on table"),
             ColumnNotFound => write!(f, "Column not found"),
+            UnexpectedMessage => write!(f, "Unexpected message"),
+            ConnectionUnexpectedlyClosed => write!(f, "Connection unexpectedly closed"),
         }
     }
 }
@@ -56,6 +62,7 @@ impl error::Error for SpaghettiError {
         use SpaghettiError::*;
         match *self {
             ColumnNotFound => Some(self),
+            Parse(_) => Some(self),
             _ => unimplemented!(),
         }
     }

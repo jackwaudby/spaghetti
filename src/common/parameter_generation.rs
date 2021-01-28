@@ -1,10 +1,6 @@
-//! Used by client to generate transaction parameters.
-
-use crate::common::transaction::Transaction;
+use crate::common::message::Message;
 use crate::workloads::tatp::TatpGenerator;
 use crate::workloads::tpcc::TpccGenerator;
-
-use crate::common::message::Message;
 
 /// Parameter generator.
 pub enum ParameterGenerator {
@@ -22,8 +18,6 @@ impl ParameterGenerator {
     }
 }
 
-pub trait Generator<T> {
-    fn generate(&mut self) -> Box<T>
-    where
-        T: Transaction;
+pub trait Generator {
+    fn generate(&mut self) -> Message;
 }

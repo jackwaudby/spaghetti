@@ -1,20 +1,12 @@
-//! Contains:
-//! + Table loaders.
-//! + Parameter generator.
-//! + Stored procedures.
-
-use crate::common::frame::Frame;
+use crate::common::message::Message;
 use crate::common::parameter_generation::Generator;
-use crate::common::transaction::Transaction;
 use crate::server::storage::row::Row;
 use crate::workloads::Internal;
 
 use crate::Result;
-use bytes::Bytes;
 use rand::rngs::StdRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::any::Any;
 use std::sync::Arc;
 use tracing::info;
 
@@ -216,16 +208,16 @@ impl TpccGenerator {
     // }
 }
 
-impl Generator<TpccTransaction> for TpccGenerator {
-    fn generate(&mut self) -> Box<TpccTransaction> {
-        Box::new(TpccTransaction::NewOrder(NewOrder { w_id: 1 }))
+impl Generator for TpccGenerator {
+    fn generate(&mut self) -> Message {
+        Message::TpccTransaction(TpccTransaction::NewOrder(NewOrder { w_id: 1 }))
     }
 }
 
 ///////////////////////////////////////
 /// Transaction Profiles. ///
 //////////////////////////////////////
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct NewOrder {
     pub w_id: u64, // home warehouse id
                    // d_id: u64,
@@ -236,26 +228,13 @@ pub struct NewOrder {
                    // orderlines: Vec<OrderLine>,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Payment {}
 
-#[derive(Serialize, Deserialize, PartialEq, Debug)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum TpccTransaction {
     NewOrder(NewOrder),
     Payment(Payment),
-}
-
-impl Transaction for TpccTransaction {
-    fn into_frame(&self) -> Frame {
-        // Serialize transaction
-        let s: Bytes = bincode::serialize(&self).unwrap().into();
-        // Create frame
-        Frame::new(s)
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
 }
 
 // impl NewOrderParams {

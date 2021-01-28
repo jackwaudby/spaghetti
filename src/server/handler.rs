@@ -1,8 +1,9 @@
 use crate::common::connection::{ReadConnection, WriteConnection};
-use crate::common::message::{CloseConnection, ConnectionClosed, Response};
+use crate::common::error::SpaghettiError;
+use crate::common::message::Message;
 use crate::common::shutdown::Shutdown;
-use crate::common::transaction::Transaction;
-use crate::workloads::{tatp, tpcc};
+use crate::workloads::tatp::TatpTransaction;
+use crate::workloads::tpcc::TpccTransaction;
 use crate::Result;
 
 use config::Config;
@@ -26,7 +27,7 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
 
     /// Channel for sending response from the trasaction manager.
     /// Each new request gets a clone of it.
-    pub response_tx: tokio::sync::mpsc::UnboundedSender<Response>,
+    pub response_tx: tokio::sync::mpsc::UnboundedSender<Message>,
 
     // Channel receives the requests the read has received.
     pub notify_wh_requests: Option<tokio::sync::oneshot::Sender<u32>>,
@@ -52,7 +53,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
     ///
     /// Frames are requested from the socket and then processed.
     /// Responses are written back to the socket.
-    pub async fn run(&mut self, config: Arc<Config>) -> Result<()> {
+    pub async fn run(&mut self) -> Result<()> {
         debug!("Processing connection");
         // While shutdown signal not received try to read frames.
         while !self.shutdown.is_shutdown() {
@@ -75,56 +76,38 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
                 }
             };
 
-            // Attempt to deserialise `Frame`.
-            // If  `CloseConnection` then exit break
-            let workload = config.get_str("workload")?;
-            match workload.as_str() {
-                "tatp" => {
-                    let decoded: bincode::Result<tatp::TatpTransaction> =
-                        bincode::deserialize(&frame.get_payload());
-                    let transaction = match decoded {
-                        Ok(transaction) => {
-                            info!("Received {:?}", transaction);
-                            transaction
-                        }
-                        Err(_) => {
-                            // Received a closed connection message.
-                            let closed: bincode::Result<CloseConnection> =
-                                bincode::deserialize(&frame.get_payload());
-                            match closed {
-                                Ok(cc) => {
-                                    info!("Received {:?}", cc);
-                                    info!("Send expected responses: {:?}", self.requests);
-                                }
-                                Err(_) => panic!("Received unknown message"),
-                            }
-                            self.notify_wh_requests
-                                .take()
-                                .unwrap()
-                                .send(self.requests)
-                                .unwrap();
-                            break;
-                        }
-                    };
-
-                    // Increment transaction requests received.
-                    self.requests = self.requests + 1;
-
-                    info!("Send transaction to transaction manager");
+            let decoded: Message = bincode::deserialize(&frame.get_payload())?;
+            let request = match decoded {
+                Message::TatpTransaction(transaction) => {
                     // Wrap as request.
-                    let request = Request {
-                        transaction,
+                    Request {
+                        transaction: Transaction::Tatp(transaction),
                         response_sender: self.response_tx.clone(),
-                    };
-                    // Send to transaction manager
-                    self.work_tx.send(request).unwrap();
+                    }
                 }
-                "tpcc" => {
-                    // TODO
-                    unimplemented!()
+                Message::TpccTransaction(transaction) => {
+                    // Wrap as request.
+                    Request {
+                        transaction: Transaction::Tpcc(transaction),
+                        response_sender: self.response_tx.clone(),
+                    }
                 }
-                _ => unimplemented!(),
+                Message::CloseConnection => {
+                    info!("Send expected responses: {:?}", self.requests);
+                    self.notify_wh_requests
+                        .take()
+                        .unwrap()
+                        .send(self.requests)
+                        .unwrap();
+                    break;
+                }
+                _ => return Err(Box::new(SpaghettiError::UnexpectedMessage)),
             };
+            // Increment transaction requests received.
+            self.requests = self.requests + 1;
+            info!("Send transaction to transaction manager");
+            // Send to transaction manager
+            self.work_tx.send(request).unwrap();
         }
         Ok(())
     }
@@ -137,7 +120,7 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     pub connection: WriteConnection<R>,
 
     // Channel receives responses from transaction manager workers.
-    pub response_rx: tokio::sync::mpsc::UnboundedReceiver<Response>,
+    pub response_rx: tokio::sync::mpsc::UnboundedReceiver<Message>,
 
     pub responses_sent: u32,
 
@@ -166,7 +149,7 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
             if let Ok(requests) = self.listen_rh_requests.try_recv() {
                 info!("Write handler received expected responses: {:?}", requests);
                 self.expected_responses_sent = Some(requests);
-                let closed = ConnectionClosed;
+                let closed = Message::ConnectionClosed;
                 let c = closed.into_frame();
                 info!("Send connection closed message");
 
@@ -227,6 +210,12 @@ impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
 
 #[derive(Debug)]
 pub struct Request {
-    pub transaction: tatp::TatpTransaction,
-    pub response_sender: tokio::sync::mpsc::UnboundedSender<Response>,
+    pub transaction: Transaction,
+    pub response_sender: tokio::sync::mpsc::UnboundedSender<Message>,
+}
+
+#[derive(Debug)]
+pub enum Transaction {
+    Tatp(TatpTransaction),
+    Tpcc(TpccTransaction),
 }
