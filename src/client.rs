@@ -90,26 +90,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     });
 
     //// ReadHandler ////
-    let mut rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
-    tokio::spawn(async move {
-        // Read from connection.
-        while let Ok(message) = rh.connection.read_frame().await {
-            // Deserialize the response.
-            let response = match message {
-                Some(frame) => {
-                    let decoded: Message = bincode::deserialize(&frame.get_payload()).unwrap();
-                    match decoded {
-                        Message::ConnectionClosed => break,
-                        Message::Response(response) => Message::Response(response),
-                        _ => panic!("Unexpected message"),
-                    }
-                }
-                None => panic!("Server closed connection"),
-            };
-            info!("Received {:?}", response);
-            rh.read_task_tx.send(response).await.unwrap();
-        }
-    });
+    let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
+    let rhh = handlers::run_read_handler(rh);
 
     //// Consumer ////
     let mut c = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx);
@@ -117,9 +99,11 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         c.run().await.unwrap();
     });
 
+    let (_p, _wh) = tokio::join!(producer.run(), rhh);
+
     // Run producer.
-    info!("Start producer");
-    producer.run().await?;
+    // info!("Start producer");
+    // producer.run().await?;
 
     // Drop shutdown channel to write handler.
     let Producer {

@@ -31,6 +31,8 @@ pub enum SpaghettiError {
     ColumnNotFound,
     /// Unexpected message received.
     UnexpectedMessage,
+    /// Connection unexpectedly closed.
+    ConnectionUnexpectedlyClosed,
 }
 
 impl fmt::Display for SpaghettiError {
@@ -50,6 +52,7 @@ impl fmt::Display for SpaghettiError {
             NoPrimaryIndex => write!(f, "No primary index on table"),
             ColumnNotFound => write!(f, "Column not found"),
             UnexpectedMessage => write!(f, "Unexpected message"),
+            ConnectionUnexpectedlyClosed => write!(f, "Connection unexpectedly closed"),
         }
     }
 }
@@ -59,6 +62,7 @@ impl error::Error for SpaghettiError {
         use SpaghettiError::*;
         match *self {
             ColumnNotFound => Some(self),
+            Parse(_) => Some(self),
             _ => unimplemented!(),
         }
     }
