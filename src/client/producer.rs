@@ -8,7 +8,7 @@ use crate::Result;
 
 use config::Config;
 use std::sync::Arc;
-use tokio::signal;
+use tokio::time::{sleep, Duration};
 use tracing::info;
 
 /// `Producer` generates transactions and sends them to the `client`s write socket.
@@ -24,7 +24,7 @@ pub struct Producer {
     transactions: u32,
 
     /// Send transactions writer task.
-    write_task_tx: tokio::sync::mpsc::Sender<Message>,
+    pub write_task_tx: tokio::sync::mpsc::Sender<Message>,
 
     /// Notify `WriteHandler` of shutdown.
     pub notify_wh_tx: tokio::sync::mpsc::Sender<()>,
@@ -88,16 +88,9 @@ impl Producer {
             // Generate a transaction.
             let transaction = self.generator.get_transaction();
             info!("Generated {:?}", transaction);
+            sleep(Duration::from_millis(5000)).await;
             // Concurretly send trasaction to write task and listen for shutdown notification.
-            tokio::select! {
-                res =  self.write_task_tx.send(transaction) => res?,
-                _ = signal::ctrl_c() => {
-                    info!("Keyboard interrupt");
-                    // Send `CloseConnection` message.
-                    self.terminate().await.unwrap();
-                    return Ok(());
-                }
-            }
+            self.write_task_tx.send(transaction).await.unwrap();
         }
         info!("{:?} transaction generated", self.transactions);
 
@@ -107,10 +100,14 @@ impl Producer {
     }
 
     /// Send `CloseConnection` message.
-    async fn terminate(&mut self) -> Result<()> {
+    pub async fn terminate(&mut self) -> Result<()> {
         let message = Message::CloseConnection;
         info!("Send {:?}", message);
         self.write_task_tx.send(message).await?;
         Ok(())
+    }
+
+    pub async fn wait(&mut self) {
+        self.listen_c_rx.recv().await;
     }
 }

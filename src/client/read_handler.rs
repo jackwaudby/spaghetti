@@ -62,6 +62,7 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                             Ok(decoded) => match decoded {
                                 // Connection gracefully closed.
                                 Message::ConnectionClosed => {
+                                    debug!("Received {:?}", decoded);
                                     rh.read_task_tx.send(decoded).await.unwrap();
                                     return Ok(());
                                 }

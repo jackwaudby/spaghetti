@@ -10,6 +10,7 @@ use config::Config;
 use std::sync::Arc;
 use tokio::io;
 use tokio::net::TcpStream;
+use tokio::signal;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tracing::info;
 
@@ -61,28 +62,44 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     //// WriteHandler ////
     let wh = WriteHandler::new(w, write_task_rx, listen_p_rx);
-    let whh = write_handler::run(wh);
 
     //// ReadHandler ////
     let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
-    let rhh = read_handler::run(rh);
 
     //// Consumer ////
     let c = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx);
-    let chh = consumer::run(c);
 
-    // Run tasks.
-    let (_p, _rh, _wh, _ch) = tokio::join!(producer.run(), rhh, whh, chh);
+    // run the producer whilst listening for shutdown signal.
+    tokio::select! {
+         res = async {
+             let whh = write_handler::run(wh);
+             let rhh = read_handler::run(rh);
+             let chh = consumer::run(c);
+             let (_p, _rh, _wh, _ch) = tokio::join!(producer.run(), rhh, whh, chh);
+             producer.wait().await;
+         } => res,
+        _ = signal::ctrl_c() => {
+            info!("Keyboard interrupt");
+            // Drop shutdown channel to write handler.
+            let Producer {
+                write_task_tx,
+                notify_wh_tx,
+                mut listen_c_rx,
+                ..
+            } = producer;
 
-    // Drop shutdown channel to write handler.
-    let Producer {
-        notify_wh_tx,
-        mut listen_c_rx,
-        ..
-    } = producer;
-    drop(notify_wh_tx);
-    // Wait until `Consumer` closes channel.
-    listen_c_rx.recv().await;
+            // Send close connection message.
+            let message = Message::CloseConnection;
+            info!("Send {:?}", message);
+            write_task_tx.send(message).await.unwrap();
+
+            // Notify write handler of shutdown.
+            drop(notify_wh_tx);
+
+            // Wait until `Consumer` closes channel.
+            listen_c_rx.recv().await;
+        }
+    }
     info!("Client shutdown");
     Ok(())
 }

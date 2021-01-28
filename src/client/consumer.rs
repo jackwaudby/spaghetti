@@ -1,6 +1,5 @@
 use crate::common::message::Message;
 use crate::common::shutdown::Shutdown;
-use crate::Result;
 
 use tracing::{debug, info};
 
