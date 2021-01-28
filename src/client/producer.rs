@@ -9,7 +9,7 @@ use crate::Result;
 use config::Config;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use tracing::info;
+use tracing::{debug, info};
 
 /// `Producer` generates transactions and sends them to the `client`s write socket.
 ///
@@ -87,8 +87,10 @@ impl Producer {
             let transaction = self.generator.get_transaction();
             info!("Generated {:?}", transaction);
             sleep(Duration::from_millis(5000)).await;
-            // Concurretly send trasaction to write task and listen for shutdown notification.
-            self.write_task_tx.send(transaction).await.unwrap();
+            let res = self.write_task_tx.send(transaction).await;
+            if let Err(_) = res {
+                debug!("producer to write handler channel unexpectedly closed");
+            }
         }
         info!("{:?} transaction generated", self.transactions);
 
@@ -101,7 +103,10 @@ impl Producer {
     pub async fn terminate(&mut self) -> Result<()> {
         let message = Message::CloseConnection;
         info!("Send {:?}", message);
-        self.write_task_tx.send(message).await?;
+        let res = self.write_task_tx.send(message).await;
+        if let Err(_) = res {
+            debug!("producer to write handler channel unexpectedly closed");
+        }
         Ok(())
     }
 

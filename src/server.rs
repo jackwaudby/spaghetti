@@ -130,9 +130,3 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     info!("Clean shutdown");
     Ok(())
 }
-
-// impl Debug for dyn Transaction + Send {
-//     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-//         write!(f, "Test")
-//     }
-// }

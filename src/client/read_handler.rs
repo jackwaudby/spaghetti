@@ -78,7 +78,10 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                         }
                     }
                     // The connection has been unexpectedly closed.
-                    None => return Err(SpaghettiError::ConnectionUnexpectedlyClosed),
+                    None => {
+                        debug!("Server unexpectedly closed");
+                        return Err(SpaghettiError::ConnectionUnexpectedlyClosed);
+                    }
                 };
                 debug!("Received {:?}", response);
                 rh.read_task_tx.send(response).await.unwrap();

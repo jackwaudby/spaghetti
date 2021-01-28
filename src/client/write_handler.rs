@@ -61,6 +61,8 @@ pub async fn run<R: AsyncWrite + Unpin + Send + 'static>(mut wh: WriteHandler<R>
                 let frame = message.into_frame();
                 // Write to socket.
                 if let Err(_) = wh.connection.write_frame(&frame).await {
+                    debug!("Server unexpectedly closed");
+
                     return Err(SpaghettiError::ConnectionUnexpectedlyClosed);
                 }
                 // If message is a close connection message then write to socket and drop.
