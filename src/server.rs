@@ -1,4 +1,4 @@
-use crate::server::handler::Request;
+use crate::common::message::Request;
 use crate::server::listener::Listener;
 use crate::server::manager::TransactionManager;
 use crate::server::scheduler::Scheduler;
@@ -14,7 +14,9 @@ use tokio::net::TcpListener;
 use tokio::signal;
 use tracing::{error, info};
 
-pub mod handler;
+pub mod read_handler;
+
+pub mod write_handler;
 
 pub mod pool;
 

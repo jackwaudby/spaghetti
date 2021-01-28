@@ -1,8 +1,9 @@
 use crate::common::connection::{ReadConnection, WriteConnection};
 use crate::common::message::Message;
+use crate::common::message::Request;
 use crate::common::shutdown::Shutdown;
-use crate::server::handler::Request;
-use crate::server::handler::{ReadHandler, WriteHandler};
+use crate::server::read_handler::ReadHandler;
+use crate::server::write_handler::WriteHandler;
 use crate::Result;
 
 use config::Config;

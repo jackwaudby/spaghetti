@@ -1,6 +1,6 @@
 use crate::common::connection::{ReadConnection, WriteConnection};
 use crate::common::error::SpaghettiError;
-use crate::common::message::Message;
+use crate::common::message::{Message, Request, Transaction};
 use crate::common::shutdown::Shutdown;
 use crate::workloads::tatp::TatpTransaction;
 use crate::workloads::tpcc::TpccTransaction;

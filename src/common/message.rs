@@ -34,3 +34,15 @@ impl Message {
 pub struct Response {
     pub payload: String,
 }
+
+#[derive(Debug)]
+pub struct Request {
+    pub transaction: Transaction,
+    pub response_sender: tokio::sync::mpsc::UnboundedSender<Message>,
+}
+
+#[derive(Debug)]
+pub enum Transaction {
+    Tatp(TatpTransaction),
+    Tpcc(TpccTransaction),
+}

@@ -1,7 +1,4 @@
-use crate::common::message::Message;
-use crate::common::message::Response;
-use crate::server::handler::Request;
-use crate::server::handler::Transaction;
+use crate::common::message::{Message, Request, Response, Transaction};
 use crate::server::pool::ThreadPool;
 use crate::server::scheduler::Scheduler;
 use crate::workloads::tatp::TatpTransaction;
