@@ -141,7 +141,7 @@ mod tests {
         let (notify_c_tx, _) = mpsc::channel(1);
         let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
         // Run read handler.
-        let res = tokio_test::block_on(run_read_handler(rh));
+        let res = tokio_test::block_on(run(rh));
 
         assert_eq!(
             *res.unwrap_err().downcast::<SpaghettiError>().unwrap(),
@@ -198,7 +198,7 @@ mod tests {
         let (notify_c_tx, _) = mpsc::channel(1);
         let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
         // Run read handler.
-        let res = tokio_test::block_on(run_read_handler(rh));
+        let res = tokio_test::block_on(run(rh));
         assert_eq!(res.unwrap(), ());
         let value = tokio_test::block_on(read_task_rx.recv());
 
@@ -236,7 +236,7 @@ mod tests {
         let (notify_c_tx, _) = mpsc::channel(1);
         let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
         // Run read handler.
-        let res = tokio_test::block_on(run_read_handler(rh));
+        let res = tokio_test::block_on(run(rh));
         assert_eq!(
             *res.unwrap_err().downcast::<SpaghettiError>().unwrap(),
             SpaghettiError::UnexpectedMessage

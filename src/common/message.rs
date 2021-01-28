@@ -4,7 +4,7 @@ use crate::workloads::tpcc::TpccTransaction;
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 
-use std::fmt::Debug;
+use std::fmt;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Message {
@@ -13,6 +13,12 @@ pub enum Message {
     Response(Response),
     TatpTransaction(TatpTransaction),
     TpccTransaction(TpccTransaction),
+}
+
+impl fmt::Display for Message {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }
 
 impl Message {
