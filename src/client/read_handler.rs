@@ -61,7 +61,10 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                         match decoded {
                             Ok(decoded) => match decoded {
                                 // Connection gracefully closed.
-                                Message::ConnectionClosed => return Ok(()),
+                                Message::ConnectionClosed => {
+                                    rh.read_task_tx.send(decoded).await.unwrap();
+                                    return Ok(());
+                                }
                                 // Response received.
                                 Message::Response(response) => Message::Response(response),
                                 // Received unexpected message.

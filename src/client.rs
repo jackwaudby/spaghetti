@@ -68,13 +68,11 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let rhh = read_handler::run(rh);
 
     //// Consumer ////
-    let mut c = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx);
-    tokio::spawn(async move {
-        c.run().await.unwrap();
-    });
+    let c = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx);
+    let chh = consumer::run(c);
 
     // Run tasks.
-    let (_p, _rh, _wh) = tokio::join!(producer.run(), rhh, whh);
+    let (_p, _rh, _wh, _ch) = tokio::join!(producer.run(), rhh, whh, chh);
 
     // Drop shutdown channel to write handler.
     let Producer {
@@ -85,6 +83,6 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     drop(notify_wh_tx);
     // Wait until `Consumer` closes channel.
     listen_c_rx.recv().await;
-    info!("Clean shutdown");
+    info!("Client shutdown");
     Ok(())
 }

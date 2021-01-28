@@ -54,7 +54,7 @@ pub async fn run(mut consumer: Consumer) {
                     return;
                 }
             };
-
+            
             if let Some(message) = message {
                 info!("Received {:?}", message);
                 // TODO: log to file.

@@ -1,6 +1,6 @@
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::{broadcast, mpsc};
-use tracing::info;
+use tracing::debug;
 
 /// `Shutdown؀` is used by `Handler` to listen for the server shutdown signal.
 /// A `Listener` owns the `Sender` half of a broadcast channel.
@@ -42,7 +42,7 @@ impl Shutdown<broadcast::Receiver<()>> {
         // Only `RecvError::Closed` can be received on this channel.
         match r {
             Ok(()) => panic!("No message should be recieved on this channel"),
-            Err(RecvError::Closed) => info!("No more active senders"),
+            Err(RecvError::Closed) => debug!("No more active senders"),
             Err(RecvError::Lagged(_)) => panic!("No messages are sent so not receiver should lag"),
         }
 
@@ -79,7 +79,7 @@ impl Shutdown<mpsc::Receiver<()>> {
         // TODO: mpsc recv() returns different to broadcast
         match r {
             Some(_) => panic!("No message should be recieved on this channel"),
-            None => info!("MPSC channel closed"),
+            None => debug!("MPSC channel closed"),
         }
 
         self.shutdown = true;
@@ -93,6 +93,6 @@ pub struct NotifyTransactionManager {
 
 impl Drop for NotifyTransactionManager {
     fn drop(&mut self) {
-        info!("Handler sending shutdown notification to transaction manager");
+        debug!("Handler sending shutdown notification to transaction manager");
     }
 }

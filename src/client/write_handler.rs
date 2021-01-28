@@ -45,6 +45,9 @@ impl<W: AsyncWrite + Unpin> Drop for WriteHandler<W> {
 /// Run `WriteHandler`.
 ///
 /// # Errors
+///
+/// + Returns `ConnectionUnexpectedlyClosed` if the TCP stream has been unexpectedly
+/// closed.
 pub async fn run<R: AsyncWrite + Unpin + Send + 'static>(mut wh: WriteHandler<R>) -> Result<()> {
     // Spawn tokio task.
     let handle = tokio::spawn(async move {
