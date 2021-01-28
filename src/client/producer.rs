@@ -75,8 +75,6 @@ impl Producer {
     }
 
     /// Run the producer.
-    /// Generate the requested number of transactions.
-    /// Return early if shutdown triggered.
     pub async fn run(&mut self) -> Result<()> {
         info!("Generate {:?} transaction", self.transactions);
 
@@ -107,6 +105,7 @@ impl Producer {
         Ok(())
     }
 
+    /// Wait for consumer to shutdown.
     pub async fn wait(&mut self) {
         self.listen_c_rx.recv().await;
     }
