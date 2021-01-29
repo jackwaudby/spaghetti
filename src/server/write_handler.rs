@@ -43,67 +43,134 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
 
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
     pub async fn run(&mut self, _config: Arc<Config>) -> Result<()> {
-        while !self.shutdown.is_shutdown() {
-            // If read handler has received a close connection request it sends the expected
-            // number of transactions the write handler should send responses for.
-            if let Ok(requests) = self.listen_rh_requests.try_recv() {
-                info!("Write handler received expected responses: {:?}", requests);
-                self.expected_responses_sent = Some(requests);
-                let closed = Message::ConnectionClosed;
-                let c = closed.into_frame();
-                info!("Send connection closed message");
+        // Loop until server is interrupted.
+        // while !self.shutdown.is_shutdown() {
 
-                self.connection.write_frame(&c).await?;
-
-                break;
-            }
-
-            // Receive responses from transaction manager until shutdown notification.
-            let response = tokio::select! {
-                res = self.response_rx.recv() => res,
-                _ = self.shutdown.recv() => {
-                    // Shutdown signal received, terminate the task.
-                    //TODO: drain response queue here
+        loop {
+            match self.listen_rh_requests.try_recv() {
+                Ok(requests) => {
+                    debug!("Write handler entered shutdown mode");
+                    // Set expected responses sent.
+                    self.expected_responses_sent = Some(requests);
+                    // Receive responses from transaction manager.
+                    while self.responses_sent != self.expected_responses_sent.unwrap() {
+                        let response = self.response_rx.recv().await;
+                        // Increment sent.
+                        self.responses_sent = self.responses_sent + 1;
+                        match response {
+                            Some(response) => {
+                                debug!("AAA- Write handler sending response: {:?}", response);
+                                let f = response.into_frame();
+                                self.connection.write_frame(&f).await?;
+                            }
+                            None => {}
+                        }
+                    }
+                    debug!("Expected responses sent");
+                    // Send connected closed message.
+                    let closed = Message::ConnectionClosed;
+                    let c = closed.into_frame();
+                    debug!("Send connection closed message");
+                    self.connection.write_frame(&c).await?;
                     return Ok(());
                 }
-            };
-
-            // Increment responses sent.
-            self.responses_sent = self.responses_sent + 1;
-
-            match response {
-                Some(response) => {
-                    info!("Write handler sending response: {:?}", response);
-                    let f = response.into_frame();
-
-                    self.connection.write_frame(&f).await?;
+                Err(_) => {
+                    // Normal operation
+                    let response = self.response_rx.recv().await;
+                    match response {
+                        Some(response) => {
+                            // Increment responses sent.accept
+                            self.responses_sent = self.responses_sent + 1;
+                            debug!("NORMAL OP - write handler sending response: {:?}", response);
+                            let f = response.into_frame();
+                            self.connection.write_frame(&f).await?;
+                        }
+                        None => {}
+                    }
                 }
-                None => {}
             }
         }
 
-        // Keep sending responses until one sent for each request.
-        // TODO: then send ClosedConnection message.
-        while self.responses_sent != self.expected_responses_sent.unwrap() {
-            let response = self.response_rx.recv().await;
-            // increment sent
-            self.responses_sent = self.responses_sent + 1;
-            match response {
-                Some(response) => {
-                    info!("Write handler sending response: {:?}", response);
-                    let f = response.into_frame();
-                    self.connection.write_frame(&f).await?;
-                }
-                None => {}
-            }
-        }
-        info!("Sent responses for each received request");
-        Ok(())
+        // debug!("HERE");
+        // loop {
+        //     debug!("NOW HERE");
+        //     // If close connection message received terminate task.
+        //     if let Ok(requests) = self.listen_rh_requests.try_recv() {
+        //         debug!("AAA - Write handler should send {:?} responses", requests);
+        //         // Set expected responses sent.
+        //         self.expected_responses_sent = Some(requests);
+        //         // Receive responses from transaction manager.
+        //         while self.responses_sent != self.expected_responses_sent.unwrap() {
+        //             let response = self.response_rx.recv().await;
+        //             // Increment sent.
+        //             self.responses_sent = self.responses_sent + 1;
+        //             match response {
+        //                 Some(response) => {
+        //                     debug!("AAA- Write handler sending response: {:?}", response);
+        //                     let f = response.into_frame();
+        //                     self.connection.write_frame(&f).await?;
+        //                 }
+        //                 None => {}
+        //             }
+        //         }
+        //         // Send connected closed message.
+        //         let closed = Message::ConnectionClosed;
+        //         let c = closed.into_frame();
+        //         debug!("AAA - Send connection closed message");
+        //         self.connection.write_frame(&c).await?;
+        //         return Ok(());
+        //     }
+        //     debug!("ALSO HERE");
+        //     // Else normal operation.
+        //     // Concurrently receive responses from transaction manager and listen for
+        //     // shutdown notification.
+        //     tokio::select! {
+        //         Some(response) = self.response_rx.recv() => {
+        //             // Increment responses sent.
+        //             self.responses_sent = self.responses_sent + 1;
+        //             debug!("BBB - Write handler sending response: {:?}", response);
+        //             let f = response.into_frame();
+        //             self.connection.write_frame(&f).await?;
+        //         },
+        //         _ = self.shutdown.recv() => {
+        //             debug!("BBB - Write handler received shutdown");
+        //             // If shutdown then write handler will have received a expected responses
+        //             loop {
+        //                 if let Ok(requests) = self.listen_rh_requests.try_recv() {
+        //                     // Set expected responses sent.
+        //                     self.expected_responses_sent = Some(requests);
+        //                     break;
+        //                 }
+        //             }
+
+        //             while self.responses_sent != self.expected_responses_sent.unwrap() {
+        //                 let response = self.response_rx.recv().await;
+        //                 // Increment sent.
+        //                 self.responses_sent = self.responses_sent + 1;
+        //                 match response {
+        //                     Some(response) => {
+        //                         debug!("BBB - Write handler sending response: {:?}", response);
+        //                         let f = response.into_frame();
+        //                         self.connection.write_frame(&f).await?;
+        //                     }
+        //                     None => {}
+        //                 }
+        //             }
+
+        //             // Send connected closed message.
+        //             let closed = Message::ConnectionClosed;
+        //             let c = closed.into_frame();
+        //             debug!("BBB - Send connection closed message");
+        //             self.connection.write_frame(&c).await?;
+        //             return Ok(());
+        //         }
+        //     };
+        // }
     }
 }
 
 impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
     fn drop(&mut self) {
-        info!("Drop write handler");
+        debug!("Drop write handler");
     }
 }

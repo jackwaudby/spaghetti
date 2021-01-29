@@ -66,7 +66,7 @@ impl Listener {
             ) = tokio::sync::mpsc::unbounded_channel();
 
             let (sender, receiver) = tokio::sync::oneshot::channel::<u32>();
-s
+
             // Create per-connection handler state.
             // Split socket into reader and writer handlers.
             let (rd, wr) = io::split(socket);

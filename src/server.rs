@@ -12,7 +12,7 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::signal;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 pub mod read_handler;
 
@@ -63,7 +63,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let mut list = Listener {
         listener,
         notify_read_handlers_tx,
-        notify_tm_tx: notify_tm_tx.clone(),
+        notify_tm_tx: notify_tm_tx,
         wh_shutdown_rx: notify_wh_tx.subscribe(),
         notify_listener_tx,
         listener_shutdown_rx,
@@ -100,15 +100,15 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         mut listener_shutdown_rx,
         ..
     } = list;
-    // Close channel to read handlers.
+    debug!("Close channel to read handlers.");
     drop(notify_read_handlers_tx);
-    // Close channel to transaction manager.
+    debug!("Close channel to transaction manager.");
     drop(notify_tm_tx);
-    // Wait for transaction manger to shutdown.
+    debug!("Wait for transaction manger to shutdown.");
     wh_shutdown_rx.recv().await;
-    // Close channel to listener
+    debug!("Close channel to listener.");
     drop(notify_listener_tx);
-    // Wait for write handlers to shutdown.
+    debug!("Wait for write handlers to shutdown.");
     listener_shutdown_rx.recv().await;
     info!("Clean shutdown");
     Ok(())

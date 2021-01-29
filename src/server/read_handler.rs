@@ -44,7 +44,7 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
 
 impl<R: AsyncRead + Unpin> Drop for ReadHandler<R> {
     fn drop(&mut self) {
-        info!("Drop read handler");
+        debug!("Drop read handler");
     }
 }
 
@@ -55,14 +55,20 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
     /// Responses are written back to the socket.
     pub async fn run(&mut self) -> Result<()> {
         debug!("Processing connection");
-        // While shutdown signal not received try to read frames.
+        // While no keyboard interupt try to read frames.
         while !self.shutdown.is_shutdown() {
-            // While reading a requested frame listen for shutdown.
-            info!("Attempting to read frames");
+            // While reading a requested frame listen for keyboard interrupt.
+            debug!("Attempting to read frames");
             let maybe_frame = tokio::select! {
                 res = self.connection.read_frame() => res?,
                 _ = self.shutdown.recv() => {
                     // Shutdown signal received, terminate the task.
+                    debug!("Send expected responses: {:?}", self.requests);
+                    self.notify_wh_requests
+                        .take()
+                        .unwrap()
+                        .send(self.requests)
+                        .unwrap();
                     return Ok(());
                 }
             };
@@ -71,7 +77,13 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
             let frame = match maybe_frame {
                 Some(frame) => frame,
                 None => {
-                    info!("Read half socket closed");
+                    debug!("Read half socket closed");
+                    debug!("Send expected responses: {:?}", self.requests);
+                    self.notify_wh_requests
+                        .take()
+                        .unwrap()
+                        .send(self.requests)
+                        .unwrap();
                     return Ok(());
                 }
             };
@@ -79,6 +91,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
             let decoded: Message = bincode::deserialize(&frame.get_payload())?;
             let request = match decoded {
                 Message::TatpTransaction(transaction) => {
+                    debug!("Received Transaction");
                     // Wrap as request.
                     Request {
                         transaction: Transaction::Tatp(transaction),
@@ -93,19 +106,20 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
                     }
                 }
                 Message::CloseConnection => {
-                    info!("Send expected responses: {:?}", self.requests);
+                    debug!("Received CloseConnection");
+                    debug!("Send expected responses: {:?}", self.requests);
                     self.notify_wh_requests
                         .take()
                         .unwrap()
                         .send(self.requests)
                         .unwrap();
-                    break;
+                    return Ok(());
                 }
                 _ => return Err(Box::new(SpaghettiError::UnexpectedMessage)),
             };
             // Increment transaction requests received.
             self.requests = self.requests + 1;
-            info!("Send transaction to transaction manager");
+            debug!("Send transaction to transaction manager");
             // Send to transaction manager
             self.work_tx.send(request).unwrap();
         }
