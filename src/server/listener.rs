@@ -19,21 +19,26 @@ pub struct Listener {
     /// TCP listener.
     pub listener: TcpListener,
 
-    /// Broadcast channel between the `Listener` and all active connections (`Handlers`).
-    /// The `Listener' retains `Sender` and each `Handler` gets a `Receiver` handle.
-    /// When the server is shutdown this `Sender` is explicitly dropped, closing the channel,
-    /// and triggering the shutdown process.
-    /// This is communication between async code (A -> A).
-    pub notify_handlers_tx: tokio::sync::broadcast::Sender<()>,
+    /// Sender of channel between `Listener` and `ReadHandler`s.
+    /// Used for sending notification of shutdown triggered by keyboard interupt.
+    pub notify_read_handlers_tx: tokio::sync::broadcast::Sender<()>,
 
-    pub listener_rx: tokio::sync::mpsc::UnboundedReceiver<()>,
+    /// Sender of channel between `ReadHandler` and `TransactionManager`.
+    /// Used to shutdown transaction manager when there are no active connections.
+    pub notify_tm_tx: std::sync::mpsc::Sender<()>,
 
-    // TEST
-    pub rh_tx: std::sync::mpsc::Sender<()>,
+    /// Receiver of channel between `TransactionManager` and `WriteHandler`.
+    /// Used to indicate shutdown of transaction manager has complleted when there are
+    /// no active connections.
+    pub wh_shutdown_rx: tokio::sync::broadcast::Receiver<()>,
 
-    pub wh_rx: tokio::sync::broadcast::Receiver<()>,
+    /// Sender of channel between `WriteHandler`s and `Listener`.
+    /// Used to indicate shutdown of write handlers when there are no active connections.
+    pub notify_listener_tx: tokio::sync::mpsc::UnboundedSender<()>,
 
-    pub listener_tx: tokio::sync::mpsc::UnboundedSender<()>,
+    /// Receiver of channel between `WriteHandler`s and `Listener`.
+    /// Used to indicate `WriteHandler`s have gracefully shutdown.
+    pub listener_shutdown_rx: tokio::sync::mpsc::UnboundedReceiver<()>,
 }
 
 impl Listener {
@@ -43,10 +48,8 @@ impl Listener {
     /// Listens for inbound connections.
     pub async fn run(
         &mut self,
-        notify_tm_tx: std::sync::mpsc::Sender<()>,
         work_tx: std::sync::mpsc::Sender<Request>,
         notify_wh_tx: tokio::sync::broadcast::Sender<()>,
-        notify_listener_tx: tokio::sync::mpsc::UnboundedSender<()>,
         config: Arc<Config>,
     ) -> Result<()> {
         info!("Accepting new connections");
@@ -76,11 +79,11 @@ impl Listener {
             let mut read_handler = ReadHandler {
                 connection: ReadConnection::new(rd),
                 requests: 0,
-                shutdown: Shutdown::new_broadcast(self.notify_handlers_tx.subscribe()),
+                shutdown: Shutdown::new_broadcast(self.notify_read_handlers_tx.subscribe()),
                 response_tx,
                 notify_wh_requests: Some(sender),
                 work_tx: work_tx.clone(),
-                _notify_tm_tx: notify_tm_tx.clone(),
+                _notify_tm_tx: self.notify_tm_tx.clone(),
             };
 
             let mut write_handler = WriteHandler {
@@ -90,7 +93,7 @@ impl Listener {
                 expected_responses_sent: None,
                 listen_rh_requests: receiver,
                 shutdown: Shutdown::new_broadcast(notify_wh_tx.subscribe()),
-                _notify_listener_tx: notify_listener_tx.clone(),
+                _notify_listener_tx: self.notify_listener_tx.clone(),
             };
 
             // Get handle to config.
