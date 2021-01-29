@@ -9,7 +9,7 @@ pub enum ParameterGenerator {
 }
 
 impl ParameterGenerator {
-    pub fn get_transaction(&mut self) -> Message {
+    pub async fn get_transaction(&mut self) -> Message {
         use ParameterGenerator::*;
         match self {
             Tatp(ref mut gen) => gen.generate(),

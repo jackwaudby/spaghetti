@@ -12,7 +12,7 @@ use tokio::io;
 use tokio::net::TcpStream;
 use tokio::signal;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use tracing::info;
+use tracing::{debug, info};
 
 pub mod producer;
 
@@ -70,16 +70,19 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let c = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx);
 
     // run the producer whilst listening for shutdown signal.
-    tokio::select! {
+    let run = tokio::select! {
          res = async {
              let whh = write_handler::run(wh);
              let rhh = read_handler::run(rh);
              let chh = consumer::run(c);
-             let (_p, _rh, _wh, _ch) = tokio::join!(producer.run(), rhh, whh, chh);
+             let (p, _rh, _wh, _ch) = tokio::join!(producer.run(), rhh, whh, chh);
              producer.wait().await;
+             p
          } => res,
         _ = signal::ctrl_c() => {
             info!("Keyboard interrupt");
+            // Handles case when client unexpectedly closed.
+
             // Drop shutdown channel to write handler.
             let Producer {
                 write_task_tx,
@@ -90,16 +93,19 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
             // Send close connection message.
             let message = Message::CloseConnection;
-            info!("Send {:?}", message);
-            write_task_tx.send(message).await.unwrap();
+            debug!("Send {:?}", message);
+            write_task_tx.send(message).await?;
 
             // Notify write handler of shutdown.
             drop(notify_wh_tx);
 
             // Wait until `Consumer` closes channel.
             listen_c_rx.recv().await;
+            Ok(())
         }
-    }
+    };
+
     info!("Client shutdown");
-    Ok(())
+    // Ok(())
+    run
 }

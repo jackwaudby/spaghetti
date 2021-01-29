@@ -1,17 +1,14 @@
-use crate::common::connection::{ReadConnection, WriteConnection};
-use crate::common::error::SpaghettiError;
+use crate::common::connection::WriteConnection;
 use crate::common::message::Message;
 use crate::common::shutdown::Shutdown;
-use crate::workloads::tatp::TatpTransaction;
-use crate::workloads::tpcc::TpccTransaction;
 use crate::Result;
 
 use config::Config;
 use std::fmt::Debug;
 use std::marker::Unpin;
 use std::sync::Arc;
-use tokio::io::{AsyncRead, AsyncWrite};
-use tracing::{debug, info};
+use tokio::io::AsyncWrite;
+use tracing::debug;
 
 /// Represents the handler for the write half of a client connection.
 #[derive(Debug)]

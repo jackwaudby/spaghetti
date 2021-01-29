@@ -3,7 +3,7 @@ use clap::clap_app;
 use config::Config;
 use spaghetti::client;
 use std::sync::Arc;
-use tracing::{info, Level};
+use tracing::{error, info, Level};
 use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
@@ -56,7 +56,9 @@ async fn main() -> spaghetti::Result<()> {
     // Ok as configuration never changes at runtime.
     let config = Arc::new(settings);
 
-    client::run(config).await?;
+    client::run(config).await.unwrap_or_else(|error| {
+        error!("{:?}", error);
+    });
 
     Ok(())
 }

@@ -58,7 +58,7 @@ pub async fn run(mut consumer: Consumer) {
                             .append(true)
                             .open("result.txt")
                             .expect("cannot open file");
-                        write!(file, "{}\n", message.to_string());
+                        write!(file, "{}\n", message.to_string()).unwrap();
                     }
                     return;
                 }
@@ -72,7 +72,7 @@ pub async fn run(mut consumer: Consumer) {
                     .create(true)
                     .open("result.txt")
                     .expect("cannot open file");
-                write!(file, "{}\n", message.to_string());
+                write!(file, "{}\n", message.to_string()).unwrap();
             }
         }
     });

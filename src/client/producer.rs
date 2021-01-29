@@ -78,35 +78,35 @@ impl Producer {
     pub async fn run(&mut self) -> Result<()> {
         info!("Generate {:?} transaction", self.transactions);
 
-        for _ in 0..self.transactions {
-            if self.listen_c_rx.is_shutdown() {
-                info!("Producer received shutdown notification");
-                return Ok(());
-            }
-            // Generate a transaction.
-            let transaction = self.generator.get_transaction();
-            info!("Generated {:?}", transaction);
-            sleep(Duration::from_millis(5000)).await;
-            let res = self.write_task_tx.send(transaction).await;
-            if let Err(_) = res {
-                debug!("producer to write handler channel unexpectedly closed");
+        for i in 0..self.transactions {
+            let maybe_transaction = tokio::select! {
+                res = self.generator.get_transaction() => res,
+                _ = self.listen_c_rx.recv() => {
+                    // Handles case when server unexpectedly closed.
+                    self.terminate().await?;
+                    debug!("Generated messages {:?}", i+1);
+                    return Ok(());
+                }
+            };
+            // Normal execution.
+            debug!("Generated {:?}", maybe_transaction);
+            sleep(Duration::from_millis(1000)).await;
+            match self.write_task_tx.send(maybe_transaction).await {
+                Ok(_) => {}
+                Err(_) => debug!("Generated messages {:?}", i + 1),
             }
         }
-        info!("{:?} transaction generated", self.transactions);
-
-        // Send `CloseConnection` message.
-        self.terminate().await.unwrap();
+        self.terminate().await?;
+        debug!("Generated all messages");
         Ok(())
     }
 
     /// Send `CloseConnection` message.
     pub async fn terminate(&mut self) -> Result<()> {
         let message = Message::CloseConnection;
-        info!("Send {:?}", message);
-        let res = self.write_task_tx.send(message).await;
-        if let Err(_) = res {
-            debug!("producer to write handler channel unexpectedly closed");
-        }
+        debug!("Send {:?}", message);
+        self.write_task_tx.send(message).await?;
+
         Ok(())
     }
 
