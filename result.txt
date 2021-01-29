@@ -1,5 +1,15 @@
 Response(Response { payload: "000000000000000" })
 Response(Response { payload: "000000000000000" })
+ConnectionClosed
+Response(Response { payload: "000000000000000" })
+Response(Response { payload: "000000000000000" })
+Response(Response { payload: "000000000000000" })
+Response(Response { payload: "000000000000000" })
+ConnectionClosed
+Response(Response { payload: "000000000000000" })
+Response(Response { payload: "000000000000000" })
+Response(Response { payload: "000000000000000" })
+ConnectionClosed
 Response(Response { payload: "000000000000000" })
 Response(Response { payload: "000000000000000" })
 ConnectionClosed

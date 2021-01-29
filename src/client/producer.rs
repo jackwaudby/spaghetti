@@ -84,17 +84,14 @@ impl Producer {
                 _ = self.listen_c_rx.recv() => {
                     // Handles case when server unexpectedly closed.
                     self.terminate().await?;
-                    debug!("Generated messages {:?}", i+1);
+                    info!("Generated {:?} transactions", i);
                     return Ok(());
                 }
             };
             // Normal execution.
             debug!("Generated {:?}", maybe_transaction);
             sleep(Duration::from_millis(1000)).await;
-            match self.write_task_tx.send(maybe_transaction).await {
-                Ok(_) => {}
-                Err(_) => debug!("Generated messages {:?}", i + 1),
-            }
+            self.write_task_tx.send(maybe_transaction).await?;
         }
         self.terminate().await?;
         debug!("Generated all messages");
