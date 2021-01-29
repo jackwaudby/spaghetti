@@ -54,15 +54,9 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let (notify_read_handlers_tx, _) = tokio::sync::broadcast::channel(1);
     let (notify_tm_tx, tm_shutdown_rx) = std::sync::mpsc::channel();
     let (notify_wh_tx, _) = tokio::sync::broadcast::channel(1);
-
     let (notify_listener_tx, listener_shutdown_rx) = tokio::sync::mpsc::unbounded_channel();
 
-    ///// Work sending /////
-    // Mpsc channel between handlers (producers) and transaction manager (consumer).
-    // Each `Handler` gets a clone of the  `Sender` end.
-    // `TransactionManager` gets the `Receiver` end.
-    // Communication between async code and sync code (A -> S).
-    // Use std unbounded channel.
+    // Work channels.
     let (work_tx, work_rx): (Sender<Request>, Receiver<Request>) = std::sync::mpsc::channel();
 
     // Initialise server listener state.

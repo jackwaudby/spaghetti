@@ -58,20 +58,15 @@ impl Listener {
             let (socket, _) = self.listener.accept().await?;
             info!("New connection accepted");
 
-            // For each `Handler` a `Response` channel is created.
-            // This enables the `TransactionManager`s `Worker`s to send the response for a
-            // request to the correct client.
-            // A `Handler` wraps a transaction with a clone of the `Sender` to its response
-            // channel into a `Request`.
-            // Communication between sync code and async code (S -> A).
-            // Use mpsc unbounded channel.
+            // Response routing channel between `TransactionManager`s `Worker` and the
+            // corresponding 'WriteHandler`.
             let (response_tx, response_rx): (
                 tokio::sync::mpsc::UnboundedSender<Message>,
                 tokio::sync::mpsc::UnboundedReceiver<Message>,
             ) = tokio::sync::mpsc::unbounded_channel();
 
             let (sender, receiver) = tokio::sync::oneshot::channel::<u32>();
-
+s
             // Create per-connection handler state.
             // Split socket into reader and writer handlers.
             let (rd, wr) = io::split(socket);
