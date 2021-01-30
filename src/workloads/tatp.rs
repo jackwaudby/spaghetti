@@ -449,7 +449,7 @@ mod tests {
         populate_subscriber_table(&internals, &mut rng).unwrap();
 
         assert_eq!(
-            internals.get_table("subscriber").unwrap().get_next_row_id() - 1,
+            internals.get_table("subscriber").unwrap().get_next_row_id(),
             1
         );
 
