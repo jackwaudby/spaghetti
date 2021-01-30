@@ -181,6 +181,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                 let mut row = Row::new(Arc::clone(&cf_t));
                 row.set_primary_key(pk);
                 row.set_value("s_id", &s_id.to_string())?;
+                row.set_value("sf_type", &sample[record].to_string())?;
                 row.set_value("start_time", &st.to_string())?;
                 row.set_value("end_time", &et.to_string())?;
                 row.set_value("number_x", &nx)?;
@@ -441,22 +442,73 @@ mod tests {
     }
 
     #[test]
-    fn pop_sub_table_test() {
-        logging(false);
+    fn populate_tables_test() {
+        logging(true);
         let c = Arc::clone(&CONFIG);
         let internals = Internal::new("tatp_schema.txt", c).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
-        populate_subscriber_table(&internals, &mut rng).unwrap();
 
+        // Subscriber.
+        populate_subscriber_table(&internals, &mut rng).unwrap();
         assert_eq!(
             internals.get_table("subscriber").unwrap().get_next_row_id(),
-            1
+            2
         );
-
         let index = internals.indexes.get("sub_idx").unwrap();
-        let pk = 0;
-        let row = index.index_read(pk).unwrap();
+        let row = index.index_read(0).unwrap();
         let value = row.get_value("bit_1").unwrap().unwrap();
         assert_eq!(value, "0");
+
+        // Access info.
+        populate_access_info(&internals, &mut rng).unwrap();
+        assert_eq!(
+            internals
+                .get_table("access_info")
+                .unwrap()
+                .get_next_row_id(),
+            5
+        );
+        let index = internals.indexes.get("access_idx").unwrap();
+        let row = index.index_read(2).unwrap();
+        assert_eq!(row.get_value("ai_type").unwrap().unwrap(), "2");
+        assert_eq!(row.get_value("data_1").unwrap().unwrap(), "63");
+        assert_eq!(row.get_value("data_2").unwrap().unwrap(), "7");
+        assert_eq!(row.get_value("data_3").unwrap().unwrap(), "EMZ");
+        assert_eq!(row.get_value("data_4").unwrap().unwrap(), "WOVGK");
+
+        // Special facillity.
+        populate_special_facility_call_forwarding(&internals, &mut rng).unwrap();
+        assert_eq!(
+            internals
+                .get_table("special_facility")
+                .unwrap()
+                .get_next_row_id(),
+            5
+        );
+        let index = internals.indexes.get("special_idx").unwrap();
+        let row = index.index_read(6).unwrap();
+        assert_eq!(row.get_value("sf_type").unwrap().unwrap(), "1");
+        assert_eq!(row.get_value("is_active").unwrap().unwrap(), "1");
+        assert_eq!(row.get_value("error_cntrl").unwrap().unwrap(), "122");
+        assert_eq!(row.get_value("data_a").unwrap().unwrap(), "73");
+        assert_eq!(row.get_value("data_b").unwrap().unwrap(), "PXESG");
+
+        // Call forwarding.
+        assert_eq!(
+            internals
+                .get_table("call_forwarding")
+                .unwrap()
+                .get_next_row_id(),
+            10
+        );
+        let index = internals.indexes.get("call_idx").unwrap();
+        let row = index.index_read(21).unwrap();
+        assert_eq!(row.get_value("sf_type").unwrap().unwrap(), "2");
+        assert_eq!(row.get_value("start_time").unwrap().unwrap(), "0");
+        assert_eq!(row.get_value("end_time").unwrap().unwrap(), "5");
+        assert_eq!(
+            row.get_value("number_x").unwrap().unwrap(),
+            "707677987012384"
+        );
     }
 }
