@@ -84,7 +84,6 @@ mod tests {
     use crate::common::message::{Message, Response};
     use std::fs::File;
     use std::io::{self, BufRead};
-    use std::path::Path;
     use std::sync::Once;
     use tokio::sync::mpsc::{self, Receiver, Sender};
     use tracing::Level;
@@ -117,7 +116,7 @@ mod tests {
         // `Consumer` to `Producer`
         let (notify_p_tx, _) = tokio::sync::mpsc::channel(1);
         // `ReadHandler` to `Consumer`.
-        let (read_task_tx, mut read_task_rx): (Sender<Message>, Receiver<Message>) =
+        let (read_task_tx, read_task_rx): (Sender<Message>, Receiver<Message>) =
             mpsc::channel(32 as usize);
         // Pre-populate response queue.
         let response = Response::Committed {
@@ -125,7 +124,7 @@ mod tests {
         };
         for _ in 0..3 {
             let m = Message::Response(response.clone());
-            read_task_tx.send(m).await;
+            read_task_tx.send(m).await.unwrap();
         }
 
         // Create consumer
@@ -138,7 +137,7 @@ mod tests {
         drop(notify_c_tx);
 
         // join task
-        h.await;
+        h.await.unwrap();
 
         let file = File::open("result.txt").unwrap();
         let count: Vec<_> = io::BufReader::new(file)

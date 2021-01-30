@@ -65,7 +65,7 @@ impl Scheduler {
         key: &str,
         transaction_name: &str,
         transaction_ts: DateTime<Utc>,
-    ) -> Result<String, Abort> {
+    ) -> Result<String, TwoPhaseLockingError> {
         info!(
             "Transaction {:?} requesting read lock on {:?}",
             transaction_name, key
@@ -98,16 +98,14 @@ impl Scheduler {
             }
             LockRequest::Denied => {
                 info!("Read lock denied");
-                Err(Abort)
+                Err(TwoPhaseLockingError::new(
+                    TwoPhaseLockingErrorKind::LockRequestDenied,
+                ))
             }
         }
     }
 
     /// Register lock with a transaction.
-    ///
-    /// # Errors
-    ///
-    ///
     fn register_lock(&self, transaction_name: &str, key: &str) -> Result<(), TwoPhaseLockingError> {
         // Attempt to get mutable value for transaction.
         let locks_held = self.active_transactions.get_mut(transaction_name);
@@ -537,7 +535,7 @@ impl TwoPhaseLockingError {
 pub enum TwoPhaseLockingErrorKind {
     NotRegisteredInActiveTransactions,
     AlreadyRegisteredInActiveTransactions,
-    LockingError,
+    LockRequestDenied,
 }
 
 impl fmt::Display for TwoPhaseLockingError {
@@ -547,7 +545,7 @@ impl fmt::Display for TwoPhaseLockingError {
             AlreadyRegisteredInActiveTransactions => {
                 "Transaction already registered in active transaction table"
             }
-            LockingError => "Unable to get lock in table",
+            LockRequestDenied => "Lock request denied",
             NotRegisteredInActiveTransactions => {
                 "Transaction not registered in active transaction table"
             }
@@ -557,18 +555,6 @@ impl fmt::Display for TwoPhaseLockingError {
 }
 
 impl Error for TwoPhaseLockingError {}
-
-#[derive(Debug)]
-pub struct Abort;
-
-impl fmt::Display for Abort {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let err_msg = "Request denied, abort transaction.";
-        write!(f, "{}", err_msg)
-    }
-}
-
-impl Error for Abort {}
 
 #[cfg(test)]
 mod tests {
@@ -639,7 +625,7 @@ mod tests {
         let t_ts = datetime;
 
         // Register transaction
-        scheduler.register(&t_id);
+        scheduler.register(&t_id).unwrap();
         // Lock
         let req = scheduler.request_lock("table_1_row_12", LockMode::Read, &t_id, t_ts);
         assert_eq!(req, LockRequest::Granted);
