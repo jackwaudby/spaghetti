@@ -409,12 +409,54 @@ pub enum TatpTransaction {
 mod tests {
 
     use super::*;
+    use config::Config;
+    use lazy_static::lazy_static;
+    use rand::SeedableRng;
+    use std::sync::Once;
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+
+    static LOG: Once = Once::new();
+
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
+    }
+
+    lazy_static! {
+        static ref CONFIG: Arc<Config> = {
+            // Initialise configuration.
+            let mut c = Config::default();
+            c.merge(config::File::with_name("Test.toml")).unwrap();
+            let config = Arc::new(c);
+            config
+        };
+    }
 
     #[test]
-    fn to_sub_nbr_test() {
-        let s_id = 40958;
-        let sub_nbr = helper::to_sub_nbr(s_id);
-        info!("{:?}", sub_nbr.to_string().len());
-        assert_eq!(sub_nbr.len(), 15);
+    fn pop_sub_table_test() {
+        logging(false);
+        let c = Arc::clone(&CONFIG);
+        let internals = Internal::new("tatp_schema.txt", c).unwrap();
+        let mut rng = StdRng::seed_from_u64(42);
+        populate_subscriber_table(&internals, &mut rng).unwrap();
+
+        assert_eq!(
+            internals.get_table("subscriber").unwrap().get_next_row_id() - 1,
+            1
+        );
+
+        let index = internals.indexes.get("sub_idx").unwrap();
+        let pk = 0;
+        let row = index.index_read(pk).unwrap();
+        let value = row.get_value("bit_1").unwrap().unwrap();
+        assert_eq!(value, "0");
     }
 }

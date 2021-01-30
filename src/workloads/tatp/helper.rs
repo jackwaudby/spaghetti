@@ -99,5 +99,6 @@ mod tests {
         assert_eq!(get_data_x(3, &mut rng), String::from("NOQ"));
         assert_eq!(get_number_x(&mut rng), String::from("404781095152050"));
         assert_eq!(get_start_time(&mut rng), 8);
+        assert_eq!(is_active(&mut rng), 1);
     }
 }
