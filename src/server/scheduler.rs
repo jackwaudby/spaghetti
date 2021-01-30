@@ -1,19 +1,21 @@
 use crate::workloads::Workload;
-use crate::Result;
 
 use chashmap::CHashMap;
+use chrono::{DateTime, NaiveDate, Utc};
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Condvar, Mutex};
 use tracing::{debug, info};
 
+/// Represents an operation scheduler.
 #[derive(Debug)]
 pub struct Scheduler {
-    // Maps of record and their lock information.
+    /// Map of databse record ids to their lock information.
     lock_table: Arc<CHashMap<String, LockInfo>>,
-    // Map of active transactions and locks they hold.
+    /// Map of active transactions to the locks they hold.
     active_transactions: Arc<CHashMap<String, Vec<String>>>,
-    // Handle to storage layer.
+    /// Handle to storage layer.
     data: Arc<Workload>,
 }
 
@@ -30,6 +32,25 @@ impl Scheduler {
         }
     }
 
+    /// Register a transaction with the scheduler.
+    ///
+    /// # Errors
+    ///
+    /// If a transaction with the same name is already registered returns
+    /// `TransactionAlreadyRegistered`.
+    pub fn register(&self, transaction_name: &str) -> Result<(), TwoPhaseLockingError> {
+        debug!("Register transaction {:?} with scheduler", transaction_name);
+        match self
+            .active_transactions
+            .insert(transaction_name.to_string(), Vec::new())
+        {
+            Some(_) => Err(TwoPhaseLockingError::new(
+                TwoPhaseLockingErrorKind::AlreadyRegisteredInActiveTransactions,
+            )),
+            None => Ok(()),
+        }
+    }
+
     pub fn commit(&self, transaction_name: &str) {
         info!("Commit transaction {:?}", transaction_name);
         self.release_locks(transaction_name);
@@ -39,7 +60,12 @@ impl Scheduler {
     /// Attempts to read a database record.
     ///
     /// If the read operation fails, an error is returned.
-    pub fn read(&self, key: &str, transaction_name: &str, transaction_ts: u32) -> Result<String> {
+    pub fn read(
+        &self,
+        key: &str,
+        transaction_name: &str,
+        transaction_ts: DateTime<Utc>,
+    ) -> Result<String, Abort> {
         info!(
             "Transaction {:?} requesting read lock on {:?}",
             transaction_name, key
@@ -72,38 +98,33 @@ impl Scheduler {
             }
             LockRequest::Denied => {
                 info!("Read lock denied");
-                Err(Box::new(Abort))
+                Err(Abort)
             }
         }
     }
 
-    /// Register a transaction with the scheduler.
-    /// TODO: Add error type.
-    pub fn register(&self, transaction_name: &str) -> Result<()> {
-        info!("Register transaction {:?} with scheduler", transaction_name);
-        match self
-            .active_transactions
-            .insert(transaction_name.to_string(), Vec::new())
-        {
-            Some(_) => Err(Box::new(TwoPhaseLockingError::new(
-                TwoPhaseLockingErrorKind::TransactionAlreadyRegistered,
-            ))),
-            None => Ok(()),
-        }
-    }
-
     /// Register lock with a transaction.
-    fn register_lock(&self, transaction_name: &str, key: &str) -> Result<()> {
-        let mut locks_held = self
-            .active_transactions
-            .get_mut(transaction_name)
-            .expect("Transaction not registered");
-        locks_held.push(key.to_string());
-        info!(
-            "Register lock for {:?} with transaction {:?}",
-            key, transaction_name
-        );
-        Ok(())
+    ///
+    /// # Errors
+    ///
+    ///
+    fn register_lock(&self, transaction_name: &str, key: &str) -> Result<(), TwoPhaseLockingError> {
+        // Attempt to get mutable value for transaction.
+        let locks_held = self.active_transactions.get_mut(transaction_name);
+
+        match locks_held {
+            Some(mut wg) => {
+                wg.push(key.to_string());
+                info!(
+                    "Register lock for {:?} with transaction {:?}",
+                    key, transaction_name
+                );
+                Ok(())
+            }
+            None => Err(TwoPhaseLockingError::new(
+                TwoPhaseLockingErrorKind::NotRegisteredInActiveTransactions,
+            )),
+        }
     }
 
     /// Attempt to acquire lock.
@@ -117,7 +138,7 @@ impl Scheduler {
         key: &str,
         request_mode: LockMode,
         transaction_name: &str,
-        transaction_ts: u32,
+        transaction_ts: DateTime<Utc>,
     ) -> LockRequest {
         // If the lock table does not contain lock information for this record, insert lock information, and grant lock.
         if !self.lock_table.contains_key(key) {
@@ -252,11 +273,7 @@ impl Scheduler {
     fn release_lock(&self, key: &str, transaction_name: &str) {
         debug!("Retrieve lock information for {}", key);
         let mut lock_info = self.lock_table.get_mut(key).unwrap();
-        // info!(
-        //     "Releasing {:?} lock for transaction {:?}",
-        //     lock_info.group_mode.unwrap(),
-        //     transaction_name
-        // );
+
         // If 1 granted lock and no waiting requests, reset lock and return.
         if lock_info.granted.unwrap() == 1 && !lock_info.waiting {
             debug!("1 lock held and no waiting locks");
@@ -302,7 +319,8 @@ impl Scheduler {
                 // If some reads requests first in queue.
                 if read_requests != 0 {
                     // Wake up threads and determine new lock timestamp.
-                    let mut new_lock_timestamp = 0;
+                    let dt = NaiveDate::from_ymd(1970, 1, 1).and_hms(0, 0, 0);
+                    let mut new_lock_timestamp = DateTime::<Utc>::from_utc(dt, Utc);
                     for e in lock_info.list.iter().take(read_requests) {
                         if e.timestamp > new_lock_timestamp {
                             new_lock_timestamp = e.timestamp;
@@ -427,15 +445,16 @@ impl PartialEq for LockRequest {
 /// Represents the locking information for a given database record.
 #[derive(Debug)]
 struct LockInfo {
-    // The overall lock state, so transactions need not to traverse the list of entries to determine the lock status.
+    /// Overall lock state.
+    /// Prevents ransactions needing to traverse all `Entry`s to determine lock status.
     group_mode: Option<LockMode>,
-    // Whether transactions are waiting for the lock.
+    /// Whether transactions are waiting for the lock.
     waiting: bool,
-    // List of transactions that have acquired the lock or are waiting for it.
+    /// List of transactions that have acquired the lock or are waiting for it.
     list: Vec<Entry>,
-    // Latest timestamp of transactions that hold lock, used for deadlock detection.
-    timestamp: Option<u32>,
-    // Number of locks concurrently granted for this record.
+    /// Latest timestamp of transactions that hold lock, used for deadlock detection.
+    timestamp: Option<DateTime<Utc>>,
+    /// Number of locks concurrently granted for this record.
     granted: Option<u32>,
 }
 
@@ -443,7 +462,7 @@ impl LockInfo {
     /// Create new locking information container.
     ///
     /// Takes the initial group mode and initial timestamp.
-    fn new(group_mode: LockMode, timestamp: u32) -> LockInfo {
+    fn new(group_mode: LockMode, timestamp: DateTime<Utc>) -> LockInfo {
         LockInfo {
             group_mode: Some(group_mode),
             waiting: false,
@@ -459,22 +478,23 @@ impl LockInfo {
     }
 }
 
-/// Represents an entry in the list of transactions that have request the lock.
+/// Represents an entry in the list of transactions that have requested a lock.
 ///
 /// These transactions can either be waiting for the lock or be holding it.
 /// For requests that are waiting for the lock the calling thread is blocked using a `Condvar`.
 /// When a transaction releases the lock it notifies the thread to resume execution.
 #[derive(Debug)]
 struct Entry {
-    // Transaction name.
+    /// Transaction name.
     name: String,
-    // Lock request type.
+    /// Lock request type.
     lock_mode: LockMode,
-    // Waiting for the lock or holding it.
+    /// Waiting for the lock or holding it.
     waiting: Option<Arc<(Mutex<bool>, Condvar)>>,
     // TODO: Pointer to transaction's other `Entry`s for unlocking.
     // previous_entry: &Entry,
-    timestamp: u32,
+    /// Transaction timestamp.
+    timestamp: DateTime<Utc>,
 }
 
 impl Entry {
@@ -483,7 +503,7 @@ impl Entry {
         name: String,
         lock_mode: LockMode,
         waiting: Option<Arc<(Mutex<bool>, Condvar)>>,
-        timestamp: u32,
+        timestamp: DateTime<Utc>,
     ) -> Entry {
         Entry {
             name,
@@ -502,7 +522,7 @@ enum LockMode {
 }
 
 /// An `Abort` error is returned when a read or write scheuler operation fails.
-#[derive(Debug, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct TwoPhaseLockingError {
     kind: TwoPhaseLockingErrorKind,
 }
@@ -513,9 +533,10 @@ impl TwoPhaseLockingError {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum TwoPhaseLockingErrorKind {
-    TransactionAlreadyRegistered,
+    NotRegisteredInActiveTransactions,
+    AlreadyRegisteredInActiveTransactions,
     LockingError,
 }
 
@@ -523,10 +544,13 @@ impl fmt::Display for TwoPhaseLockingError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use TwoPhaseLockingErrorKind::*;
         let err_msg = match self.kind {
-            TransactionAlreadyRegistered => {
+            AlreadyRegisteredInActiveTransactions => {
                 "Transaction already registered in active transaction table"
             }
             LockingError => "Unable to get lock in table",
+            NotRegisteredInActiveTransactions => {
+                "Transaction not registered in active transaction table"
+            }
         };
         write!(f, "{}", err_msg)
     }
@@ -535,7 +559,7 @@ impl fmt::Display for TwoPhaseLockingError {
 impl Error for TwoPhaseLockingError {}
 
 #[derive(Debug)]
-struct Abort;
+pub struct Abort;
 
 impl fmt::Display for Abort {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -546,152 +570,212 @@ impl fmt::Display for Abort {
 
 impl Error for Abort {}
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::sync::Once;
-//     use std::{thread, time};
-//     use tracing::{info, Level};
-//     use tracing_subscriber::FmtSubscriber;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+    use config::Config;
+    use lazy_static::lazy_static;
+    use std::sync::Once;
+    use std::thread;
+    use std::time;
+    use std::time::SystemTime;
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
 
-//     static LOG: Once = Once::new();
+    static LOG: Once = Once::new();
 
-//     fn logging() {
-//         LOG.call_once(|| {
-//             let subscriber = FmtSubscriber::builder()
-//                 .with_max_level(Level::DEBUG)
-//                 .finish();
-//             tracing::subscriber::set_global_default(subscriber)
-//                 .expect("setting default subscriber failed");
-//         });
-//     }
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
+    }
 
-//     // #[test]
-//     fn lock_unlock_read() {
-//         logging();
+    lazy_static! {
+        static ref WORKLOAD: Arc<Workload> = {
+            // Initialise configuration.
+            let mut c = Config::default();
+            c.merge(config::File::with_name("Test.toml")).unwrap();
+            let config = Arc::new(c);
+            // Initalise workload.
+            let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
+            workload
+        };
+    }
 
-//         // Initialise scheduler
-//         let scheduler = Arc::new(Scheduler::new());
-//         let scheduler1 = scheduler.clone();
-//         // Register transaction
-//         scheduler.register("txn_1");
-//         // Lock
-//         let req = scheduler.request_lock("table_1_row_12", LockMode::Read, "txn_1", 2);
-//         assert_eq!(req, LockRequest::Granted);
-//         // Check
-//         {
-//             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
-//             assert_eq!(
-//                 lock.group_mode == Some(LockMode::Read)
-//                     && !lock.waiting
-//                     && lock.list.len() as u32 == 1
-//                     && lock.timestamp == Some(2)
-//                     && lock.granted == Some(1),
-//                 true,
-//                 "{:?}",
-//                 lock
-//             );
-//         }
+    #[test]
+    fn register_test() {
+        logging(false);
+        // Initialise scheduler.
+        let scheduler = Arc::new(Scheduler::new(Arc::clone(&WORKLOAD)));
+        // Register transaction.
+        assert_eq!(scheduler.register("some_id"), Ok(()));
+        assert_eq!(
+            scheduler.register("some_id"),
+            Err(TwoPhaseLockingError::new(
+                TwoPhaseLockingErrorKind::AlreadyRegisteredInActiveTransactions
+            ))
+        );
+    }
 
-//         // Unlock
-//         scheduler.release_lock("table_1_row_12", "txn_1");
-//         // Check
-//         {
-//             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
-//             assert_eq!(
-//                 lock.group_mode == None
-//                     && !lock.waiting
-//                     && lock.list.len() as u32 == 0
-//                     && lock.timestamp == None
-//                     && lock.granted == None,
-//                 true,
-//                 "{:?}",
-//                 lock
-//             );
-//         }
-//     }
+    #[test]
+    fn request_lock_read_test() {
+        logging(false);
 
-//     // #[test]
-//     fn lock_unlock_write() {
-//         logging();
+        // Initialise scheduler
+        let scheduler = Arc::new(Scheduler::new(Arc::clone(&WORKLOAD)));
+        let scheduler1 = scheduler.clone();
 
-//         // Initialise scheduler
-//         let scheduler = Arc::new(Scheduler::new());
-//         let scheduler1 = scheduler.clone();
-//         // Lock
-//         scheduler.register("txn_1");
-//         let req = scheduler.request_lock("table_1_row_12", LockMode::Write, "txn_1", 2);
-//         assert_eq!(req, LockRequest::Granted);
+        // Create transaction id and timestamp.
+        let sys_time = SystemTime::now();
+        let datetime: DateTime<Utc> = sys_time.into();
+        let t_id = datetime.to_string();
+        let t_ts = datetime;
 
-//         {
-//             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
-//             assert_eq!(
-//                 lock.group_mode == Some(LockMode::Write)
-//                     && !lock.waiting
-//                     && lock.list.len() as u32 == 1
-//                     && lock.timestamp == Some(2)
-//                     && lock.granted == Some(1)
-//                     && lock.list[0].lock_mode == LockMode::Write,
-//                 true,
-//                 "{:?}",
-//                 lock
-//             );
-//         }
+        // Register transaction
+        scheduler.register(&t_id);
+        // Lock
+        let req = scheduler.request_lock("table_1_row_12", LockMode::Read, &t_id, t_ts);
+        assert_eq!(req, LockRequest::Granted);
+        // Check
+        {
+            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+            assert_eq!(
+                lock.group_mode == Some(LockMode::Read)
+                    && !lock.waiting
+                    && lock.list.len() as u32 == 1
+                    && lock.timestamp == Some(t_ts)
+                    && lock.granted == Some(1),
+                true,
+                "{:?}",
+                lock
+            );
+        }
 
-//         // Unlock
-//         scheduler.release_lock("table_1_row_12", "txn_1");
-//         {
-//             let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
-//             assert_eq!(
-//                 lock.group_mode == None
-//                     && !lock.waiting
-//                     && lock.list.len() as u32 == 0
-//                     && lock.timestamp == None
-//                     && lock.granted == None,
-//                 true,
-//                 "{:?}",
-//                 lock
-//             );
-//         }
-//     }
+        // Unlock
+        scheduler.release_lock("table_1_row_12", &t_id);
+        // Check
+        {
+            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+            assert_eq!(
+                lock.group_mode == None
+                    && !lock.waiting
+                    && lock.list.len() as u32 == 0
+                    && lock.timestamp == None
+                    && lock.granted == None,
+                true,
+                "{:?}",
+                lock
+            );
+        }
+    }
 
-//     // #[test]
-//     fn lock_table_test() {
-//         logging();
-//         let scheduler = Arc::new(Scheduler::new());
-//         let scheduler1 = scheduler.clone();
-//         scheduler.register("txn_1");
-//         scheduler.register("txn_2");
+    #[test]
+    fn request_lock_write() {
+        logging(false);
 
-//         let handle = thread::spawn(move || {
-//             debug!("Request Read lock");
-//             scheduler1.request_lock("table_1_row_12", LockMode::Read, "txn_1", 2);
-//             debug!("Request Write lock");
-//             if let LockRequest::Delay(pair) =
-//                 scheduler1.request_lock("table_1_row_12", LockMode::Write, "txn_2", 1)
-//             {
-//                 let (lock, cvar) = &*pair;
-//                 let mut waiting = lock.lock().unwrap();
-//                 while !*waiting {
-//                     waiting = cvar.wait(waiting).unwrap();
-//                 }
-//                 debug!("Write lock granted");
-//             };
-//         });
+        // Initialise scheduler
+        let scheduler = Arc::new(Scheduler::new(Arc::clone(&WORKLOAD)));
+        let scheduler1 = scheduler.clone();
 
-//         let ms = time::Duration::from_secs(2);
-//         thread::sleep(ms);
-//         scheduler.release_lock("table_1_row_12", "txn_1");
-//         let lock = scheduler.lock_table.get("table_1_row_12").unwrap();
-//         assert_eq!(
-//             lock.group_mode == Some(LockMode::Write)
-//                 && !lock.waiting
-//                 && lock.list.len() as u32 == 1
-//                 && lock.timestamp == Some(1)
-//                 && lock.granted == Some(1),
-//             true,
-//             "{:?}",
-//             *lock
-//         );
-//     }
-// }
+        // Create transaction id and timestamp.
+        let sys_time = SystemTime::now();
+        let datetime: DateTime<Utc> = sys_time.into();
+        let t_id = datetime.to_string();
+        let t_ts = datetime;
+
+        // Lock
+        scheduler.register(&t_id).unwrap();
+        let req = scheduler.request_lock("table_1_row_12", LockMode::Write, &t_id, t_ts);
+        assert_eq!(req, LockRequest::Granted);
+
+        {
+            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+            assert_eq!(
+                lock.group_mode == Some(LockMode::Write)
+                    && !lock.waiting
+                    && lock.list.len() as u32 == 1
+                    && lock.timestamp == Some(t_ts)
+                    && lock.granted == Some(1)
+                    && lock.list[0].lock_mode == LockMode::Write,
+                true,
+                "{:?}",
+                lock
+            );
+        }
+
+        // Unlock
+        scheduler.release_lock("table_1_row_12", &t_id);
+        {
+            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+            assert_eq!(
+                lock.group_mode == None
+                    && !lock.waiting
+                    && lock.list.len() as u32 == 0
+                    && lock.timestamp == None
+                    && lock.granted == None,
+                true,
+                "{:?}",
+                lock
+            );
+        }
+    }
+
+    #[test]
+    fn lock_table_test() {
+        logging(false);
+        let scheduler = Arc::new(Scheduler::new(Arc::clone(&WORKLOAD)));
+        let scheduler1 = scheduler.clone();
+
+        // Create transaction id and timestamp.
+        let sys_time_1 = SystemTime::now();
+        let datetime_1: DateTime<Utc> = sys_time_1.into();
+        let t_id_1 = datetime_1.to_string();
+        let t_id_11 = t_id_1.clone();
+        let t_ts_1 = datetime_1;
+
+        let datetime_2: DateTime<Utc> = datetime_1 - Duration::seconds(2);
+        let t_id_2 = datetime_2.to_string();
+        let t_ts_2 = datetime_2;
+
+        scheduler.register(&t_id_1).unwrap();
+        scheduler.register(&t_id_2).unwrap();
+
+        let _handle = thread::spawn(move || {
+            debug!("Request Read lock");
+            scheduler1.request_lock("table_1_row_12", LockMode::Read, &t_id_11, t_ts_1);
+            debug!("Request Write lock");
+            if let LockRequest::Delay(pair) =
+                scheduler1.request_lock("table_1_row_12", LockMode::Write, &t_id_2, t_ts_2)
+            {
+                let (lock, cvar) = &*pair;
+                let mut waiting = lock.lock().unwrap();
+                while !*waiting {
+                    waiting = cvar.wait(waiting).unwrap();
+                }
+                debug!("Write lock granted");
+            };
+        });
+
+        let ms = time::Duration::from_secs(2);
+        thread::sleep(ms);
+        scheduler.release_lock("table_1_row_12", &t_id_1);
+        let lock = scheduler.lock_table.get("table_1_row_12").unwrap();
+        assert_eq!(
+            lock.group_mode == Some(LockMode::Write)
+                && !lock.waiting
+                && lock.list.len() as u32 == 1
+                && lock.timestamp == Some(t_ts_2)
+                && lock.granted == Some(1),
+            true,
+            "{:?}",
+            *lock
+        );
+    }
+}

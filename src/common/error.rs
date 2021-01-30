@@ -5,11 +5,14 @@
 //! (3) Wrap errors with spaghetti's error type, defining an enum of causes
 
 use crate::common::frame::ParseError;
+use crate::server::scheduler::TwoPhaseLockingError;
+
+use serde::{Deserialize, Serialize};
 use std::error;
 use std::fmt;
 
 // Represents a Spaghetti error.
-#[derive(Debug, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum SpaghettiError {
     /// Not enough data available in read buffer to parse message.
     Incomplete,
@@ -33,6 +36,8 @@ pub enum SpaghettiError {
     UnexpectedMessage,
     /// Connection unexpectedly closed.
     ConnectionUnexpectedlyClosed,
+    /// Two phase locking error.
+    TwoPhaseLocking(TwoPhaseLockingError),
 }
 
 impl fmt::Display for SpaghettiError {
@@ -53,6 +58,7 @@ impl fmt::Display for SpaghettiError {
             ColumnNotFound => write!(f, "Column not found"),
             UnexpectedMessage => write!(f, "Unexpected message"),
             ConnectionUnexpectedlyClosed => write!(f, "Connection unexpectedly closed"),
+            TwoPhaseLocking(ref e) => write!(f, "2PL Error: {:?}", e),
         }
     }
 }
@@ -72,5 +78,11 @@ impl error::Error for SpaghettiError {
 impl From<ParseError> for SpaghettiError {
     fn from(error: ParseError) -> Self {
         SpaghettiError::Parse(error)
+    }
+}
+
+impl From<TwoPhaseLockingError> for SpaghettiError {
+    fn from(error: TwoPhaseLockingError) -> Self {
+        SpaghettiError::TwoPhaseLocking(error)
     }
 }

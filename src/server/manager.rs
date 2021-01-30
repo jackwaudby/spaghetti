@@ -3,10 +3,14 @@ use crate::server::pool::ThreadPool;
 use crate::server::scheduler::Scheduler;
 use crate::workloads::tatp::TatpTransaction;
 
+use chrono::offset::Utc;
+use chrono::DateTime;
 use std::sync::Arc;
 use std::thread;
-use tracing::info;
+use std::time::SystemTime;
+use tracing::debug;
 
+/// Transaction manager owns a thread pool containing workers.
 #[derive(Debug)]
 pub struct TransactionManager {
     /// Thread pool.
@@ -34,18 +38,19 @@ struct NotifyWriteHandlers {
 
 impl Drop for NotifyWriteHandlers {
     fn drop(&mut self) {
-        info!("Transaction manager broadcasting shutdown notification to write handlers.");
+        debug!("Transaction manager broadcasting shutdown notification to write handlers.");
     }
 }
 
 impl TransactionManager {
-    /// Create transaction manager.
+    /// Create a new `TransactionManager`.
     pub fn new(
         size: usize,
         work_rx: std::sync::mpsc::Receiver<Request>,
         shutdown_rx: std::sync::mpsc::Receiver<()>,
         _notify_wh_tx: tokio::sync::broadcast::Sender<()>,
     ) -> TransactionManager {
+        // Create thread pool.
         let pool = ThreadPool::new(size);
         let nwhs = NotifyWriteHandlers {
             sender: _notify_wh_tx,
@@ -64,25 +69,39 @@ impl TransactionManager {
             // Check if shutdown initiated.
             // All `ReadHandler`s must have closed, dropping their `Sender` handles.
             if let Err(std::sync::mpsc::TryRecvError::Disconnected) = self.shutdown_rx.try_recv() {
-                info!("Transaction manager received shutdown notification from all read handlers");
+                debug!("Transaction manager received shutdown notification from all read handlers");
                 // Drain remainder of `Request`s sent from `ReadHandler`s.
-                while let Ok(request) = self.work_rx.recv() {
-                    info!("Pass request to thread pool");
+                while let Ok(mut request) = self.work_rx.recv() {
+                    debug!("Pass request to thread pool");
                     // Get handle to scheduler.
                     let s = Arc::clone(&scheduler);
+                    // Assign transaction id and timestamp.
+                    let sys_time = SystemTime::now();
+                    let datetime: DateTime<Utc> = sys_time.into();
+                    request.id = Some(datetime.to_string());
+                    request.timestamp = Some(datetime);
+
+                    // Send job to thread pool.
                     self.pool.execute(move || {
-                        info!("Execute request: {:?}", request);
+                        debug!("Execute request: {:?}", request);
                         match request.transaction {
                             Transaction::Tatp(transaction) => match transaction {
                                 TatpTransaction::GetSubscriberData(payload) => {
+                                    let id = request.id.unwrap();
                                     // Register with scheduler.
-                                    s.register("txn1").unwrap();
+                                    s.register(&id).unwrap();
                                     // Stored procedure.
-                                    let v = s.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
+                                    let value = s
+                                        .read(
+                                            &payload.s_id.to_string(),
+                                            &id,
+                                            request.timestamp.unwrap(),
+                                        )
+                                        .unwrap();
                                     // Commit transaction.
-                                    s.commit("txn1");
+                                    s.commit(&id);
                                     // Package response.
-                                    let resp = Response { payload: v };
+                                    let resp = Response::Committed { value: Some(value) };
                                     // Send to corresponding `WriteHandler`.
                                     request
                                         .response_sender
@@ -97,27 +116,48 @@ impl TransactionManager {
                 }
 
                 assert!(self.work_rx.try_iter().next().is_none());
-                info!("Request queue empty");
+                debug!("Request queue empty");
                 break;
             } else {
                 // Normal operation.
                 if let Ok(request) = self.work_rx.try_recv() {
-                    info!("Transaction manager received {:?}", request.transaction);
-                    info!("Submit to workers.");
+                    debug!("Transaction manager received {:?}", request.transaction);
+                    debug!("Submit to workers.");
                     let s = Arc::clone(&scheduler);
                     self.pool.execute(move || {
-                        info!("Execute request: {:?}", request);
+                        debug!("Execute request: {:?}", request);
                         match request.transaction {
                             Transaction::Tatp(transaction) => match transaction {
                                 TatpTransaction::GetSubscriberData(payload) => {
+                                    // Get transaction id.
+                                    let id = request.id.unwrap();
                                     // Register with scheduler.
-                                    s.register("txn1").unwrap();
+                                    match s.register(&id) {
+                                        Ok(_) => {}
+                                        Err(e) => {
+                                            let resp = Response::Aborted { err: e.into() };
+                                            request
+                                                .response_sender
+                                                .send(Message::Response(resp))
+                                                .unwrap();
+                                            return;
+                                        }
+                                    }
                                     // Stored procedure.
-                                    let v = s.read(&payload.s_id.to_string(), "txn1", 1).unwrap();
+                                    let v = s
+                                        .read(
+                                            &payload.s_id.to_string(),
+                                            &id,
+                                            request.timestamp.unwrap(),
+                                        )
+                                        .unwrap();
+                                    // TODO: handle error case
+
                                     // Commit transaction.
-                                    s.commit("txn1");
+                                    s.commit(&id);
+                                    // TODO: handle error case
                                     // Package response.
-                                    let resp = Response { payload: v };
+                                    let resp = Response::Committed { value: Some(v) };
                                     // Send to corresponding `WriteHandler`.
                                     request
                                         .response_sender
@@ -137,7 +177,7 @@ impl TransactionManager {
 
 pub fn run(mut tm: TransactionManager, s: Arc<Scheduler>) {
     thread::spawn(move || {
-        info!("Start transaction manager");
+        debug!("Start transaction manager");
         tm.run(s);
     });
     // Transaction Manager dropped here.

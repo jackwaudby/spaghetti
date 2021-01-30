@@ -1,5 +1,7 @@
 //! Provides a type representing a frame and utilities for parsing frames from a byte array.
+
 use bytes::{Buf, Bytes};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io::Cursor;
 use tracing::debug;
@@ -80,7 +82,7 @@ fn get_u8(src: &mut Cursor<&[u8]>) -> Result<u8, ParseError> {
 }
 
 /// Represents a parsing frame error.
-#[derive(Debug, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct ParseError {
     pub kind: ParseErrorKind,
 }
@@ -91,7 +93,7 @@ impl ParseError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ParseErrorKind {
     /// Not enough data available in read buffer to parse message.
     Incomplete,
@@ -99,7 +101,7 @@ pub enum ParseErrorKind {
     Invalid,
     /// Remote only sent a partial frame before closing.
     CorruptedFrame,
-    Serialisation(bincode::Error),
+    Serialisation(String),
 }
 
 impl PartialEq for ParseErrorKind {
@@ -134,7 +136,7 @@ impl std::error::Error for ParseError {}
 
 impl From<bincode::Error> for ParseError {
     fn from(error: bincode::Error) -> Self {
-        let kind = ParseErrorKind::Serialisation(error);
+        let kind = ParseErrorKind::Serialisation(format!("{}", error));
         ParseError::new(kind)
     }
 }

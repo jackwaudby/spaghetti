@@ -91,6 +91,8 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
                     // Wrap as request.
                     Request {
                         transaction: Transaction::Tatp(transaction),
+                        id: None,
+                        timestamp: None,
                         response_sender: self.response_tx.clone(),
                     }
                 }
@@ -98,6 +100,8 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
                     // Wrap as request.
                     Request {
                         transaction: Transaction::Tpcc(transaction),
+                        id: None,
+                        timestamp: None,
                         response_sender: self.response_tx.clone(),
                     }
                 }

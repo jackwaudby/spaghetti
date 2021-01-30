@@ -92,21 +92,23 @@ mod tests {
 
     static LOG: Once = Once::new();
 
-    fn logging() {
-        LOG.call_once(|| {
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(Level::DEBUG)
-                .finish();
-            tracing::subscriber::set_global_default(subscriber)
-                .expect("setting default subscriber failed");
-        });
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
     }
 
     /// Unable to parse frame from underlying connection.
     #[tokio::test]
     async fn run_drain_test() {
         // Init logging.
-        // logging();
+        logging(false);
         // Delete file.
         std::fs::remove_file("result.txt").expect("could not remove file");
 
@@ -118,8 +120,8 @@ mod tests {
         let (read_task_tx, mut read_task_rx): (Sender<Message>, Receiver<Message>) =
             mpsc::channel(32 as usize);
         // Pre-populate response queue.
-        let response = Response {
-            payload: String::from("test"),
+        let response = Response::Committed {
+            value: Some(String::from("test")),
         };
         for _ in 0..3 {
             let m = Message::Response(response.clone());

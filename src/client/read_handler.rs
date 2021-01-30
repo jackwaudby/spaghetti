@@ -117,21 +117,23 @@ mod tests {
 
     static LOG: Once = Once::new();
 
-    fn logging() {
-        LOG.call_once(|| {
-            let subscriber = FmtSubscriber::builder()
-                .with_max_level(Level::DEBUG)
-                .finish();
-            tracing::subscriber::set_global_default(subscriber)
-                .expect("setting default subscriber failed");
-        });
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
     }
 
     /// Unable to parse frame from underlying connection.
     #[test]
     fn read_handler_encoding_error_test() {
         // Initialise logging.
-        logging();
+        logging(false);
         // Initialise script builder.
         let mut builder = Builder::new();
         // Schedule read of incorrect encoding.
@@ -156,13 +158,13 @@ mod tests {
     #[test]
     fn read_handler_happy_path_test() {
         // Initialise logging.
-        logging();
+        logging(false);
         // Initialise script builder.
         let mut builder = Builder::new();
 
         // Schedule response message
-        let r = Response {
-            payload: String::from("Test"),
+        let r = Response::Committed {
+            value: Some(String::from("Test")),
         };
         let response = Message::Response(r);
         let response_frame = response.into_frame();
@@ -212,7 +214,7 @@ mod tests {
     #[test]
     fn read_handler_unexpected_message_test() {
         // Initialise logging.
-        logging();
+        logging(false);
         // Initialise script builder.
         let mut builder = Builder::new();
         // Schedule close connection message; read handler should never receive this.
