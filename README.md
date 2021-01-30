@@ -13,4 +13,7 @@ cargo build
 
 #run client
 ./target/debug/spag-client
+
+# Test coverage
+docker run --security-opt seccomp=unconfined -v "${PWD}:/volume" xd009642/tarpaulin:0.16.0
 ```
