@@ -38,6 +38,10 @@ pub enum SpaghettiError {
     ConnectionUnexpectedlyClosed,
     /// Two phase locking error.
     TwoPhaseLocking(TwoPhaseLockingError),
+    /// Indicates a row in the index has been overwritten.
+    RowOverwritten,
+    /// Row does not exist in index.
+    RowDoesNotExist,
 }
 
 impl fmt::Display for SpaghettiError {
@@ -59,6 +63,8 @@ impl fmt::Display for SpaghettiError {
             UnexpectedMessage => write!(f, "Unexpected message"),
             ConnectionUnexpectedlyClosed => write!(f, "Connection unexpectedly closed"),
             TwoPhaseLocking(ref e) => write!(f, "2PL Error: {:?}", e),
+            RowOverwritten => write!(f, "A row in the index has been overwritten."),
+            RowDoesNotExist => write!(f, "Row does not exist in index."),
         }
     }
 }

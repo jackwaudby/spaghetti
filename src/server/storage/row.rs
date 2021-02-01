@@ -73,7 +73,7 @@ impl Row {
     }
 
     /// Get the value of a field in a row.
-    pub fn get_value(&self, col_name: &str) -> Result<Option<String>> {
+    pub fn get_value(&self, col_name: &str) -> Result<String> {
         // Get reference to table row resides in.
         let table = Arc::clone(&self.table);
         // Get index of field in row.
@@ -124,13 +124,10 @@ mod tests {
         let mut row = Row::new(Arc::new(table));
         assert_eq!(row.get_primary_key(), 0);
         assert_eq!(row.get_row_id(), 0);
-        assert_eq!(row.get_value("name").unwrap(), None);
+        assert_eq!(row.get_value("name").unwrap(), "null".to_string());
         row.set_value("year", "2019").unwrap();
-        assert_eq!(row.get_value("year").unwrap(), Some("2019".to_string()));
+        assert_eq!(row.get_value("year").unwrap(), "2019".to_string());
         row.set_value("name", "el camino").unwrap();
-        assert_eq!(
-            row.get_value("name").unwrap(),
-            Some("el camino".to_string())
-        );
+        assert_eq!(row.get_value("name").unwrap(), "el camino".to_string());
     }
 }

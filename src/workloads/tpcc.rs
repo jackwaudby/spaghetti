@@ -49,7 +49,7 @@ fn populate_item_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         row.set_value("i_name", &helper::random_string(14, 24, rng))?;
         row.set_value("i_price", &helper::random_float(1.0, 100.0, 2, rng))?;
         row.set_value("i_data", &helper::item_data(rng))?;
-        i.index_insert(i_id, row);
+        i.index_insert(i_id, row)?;
     }
     Ok(())
 }
@@ -79,7 +79,7 @@ fn populate_warehouse_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         row.set_value("w_zip", &helper::zip(rng))?;
         row.set_value("w_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
         row.set_value("w_ytd", "300000.0")?;
-        i.index_insert(w_id, row);
+        i.index_insert(w_id, row)?;
     }
     Ok(())
 }
@@ -113,7 +113,7 @@ fn populate_district_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
             row.set_value("d_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
             row.set_value("d_ytd", "30000.0")?;
             row.set_value("d_next_o_id", "3001")?;
-            i.index_insert(helper::district_key(data.config.clone(), w_id, d_id), row);
+            i.index_insert(helper::district_key(data.config.clone(), w_id, d_id), row)?;
         }
     }
     Ok(())
@@ -142,7 +142,7 @@ fn populate_stock_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
             row.set_value("s_w_id", &w_id.to_string())?;
             row.set_value("s_quantity", &rng.gen_range(10..=100).to_string())?;
             row.set_value("s_remote_cnt", "0")?;
-            i.index_insert(helper::stock_key(data.config.clone(), w_id, s_i_id), row);
+            i.index_insert(helper::stock_key(data.config.clone(), w_id, s_i_id), row)?;
         }
     }
     Ok(())
@@ -180,7 +180,7 @@ fn populate_customer_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
                 i.index_insert(
                     helper::customer_key(data.config.clone(), w_id, d_id, c_id),
                     row,
-                );
+                )?;
             }
         }
     }

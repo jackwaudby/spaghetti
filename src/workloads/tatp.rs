@@ -60,7 +60,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
         row.set_value("msc_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
         row.set_value("vlr_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
         debug!("{}", row);
-        i.index_insert(s_id, row);
+        i.index_insert(s_id, row)?;
     }
     info!("Loaded {} rows into subscriber", t.get_next_row_id());
     Ok(())
@@ -99,7 +99,7 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
             row.set_value("data_3", &helper::get_data_x(3, rng))?;
             row.set_value("data_4", &helper::get_data_x(5, rng))?;
             debug!("{}", row);
-            i.index_insert(pk, row);
+            i.index_insert(pk, row)?;
         }
     }
     info!("Loaded {} rows into access_info", t.get_next_row_id());
@@ -160,7 +160,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
             row.set_value("data_a", &rng.gen_range(0..=255).to_string())?;
             row.set_value("data_b", &helper::get_data_x(5, rng))?;
             debug!("{}", row);
-            i.index_insert(pk, row);
+            i.index_insert(pk, row)?;
 
             // For each row, insert [0,3] into call forwarding table
             // Generate the number to insert
@@ -186,7 +186,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                 row.set_value("end_time", &et.to_string())?;
                 row.set_value("number_x", &nx)?;
                 debug!("{}", row);
-                cf_i.index_insert(pk, row);
+                cf_i.index_insert(pk, row)?;
             }
         }
     }
@@ -497,7 +497,7 @@ mod tests {
             "vlr_location",
         ];
 
-        let res = index.index_read(0, cols_s);
+        let res = index.index_read(0, cols_s).unwrap();
         assert_eq!(
             res,
             "[s_id=0, sub_nbr=000000000000000, bit_1=0, bit_2=1, bit_3=0, bit_4=1, bit_5=1, bit_6=1, bit_7=0, bit_8=0, bit_9=1, bit_10=0, hex_1=8, hex_2=6, hex_3=10, hex_4=8, hex_5=2, hex_6=13, hex_7=8, hex_8=10, hex_9=1, hex_10=9, byte_2_1=222, byte_2_2=248, byte_2_3=210, byte_2_4=100, byte_2_5=205, byte_2_6=163, byte_2_7=118, byte_2_8=127, byte_2_9=77, byte_2_10=52, msc_location=16, vlr_location=12]"
@@ -517,7 +517,7 @@ mod tests {
 
         let index = internals.indexes.get("access_idx").unwrap();
         assert_eq!(
-            index.index_read(2, cols_ai),
+            index.index_read(2, cols_ai).unwrap(),
             "[s_id=0, ai_type=2, data_1=63, data_2=7, data_3=EMZ, data_4=WOVGK]"
         );
 
@@ -542,7 +542,7 @@ mod tests {
         let index = internals.indexes.get("special_idx").unwrap();
 
         assert_eq!(
-            index.index_read(6, cols_sf),
+            index.index_read(6, cols_sf).unwrap(),
             "[s_id=0, sf_type=1, is_active=1, error_cntrl=122, data_a=73, data_b=PXESG]"
         );
 
@@ -557,7 +557,7 @@ mod tests {
         let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
         let index = internals.indexes.get("call_idx").unwrap();
         assert_eq!(
-            index.index_read(21, cols_cf),
+            index.index_read(21, cols_cf).unwrap(),
             "[s_id=0, sf_type=2, start_time=0, end_time=5, number_x=707677987012384]"
         );
     }

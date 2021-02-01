@@ -15,14 +15,14 @@ impl Field {
     /// Return the (optional) `Data` stored in a `Field`.
     ///
     /// All data types are converted to a String.
-    pub fn get(&self) -> Option<String> {
+    pub fn get(&self) -> String {
         match &self.data {
             Some(value) => match value {
-                Data::Int(val) => Some(val.to_string()),
-                Data::VarChar(ref val) => Some(val.clone()),
-                Data::Double(val) => Some(val.to_string()),
+                Data::Int(val) => val.to_string(),
+                Data::VarChar(ref val) => val.clone(),
+                Data::Double(val) => val.to_string(),
             },
-            None => None,
+            None => "null".to_string(),
         }
     }
 
@@ -61,13 +61,13 @@ mod tests {
     #[test]
     fn fields() {
         let mut f = Field::new();
-        assert_eq!(f.get(), None);
+        assert_eq!(f.get(), "null".to_string());
         assert_eq!(format!("{}", f), String::from("null"));
         f.set(Data::Int(5));
-        assert_eq!(f.get(), Some("5".to_string()));
+        assert_eq!(f.get(), "5".to_string());
         assert_eq!(format!("{}", f), String::from("5"));
         f.set(Data::VarChar("abc".to_string()));
-        assert_eq!(f.get(), Some("abc".to_string()));
+        assert_eq!(f.get(), "abc".to_string());
         assert_eq!(format!("{}", f), String::from("abc"));
     }
 }

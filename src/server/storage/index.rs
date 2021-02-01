@@ -1,7 +1,9 @@
-use std::fmt::{self, Write};
-
+use crate::common::error::SpaghettiError;
 use crate::server::storage::row::Row;
+use crate::Result;
+
 use chashmap::CHashMap;
+use std::fmt::{self, Write};
 
 /// An `Index` is used to access data.
 ///
@@ -28,27 +30,44 @@ impl Index {
         self.i.contains_key(&key)
     }
 
-    /// Insert a `Row` into the index
-    pub fn index_insert(&self, key: u64, row: Row) -> Option<Row> {
-        self.i.insert(key, row) // Returns old entry if exists - TODO: map to error.
+    /// Insert a `Row` into the index.
+    ///
+    /// # Errors
+    ///
+    /// If `Row` already exists for key an `RowOverwritten` entry is returned.
+    pub fn index_insert(&self, key: u64, row: Row) -> Result<()> {
+        let res = self.i.insert(key, row);
+
+        match res {
+            Some(_) => Err(Box::new(SpaghettiError::RowOverwritten)),
+            None => Ok(()),
+        }
     }
 
     /// Read `columns` from a `Row` with the given `key`.
-    pub fn index_read(&self, key: u64, columns: Vec<&str>) -> String {
-        let read_guard = self.i.get(&key).unwrap(); // None if doesn't exist - TODO: map to error.
+    ///
+    /// # Errors
+    ///
+    /// `RowDoesNotexist` if the row does not exist in the index.
+    pub fn index_read(&self, key: u64, columns: Vec<&str>) -> Result<String> {
+        // Attempt to get read guard.
+        let read_guard = self
+            .i
+            .get(&key)
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+        // Deref to row.
         let row = &*read_guard;
 
+        // Get result.
         let mut res: String;
-
         res = "[".to_string();
-
         for column in columns {
-            let value = row.get_value(column).unwrap().unwrap(); // ColumnNotFound, None is no value - TODO: map to error.
-            write!(res, "{}={}, ", column, value).unwrap();
+            let value = row.get_value(column)?; // TODO: map to none to null.
+            write!(res, "{}={}, ", column, value)?;
         }
         res.truncate(res.len() - 2);
         write!(res, "]").unwrap();
-        res
+        Ok(res)
     }
 
     /// Write `values` to `columns`.
@@ -131,7 +150,8 @@ mod tests {
                 .get_internals()
                 .get_index("sub_idx")
                 .unwrap()
-                .index_read(0, cols),
+                .index_read(0, cols)
+                .unwrap(),
             "[bit_4=1, byte_2_5=205]"
         );
 
@@ -149,7 +169,8 @@ mod tests {
                 .get_internals()
                 .get_index("sub_idx")
                 .unwrap()
-                .index_read(0, cols),
+                .index_read(0, cols)
+                .unwrap(),
             "[bit_4=0, byte_2_5=69]"
         );
     }
