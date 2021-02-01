@@ -57,12 +57,13 @@ impl Scheduler {
         self.cleanup(transaction_name);
     }
 
-    /// Attempts to read a database record.
+    /// Attempt to read a `Row`.
     ///
     /// If the read operation fails, an error is returned.
     pub fn read(
         &self,
         key: &str,
+        columns: Vec<&str>,
         transaction_name: &str,
         transaction_ts: DateTime<Utc>,
     ) -> Result<String, TwoPhaseLockingError> {
@@ -79,9 +80,8 @@ impl Scheduler {
                 );
                 let index = self.data.get_internals().indexes.get("sub_idx").unwrap();
                 let pk = key.parse::<u64>().unwrap();
-                let row = index.index_read(pk).unwrap();
-                let value = row.get_value("sub_nbr").unwrap().unwrap();
-                Ok(value)
+                let vals = index.index_read(pk, columns);
+                Ok(vals)
             }
             LockRequest::Delay(pair) => {
                 info!("Waiting for read lock");
@@ -92,9 +92,10 @@ impl Scheduler {
                 }
                 info!("Read lock granted");
                 let index = self.data.get_internals().indexes.get("sub_idx").unwrap();
-                let row = index.index_read(1).unwrap();
-                let value = row.get_value("sub_nbr").unwrap().unwrap();
-                Ok(value)
+                let pk = key.parse::<u64>().unwrap();
+                let vals = index.index_read(pk, columns);
+
+                Ok(vals)
             }
             LockRequest::Denied => {
                 info!("Read lock denied");

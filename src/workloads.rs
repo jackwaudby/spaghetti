@@ -158,7 +158,7 @@ impl Internal {
         }
     }
 
-    fn get_index(&self, name: &str) -> Result<Arc<Index>> {
+    pub fn get_index(&self, name: &str) -> Result<Arc<Index>> {
         match self.indexes.get(name) {
             Some(index) => Ok(Arc::clone(index)),
             None => Err(Box::new(SpaghettiError::IndexNotFound)),

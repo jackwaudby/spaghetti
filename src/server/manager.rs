@@ -74,7 +74,7 @@ impl TransactionManager {
                 while let Ok(mut request) = self.work_rx.recv() {
                     debug!("Pass request to thread pool");
                     // Get handle to scheduler.
-                    let s = Arc::clone(&scheduler);
+                    let scheduler = Arc::clone(&scheduler);
                     // Assign transaction id and timestamp.
                     let sys_time = SystemTime::now();
                     let datetime: DateTime<Utc> = sys_time.into();
@@ -86,22 +86,21 @@ impl TransactionManager {
                         debug!("Execute request: {:?}", request);
                         match request.transaction {
                             Transaction::Tatp(transaction) => match transaction {
-                                TatpTransaction::GetSubscriberData(payload) => {
-                                    let id = request.id.unwrap();
-                                    // Register with scheduler.
-                                    s.register(&id).unwrap();
+                                TatpTransaction::GetSubscriberData(params) => {
+                                    // Subscriber ID.
+                                    let s_id = &params.s_id.to_string();
+                                    // Transaction ID.
+                                    let t_id = &request.id.unwrap();
+                                    // Transaction timestamp.
+                                    let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
-                                    let value = s
-                                        .read(
-                                            &payload.s_id.to_string(),
-                                            &id,
-                                            request.timestamp.unwrap(),
-                                        )
-                                        .unwrap();
-                                    // Commit transaction.
-                                    s.commit(&id);
+                                    let res = crate::workloads::tatp::get_subscriber_data(
+                                        s_id, t_id, t_ts, scheduler,
+                                    )
+                                    .unwrap();
+
                                     // Package response.
-                                    let resp = Response::Committed { value: Some(value) };
+                                    let resp = Response::Committed { value: Some(res) };
                                     // Send to corresponding `WriteHandler`.
                                     request
                                         .response_sender
@@ -128,36 +127,22 @@ impl TransactionManager {
                         debug!("Execute request: {:?}", request);
                         match request.transaction {
                             Transaction::Tatp(transaction) => match transaction {
-                                TatpTransaction::GetSubscriberData(payload) => {
-                                    // Get transaction id.
-                                    let id = request.id.unwrap();
-                                    // Register with scheduler.
-                                    match s.register(&id) {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            let resp = Response::Aborted { err: e.into() };
-                                            request
-                                                .response_sender
-                                                .send(Message::Response(resp))
-                                                .unwrap();
-                                            return;
-                                        }
-                                    }
+                                TatpTransaction::GetSubscriberData(params) => {
+                                    // Subscriber ID.
+                                    let s_id = &params.s_id.to_string();
+                                    // Transaction ID.
+                                    let t_id = &request.id.unwrap();
+                                    // Transaction timestamp.
+                                    let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
-                                    let v = s
-                                        .read(
-                                            &payload.s_id.to_string(),
-                                            &id,
-                                            request.timestamp.unwrap(),
-                                        )
-                                        .unwrap();
-                                    // TODO: handle error case
+                                    let res = crate::workloads::tatp::get_subscriber_data(
+                                        s_id, t_id, t_ts, s,
+                                    )
+                                    .unwrap();
 
-                                    // Commit transaction.
-                                    s.commit(&id);
                                     // TODO: handle error case
                                     // Package response.
-                                    let resp = Response::Committed { value: Some(v) };
+                                    let resp = Response::Committed { value: Some(res) };
                                     // Send to corresponding `WriteHandler`.
                                     request
                                         .response_sender

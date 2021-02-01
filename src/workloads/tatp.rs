@@ -2,9 +2,9 @@ use crate::common::message::Message;
 use crate::common::parameter_generation::Generator;
 use crate::server::storage::row::Row;
 use crate::workloads::Internal;
-use crate::workloads::Workload;
 use crate::Result;
 
+use chrono::{DateTime, Utc};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{Rng, SeedableRng};
@@ -43,7 +43,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
         row.set_primary_key(s_id);
         row.set_value("s_id", &s_id.to_string())?;
         row.set_value("sub_nbr", &helper::to_sub_nbr(s_id))?;
-        for i in 1..10 {
+        for i in 1..=10 {
             row.set_value(
                 format!("bit_{}", i).as_str(),
                 &rng.gen_range(0..=1).to_string(),
@@ -202,7 +202,13 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
 /// Stored Procedures. ///
 /////////////////////////////////////
 
-pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> Result<String> {
+/// GetSubscriberData transaction.
+pub fn get_subscriber_data(
+    s_id: &str,
+    t_id: &str,
+    t_ts: DateTime<Utc>,
+    scheduler: Arc<crate::server::scheduler::Scheduler>,
+) -> core::result::Result<String, crate::server::scheduler::TwoPhaseLockingError> {
     debug!(
         "  SELECT s_id, sub_nbr,
             bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
@@ -217,20 +223,18 @@ pub fn get_subscriber_data(s_id: u64, workload: Arc<Workload>) -> Result<String>
         s_id
     );
 
-    let result = match *workload {
-        Workload::Tatp(ref internals) => {
-            let key = s_id;
-            let index = internals.get_index("sub_idx")?;
-            let row = index.index_read(key).unwrap();
-            row.get_value("sub_nbr")?
-        }
-        Workload::Tpcc(ref _internals) => Some(String::from("test")),
-    };
+    let columns: Vec<&str> = vec!["s_id", "sub_nbr", "bit_1"];
 
-    match result {
-        Some(res) => Ok(res),
-        None => Ok("null".to_string()),
-    }
+    // Register with scheduler.
+    scheduler.register(t_id).unwrap();
+    // Get handle to row.
+    let row = scheduler.read(s_id, columns, t_id, t_ts).unwrap();
+    // TODO: Get data.
+
+    // Commit transaction.
+    scheduler.commit(t_id);
+
+    Ok(row)
 }
 
 /////////////////////////////////////////
@@ -443,7 +447,7 @@ mod tests {
 
     #[test]
     fn populate_tables_test() {
-        logging(true);
+        logging(false);
         let c = Arc::clone(&CONFIG);
         let internals = Internal::new("tatp_schema.txt", c).unwrap();
         let mut rng = StdRng::seed_from_u64(42);
@@ -452,12 +456,52 @@ mod tests {
         populate_subscriber_table(&internals, &mut rng).unwrap();
         assert_eq!(
             internals.get_table("subscriber").unwrap().get_next_row_id(),
-            2
+            1
         );
         let index = internals.indexes.get("sub_idx").unwrap();
-        let row = index.index_read(0).unwrap();
-        let value = row.get_value("bit_1").unwrap().unwrap();
-        assert_eq!(value, "0");
+
+        let cols_s = vec![
+            "s_id",
+            "sub_nbr",
+            "bit_1",
+            "bit_2",
+            "bit_3",
+            "bit_4",
+            "bit_5",
+            "bit_6",
+            "bit_7",
+            "bit_8",
+            "bit_9",
+            "bit_10",
+            "hex_1",
+            "hex_2",
+            "hex_3",
+            "hex_4",
+            "hex_5",
+            "hex_6",
+            "hex_7",
+            "hex_8",
+            "hex_9",
+            "hex_10",
+            "byte_2_1",
+            "byte_2_2",
+            "byte_2_3",
+            "byte_2_4",
+            "byte_2_5",
+            "byte_2_6",
+            "byte_2_7",
+            "byte_2_8",
+            "byte_2_9",
+            "byte_2_10",
+            "msc_location",
+            "vlr_location",
+        ];
+
+        let res = index.index_read(0, cols_s);
+        assert_eq!(
+            res,
+            "[s_id=0, sub_nbr=000000000000000, bit_1=0, bit_2=1, bit_3=0, bit_4=1, bit_5=1, bit_6=1, bit_7=0, bit_8=0, bit_9=1, bit_10=0, hex_1=8, hex_2=6, hex_3=10, hex_4=8, hex_5=2, hex_6=13, hex_7=8, hex_8=10, hex_9=1, hex_10=9, byte_2_1=222, byte_2_2=248, byte_2_3=210, byte_2_4=100, byte_2_5=205, byte_2_6=163, byte_2_7=118, byte_2_8=127, byte_2_9=77, byte_2_10=52, msc_location=16, vlr_location=12]"
+        );
 
         // Access info.
         populate_access_info(&internals, &mut rng).unwrap();
@@ -466,15 +510,16 @@ mod tests {
                 .get_table("access_info")
                 .unwrap()
                 .get_next_row_id(),
-            5
+            4
         );
+
+        let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
+
         let index = internals.indexes.get("access_idx").unwrap();
-        let row = index.index_read(2).unwrap();
-        assert_eq!(row.get_value("ai_type").unwrap().unwrap(), "2");
-        assert_eq!(row.get_value("data_1").unwrap().unwrap(), "63");
-        assert_eq!(row.get_value("data_2").unwrap().unwrap(), "7");
-        assert_eq!(row.get_value("data_3").unwrap().unwrap(), "EMZ");
-        assert_eq!(row.get_value("data_4").unwrap().unwrap(), "WOVGK");
+        assert_eq!(
+            index.index_read(2, cols_ai),
+            "[s_id=0, ai_type=2, data_1=63, data_2=7, data_3=EMZ, data_4=WOVGK]"
+        );
 
         // Special facillity.
         populate_special_facility_call_forwarding(&internals, &mut rng).unwrap();
@@ -483,15 +528,23 @@ mod tests {
                 .get_table("special_facility")
                 .unwrap()
                 .get_next_row_id(),
-            5
+            4
         );
+
+        let cols_sf = vec![
+            "s_id",
+            "sf_type",
+            "is_active",
+            "error_cntrl",
+            "data_a",
+            "data_b",
+        ];
         let index = internals.indexes.get("special_idx").unwrap();
-        let row = index.index_read(6).unwrap();
-        assert_eq!(row.get_value("sf_type").unwrap().unwrap(), "1");
-        assert_eq!(row.get_value("is_active").unwrap().unwrap(), "1");
-        assert_eq!(row.get_value("error_cntrl").unwrap().unwrap(), "122");
-        assert_eq!(row.get_value("data_a").unwrap().unwrap(), "73");
-        assert_eq!(row.get_value("data_b").unwrap().unwrap(), "PXESG");
+
+        assert_eq!(
+            index.index_read(6, cols_sf),
+            "[s_id=0, sf_type=1, is_active=1, error_cntrl=122, data_a=73, data_b=PXESG]"
+        );
 
         // Call forwarding.
         assert_eq!(
@@ -499,16 +552,13 @@ mod tests {
                 .get_table("call_forwarding")
                 .unwrap()
                 .get_next_row_id(),
-            10
+            9
         );
+        let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
         let index = internals.indexes.get("call_idx").unwrap();
-        let row = index.index_read(21).unwrap();
-        assert_eq!(row.get_value("sf_type").unwrap().unwrap(), "2");
-        assert_eq!(row.get_value("start_time").unwrap().unwrap(), "0");
-        assert_eq!(row.get_value("end_time").unwrap().unwrap(), "5");
         assert_eq!(
-            row.get_value("number_x").unwrap().unwrap(),
-            "707677987012384"
+            index.index_read(21, cols_cf),
+            "[s_id=0, sf_type=2, start_time=0, end_time=5, number_x=707677987012384]"
         );
     }
 }
