@@ -208,7 +208,7 @@ pub fn get_subscriber_data(
     t_id: &str,
     t_ts: DateTime<Utc>,
     scheduler: Arc<crate::server::scheduler::Scheduler>,
-) -> core::result::Result<String, crate::server::scheduler::TwoPhaseLockingError> {
+) -> Result<String> {
     debug!(
         "  SELECT s_id, sub_nbr,
             bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
@@ -223,18 +223,16 @@ pub fn get_subscriber_data(
         s_id
     );
 
+    // Columns to read.
     let columns: Vec<&str> = vec!["s_id", "sub_nbr", "bit_1"];
-
     // Register with scheduler.
     scheduler.register(t_id).unwrap();
-    // Get handle to row.
-    let row = scheduler.read(s_id, columns, t_id, t_ts).unwrap();
-    // TODO: Get data.
-
+    // Execute read operation.
+    let res = scheduler.read(s_id, columns, t_id, t_ts)?;
     // Commit transaction.
     scheduler.commit(t_id);
 
-    Ok(row)
+    Ok(res)
 }
 
 /////////////////////////////////////////

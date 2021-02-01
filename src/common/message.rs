@@ -1,4 +1,3 @@
-use crate::common::error::SpaghettiError;
 use crate::common::frame::Frame;
 use crate::workloads::tatp::TatpTransaction;
 use crate::workloads::tpcc::TpccTransaction;
@@ -44,7 +43,7 @@ impl Message {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Response {
     Committed { value: Option<String> },
-    Aborted { err: SpaghettiError },
+    Aborted { err: String },
 }
 
 /// Internal to the server, used to send the response to the correct client write handler.

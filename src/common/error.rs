@@ -55,7 +55,7 @@ impl fmt::Display for SpaghettiError {
             Invalid => write!(f, "Invalid message encoding."),
             CorruptedFrame => write!(f, "Remote connection closed during sending of a frame"),
             IncorrectWorkload => write!(f, "Workload not recognised"),
-            Parse(_) => write!(f, "Parsing error"),
+            Parse(ref e) => write!(f, "Parsing error {:?}", e),
             TableNotFound => write!(f, "Table not found"),
             IndexNotFound => write!(f, "Index not found"),
             NoPrimaryIndex => write!(f, "No primary index on table"),
@@ -73,9 +73,9 @@ impl error::Error for SpaghettiError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         use SpaghettiError::*;
         match *self {
-            ColumnNotFound => Some(self),
-            Parse(_) => Some(self),
-            _ => unimplemented!(),
+            Parse(ref e) => Some(e),
+            TwoPhaseLocking(ref e) => Some(e),
+            _ => Some(self),
         }
     }
 }

@@ -1,7 +1,7 @@
 use crate::common::message::{Message, Request, Response, Transaction};
 use crate::server::pool::ThreadPool;
 use crate::server::scheduler::Scheduler;
-use crate::workloads::tatp::TatpTransaction;
+use crate::workloads::tatp::{self, TatpTransaction};
 
 use chrono::offset::Utc;
 use chrono::DateTime;
@@ -94,13 +94,15 @@ impl TransactionManager {
                                     // Transaction timestamp.
                                     let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
-                                    let res = crate::workloads::tatp::get_subscriber_data(
-                                        s_id, t_id, t_ts, scheduler,
-                                    )
-                                    .unwrap();
-
+                                    let res =
+                                        tatp::get_subscriber_data(s_id, t_id, t_ts, scheduler);
                                     // Package response.
-                                    let resp = Response::Committed { value: Some(res) };
+                                    let resp = match res {
+                                        Ok(res) => Response::Committed { value: Some(res) },
+                                        Err(e) => Response::Aborted {
+                                            err: format!("  Caused by: {}", e.source().unwrap()),
+                                        },
+                                    };
                                     // Send to corresponding `WriteHandler`.
                                     request
                                         .response_sender
@@ -135,14 +137,14 @@ impl TransactionManager {
                                     // Transaction timestamp.
                                     let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
-                                    let res = crate::workloads::tatp::get_subscriber_data(
-                                        s_id, t_id, t_ts, s,
-                                    )
-                                    .unwrap();
-
-                                    // TODO: handle error case
+                                    let res = tatp::get_subscriber_data(s_id, t_id, t_ts, s);
                                     // Package response.
-                                    let resp = Response::Committed { value: Some(res) };
+                                    let resp = match res {
+                                        Ok(res) => Response::Committed { value: Some(res) },
+                                        Err(e) => Response::Aborted {
+                                            err: format!("  Caused by: {}", e.source().unwrap()),
+                                        },
+                                    };
                                     // Send to corresponding `WriteHandler`.
                                     request
                                         .response_sender
