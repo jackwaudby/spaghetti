@@ -1,7 +1,8 @@
 use crate::common::message::{Message, Request, Response, Transaction};
 use crate::server::pool::ThreadPool;
 use crate::server::scheduler::Scheduler;
-use crate::workloads::tatp::{self, TatpTransaction};
+use crate::workloads::tatp;
+use crate::workloads::tatp::profiles::TatpTransaction;
 
 use chrono::offset::Utc;
 use chrono::DateTime;
@@ -92,8 +93,9 @@ impl TransactionManager {
                                     // Transaction timestamp.
                                     let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
-                                    let res =
-                                        tatp::get_subscriber_data(params, t_id, t_ts, scheduler);
+                                    let res = tatp::procedures::get_subscriber_data(
+                                        params, t_id, t_ts, scheduler,
+                                    );
                                     // Package response.
                                     let resp = match res {
                                         Ok(res) => Response::Committed { value: Some(res) },
@@ -113,8 +115,9 @@ impl TransactionManager {
                                     // Transaction timestamp.
                                     let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
-                                    let res =
-                                        tatp::get_new_destination(params, t_id, t_ts, scheduler);
+                                    let res = tatp::procedures::get_new_destination(
+                                        params, t_id, t_ts, scheduler,
+                                    );
                                     // Package response.
                                     let resp = match res {
                                         Ok(res) => Response::Committed { value: Some(res) },
@@ -160,8 +163,9 @@ impl TransactionManager {
                                     // Transaction timestamp.x
                                     let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
-                                    let res =
-                                        tatp::get_subscriber_data(params, t_id, t_ts, scheduler);
+                                    let res = tatp::procedures::get_subscriber_data(
+                                        params, t_id, t_ts, scheduler,
+                                    );
                                     // Package response.
                                     let resp = match res {
                                         Ok(res) => Response::Committed { value: Some(res) },
@@ -181,8 +185,9 @@ impl TransactionManager {
                                     // Transaction timestamp.
                                     let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
-                                    let res =
-                                        tatp::get_new_destination(params, t_id, t_ts, scheduler);
+                                    let res = tatp::procedures::get_new_destination(
+                                        params, t_id, t_ts, scheduler,
+                                    );
                                     // Package response.
                                     let resp = match res {
                                         Ok(res) => Response::Committed { value: Some(res) },

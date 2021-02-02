@@ -1,5 +1,5 @@
 use crate::common::message::Message;
-use crate::workloads::tatp::TatpGenerator;
+use crate::workloads::tatp::generator::TatpGenerator;
 use crate::workloads::tpcc::TpccGenerator;
 
 /// Parameter generator.

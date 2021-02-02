@@ -2,7 +2,7 @@ use crate::common::error::SpaghettiError;
 use crate::common::message::Message;
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::shutdown::Shutdown;
-use crate::workloads::tatp::TatpGenerator;
+use crate::workloads::tatp::generator::TatpGenerator;
 use crate::workloads::tpcc::TpccGenerator;
 use crate::Result;
 

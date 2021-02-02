@@ -2,6 +2,7 @@ use crate::common::error::SpaghettiError;
 use crate::server::storage::catalog::Catalog;
 use crate::server::storage::index::Index;
 use crate::server::storage::table::Table;
+
 use crate::Result;
 
 use config::Config;
@@ -46,7 +47,7 @@ impl Workload {
     pub fn populate_tables(&self, rng: &mut StdRng) -> Result<()> {
         use Workload::*;
         match *self {
-            Tatp(ref i) => tatp::populate_tables(i, rng)?,
+            Tatp(ref i) => tatp::loader::populate_tables(i, rng)?,
             Tpcc(ref i) => tpcc::populate_tables(i, rng)?,
         }
         Ok(())
