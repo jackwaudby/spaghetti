@@ -232,10 +232,10 @@ mod tests {
 
     #[test]
     fn populate_tables_test() {
-        logging(false);
+        logging(true);
         let c = Arc::clone(&CONFIG);
         let internals = Internal::new("tatp_schema.txt", c).unwrap();
-        let mut rng = StdRng::seed_from_u64(42);
+        let mut rng = StdRng::seed_from_u64(1);
 
         // Subscriber.
         populate_subscriber_table(&internals, &mut rng).unwrap();
@@ -285,7 +285,7 @@ mod tests {
         let res = index.index_read(1, &cols_s).unwrap();
         assert_eq!(
             datatype::to_result(&cols_s, &res).unwrap(),
-            "[s_id=1, sub_nbr=000000000000001, bit_1=0, bit_2=1, bit_3=0, bit_4=1, bit_5=1, bit_6=1, bit_7=0, bit_8=0, bit_9=1, bit_10=0, hex_1=8, hex_2=6, hex_3=10, hex_4=8, hex_5=2, hex_6=13, hex_7=8, hex_8=10, hex_9=1, hex_10=9, byte_2_1=222, byte_2_2=248, byte_2_3=210, byte_2_4=100, byte_2_5=205, byte_2_6=163, byte_2_7=118, byte_2_8=127, byte_2_9=77, byte_2_10=52, msc_location=16, vlr_location=12]"
+            "[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=0, bit_3=1, bit_4=1, bit_5=0, bit_6=0, bit_7=0, bit_8=1, bit_9=0, bit_10=0, hex_1=3, hex_2=12, hex_3=15, hex_4=8, hex_5=2, hex_6=3, hex_7=5, hex_8=4, hex_9=7, hex_10=0, byte_2_1=55, byte_2_2=65, byte_2_3=99, byte_2_4=138, byte_2_5=93, byte_2_6=228, byte_2_7=150, byte_2_8=132, byte_2_9=121, byte_2_10=203, msc_location=8, vlr_location=9]"
         );
 
         // Access info.
@@ -295,7 +295,7 @@ mod tests {
                 .get_table("access_info")
                 .unwrap()
                 .get_next_row_id(),
-            5
+            3
         );
 
         let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
@@ -303,7 +303,7 @@ mod tests {
         let index = internals.indexes.get("access_idx").unwrap();
         assert_eq!(
             datatype::to_result(&cols_ai, &index.index_read(12, &cols_ai).unwrap()).unwrap(),
-            "[s_id=1, ai_type=2, data_1=63, data_2=7, data_3=EMZ, data_4=WOVGK]"
+            "[s_id=1, ai_type=2, data_1=51, data_2=20, data_3=VWD, data_4=NEVIQ]"
         );
 
         // Special facillity.
@@ -328,7 +328,7 @@ mod tests {
 
         assert_eq!(
             datatype::to_result(&cols_sf, &index.index_read(16, &cols_sf).unwrap()).unwrap(),
-            "[s_id=1, sf_type=1, is_active=1, error_cntrl=122, data_a=73, data_b=PXESG]"
+            "[s_id=1, sf_type=1, is_active=1, error_cntrl=18, data_a=82, data_b=QETHG]"
         );
 
         // Call forwarding.
@@ -337,13 +337,13 @@ mod tests {
                 .get_table("call_forwarding")
                 .unwrap()
                 .get_next_row_id(),
-            10
+            4
         );
         let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
         let index = internals.indexes.get("call_idx").unwrap();
         assert_eq!(
-            datatype::to_result(&cols_cf, &index.index_read(121, &cols_cf).unwrap()).unwrap(),
-            "[s_id=1, sf_type=2, start_time=0, end_time=5, number_x=707677987012384]"
+            datatype::to_result(&cols_cf, &index.index_read(142, &cols_cf).unwrap()).unwrap(),
+            "[s_id=1, sf_type=4, start_time=8, end_time=12, number_x=417408122671875]"
         );
     }
 }
