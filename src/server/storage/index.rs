@@ -59,16 +59,6 @@ impl Index {
         // Deref to row.
         let row = &*read_guard;
 
-        // Get result.
-        // let mut res: String;
-        // res = "[".to_string();
-        // for column in columns {
-        //     let value = row.get_value(column)?; // TODO: map to none to null.
-        //     write!(res, "{}={}, ", column, value)?;
-        // }
-        // res.truncate(res.len() - 2);
-        // write!(res, "]").unwrap();
-
         let mut res = Vec::new();
         for column in columns {
             let value = row.get_value(column)?;
@@ -79,7 +69,7 @@ impl Index {
     }
 
     /// Write `values` to `columns`.
-    pub fn index_write(&self, key: u64, columns: Vec<&str>, values: Vec<&str>) -> Result<()> {
+    pub fn index_write(&self, key: u64, columns: &Vec<&str>, values: &Vec<&str>) -> Result<()> {
         let mut write_guard = self.i.get_mut(&key).unwrap(); //  TODO: map to error.
         let row = &mut *write_guard;
 
@@ -176,7 +166,7 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_write(1, cols, vals)
+            .index_write(1, &cols, &vals)
             .unwrap();
 
         let cols = vec!["bit_4", "byte_2_5"];

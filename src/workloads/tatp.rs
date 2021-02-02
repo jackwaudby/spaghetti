@@ -376,6 +376,50 @@ pub fn get_access_data(
     Ok(res)
 }
 
+pub fn update_subscriber_data(
+    params: UpdateSubscriberData,
+    t_id: &str,
+    t_ts: DateTime<Utc>,
+    scheduler: Arc<Scheduler>,
+) -> Result<String> {
+    info!(
+        "UPDATE Subscriber
+           SET bit_1 = {:?}
+           WHERE s_id = {:?}
+         UPDATE Special_Facility
+           SET data_a = {:?}
+           WHERE s_id = {:?}
+             AND sf_type = {:?};",
+        params.bit_1, params.s_id, params.data_a, params.s_id, params.sf_type
+    );
+
+    // Columns to write.
+    let columns_sb: Vec<&str> = vec!["bit_1"];
+    let columns_sp = vec!["data_a"];
+    // Values to write.
+    let values_sb = vec![params.bit_1.to_string()];
+    let values_sb: Vec<&str> = values_sb.iter().map(|s| s as &str).collect();
+    let values_sp = vec![params.data_a.to_string()];
+    let values_sp: Vec<&str> = values_sp.iter().map(|s| s as &str).collect();
+
+    // Construct primary key.
+    let pk_sb = params.s_id;
+    // TODO: change special facility pk.
+    let pk_sp = helper::special_facility_key(params.s_id, params.sf_type.into(), 1);
+
+    // Register with scheduler.
+    scheduler.register(t_id).unwrap();
+
+    // Execute write operation.
+    scheduler.write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
+    scheduler.write("special_idx", pk_sp, &columns_sp, &values_sp, t_id, t_ts)?;
+
+    // Commit transaction.
+    scheduler.commit(t_id);
+
+    Ok("updated".to_string())
+}
+
 /////////////////////////////////////////
 /// Parameter Generator. ///
 ////////////////////////////////////////
@@ -486,7 +530,7 @@ impl Generator for TatpGenerator {
 ///////////////////////////////////////
 /// Transaction Profiles. ///
 //////////////////////////////////////
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub struct GetSubscriberData {
     pub s_id: u64,
 }
@@ -702,7 +746,7 @@ mod tests {
 
     #[test]
     fn transactions_test() {
-        logging(false);
+        logging(true);
         // Workload with fixed seed
         let mut rng = StdRng::seed_from_u64(42);
         let config = Arc::clone(&CONFIG);
@@ -727,6 +771,12 @@ mod tests {
             s_id: 1,
             ai_type: 2,
         };
+        let params_usd = UpdateSubscriberData {
+            s_id: 1,
+            sf_type: 1,
+            bit_1: 1,
+            data_a: 29,
+        };
 
         assert_eq!(
             get_subscriber_data(params_gsd, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
@@ -742,5 +792,18 @@ mod tests {
             get_access_data(params_gad, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
             "[data_1=63, data_2=7, data_3=EMZ, data_4=WOVGK]"
         );
+        let t_ts: DateTime<Utc> = sys_time.into();
+
+        assert_eq!(
+            update_subscriber_data(params_usd, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
+            "updated"
+        );
+
+        assert_eq!(
+            get_subscriber_data(params_gsd, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
+            "[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=1, bit_3=0, bit_4=1, bit_5=1, bit_6=1, bit_7=0, bit_8=0, bit_9=1, bit_10=0, hex_1=8, hex_2=6, hex_3=10, hex_4=8, hex_5=2, hex_6=13, hex_7=8, hex_8=10, hex_9=1, hex_10=9, byte_2_1=222, byte_2_2=248, byte_2_3=210, byte_2_4=100, byte_2_5=205, byte_2_6=163, byte_2_7=118, byte_2_8=127, byte_2_9=77, byte_2_10=52, msc_location=16]"
+        );
+
+        // TODO: check other value has changed.
     }
 }

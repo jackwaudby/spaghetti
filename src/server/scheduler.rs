@@ -59,6 +59,57 @@ impl Scheduler {
         self.cleanup(transaction_name);
     }
 
+    pub fn write(
+        &self,
+        index: &str,
+        key: u64,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        transaction_name: &str,
+        transaction_ts: DateTime<Utc>,
+    ) -> Result<()> {
+        debug!(
+            "Transaction {:?} requesting write lock on {:?}",
+            transaction_name, key
+        );
+        let req = self.request_lock(
+            &key.to_string(),
+            LockMode::Write,
+            transaction_name,
+            transaction_ts,
+        );
+
+        match req {
+            LockRequest::Granted => {
+                debug!(
+                    "Write lock for {:?} granted to transaction {:?}",
+                    key, transaction_name
+                );
+                let index = self.data.get_internals().indexes.get(index).unwrap();
+                let vals = index.index_write(key, columns, values)?;
+                Ok(vals)
+            }
+            LockRequest::Delay(pair) => {
+                debug!("Waiting for write lock");
+                let (lock, cvar) = &*pair;
+                let mut waiting = lock.lock().unwrap();
+                while !*waiting {
+                    waiting = cvar.wait(waiting).unwrap();
+                }
+                debug!("Write lock granted");
+                let index = self.data.get_internals().indexes.get(index).unwrap();
+                let vals = index.index_write(key, columns, values).unwrap();
+                Ok(vals)
+            }
+            LockRequest::Denied => {
+                debug!("Write lock denied");
+                Err(Box::new(TwoPhaseLockingError::new(
+                    TwoPhaseLockingErrorKind::LockRequestDenied,
+                )))
+            }
+        }
+    }
+
     /// Attempt to read a `Row`.
     ///
     /// If the read operation fails, an error is returned.
