@@ -25,7 +25,7 @@ pub mod helper;
 /// Populate tables.
 pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
     populate_subscriber_table(data, rng)?;
-    // populate_access_info(data, rng)?;
+    populate_access_info(data, rng)?;
     populate_special_facility_call_forwarding(data, rng)?;
     Ok(())
 }
@@ -336,11 +336,44 @@ pub fn get_new_destination(
         let mut res: String;
         res = "[".to_string();
         write!(res, "{}={}]", cf_columns[4], cf_res[4])?;
+        scheduler.commit(t_id);
 
         Ok(res)
     } else {
         Err(Box::new(SpaghettiError::RowDoesNotExist))
     }
+}
+
+/// GetAccessData transaction.
+pub fn get_access_data(
+    params: GetAccessData,
+    t_id: &str,
+    t_ts: DateTime<Utc>,
+    scheduler: Arc<Scheduler>,
+) -> Result<String> {
+    info!(
+        "SELECT data1, data2, data3, data4
+           FROM Access_Info
+         WHERE s_id = {:?}
+           AND ai_type = {:?} ",
+        params.s_id, params.ai_type
+    );
+
+    // Columns to read.
+    let columns: Vec<&str> = vec!["data_1", "data_2", "data_3", "data_4"];
+    // Construct primary key.
+    let pk = helper::access_info_key(params.s_id, params.ai_type.into());
+    debug!("{}", pk);
+    // Register with scheduler.
+    scheduler.register(t_id).unwrap();
+    // Execute read operation.
+    let values = scheduler.read("access_idx", pk, &columns, t_id, t_ts)?;
+    // Commit transaction.
+    scheduler.commit(t_id);
+    // Convert to result
+    let res = datatype::to_result(&columns, &values)?;
+
+    Ok(res)
 }
 
 /////////////////////////////////////////
@@ -686,10 +719,15 @@ mod tests {
         let params_gsd = GetSubscriberData { s_id: 1 };
         let params_gns = GetNewDestination {
             s_id: 1,
-            sf_type: 2,
-            start_time: 16,
-            end_time: 18,
+            sf_type: 1,
+            start_time: 0,
+            end_time: 1,
         };
+        let params_gad = GetAccessData {
+            s_id: 1,
+            ai_type: 2,
+        };
+
         assert_eq!(
             get_subscriber_data(params_gsd, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
             "[s_id=1, sub_nbr=000000000000001, bit_1=0, bit_2=1, bit_3=0, bit_4=1, bit_5=1, bit_6=1, bit_7=0, bit_8=0, bit_9=1, bit_10=0, hex_1=8, hex_2=6, hex_3=10, hex_4=8, hex_5=2, hex_6=13, hex_7=8, hex_8=10, hex_9=1, hex_10=9, byte_2_1=222, byte_2_2=248, byte_2_3=210, byte_2_4=100, byte_2_5=205, byte_2_6=163, byte_2_7=118, byte_2_8=127, byte_2_9=77, byte_2_10=52, msc_location=16]"
@@ -697,7 +735,12 @@ mod tests {
         let t_ts: DateTime<Utc> = sys_time.into();
         assert_eq!(
             get_new_destination(params_gns, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
-            "[number_x=216515820135270]"
+            "[number_x=287996544237071]"
+        );
+        let t_ts: DateTime<Utc> = sys_time.into();
+        assert_eq!(
+            get_access_data(params_gad, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
+            "[data_1=63, data_2=7, data_3=EMZ, data_4=WOVGK]"
         );
     }
 }
