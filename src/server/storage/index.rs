@@ -1,6 +1,7 @@
 use crate::common::error::SpaghettiError;
 use crate::server::storage::datatype::Data;
 use crate::server::storage::row::Row;
+use crate::workloads::PrimaryKey;
 use crate::Result;
 
 use chashmap::CHashMap;
@@ -14,7 +15,7 @@ pub struct Index {
     /// Index name.
     name: String,
     /// Concurrrent hashmap.
-    i: CHashMap<u64, Row>,
+    i: CHashMap<PrimaryKey, Row>,
 }
 
 impl Index {
@@ -27,7 +28,7 @@ impl Index {
     }
 
     /// Check if a key exists in the index.
-    pub fn key_exists(&self, key: u64) -> bool {
+    pub fn key_exists(&self, key: PrimaryKey) -> bool {
         self.i.contains_key(&key)
     }
 
@@ -36,7 +37,7 @@ impl Index {
     /// # Errors
     ///
     /// If `Row` already exists for key an `RowOverwritten` entry is returned.
-    pub fn index_insert(&self, key: u64, row: Row) -> Result<()> {
+    pub fn index_insert(&self, key: PrimaryKey, row: Row) -> Result<()> {
         let res = self.i.insert(key, row);
 
         match res {
@@ -50,7 +51,7 @@ impl Index {
     /// # Errors
     ///
     /// `RowDoesNotexist` if the row does not exist in the index.
-    pub fn index_read(&self, key: u64, columns: &Vec<&str>) -> Result<Vec<Data>> {
+    pub fn index_read(&self, key: PrimaryKey, columns: &Vec<&str>) -> Result<Vec<Data>> {
         // Attempt to get read guard.
         let read_guard = self
             .i
@@ -69,7 +70,12 @@ impl Index {
     }
 
     /// Write `values` to `columns`.
-    pub fn index_write(&self, key: u64, columns: &Vec<&str>, values: &Vec<&str>) -> Result<()> {
+    pub fn index_write(
+        &self,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+    ) -> Result<()> {
         let mut write_guard = self.i.get_mut(&key).unwrap(); //  TODO: map to error.
         let row = &mut *write_guard;
 
@@ -89,7 +95,9 @@ impl fmt::Display for Index {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::server::storage::datatype;
+    use crate::workloads::tatp::keys::TatpPrimaryKey;
     use crate::workloads::Workload;
     use config::Config;
     use lazy_static::lazy_static;
@@ -136,7 +144,7 @@ mod tests {
                 .get_internals()
                 .get_index("sub_idx")
                 .unwrap()
-                .key_exists(0),
+                .key_exists(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(0))),
             false
         );
 
@@ -153,7 +161,7 @@ mod tests {
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
-                    .index_read(1, &cols)
+                    .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &cols)
                     .unwrap()
             )
             .unwrap(),
@@ -166,7 +174,11 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_write(1, &cols, &vals)
+            .index_write(
+                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                &cols,
+                &vals,
+            )
             .unwrap();
 
         let cols = vec!["bit_4", "byte_2_5"];
@@ -177,7 +189,7 @@ mod tests {
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
-                    .index_read(1, &cols)
+                    .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &cols)
                     .unwrap()
             )
             .unwrap(),

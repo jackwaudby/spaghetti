@@ -131,12 +131,12 @@ mod tests {
 
         assert_eq!(
             format!("{}", r1),
-            String::from("[0, 0, products, null, null, null]")
+            String::from("[0, None, products, null, null, null]")
         );
 
         assert_eq!(
             format!("{}", r2),
-            String::from("[1, 0, products, null, null, null]")
+            String::from("[1, None, products, null, null, null]")
         );
     }
 }

@@ -1,11 +1,12 @@
 use crate::common::error::SpaghettiError;
 use crate::server::scheduler::Scheduler;
 use crate::server::storage::datatype::{self, Data};
-use crate::workloads::tatp::helper;
+use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tatp::profiles::{
     DeleteCallForwarding, GetAccessData, GetNewDestination, GetSubscriberData,
     InsertCallForwarding, TatpTransaction, UpdateLocationData, UpdateSubscriberData,
 };
+use crate::workloads::PrimaryKey;
 use crate::Result;
 
 use chrono::{DateTime, Utc};
@@ -71,7 +72,7 @@ pub fn get_subscriber_data(
         "msc_location",
     ];
     // Construct primary key.
-    let pk = params.s_id;
+    let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
     // Register with scheduler.
     scheduler.register(t_id).unwrap();
     // Execute read operation.
@@ -112,12 +113,15 @@ pub fn get_new_destination(
     let sf_columns: Vec<&str> = vec!["s_id", "sf_type", "is_active"];
     let cf_columns: Vec<&str> = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
     // Construct PK
-    let sf_pk = helper::special_facility_key(params.s_id.into(), params.sf_type.into(), 1);
-    let cf_pk = helper::call_forwarding_key(
+    let sf_pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
+        params.s_id.into(),
+        params.sf_type.into(),
+    ));
+    let cf_pk = PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(
         params.s_id.into(),
         params.sf_type.into(),
         params.start_time.into(),
-    );
+    ));
     // Register with scheduler.
     scheduler.register(t_id).unwrap();
     // Execute read operations.
@@ -170,7 +174,10 @@ pub fn get_access_data(
     // Columns to read.
     let columns: Vec<&str> = vec!["data_1", "data_2", "data_3", "data_4"];
     // Construct primary key.
-    let pk = helper::access_info_key(params.s_id, params.ai_type.into());
+    let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(
+        params.s_id,
+        params.ai_type.into(),
+    ));
     debug!("{}", pk);
     // Register with scheduler.
     scheduler.register(t_id).unwrap();
@@ -211,9 +218,12 @@ pub fn update_subscriber_data(
     let values_sp: Vec<&str> = values_sp.iter().map(|s| s as &str).collect();
 
     // Construct primary key.
-    let pk_sb = params.s_id;
+    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
     // TODO: change special facility pk.
-    let pk_sp = helper::special_facility_key(params.s_id, params.sf_type.into(), 1);
+    let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
+        params.s_id,
+        params.sf_type.into(),
+    ));
 
     // Register with scheduler.
     scheduler.register(t_id).unwrap();

@@ -1,0 +1,19 @@
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
+pub enum TatpPrimaryKey {
+    Subscriber(u64),
+    AccessInfo(u64, u64),
+    SpecialFacility(u64, u64),
+    CallForwarding(u64, u64, u64),
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn key_test() {
+        assert!(TatpPrimaryKey::CallForwarding(1, 1, 1) == TatpPrimaryKey::CallForwarding(1, 1, 1));
+        assert!(TatpPrimaryKey::SpecialFacility(1, 1) != TatpPrimaryKey::AccessInfo(1, 1));
+    }
+}

@@ -1,6 +1,6 @@
 use crate::common::frame::Frame;
 use crate::workloads::tatp::profiles::TatpTransaction;
-use crate::workloads::tpcc::TpccTransaction;
+use crate::workloads::tpcc::profiles::TpccTransaction;
 
 use bytes::Bytes;
 use chrono::offset::Utc;

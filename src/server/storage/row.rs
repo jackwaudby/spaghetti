@@ -2,6 +2,8 @@ use crate::server::storage::catalog::ColumnKind;
 use crate::server::storage::datatype::Data;
 use crate::server::storage::datatype::Field;
 use crate::server::storage::table::Table;
+use crate::workloads::PrimaryKey;
+
 use crate::Result;
 use std::fmt;
 
@@ -9,7 +11,7 @@ use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct Row {
-    primary_key: u64,
+    primary_key: Option<PrimaryKey>,
     row_id: u64,
     table: Arc<Table>,
     fields: Vec<Field>,
@@ -27,7 +29,7 @@ impl Row {
         }
 
         Row {
-            primary_key: 0,
+            primary_key: None,
             row_id,
             table: t,
             fields,
@@ -45,13 +47,13 @@ impl Row {
     }
 
     /// Returns a row's primary key.
-    pub fn get_primary_key(&self) -> u64 {
+    pub fn get_primary_key(&self) -> Option<PrimaryKey> {
         self.primary_key
     }
 
     /// Set a row's primary key.
-    pub fn set_primary_key(&mut self, key: u64) {
-        self.primary_key = key;
+    pub fn set_primary_key(&mut self, key: PrimaryKey) {
+        self.primary_key = Some(key);
     }
 
     /// Set the value of a field in a row.
@@ -98,7 +100,7 @@ impl fmt::Display for Row {
         fields.push_str(format!("{}", last).as_str());
         write!(
             f,
-            "[{}, {}, {}, {}]",
+            "[{}, {:?}, {}, {}]",
             self.get_row_id(),
             self.get_primary_key(),
             table.get_table_name(),
@@ -122,7 +124,7 @@ mod tests {
         let table = Table::init(catalog);
         // create row in table
         let mut row = Row::new(Arc::new(table));
-        assert_eq!(row.get_primary_key(), 0);
+
         assert_eq!(row.get_row_id(), 0);
         assert_eq!(row.get_value("name").unwrap(), Data::Null);
         row.set_value("year", "2019").unwrap();

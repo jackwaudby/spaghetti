@@ -2,7 +2,8 @@ use crate::common::error::SpaghettiError;
 use crate::server::storage::catalog::Catalog;
 use crate::server::storage::index::Index;
 use crate::server::storage::table::Table;
-
+use crate::workloads::tatp::keys::TatpPrimaryKey;
+use crate::workloads::tpcc::keys::TpccPrimaryKey;
 use crate::Result;
 
 use config::Config;
@@ -18,6 +19,22 @@ use tracing::info;
 pub mod tpcc;
 
 pub mod tatp;
+
+#[derive(PartialEq, Debug, Copy, Clone, Eq, Hash)]
+pub enum PrimaryKey {
+    Tatp(TatpPrimaryKey),
+    Tpcc(TpccPrimaryKey),
+}
+
+impl fmt::Display for PrimaryKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use PrimaryKey::*;
+        match &self {
+            Tatp(pk) => write!(f, "{:?}", pk),
+            Tpcc(pk) => write!(f, "{:?}", pk),
+        }
+    }
+}
 
 // Type of workload.
 #[derive(Debug)]
@@ -48,7 +65,7 @@ impl Workload {
         use Workload::*;
         match *self {
             Tatp(ref i) => tatp::loader::populate_tables(i, rng)?,
-            Tpcc(ref i) => tpcc::populate_tables(i, rng)?,
+            Tpcc(ref i) => tpcc::loader::populate_tables(i, rng)?,
         }
         Ok(())
     }

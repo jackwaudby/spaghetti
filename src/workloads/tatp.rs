@@ -7,3 +7,5 @@ pub mod profiles;
 pub mod generator;
 
 pub mod procedures;
+
+pub mod keys;

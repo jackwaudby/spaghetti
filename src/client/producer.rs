@@ -3,7 +3,7 @@ use crate::common::message::Message;
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::shutdown::Shutdown;
 use crate::workloads::tatp::generator::TatpGenerator;
-use crate::workloads::tpcc::TpccGenerator;
+use crate::workloads::tpcc::generator::TpccGenerator;
 use crate::Result;
 
 use config::Config;

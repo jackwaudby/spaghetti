@@ -1,4 +1,5 @@
 use crate::server::storage::datatype::Data;
+use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -62,7 +63,7 @@ impl Scheduler {
     pub fn write(
         &self,
         index: &str,
-        key: u64,
+        key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
         transaction_name: &str,
@@ -116,7 +117,7 @@ impl Scheduler {
     pub fn read(
         &self,
         index: &str,
-        key: u64,
+        key: PrimaryKey,
         columns: &Vec<&str>,
         transaction_name: &str,
         transaction_ts: DateTime<Utc>,

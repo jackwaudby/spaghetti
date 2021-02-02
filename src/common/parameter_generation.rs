@@ -1,6 +1,6 @@
 use crate::common::message::Message;
 use crate::workloads::tatp::generator::TatpGenerator;
-use crate::workloads::tpcc::TpccGenerator;
+use crate::workloads::tpcc::generator::TpccGenerator;
 
 /// Parameter generator.
 pub enum ParameterGenerator {
