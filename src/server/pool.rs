@@ -1,7 +1,7 @@
 //! A custom threadpool implementation based on the example in the Rust book.
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use tracing::{debug, info};
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct ThreadPool {
@@ -64,7 +64,7 @@ impl Drop for ThreadPool {
             self.sender.send(Message::Terminate).unwrap();
         }
 
-        info!("Terminating workers.");
+        debug!("Terminating workers.");
 
         for worker in &mut self.workers {
             debug!("Shutting down worker {}", worker.id);
@@ -74,7 +74,7 @@ impl Drop for ThreadPool {
             }
         }
 
-        info!("Workers shutdown.");
+        debug!("Workers shutdown.");
     }
 }
 
@@ -102,7 +102,7 @@ impl Worker {
             // Execute job.
             match message {
                 Message::NewJob(job) => {
-                    info!("Worker {} got a job; executing.", id);
+                    debug!("Worker {} got a job; executing.", id);
 
                     job.call_box();
                 }

@@ -51,7 +51,7 @@ impl Catalog {
     pub fn column_position_by_name(&self, name: &str) -> Result<usize> {
         match self.columns.iter().position(|x| *x.name() == name) {
             Some(pos) => Ok(pos),
-            None => Err(Box::new(SpaghettiError::ColumnNotFound)),
+            None => Err(Box::new(SpaghettiError::ColumnNotFound(name.to_string()))),
         }
     }
 
@@ -176,7 +176,7 @@ mod tests {
                 .unwrap_err()
                 .downcast::<SpaghettiError>()
                 .unwrap(),
-            SpaghettiError::ColumnNotFound
+            SpaghettiError::ColumnNotFound("location".to_string())
         );
 
         assert_eq!(

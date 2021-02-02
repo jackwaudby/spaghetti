@@ -1,9 +1,10 @@
 use crate::common::error::SpaghettiError;
+use crate::server::storage::datatype::Data;
 use crate::server::storage::row::Row;
 use crate::Result;
 
 use chashmap::CHashMap;
-use std::fmt::{self, Write};
+use std::fmt;
 
 /// An `Index` is used to access data.
 ///
@@ -49,7 +50,7 @@ impl Index {
     /// # Errors
     ///
     /// `RowDoesNotexist` if the row does not exist in the index.
-    pub fn index_read(&self, key: u64, columns: Vec<&str>) -> Result<String> {
+    pub fn index_read(&self, key: u64, columns: &Vec<&str>) -> Result<Vec<Data>> {
         // Attempt to get read guard.
         let read_guard = self
             .i
@@ -59,25 +60,33 @@ impl Index {
         let row = &*read_guard;
 
         // Get result.
-        let mut res: String;
-        res = "[".to_string();
+        // let mut res: String;
+        // res = "[".to_string();
+        // for column in columns {
+        //     let value = row.get_value(column)?; // TODO: map to none to null.
+        //     write!(res, "{}={}, ", column, value)?;
+        // }
+        // res.truncate(res.len() - 2);
+        // write!(res, "]").unwrap();
+
+        let mut res = Vec::new();
         for column in columns {
-            let value = row.get_value(column)?; // TODO: map to none to null.
-            write!(res, "{}={}, ", column, value)?;
+            let value = row.get_value(column)?;
+            res.push(value);
         }
-        res.truncate(res.len() - 2);
-        write!(res, "]").unwrap();
+
         Ok(res)
     }
 
     /// Write `values` to `columns`.
-    pub fn index_write(&self, key: u64, columns: Vec<&str>, values: Vec<&str>) -> () {
+    pub fn index_write(&self, key: u64, columns: Vec<&str>, values: Vec<&str>) -> Result<()> {
         let mut write_guard = self.i.get_mut(&key).unwrap(); //  TODO: map to error.
         let row = &mut *write_guard;
 
         for (i, name) in columns.iter().enumerate() {
-            row.set_value(name, values[i]).unwrap();
+            row.set_value(name, values[i])?;
         }
+        Ok(())
     }
 }
 
@@ -90,6 +99,7 @@ impl fmt::Display for Index {
 
 #[cfg(test)]
 mod tests {
+    use crate::server::storage::datatype;
     use crate::workloads::Workload;
     use config::Config;
     use lazy_static::lazy_static;
@@ -137,8 +147,9 @@ mod tests {
                 .get_index("sub_idx")
                 .unwrap()
                 .key_exists(0),
-            true
+            false
         );
+
         assert_eq!(
             format!("{}", WORKLOAD.get_internals().get_index("sub_idx").unwrap()),
             "[sub_idx,1]"
@@ -146,12 +157,16 @@ mod tests {
 
         let cols = vec!["bit_4", "byte_2_5"];
         assert_eq!(
-            WORKLOAD
-                .get_internals()
-                .get_index("sub_idx")
-                .unwrap()
-                .index_read(0, cols)
-                .unwrap(),
+            datatype::to_result(
+                &cols,
+                &WORKLOAD
+                    .get_internals()
+                    .get_index("sub_idx")
+                    .unwrap()
+                    .index_read(1, &cols)
+                    .unwrap()
+            )
+            .unwrap(),
             "[bit_4=1, byte_2_5=205]"
         );
 
@@ -161,16 +176,21 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_write(0, cols, vals);
+            .index_write(1, cols, vals)
+            .unwrap();
 
         let cols = vec!["bit_4", "byte_2_5"];
         assert_eq!(
-            WORKLOAD
-                .get_internals()
-                .get_index("sub_idx")
-                .unwrap()
-                .index_read(0, cols)
-                .unwrap(),
+            datatype::to_result(
+                &cols,
+                &WORKLOAD
+                    .get_internals()
+                    .get_index("sub_idx")
+                    .unwrap()
+                    .index_read(1, &cols)
+                    .unwrap()
+            )
+            .unwrap(),
             "[bit_4=0, byte_2_5=69]"
         );
     }

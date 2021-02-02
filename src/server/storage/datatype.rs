@@ -1,34 +1,37 @@
-//! A `Field` contains `Data` and is stored in a `Row`.
-use std::fmt;
+use crate::Result;
+use std::fmt::{self, Write};
 
+/// Element of a `Row' that holds `Data`.
 #[derive(Debug)]
 pub struct Field {
-    data: Option<Data>,
+    data: Data,
 }
 
 impl Field {
     /// Create a new instance of `Field`.
     pub fn new() -> Self {
-        Field { data: None }
+        Field { data: Data::Null }
     }
 
-    /// Return the (optional) `Data` stored in a `Field`.
-    ///
-    /// All data types are converted to a String.
-    pub fn get(&self) -> String {
-        match &self.data {
-            Some(value) => match value {
-                Data::Int(val) => val.to_string(),
-                Data::VarChar(ref val) => val.clone(),
-                Data::Double(val) => val.to_string(),
-            },
-            None => "null".to_string(),
-        }
+    /// Return the `Data` stored in a `Field`.
+    pub fn get(&self) -> Data {
+        self.data.clone()
     }
 
     /// Set the `Data` stored in a `Field`
     pub fn set(&mut self, data: Data) {
-        self.data = Some(data);
+        self.data = data;
+    }
+}
+
+impl fmt::Display for Data {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            Data::Int(val) => write!(f, "{}", val.to_string()),
+            Data::VarChar(ref val) => write!(f, "{}", val),
+            Data::Double(val) => write!(f, "{}", val.to_string()),
+            Data::Null => write!(f, "null"),
+        }
     }
 }
 
@@ -36,21 +39,33 @@ impl Field {
 impl fmt::Display for Field {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.data {
-            Some(value) => match value {
-                Data::Int(val) => write!(f, "{}", val.to_string()),
-                Data::VarChar(ref val) => write!(f, "{}", val),
-                Data::Double(val) => write!(f, "{}", val.to_string()),
-            },
-            None => write!(f, "null"),
+            Data::Int(val) => write!(f, "{}", val.to_string()),
+            Data::VarChar(ref val) => write!(f, "{}", val),
+            Data::Double(val) => write!(f, "{}", val.to_string()),
+            Data::Null => write!(f, "null"),
         }
     }
 }
 
-#[derive(Debug)]
+/// Represents fundamental datatype.
+#[derive(Debug, Clone, PartialEq)]
 pub enum Data {
     Int(i64),
     VarChar(String),
     Double(f64),
+    Null,
+}
+
+/// Convert columns and values to a result string.
+pub fn to_result(columns: &Vec<&str>, values: &Vec<Data>) -> Result<String> {
+    let mut res: String;
+    res = "[".to_string();
+    for (i, column) in columns.iter().enumerate() {
+        write!(res, "{}={}, ", column, values[i])?;
+    }
+    res.truncate(res.len() - 2);
+    write!(res, "]")?;
+    Ok(res)
 }
 
 #[cfg(test)]
@@ -59,15 +74,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn fields() {
+    fn fields_test() {
         let mut f = Field::new();
-        assert_eq!(f.get(), "null".to_string());
+        assert_eq!(f.get(), Data::Null);
         assert_eq!(format!("{}", f), String::from("null"));
         f.set(Data::Int(5));
-        assert_eq!(f.get(), "5".to_string());
+        assert_eq!(f.get(), Data::Int(5));
         assert_eq!(format!("{}", f), String::from("5"));
         f.set(Data::VarChar("abc".to_string()));
-        assert_eq!(f.get(), "abc".to_string());
+        assert_eq!(f.get(), Data::VarChar("abc".to_string()));
         assert_eq!(format!("{}", f), String::from("abc"));
+    }
+
+    #[test]
+    fn to_result_test() {
+        let columns = vec!["a", "b", "c", "d"];
+        let values = vec![
+            Data::Double(1.3),
+            Data::Null,
+            Data::Int(10),
+            Data::VarChar("hello".to_string()),
+        ];
+        assert_eq!(
+            to_result(&columns, &values).unwrap(),
+            "[a=1.3, b=null, c=10, d=hello]"
+        );
     }
 }

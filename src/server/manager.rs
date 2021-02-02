@@ -87,15 +87,34 @@ impl TransactionManager {
                         match request.transaction {
                             Transaction::Tatp(transaction) => match transaction {
                                 TatpTransaction::GetSubscriberData(params) => {
-                                    // Subscriber ID.
-                                    let s_id = &params.s_id.to_string();
                                     // Transaction ID.
                                     let t_id = &request.id.unwrap();
                                     // Transaction timestamp.
                                     let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
                                     let res =
-                                        tatp::get_subscriber_data(s_id, t_id, t_ts, scheduler);
+                                        tatp::get_subscriber_data(params, t_id, t_ts, scheduler);
+                                    // Package response.
+                                    let resp = match res {
+                                        Ok(res) => Response::Committed { value: Some(res) },
+                                        Err(e) => Response::Aborted {
+                                            err: format!("  Caused by: {}", e.source().unwrap()),
+                                        },
+                                    };
+                                    // Send to corresponding `WriteHandler`.
+                                    request
+                                        .response_sender
+                                        .send(Message::Response(resp))
+                                        .unwrap();
+                                }
+                                TatpTransaction::GetNewDestination(params) => {
+                                    // Transaction ID.
+                                    let t_id = &request.id.unwrap();
+                                    // Transaction timestamp.
+                                    let t_ts = request.timestamp.unwrap();
+                                    // Stored procedure.
+                                    let res =
+                                        tatp::get_new_destination(params, t_id, t_ts, scheduler);
                                     // Package response.
                                     let resp = match res {
                                         Ok(res) => Response::Committed { value: Some(res) },
@@ -121,23 +140,49 @@ impl TransactionManager {
                 break;
             } else {
                 // Normal operation.
-                if let Ok(request) = self.work_rx.try_recv() {
-                    debug!("Transaction manager received {:?}", request.transaction);
-                    debug!("Submit to workers.");
-                    let s = Arc::clone(&scheduler);
+                if let Ok(mut request) = self.work_rx.try_recv() {
+                    debug!("Pass request to thread pool");
+                    // Get handle to scheduler.
+                    let scheduler = Arc::clone(&scheduler);
+                    // Assign transaction id and timestamp.
+                    let sys_time = SystemTime::now();
+                    let datetime: DateTime<Utc> = sys_time.into();
+                    request.id = Some(datetime.to_string());
+                    request.timestamp = Some(datetime);
+
                     self.pool.execute(move || {
                         debug!("Execute request: {:?}", request);
                         match request.transaction {
                             Transaction::Tatp(transaction) => match transaction {
                                 TatpTransaction::GetSubscriberData(params) => {
-                                    // Subscriber ID.
-                                    let s_id = &params.s_id.to_string();
+                                    // Transaction ID.
+                                    let t_id = &request.id.unwrap();
+                                    // Transaction timestamp.x
+                                    let t_ts = request.timestamp.unwrap();
+                                    // Stored procedure.
+                                    let res =
+                                        tatp::get_subscriber_data(params, t_id, t_ts, scheduler);
+                                    // Package response.
+                                    let resp = match res {
+                                        Ok(res) => Response::Committed { value: Some(res) },
+                                        Err(e) => Response::Aborted {
+                                            err: format!("  Caused by: {}", e.source().unwrap()),
+                                        },
+                                    };
+                                    // Send to corresponding `WriteHandler`.
+                                    request
+                                        .response_sender
+                                        .send(Message::Response(resp))
+                                        .unwrap();
+                                }
+                                TatpTransaction::GetNewDestination(params) => {
                                     // Transaction ID.
                                     let t_id = &request.id.unwrap();
                                     // Transaction timestamp.
                                     let t_ts = request.timestamp.unwrap();
                                     // Stored procedure.
-                                    let res = tatp::get_subscriber_data(s_id, t_id, t_ts, s);
+                                    let res =
+                                        tatp::get_new_destination(params, t_id, t_ts, scheduler);
                                     // Package response.
                                     let resp = match res {
                                         Ok(res) => Response::Committed { value: Some(res) },

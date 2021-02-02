@@ -1,4 +1,6 @@
+use crate::server::storage::datatype::Data;
 use crate::workloads::Workload;
+use crate::Result;
 
 use chashmap::CHashMap;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -6,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
 use std::sync::{Arc, Condvar, Mutex};
-use tracing::{debug, info};
+use tracing::debug;
 
 /// Represents an operation scheduler.
 #[derive(Debug)]
@@ -38,21 +40,21 @@ impl Scheduler {
     ///
     /// If a transaction with the same name is already registered returns
     /// `TransactionAlreadyRegistered`.
-    pub fn register(&self, transaction_name: &str) -> Result<(), TwoPhaseLockingError> {
+    pub fn register(&self, transaction_name: &str) -> Result<()> {
         debug!("Register transaction {:?} with scheduler", transaction_name);
         match self
             .active_transactions
             .insert(transaction_name.to_string(), Vec::new())
         {
-            Some(_) => Err(TwoPhaseLockingError::new(
+            Some(_) => Err(Box::new(TwoPhaseLockingError::new(
                 TwoPhaseLockingErrorKind::AlreadyRegisteredInActiveTransactions,
-            )),
+            ))),
             None => Ok(()),
         }
     }
 
     pub fn commit(&self, transaction_name: &str) {
-        info!("Commit transaction {:?}", transaction_name);
+        debug!("Commit transaction {:?}", transaction_name);
         self.release_locks(transaction_name);
         self.cleanup(transaction_name);
     }
@@ -62,67 +64,70 @@ impl Scheduler {
     /// If the read operation fails, an error is returned.
     pub fn read(
         &self,
-        key: &str,
-        columns: Vec<&str>,
+        index: &str,
+        key: u64,
+        columns: &Vec<&str>,
         transaction_name: &str,
         transaction_ts: DateTime<Utc>,
-    ) -> Result<String, TwoPhaseLockingError> {
-        info!(
+    ) -> Result<Vec<Data>> {
+        debug!(
             "Transaction {:?} requesting read lock on {:?}",
             transaction_name, key
         );
-        let req = self.request_lock(key, LockMode::Read, transaction_name, transaction_ts);
+        let req = self.request_lock(
+            &key.to_string(),
+            LockMode::Read,
+            transaction_name,
+            transaction_ts,
+        );
         match req {
             LockRequest::Granted => {
-                info!(
+                debug!(
                     "Read lock for {:?} granted to transaction {:?}",
                     key, transaction_name
                 );
-                let index = self.data.get_internals().indexes.get("sub_idx").unwrap();
-                let pk = key.parse::<u64>().unwrap();
-                let vals = index.index_read(pk, columns).unwrap();
+                let index = self.data.get_internals().indexes.get(index).unwrap();
+                let vals = index.index_read(key, columns)?;
                 Ok(vals)
             }
             LockRequest::Delay(pair) => {
-                info!("Waiting for read lock");
+                debug!("Waiting for read lock");
                 let (lock, cvar) = &*pair;
                 let mut waiting = lock.lock().unwrap();
                 while !*waiting {
                     waiting = cvar.wait(waiting).unwrap();
                 }
-                info!("Read lock granted");
-                let index = self.data.get_internals().indexes.get("sub_idx").unwrap();
-                let pk = key.parse::<u64>().unwrap();
-                let vals = index.index_read(pk, columns).unwrap();
-
+                debug!("Read lock granted");
+                let index = self.data.get_internals().indexes.get(index).unwrap();
+                let vals = index.index_read(key, columns).unwrap();
                 Ok(vals)
             }
             LockRequest::Denied => {
-                info!("Read lock denied");
-                Err(TwoPhaseLockingError::new(
+                debug!("Read lock denied");
+                Err(Box::new(TwoPhaseLockingError::new(
                     TwoPhaseLockingErrorKind::LockRequestDenied,
-                ))
+                )))
             }
         }
     }
 
     /// Register lock with a transaction.
-    fn register_lock(&self, transaction_name: &str, key: &str) -> Result<(), TwoPhaseLockingError> {
+    fn register_lock(&self, transaction_name: &str, key: &str) -> Result<()> {
         // Attempt to get mutable value for transaction.
         let locks_held = self.active_transactions.get_mut(transaction_name);
 
         match locks_held {
             Some(mut wg) => {
                 wg.push(key.to_string());
-                info!(
+                debug!(
                     "Register lock for {:?} with transaction {:?}",
                     key, transaction_name
                 );
                 Ok(())
             }
-            None => Err(TwoPhaseLockingError::new(
+            None => Err(Box::new(TwoPhaseLockingError::new(
                 TwoPhaseLockingErrorKind::NotRegisteredInActiveTransactions,
-            )),
+            ))),
         }
     }
 
@@ -407,17 +412,17 @@ impl Scheduler {
     }
 
     fn release_locks(&self, transaction_name: &str) {
-        info!("Release locks for {:?}", transaction_name);
+        debug!("Release locks for {:?}", transaction_name);
         let held_locks = self.active_transactions.get(transaction_name).unwrap();
-        info!("Locks held: {:?}", held_locks);
+        debug!("Locks held: {:?}", held_locks);
         for lock in held_locks.iter() {
-            info!("Release lock: {:?}", lock);
+            debug!("Release lock: {:?}", lock);
             self.release_lock(lock, transaction_name);
         }
     }
 
     fn cleanup(&self, transaction_name: &str) {
-        info!("Clean up {:?}", transaction_name);
+        debug!("Clean up {:?}", transaction_name);
         self.active_transactions.remove(transaction_name);
     }
 }
@@ -602,10 +607,14 @@ mod tests {
         // Initialise scheduler.
         let scheduler = Arc::new(Scheduler::new(Arc::clone(&WORKLOAD)));
         // Register transaction.
-        assert_eq!(scheduler.register("some_id"), Ok(()));
+        assert_eq!(scheduler.register("some_id").unwrap(), ());
         assert_eq!(
-            scheduler.register("some_id"),
-            Err(TwoPhaseLockingError::new(
+            scheduler
+                .register("some_id")
+                .unwrap_err()
+                .downcast::<TwoPhaseLockingError>()
+                .unwrap(),
+            Box::new(TwoPhaseLockingError::new(
                 TwoPhaseLockingErrorKind::AlreadyRegisteredInActiveTransactions
             ))
         );
