@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn generate_test() {
-        logging(true);
+        logging(false);
         let mut gen = TatpGenerator::new(10, true);
         assert_eq!(
             TatpTransaction::GetSubscriberData(GetSubscriberData { s_id: 5 }),

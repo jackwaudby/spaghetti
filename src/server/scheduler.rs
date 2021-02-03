@@ -61,16 +61,36 @@ impl Scheduler {
         self.cleanup(transaction_name);
     }
 
-    pub fn insert(&self, index: &str, pk: PrimaryKey, row: Row) -> Result<()> {
+    pub fn insert(
+        &self,
+        index: &str,
+        pk: PrimaryKey,
+        row: Row,
+        transaction_name: &str,
+    ) -> Result<()> {
+        // Get index.
         let index = self.data.get_internals().indexes.get(index).unwrap();
-        index.index_insert(pk, row)?;
-        Ok(())
+        // Attempt to insert row.
+        match index.index_insert(pk, row) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                self.cleanup(transaction_name);
+                Err(e)
+            }
+        }
     }
 
-    pub fn delete(&self, index: &str, pk: PrimaryKey) -> Result<()> {
+    pub fn delete(&self, index: &str, pk: PrimaryKey, transaction_name: &str) -> Result<()> {
+        // Get index.
         let index = self.data.get_internals().indexes.get(index).unwrap();
-        index.index_remove(pk)?;
-        Ok(())
+        // Attempt to remove row.
+        match index.index_remove(pk) {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                self.cleanup(transaction_name);
+                Err(e)
+            }
+        }
     }
 
     pub fn write(
@@ -100,7 +120,15 @@ impl Scheduler {
                     key, transaction_name
                 );
                 let index = self.data.get_internals().indexes.get(index).unwrap();
-                let vals = index.index_write(key, columns, values)?;
+                let vals = match index.index_write(key, columns, values) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                        self.cleanup(transaction_name);
+                        return Err(e);
+                    }
+                };
+
                 Ok(vals)
             }
             LockRequest::Delay(pair) => {
@@ -112,11 +140,20 @@ impl Scheduler {
                 }
                 debug!("Write lock granted");
                 let index = self.data.get_internals().indexes.get(index).unwrap();
-                let vals = index.index_write(key, columns, values).unwrap();
+                let vals = match index.index_write(key, columns, values) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                        self.cleanup(transaction_name);
+                        return Err(e);
+                    }
+                };
+
                 Ok(vals)
             }
             LockRequest::Denied => {
                 debug!("Write lock denied");
+                self.cleanup(transaction_name);
                 Err(Box::new(TwoPhaseLockingError::new(
                     TwoPhaseLockingErrorKind::LockRequestDenied,
                 )))
@@ -152,7 +189,14 @@ impl Scheduler {
                     key, transaction_name
                 );
                 let index = self.data.get_internals().indexes.get(index).unwrap();
-                let vals = index.index_read(key, columns)?;
+                let vals = match index.index_read(key, columns) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                        self.cleanup(transaction_name);
+                        return Err(e);
+                    }
+                };
                 Ok(vals)
             }
             LockRequest::Delay(pair) => {
@@ -164,11 +208,20 @@ impl Scheduler {
                 }
                 debug!("Read lock granted");
                 let index = self.data.get_internals().indexes.get(index).unwrap();
-                let vals = index.index_read(key, columns).unwrap();
+                let vals = match index.index_read(key, columns) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                        self.cleanup(transaction_name);
+                        return Err(e);
+                    }
+                };
+
                 Ok(vals)
             }
             LockRequest::Denied => {
                 debug!("Read lock denied");
+                self.cleanup(transaction_name);
                 Err(Box::new(TwoPhaseLockingError::new(
                     TwoPhaseLockingErrorKind::LockRequestDenied,
                 )))
@@ -486,7 +539,7 @@ impl Scheduler {
         }
     }
 
-    fn cleanup(&self, transaction_name: &str) {
+    pub fn cleanup(&self, transaction_name: &str) {
         debug!("Clean up {:?}", transaction_name);
         self.active_transactions.remove(transaction_name);
     }

@@ -24,7 +24,7 @@ pub fn get_subscriber_data(
     scheduler: Arc<Scheduler>,
 ) -> Result<String> {
     info!(
-        "SELECT s_id, sub_nbr,
+        "\nSELECT s_id, sub_nbr,
             bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
             bit_8, bit_9, bit_10,
             hex_1, hex_2, hex_3, hex_4, hex_5, hex_6, hex_7,
@@ -76,7 +76,7 @@ pub fn get_subscriber_data(
     // Construct primary key.
     let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
     // Register with scheduler.
-    scheduler.register(t_id).unwrap();
+    scheduler.register(t_id)?;
     // Execute read operation.
     let values = scheduler.read("sub_idx", pk, &columns, t_id, t_ts)?;
     // Commit transaction.
@@ -95,7 +95,7 @@ pub fn get_new_destination(
     scheduler: Arc<Scheduler>,
 ) -> Result<String> {
     info!(
-        "SELECT cf.numberx
+        "\nSELECT cf.numberx
            FROM Special_Facility AS sf, Call_Forwarding AS cf
            WHERE
              (sf.s_id = {} AND sf.sf_type = {} AND sf.is_active = 1)
@@ -334,7 +334,7 @@ pub fn insert_call_forwarding(
     row.set_value("number_x", &params.number_x)?;
 
     // Execute insert operation.
-    scheduler.insert("call_idx", pk_cf, row)?;
+    scheduler.insert("call_idx", pk_cf, row, t_id)?;
 
     // Commit transaction.
     scheduler.commit(t_id);
@@ -377,7 +377,7 @@ pub fn delete_call_forwarding(
     scheduler.read("sub_idx", pk_sb, &columns_sb, t_id, t_ts)?;
 
     // Delete from call forwarding.
-    scheduler.delete("call_idx", pk_cf)?;
+    scheduler.delete("call_idx", pk_cf, t_id)?;
 
     // Commit transaction.
     scheduler.commit(t_id);
@@ -426,7 +426,7 @@ mod tests {
 
     #[test]
     fn transactions_test() {
-        logging(false);
+        logging(true);
         // Workload with fixed seed
         let mut rng = StdRng::seed_from_u64(42);
         let config = Arc::clone(&CONFIG);
@@ -434,56 +434,189 @@ mod tests {
         loader::populate_tables(&internals, &mut rng).unwrap();
         let workload = Arc::new(Workload::Tatp(internals));
         // Scheduler
-        let scheduler = Arc::new(Scheduler::new(workload));
+        let scheduler = Arc::new(Scheduler::new(Arc::clone(&workload)));
         let sys_time = SystemTime::now();
         let datetime: DateTime<Utc> = sys_time.into();
         let t_id = datetime.to_string();
         let t_ts = datetime;
-        // params
-        let params_gsd = GetSubscriberData { s_id: 1 };
-        let params_gns = GetNewDestination {
-            s_id: 1,
-            sf_type: 1,
-            start_time: 0,
-            end_time: 1,
-        };
-        let params_gad = GetAccessData {
-            s_id: 1,
-            ai_type: 2,
-        };
-        let params_usd = UpdateSubscriberData {
-            s_id: 1,
-            sf_type: 1,
-            bit_1: 1,
-            data_a: 29,
-        };
 
+        ///////////////////////////////////////
+        //// GetSubscriberData ////
+        ///////////////////////////////////////
         assert_eq!(
-            get_subscriber_data(params_gsd, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
+            get_subscriber_data(GetSubscriberData { s_id: 1 }, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
             "[s_id=1, sub_nbr=000000000000001, bit_1=0, bit_2=1, bit_3=0, bit_4=1, bit_5=1, bit_6=1, bit_7=0, bit_8=0, bit_9=1, bit_10=0, hex_1=8, hex_2=6, hex_3=10, hex_4=8, hex_5=2, hex_6=13, hex_7=8, hex_8=10, hex_9=1, hex_10=9, byte_2_1=222, byte_2_2=248, byte_2_3=210, byte_2_4=100, byte_2_5=205, byte_2_6=163, byte_2_7=118, byte_2_8=127, byte_2_9=77, byte_2_10=52, msc_location=16]"
         );
-        let t_ts: DateTime<Utc> = sys_time.into();
-        assert_eq!(
-            get_new_destination(params_gns, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
-            "[number_x=287996544237071]"
-        );
-        let t_ts: DateTime<Utc> = sys_time.into();
-        assert_eq!(
-            get_access_data(params_gad, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
-            "[data_1=63, data_2=7, data_3=EMZ, data_4=WOVGK]"
-        );
-        let t_ts: DateTime<Utc> = sys_time.into();
 
         assert_eq!(
-            update_subscriber_data(params_usd, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
+            format!(
+                "{}",
+                get_subscriber_data(
+                    GetSubscriberData { s_id: 100 },
+                    &t_id,
+                    t_ts,
+                    Arc::clone(&scheduler)
+                )
+                .unwrap_err()
+            ),
+            format!("Row does not exist in index.")
+        );
+
+        ///////////////////////////////////////
+        //// GetNewDestination ////
+        ///////////////////////////////////////
+        assert_eq!(
+            get_new_destination(
+                GetNewDestination {
+                    s_id: 1,
+                    sf_type: 1,
+                    start_time: 8,
+                    end_time: 12,
+                },
+                &t_id,
+                t_ts,
+                Arc::clone(&scheduler)
+            )
+            .unwrap(),
+            "[number_x=993245295996111]"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                get_new_destination(
+                    GetNewDestination {
+                        s_id: 10,
+                        sf_type: 1,
+                        start_time: 0,
+                        end_time: 1,
+                    },
+                    &t_id,
+                    t_ts,
+                    Arc::clone(&scheduler)
+                )
+                .unwrap_err()
+            ),
+            format!("Row does not exist in index.")
+        );
+
+        //////////////////////////////////
+        //// GetAccessData ////
+        /////////////////////////////////
+        assert_eq!(
+            get_access_data(
+                GetAccessData {
+                    s_id: 1,
+                    ai_type: 1
+                },
+                &t_id,
+                t_ts,
+                Arc::clone(&scheduler)
+            )
+            .unwrap(),
+            "[data_1=165, data_2=166, data_3=FPK, data_4=BLZPL]"
+        );
+
+        assert_eq!(
+            format!(
+                "{}",
+                get_access_data(
+                    GetAccessData {
+                        s_id: 19,
+                        ai_type: 12
+                    },
+                    &t_id,
+                    t_ts,
+                    Arc::clone(&scheduler)
+                )
+                .unwrap_err()
+            ),
+            format!("Row does not exist in index.")
+        );
+
+        ////////////////////////////////////////////
+        //// UpdateSubscriberData ////
+        ///////////////////////////////////////////
+
+        let columns_sb = vec!["bit_1"];
+        let columns_sf = vec!["data_a"];
+
+        // Before
+        let values_sb = workload
+            .get_internals()
+            .get_index("sub_idx")
+            .unwrap()
+            .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &columns_sb)
+            .unwrap();
+        let values_sf = workload
+            .get_internals()
+            .get_index("special_idx")
+            .unwrap()
+            .index_read(
+                PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 1)),
+                &columns_sf,
+            )
+            .unwrap();
+
+        let res_sb = datatype::to_result(&columns_sb, &values_sb).unwrap();
+        let res_sf = datatype::to_result(&columns_sf, &values_sf).unwrap();
+        assert_eq!(res_sb, "[bit_1=0]");
+        assert_eq!(res_sf, "[data_a=73]");
+
+        assert_eq!(
+            update_subscriber_data(
+                UpdateSubscriberData {
+                    s_id: 1,
+                    sf_type: 1,
+                    bit_1: 1,
+                    data_a: 29,
+                },
+                &t_id,
+                t_ts,
+                Arc::clone(&scheduler)
+            )
+            .unwrap(),
             "updated"
         );
 
-        assert_eq!(
-            get_subscriber_data(params_gsd, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
-            "[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=1, bit_3=0, bit_4=1, bit_5=1, bit_6=1, bit_7=0, bit_8=0, bit_9=1, bit_10=0, hex_1=8, hex_2=6, hex_3=10, hex_4=8, hex_5=2, hex_6=13, hex_7=8, hex_8=10, hex_9=1, hex_10=9, byte_2_1=222, byte_2_2=248, byte_2_3=210, byte_2_4=100, byte_2_5=205, byte_2_6=163, byte_2_7=118, byte_2_8=127, byte_2_9=77, byte_2_10=52, msc_location=16]"
-        );
+        // After
+        let values_sb = workload
+            .get_internals()
+            .get_index("sub_idx")
+            .unwrap()
+            .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &columns_sb)
+            .unwrap();
+        let values_sf = workload
+            .get_internals()
+            .get_index("special_idx")
+            .unwrap()
+            .index_read(
+                PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 1)),
+                &columns_sf,
+            )
+            .unwrap();
 
-        // TODO: check other value has changed.
+        let res_sb = datatype::to_result(&columns_sb, &values_sb).unwrap();
+        let res_sf = datatype::to_result(&columns_sf, &values_sf).unwrap();
+        assert_eq!(res_sb, "[bit_1=1]");
+        assert_eq!(res_sf, "[data_a=29]");
+
+        assert_eq!(
+            format!(
+                "{}",
+                update_subscriber_data(
+                    UpdateSubscriberData {
+                        s_id: 1345,
+                        sf_type: 132,
+                        bit_1: 0,
+                        data_a: 28,
+                    },
+                    &t_id,
+                    t_ts,
+                    Arc::clone(&scheduler)
+                )
+                .unwrap_err()
+            ),
+            format!("Row does not exist in index.")
+        );
     }
 }

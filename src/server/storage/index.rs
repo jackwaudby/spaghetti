@@ -36,12 +36,16 @@ impl Index {
     ///
     /// # Errors
     ///
-    /// If `Row` already exists for key an `RowOverwritten` entry is returned.
+    /// If `Row` already exists for key an `RowAlreadyExists` entry is returned.
     pub fn index_insert(&self, key: PrimaryKey, row: Row) -> Result<()> {
         let res = self.i.insert(key, row);
 
         match res {
-            Some(_) => Err(Box::new(SpaghettiError::RowOverwritten)),
+            Some(existing_row) => {
+                // A row already existed for this pk, which has now been overwritten, put back
+                self.i.insert(key, existing_row);
+                Err(Box::new(SpaghettiError::RowAlreadyExists))
+            }
             None => Ok(()),
         }
     }
@@ -56,7 +60,7 @@ impl Index {
 
         match res {
             Some(_) => Ok(()),
-            None => Err(Box::new(SpaghettiError::RowDoesNotExist)),
+            None => Err(SpaghettiError::RowDoesNotExist.into()),
         }
     }
 
@@ -90,7 +94,12 @@ impl Index {
         columns: &Vec<&str>,
         values: &Vec<&str>,
     ) -> Result<()> {
-        let mut write_guard = self.i.get_mut(&key).unwrap(); //  TODO: map to error.
+        // Attempt to get write guard.
+        let mut write_guard = self
+            .i
+            .get_mut(&key)
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+        // Deref to row.
         let row = &mut *write_guard;
 
         for (i, name) in columns.iter().enumerate() {
