@@ -244,7 +244,7 @@ mod tests {
         populate_subscriber_table(&internals, &mut rng).unwrap();
         assert_eq!(
             internals.get_table("subscriber").unwrap().get_next_row_id(),
-            1
+            2
         );
         let index = internals.indexes.get("sub_idx").unwrap();
 
@@ -300,7 +300,7 @@ mod tests {
                 .get_table("access_info")
                 .unwrap()
                 .get_next_row_id(),
-            2
+            3
         );
 
         let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
@@ -324,7 +324,7 @@ mod tests {
                 .get_table("special_facility")
                 .unwrap()
                 .get_next_row_id(),
-            4
+            5
         );
 
         let cols_sf = vec![
@@ -357,7 +357,7 @@ mod tests {
                 .get_table("call_forwarding")
                 .unwrap()
                 .get_next_row_id(),
-            3
+            4
         );
         let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
         let index = internals.indexes.get("call_idx").unwrap();

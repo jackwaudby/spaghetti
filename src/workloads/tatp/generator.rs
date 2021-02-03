@@ -12,27 +12,39 @@ use rand::{Rng, SeedableRng};
 /////////////////////////////////////////
 /// Parameter Generator. ///
 ////////////////////////////////////////
-// TODO: implement non-uniform distribution.
 
+/// TATP workload transaction generator.
 pub struct TatpGenerator {
+    /// Subscribers in the workload.
     subscribers: u64,
+    /// Rng.
     rng: StdRng,
 }
 
 impl TatpGenerator {
-    pub fn new(subscribers: u64) -> TatpGenerator {
-        // Initialise the thread local rng.
-        let rng: StdRng = SeedableRng::from_entropy();
-
+    /// Create new `TatpGenerator`.
+    pub fn new(subscribers: u64, set_seed: bool) -> TatpGenerator {
+        let rng: StdRng;
+        if set_seed {
+            rng = SeedableRng::seed_from_u64(1);
+        } else {
+            rng = SeedableRng::from_entropy();
+        }
         TatpGenerator { subscribers, rng }
     }
 }
 
 impl Generator for TatpGenerator {
+    /// Generate transaction profile wrapped as `Message`.
     fn generate(&mut self) -> Message {
         let n: f32 = self.rng.gen();
-
-        let transaction = match n {
+        let params = self.get_params(n);
+        Message::TatpTransaction(params)
+    }
+}
+impl TatpGenerator {
+    fn get_params(&mut self, n: f32) -> TatpTransaction {
+        match n {
             x if x < 0.35 => {
                 // GET_SUBSCRIBER_DATA
                 let s_id = self.rng.gen_range(1..=self.subscribers);
@@ -110,8 +122,88 @@ impl Generator for TatpGenerator {
                 };
                 TatpTransaction::DeleteCallForwarding(payload)
             }
-        };
+        }
+    }
+}
 
-        Message::TatpTransaction(transaction)
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Once;
+    use tracing::{debug, Level};
+    use tracing_subscriber::FmtSubscriber;
+
+    static LOG: Once = Once::new();
+
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
+    }
+
+    #[test]
+    fn generate_test() {
+        logging(true);
+        let mut gen = TatpGenerator::new(10, true);
+        assert_eq!(
+            TatpTransaction::GetSubscriberData(GetSubscriberData { s_id: 5 }),
+            gen.get_params(0.1)
+        );
+        assert_eq!(
+            TatpTransaction::GetNewDestination(GetNewDestination {
+                s_id: 3,
+                sf_type: 3,
+                start_time: 16,
+                end_time: 23
+            }),
+            gen.get_params(0.4)
+        );
+        assert_eq!(
+            TatpTransaction::GetAccessData(GetAccessData {
+                s_id: 2,
+                ai_type: 3
+            }),
+            gen.get_params(0.7)
+        );
+        assert_eq!(
+            TatpTransaction::UpdateSubscriberData(UpdateSubscriberData {
+                s_id: 3,
+                sf_type: 2,
+                bit_1: 0,
+                data_a: 241
+            }),
+            gen.get_params(0.81)
+        );
+        assert_eq!(
+            TatpTransaction::UpdateLocationData(UpdateLocationData {
+                s_id: 9,
+                vlr_location: 13
+            }),
+            gen.get_params(0.93)
+        );
+        assert_eq!(
+            TatpTransaction::InsertCallForwarding(InsertCallForwarding {
+                s_id: 2,
+                sf_type: 1,
+                start_time: 16,
+                end_time: 20,
+                number_x: "333269051490038".to_string()
+            }),
+            gen.get_params(0.97)
+        );
+        assert_eq!(
+            TatpTransaction::DeleteCallForwarding(DeleteCallForwarding {
+                s_id: 3,
+                sf_type: 3,
+                start_time: 16
+            }),
+            gen.get_params(0.99)
+        );
     }
 }
