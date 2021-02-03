@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn transactions_test() {
-        logging(false);
+        logging(true);
         // Workload with fixed seed
         let mut rng = StdRng::seed_from_u64(42);
         let config = Arc::clone(&CONFIG);
@@ -617,5 +617,63 @@ mod tests {
             ),
             format!("Row does not exist in index.")
         );
+
+        ////////////////////////////////
+        //// UpdateLocation ////
+        /////////////////////////////////
+
+        let columns_sb = vec!["vlr_location"];
+
+        // Before
+        let values_sb = workload
+            .get_internals()
+            .get_index("sub_idx")
+            .unwrap()
+            .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &columns_sb)
+            .unwrap();
+        let res_sb = datatype::to_result(&columns_sb, &values_sb).unwrap();
+        assert_eq!(res_sb, "[vlr_location=12]");
+
+        assert_eq!(
+            update_location(
+                UpdateLocationData {
+                    s_id: 1,
+                    vlr_location: 4
+                },
+                &t_id,
+                t_ts,
+                Arc::clone(&scheduler)
+            )
+            .unwrap(),
+            "updated"
+        );
+
+        // After
+        let values_sb = workload
+            .get_internals()
+            .get_index("sub_idx")
+            .unwrap()
+            .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &columns_sb)
+            .unwrap();
+
+        let res_sb = datatype::to_result(&columns_sb, &values_sb).unwrap();
+        assert_eq!(res_sb, "[vlr_location=4]");
+
+        // assert_eq!(
+        //     format!(
+        //         "{}",
+        //         update_location(
+        //             UpdateLocationData {
+        //                 s_id: 1345,
+        //                 vlr_location: 7,
+        //             },
+        //             &t_id,
+        //             t_ts,
+        //             Arc::clone(&scheduler)
+        //         )
+        //         .unwrap_err()
+        //     ),
+        //     format!("Row does not exist in index.")
+        // );
     }
 }
