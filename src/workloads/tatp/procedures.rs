@@ -675,5 +675,105 @@ mod tests {
             ),
             format!("Row does not exist in index.")
         );
+
+        /////////////////////////////////////////
+        //// InsertCallForwarding ////
+        ////////////////////////////////////////
+        let columns_cf = vec!["number_x"];
+        assert_eq!(
+            format!(
+                "{}",
+                workload
+                    .get_internals()
+                    .get_index("call_idx")
+                    .unwrap()
+                    .index_read(
+                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
+                        &columns_cf,
+                    )
+                    .unwrap_err()
+            ),
+            format!("Row does not exist in index.")
+        );
+
+        assert_eq!(
+            insert_call_forwarding(
+                InsertCallForwarding {
+                    s_id: 1,
+                    sf_type: 3,
+                    start_time: 16,
+                    end_time: 19,
+                    number_x: "551795089196026".to_string()
+                },
+                &t_id,
+                t_ts,
+                Arc::clone(&scheduler)
+            )
+            .unwrap(),
+            "inserted"
+        );
+
+        let values_cf = workload
+            .get_internals()
+            .get_index("call_idx")
+            .unwrap()
+            .index_read(
+                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
+                &columns_cf,
+            )
+            .unwrap();
+        let res_cf = datatype::to_result(&columns_cf, &values_cf).unwrap();
+
+        assert_eq!(res_cf, "[number_x=551795089196026]");
+
+        //////////////////////////////////////////
+        //// DeleteCallForwarding ////
+        /////////////////////////////////////////
+
+        let columns_cf = vec!["number_x"];
+
+        let values_cf = workload
+            .get_internals()
+            .get_index("call_idx")
+            .unwrap()
+            .index_read(
+                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
+                &columns_cf,
+            )
+            .unwrap();
+        let res_cf = datatype::to_result(&columns_cf, &values_cf).unwrap();
+
+        assert_eq!(res_cf, "[number_x=551795089196025]");
+
+        assert_eq!(
+            delete_call_forwarding(
+                DeleteCallForwarding {
+                    s_id: 1,
+                    sf_type: 3,
+                    start_time: 0,
+                },
+                &t_id,
+                t_ts,
+                Arc::clone(&scheduler)
+            )
+            .unwrap(),
+            "deleted"
+        );
+
+        assert_eq!(
+            format!(
+                "{}",
+                workload
+                    .get_internals()
+                    .get_index("call_idx")
+                    .unwrap()
+                    .index_read(
+                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
+                        &columns_cf,
+                    )
+                    .unwrap_err()
+            ),
+            format!("Row does not exist in index.")
+        );
     }
 }
