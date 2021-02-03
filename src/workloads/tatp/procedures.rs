@@ -262,7 +262,7 @@ pub fn update_location(
     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
 
     // Register with scheduler.
-    scheduler.register(t_id).unwrap();
+    scheduler.register(t_id)?;
 
     // Execute write operation.
     scheduler.write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
@@ -659,21 +659,21 @@ mod tests {
         let res_sb = datatype::to_result(&columns_sb, &values_sb).unwrap();
         assert_eq!(res_sb, "[vlr_location=4]");
 
-        // assert_eq!(
-        //     format!(
-        //         "{}",
-        //         update_location(
-        //             UpdateLocationData {
-        //                 s_id: 1345,
-        //                 vlr_location: 7,
-        //             },
-        //             &t_id,
-        //             t_ts,
-        //             Arc::clone(&scheduler)
-        //         )
-        //         .unwrap_err()
-        //     ),
-        //     format!("Row does not exist in index.")
-        // );
+        assert_eq!(
+            format!(
+                "{}",
+                update_location(
+                    UpdateLocationData {
+                        s_id: 1345,
+                        vlr_location: 7,
+                    },
+                    &t_id,
+                    t_ts,
+                    Arc::clone(&scheduler)
+                )
+                .unwrap_err()
+            ),
+            format!("Row does not exist in index.")
+        );
     }
 }

@@ -60,7 +60,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
         debug!("{}", row);
         i.index_insert(pk, row)?;
     }
-    info!("Loaded {} rows into subscriber", t.get_next_row_id());
+    info!("Loaded {} rows into subscriber", t.get_num_rows());
     Ok(())
 }
 
@@ -100,7 +100,7 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
             i.index_insert(pk, row)?;
         }
     }
-    info!("Loaded {} rows into access_info", t.get_next_row_id());
+    info!("Loaded {} rows into access_info", t.get_num_rows());
     Ok(())
 }
 
@@ -189,11 +189,8 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
             }
         }
     }
-    info!("Loaded {} rows into special facility", t.get_next_row_id());
-    info!(
-        "Loaded {} rows into call_forwarding",
-        cf_t.get_next_row_id()
-    );
+    info!("Loaded {} rows into special facility", t.get_num_rows());
+    info!("Loaded {} rows into call_forwarding", cf_t.get_num_rows());
     Ok(())
 }
 

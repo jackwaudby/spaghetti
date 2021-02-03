@@ -124,6 +124,7 @@ impl Scheduler {
                     Ok(v) => v,
                     Err(e) => {
                         debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                        self.release_locks(transaction_name);
                         self.cleanup(transaction_name);
                         return Err(e);
                     }
@@ -144,6 +145,7 @@ impl Scheduler {
                     Ok(v) => v,
                     Err(e) => {
                         debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                        self.release_locks(transaction_name);
                         self.cleanup(transaction_name);
                         return Err(e);
                     }
@@ -193,6 +195,7 @@ impl Scheduler {
                     Ok(v) => v,
                     Err(e) => {
                         debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                        self.release_locks(transaction_name);
                         self.cleanup(transaction_name);
                         return Err(e);
                     }
@@ -212,6 +215,7 @@ impl Scheduler {
                     Ok(v) => v,
                     Err(e) => {
                         debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                        self.release_locks(transaction_name);
                         self.cleanup(transaction_name);
                         return Err(e);
                     }

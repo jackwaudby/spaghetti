@@ -43,6 +43,13 @@ impl Table {
         self.schema.table_id()
     }
 
+    /// Get number of rows in tables
+    pub fn get_num_rows(&self) -> u64 {
+        let row_id = self.next_row_id.lock().unwrap();
+        // 0 indexed so add 1
+        *row_id + 1
+    }
+
     /// Returns a `Table`s next valid row id.
     pub fn get_next_row_id(&self) -> u64 {
         let mut row_id = self.next_row_id.lock().unwrap();
