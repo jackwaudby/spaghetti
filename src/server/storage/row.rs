@@ -118,8 +118,8 @@ mod tests {
     fn row() {
         // create table schema
         let mut catalog = Catalog::init("films", 1);
-        catalog.add_column(("name", "string"));
-        catalog.add_column(("year", "int"));
+        catalog.add_column(("name", "string")).unwrap();
+        catalog.add_column(("year", "int")).unwrap();
         // create table
         let table = Table::init(catalog);
         // create row in table

@@ -120,9 +120,9 @@ mod tests {
         // create schema
         let table_name = String::from("products");
         let mut catalog = Catalog::init(&table_name, 1);
-        catalog.add_column(("id", "int"));
-        catalog.add_column(("price", "double"));
-        catalog.add_column(("desc", "string"));
+        catalog.add_column(("id", "int")).unwrap();
+        catalog.add_column(("price", "double")).unwrap();
+        catalog.add_column(("desc", "string")).unwrap();
 
         // create table
         let table = Table::init(catalog);

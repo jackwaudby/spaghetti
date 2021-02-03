@@ -42,6 +42,8 @@ pub enum SpaghettiError {
     RowAlreadyExists,
     /// Row does not exist in index.
     RowDoesNotExist,
+    /// Invalid column type
+    InvalidColumnType,
 }
 
 impl fmt::Display for SpaghettiError {
@@ -65,6 +67,7 @@ impl fmt::Display for SpaghettiError {
             TwoPhaseLocking(ref e) => write!(f, "2PL Error: {:?}", e),
             RowAlreadyExists => write!(f, "Row already exists in index."),
             RowDoesNotExist => write!(f, "Row does not exist in index."),
+            InvalidColumnType => write!(f, "Invalid column type"),
         }
     }
 }

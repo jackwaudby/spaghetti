@@ -126,7 +126,7 @@ impl Internal {
                     let c_name: String = column[2].to_lowercase();
                     let c_type: &str = column[1];
 
-                    catalog.add_column((&c_name, c_type));
+                    catalog.add_column((&c_name, c_type))?;
                 }
                 let table = Table::init(catalog);
                 let table = Arc::new(table);

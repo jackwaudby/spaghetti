@@ -34,17 +34,18 @@ impl Catalog {
     }
 
     /// Adds a column (name, type) to the schema
-    pub fn add_column(&mut self, col: (&str, &str)) {
+    pub fn add_column(&mut self, col: (&str, &str)) -> Result<()> {
         let col_type = match col.1 {
             "int" | "int64_t" | "uint64_t" => ColumnKind::Int,
             "string" => ColumnKind::VarChar,
             "double" => ColumnKind::Double,
-            _ => panic!("invalid column type {}", col.1),
+            _ => return Err(SpaghettiError::InvalidColumnType.into()),
         };
 
         let column = Column::new(col.0, col_type);
         self.column_cnt += 1;
         self.columns.push(column);
+        Ok(())
     }
 
     /// Given a column name returns the column position.
@@ -155,15 +156,30 @@ mod tests {
     fn catalog_test() {
         // Create column.
         let int = Column::new("id", ColumnKind::Int);
-
+        assert_eq!(format!("{}", int), "(id, int)");
         assert_eq!(int.name(), &String::from("id"));
         assert_eq!(int.kind(), &ColumnKind::Int);
 
+        assert_eq!(
+            format!("{}", Column::new("name", ColumnKind::VarChar)),
+            "(name, varchar)"
+        );
+
+        assert_eq!(
+            format!("{}", Column::new("ratio", ColumnKind::Double)),
+            "(ratio, double)"
+        );
+
         // Create schema.x
         let mut catalog = Catalog::init("products", 1);
-        catalog.add_column(("id", "int"));
-        catalog.add_column(("price", "double"));
-        catalog.add_column(("desc", "string"));
+        catalog.add_column(("id", "int")).unwrap();
+        catalog.add_column(("price", "double")).unwrap();
+        catalog.add_column(("desc", "string")).unwrap();
+
+        assert_eq!(
+            format!("{}", catalog.add_column(("images", "blob")).unwrap_err()),
+            format!("Invalid column type")
+        );
 
         assert_eq!(catalog.table_id(), 1);
         assert_eq!(catalog.table_name(), &String::from("products"));
@@ -185,5 +201,10 @@ mod tests {
         );
         assert_eq!(catalog.column_type_by_index(2), &ColumnKind::VarChar);
         assert_eq!(catalog.column_name_by_index(2), "desc".to_string());
+
+        assert_eq!(
+            format!("{}", catalog),
+            format!("[products,1,(id, int),(price, double),(desc, varchar)]")
+        );
     }
 }
