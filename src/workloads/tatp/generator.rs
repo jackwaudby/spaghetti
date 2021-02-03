@@ -130,7 +130,7 @@ impl TatpGenerator {
 mod tests {
     use super::*;
     use std::sync::Once;
-    use tracing::{debug, Level};
+    use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
     static LOG: Once = Once::new();

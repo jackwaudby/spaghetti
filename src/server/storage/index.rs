@@ -123,47 +123,23 @@ mod tests {
     use crate::workloads::tatp::keys::TatpPrimaryKey;
     use crate::workloads::Workload;
     use config::Config;
-    use lazy_static::lazy_static;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use std::sync::Arc;
-    use std::sync::Once;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
-
-    lazy_static! {
-        static ref WORKLOAD: Arc<Workload> = {
-            // Initialise configuration.
-            let mut c = Config::default();
-            c.merge(config::File::with_name("Test.toml")).unwrap();
-            let config = Arc::new(c);
-            // Initalise workload.
-            let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
-            let mut rng = StdRng::seed_from_u64(42);
-            workload.populate_tables(&mut rng).unwrap();
-            workload
-        };
-    }
 
     #[test]
     fn index_test() {
-        logging(false);
+        // Initialise configuration.
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test.toml")).unwrap();
+        let config = Arc::new(c);
+        // Initalise workload.
+        let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
+        let mut rng = StdRng::seed_from_u64(42);
+        workload.populate_tables(&mut rng).unwrap();
 
         assert_eq!(
-            WORKLOAD
+            workload
                 .get_internals()
                 .get_index("sub_idx")
                 .unwrap()
@@ -172,7 +148,7 @@ mod tests {
         );
 
         assert_eq!(
-            format!("{}", WORKLOAD.get_internals().get_index("sub_idx").unwrap()),
+            format!("{}", workload.get_internals().get_index("sub_idx").unwrap()),
             "[sub_idx,1]"
         );
 
@@ -180,7 +156,7 @@ mod tests {
         assert_eq!(
             datatype::to_result(
                 &cols,
-                &WORKLOAD
+                &workload
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
@@ -193,7 +169,7 @@ mod tests {
 
         let cols = vec!["bit_4", "byte_2_5"];
         let vals = vec!["0", "69"];
-        WORKLOAD
+        workload
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
@@ -208,7 +184,7 @@ mod tests {
         assert_eq!(
             datatype::to_result(
                 &cols,
-                &WORKLOAD
+                &workload
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()

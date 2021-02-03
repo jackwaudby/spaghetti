@@ -203,40 +203,16 @@ mod tests {
     use super::*;
     use crate::server::storage::datatype;
     use config::Config;
-    use lazy_static::lazy_static;
     use rand::SeedableRng;
-    use std::sync::Once;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
-
-    lazy_static! {
-        static ref CONFIG: Arc<Config> = {
-            // Initialise configuration.
-            let mut c = Config::default();
-            c.merge(config::File::with_name("Test.toml")).unwrap();
-            let config = Arc::new(c);
-            config
-        };
-    }
 
     #[test]
     fn populate_tables_test() {
-        logging(false);
-        let c = Arc::clone(&CONFIG);
+        // Initialise configuration.
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test.toml")).unwrap();
+        let config = Arc::new(c);
+
+        let c = Arc::clone(&config);
         let internals = Internal::new("tatp_schema.txt", c).unwrap();
         let mut rng = StdRng::seed_from_u64(1);
 
@@ -244,7 +220,7 @@ mod tests {
         populate_subscriber_table(&internals, &mut rng).unwrap();
         assert_eq!(
             internals.get_table("subscriber").unwrap().get_next_row_id(),
-            2
+            1
         );
         let index = internals.indexes.get("sub_idx").unwrap();
 
@@ -300,7 +276,7 @@ mod tests {
                 .get_table("access_info")
                 .unwrap()
                 .get_next_row_id(),
-            3
+            2
         );
 
         let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
@@ -324,7 +300,7 @@ mod tests {
                 .get_table("special_facility")
                 .unwrap()
                 .get_next_row_id(),
-            5
+            4
         );
 
         let cols_sf = vec![
@@ -357,7 +333,7 @@ mod tests {
                 .get_table("call_forwarding")
                 .unwrap()
                 .get_next_row_id(),
-            4
+            3
         );
         let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
         let index = internals.indexes.get("call_idx").unwrap();
