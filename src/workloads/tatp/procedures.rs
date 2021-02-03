@@ -425,7 +425,7 @@ mod tests {
 
     #[test]
     fn transactions_test() {
-        logging(true);
+        logging(false);
         // Workload with fixed seed
         let mut rng = StdRng::seed_from_u64(42);
         let config = Arc::clone(&CONFIG);
