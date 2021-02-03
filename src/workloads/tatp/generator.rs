@@ -12,6 +12,7 @@ use rand::{Rng, SeedableRng};
 /////////////////////////////////////////
 /// Parameter Generator. ///
 ////////////////////////////////////////
+// TODO: implement non-uniform distribution.
 
 pub struct TatpGenerator {
     subscribers: u64,
@@ -34,7 +35,6 @@ impl Generator for TatpGenerator {
         let transaction = match n {
             x if x < 0.35 => {
                 // GET_SUBSCRIBER_DATA
-                // TODO: implement non-uniform distribution.
                 let s_id = self.rng.gen_range(1..=self.subscribers);
                 let payload = GetSubscriberData { s_id };
                 TatpTransaction::GetSubscriberData(payload)
@@ -45,7 +45,7 @@ impl Generator for TatpGenerator {
                 let s_id = self.rng.gen_range(1..=self.subscribers);
                 let sf_type = self.rng.gen_range(1..=4);
                 let start_time = helper::get_start_time(&mut self.rng);
-                let end_time = self.rng.gen_range(1..=24);
+                let end_time = start_time + self.rng.gen_range(1..=8);
                 let payload = GetNewDestination {
                     s_id,
                     sf_type,
@@ -87,7 +87,7 @@ impl Generator for TatpGenerator {
                 let s_id = self.rng.gen_range(1..=self.subscribers);
                 let sf_type = self.rng.gen_range(1..=4);
                 let start_time = helper::get_start_time(&mut self.rng);
-                let end_time = self.rng.gen_range(1..=24);
+                let end_time = start_time + self.rng.gen_range(1..=8);
                 let number_x = helper::get_number_x(&mut self.rng);
                 let payload = InsertCallForwarding {
                     s_id,

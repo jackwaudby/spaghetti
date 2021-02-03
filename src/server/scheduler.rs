@@ -1,4 +1,5 @@
 use crate::server::storage::datatype::Data;
+use crate::server::storage::row::Row;
 use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
 use crate::Result;
@@ -19,7 +20,7 @@ pub struct Scheduler {
     /// Map of active transactions to the locks they hold.
     active_transactions: Arc<CHashMap<String, Vec<String>>>,
     /// Handle to storage layer.
-    data: Arc<Workload>,
+    pub data: Arc<Workload>,
 }
 
 impl Scheduler {
@@ -58,6 +59,18 @@ impl Scheduler {
         debug!("Commit transaction {:?}", transaction_name);
         self.release_locks(transaction_name);
         self.cleanup(transaction_name);
+    }
+
+    pub fn insert(&self, index: &str, pk: PrimaryKey, row: Row) -> Result<()> {
+        let index = self.data.get_internals().indexes.get(index).unwrap();
+        index.index_insert(pk, row)?;
+        Ok(())
+    }
+
+    pub fn delete(&self, index: &str, pk: PrimaryKey) -> Result<()> {
+        let index = self.data.get_internals().indexes.get(index).unwrap();
+        index.index_remove(pk)?;
+        Ok(())
     }
 
     pub fn write(

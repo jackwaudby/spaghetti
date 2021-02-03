@@ -1,6 +1,8 @@
 use crate::common::error::SpaghettiError;
 use crate::server::scheduler::Scheduler;
 use crate::server::storage::datatype::{self, Data};
+use crate::server::storage::row::Row;
+use crate::workloads::tatp::helper;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tatp::profiles::{
     DeleteCallForwarding, GetAccessData, GetNewDestination, GetSubscriberData,
@@ -100,7 +102,7 @@ pub fn get_new_destination(
              AND
              (cf.s_id = {} AND cf.sf_type = {})
              AND
-            (cf.start_time <= {} AND  cf.end_time > {});",
+            (cf.start_time <= {} AND  {} < cf.end_time);",
         params.s_id,
         params.sf_type,
         params.s_id,
@@ -112,7 +114,7 @@ pub fn get_new_destination(
     // Columns to read.
     let sf_columns: Vec<&str> = vec!["s_id", "sf_type", "is_active"];
     let cf_columns: Vec<&str> = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
-    // Construct PK
+    // Construct PKs.
     let sf_pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
         params.s_id.into(),
         params.sf_type.into(),
@@ -125,35 +127,33 @@ pub fn get_new_destination(
     // Register with scheduler.
     scheduler.register(t_id).unwrap();
     // Execute read operations.
+    // 1) Attempt to get the special facility record.
     let sf_res = scheduler.read("special_idx", sf_pk, &sf_columns, t_id, t_ts)?;
-    let cf_res = scheduler.read("call_idx", cf_pk, &cf_columns, t_id, t_ts)?;
-
-    // LOGIC
-    let is_active = match sf_res[2] {
-        Data::Int(val) => val as u8,
-        _ => panic!("Mismatch"),
-    };
-
-    let start_time = match cf_res[2] {
-        Data::Int(val) => val as u8,
-        _ => panic!("Mismatch"),
-    };
-
-    let end_time = match cf_res[3] {
-        Data::Int(val) => val as u8,
-        _ => panic!("Mismatch"),
-    };
-
-    if is_active == 1 && start_time <= params.start_time && end_time > params.end_time {
-        let mut res: String;
-        res = "[".to_string();
-        write!(res, "{}={}]", cf_columns[4], cf_res[4])?;
-        scheduler.commit(t_id);
-
-        Ok(res)
+    // 2) Check sf.is_active = 1.
+    let val = if let Data::Int(val) = sf_res[2] {
+        val
     } else {
-        Err(Box::new(SpaghettiError::RowDoesNotExist))
+        panic!("Unexpected type")
+    };
+    if val != 1 {
+        return Err(Box::new(SpaghettiError::RowDoesNotExist));
     }
+    // 3) Get call forwarding record.
+    let cf_res = scheduler.read("call_idx", cf_pk, &cf_columns, t_id, t_ts)?;
+    // 4) Check end_time < cf.end_time
+    let val = if let Data::Int(val) = cf_res[3] {
+        val
+    } else {
+        panic!("Unexpected type")
+    };
+    if params.end_time as i64 >= val {
+        return Err(Box::new(SpaghettiError::RowDoesNotExist));
+    }
+    // Commit transaction.
+    scheduler.commit(t_id);
+    // Convert to result
+    let res = datatype::to_result(&vec![cf_columns[4].clone()], &vec![cf_res[4].clone()])?;
+    Ok(res)
 }
 
 /// GetAccessData transaction.
@@ -191,6 +191,7 @@ pub fn get_access_data(
     Ok(res)
 }
 
+/// Update subscriber transaction.
 pub fn update_subscriber_data(
     params: UpdateSubscriberData,
     t_id: &str,
@@ -219,7 +220,6 @@ pub fn update_subscriber_data(
 
     // Construct primary key.
     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
-    // TODO: change special facility pk.
     let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
         params.s_id,
         params.sf_type.into(),
@@ -236,6 +236,153 @@ pub fn update_subscriber_data(
     scheduler.commit(t_id);
 
     Ok("updated".to_string())
+}
+
+/// Update location transaction.
+pub fn update_location(
+    params: UpdateLocationData,
+    t_id: &str,
+    t_ts: DateTime<Utc>,
+    scheduler: Arc<Scheduler>,
+) -> Result<String> {
+    info!(
+        "UPDATE Subscriber
+             SET vlr_location = {}
+             WHERE sub_nbr = {};",
+        helper::to_sub_nbr(params.s_id.into()),
+        params.vlr_location
+    );
+
+    // Columns to write.
+    let columns_sb: Vec<&str> = vec!["vlr_location"];
+    // Values to write.
+    let values_sb = vec![params.vlr_location.to_string()];
+    let values_sb: Vec<&str> = values_sb.iter().map(|s| s as &str).collect();
+
+    // Construct primary key.
+    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+
+    // Register with scheduler.
+    scheduler.register(t_id).unwrap();
+
+    // Execute write operation.
+    scheduler.write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
+
+    // Commit transaction.
+    scheduler.commit(t_id);
+
+    Ok("updated".to_string())
+}
+
+/// Insert call forwarding transaction.
+pub fn insert_call_forwarding(
+    params: InsertCallForwarding,
+    t_id: &str,
+    t_ts: DateTime<Utc>,
+    scheduler: Arc<Scheduler>,
+) -> Result<String> {
+    info!(
+        "SELECT <s_id bind subid s_id>
+           FROM Subscriber
+           WHERE sub_nbr = {};
+         SELECT <sf_type bind sfid sf_type>
+           FROM Special_Facility
+           WHERE s_id = {}:
+         INSERT INTO Call_Forwarding
+           VALUES ({}, {}, {}, {}, {});",
+        helper::to_sub_nbr(params.s_id.into()),
+        params.s_id,
+        params.s_id,
+        params.sf_type,
+        params.start_time,
+        params.end_time,
+        params.number_x
+    );
+
+    // Construct primary keys.
+    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    let pk_sf = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
+        params.s_id,
+        params.sf_type.into(),
+    ));
+
+    // Register with scheduler.
+    scheduler.register(t_id).unwrap();
+    // Get record from subscriber table.
+    let columns_sb: Vec<&str> = vec!["s_id"];
+    scheduler.read("sub_idx", pk_sb, &columns_sb, t_id, t_ts)?;
+    // Get record from special facility.
+    let columns_sf: Vec<&str> = vec!["sf_type"];
+    scheduler.read("special_idx", pk_sf, &columns_sf, t_id, t_ts)?;
+
+    // Insert into call forwarding.
+    // Calculate primary key
+    let pk_cf = PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(
+        params.s_id,
+        params.sf_type.into(),
+        params.start_time.into(),
+    ));
+    // Initialise empty row.
+    let cf_name = "call_forwarding";
+    let cf_t = scheduler.data.get_internals().get_table(cf_name)?;
+    let mut row = Row::new(Arc::clone(&cf_t));
+    row.set_primary_key(pk_cf);
+    row.set_value("s_id", &params.s_id.to_string())?;
+    row.set_value("sf_type", &params.sf_type.to_string())?;
+    row.set_value("start_time", &params.start_time.to_string())?;
+    row.set_value("end_time", &params.end_time.to_string())?;
+    row.set_value("number_x", &params.number_x)?;
+
+    // Execute insert operation.
+    scheduler.insert("call_idx", pk_cf, row)?;
+
+    // Commit transaction.
+    scheduler.commit(t_id);
+
+    Ok("inserted".to_string())
+}
+
+/// Delete call forwarding transaction.
+pub fn delete_call_forwarding(
+    params: DeleteCallForwarding,
+    t_id: &str,
+    t_ts: DateTime<Utc>,
+    scheduler: Arc<Scheduler>,
+) -> Result<String> {
+    info!(
+        "SELECT <s_id bind subid s_id>
+         FROM Subscriber
+         WHERE sub_nbr = {};
+       DELETE FROM Call_Forwarding
+         WHERE s_id = <s_id value subid>
+         AND sf_type = {}
+         AND start_time = {};",
+        helper::to_sub_nbr(params.s_id.into()),
+        params.sf_type,
+        params.start_time,
+    );
+
+    // Construct primary keys.
+    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    let pk_cf = PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(
+        params.s_id,
+        params.sf_type.into(),
+        params.start_time.into(),
+    ));
+
+    // Register with scheduler.
+    scheduler.register(t_id).unwrap();
+    // Get record from subscriber table.
+    let columns_sb: Vec<&str> = vec!["s_id"];
+    scheduler.read("sub_idx", pk_sb, &columns_sb, t_id, t_ts)?;
+
+    // Delete from call forwarding.
+    scheduler.delete("call_idx", pk_cf)?;
+
+    // Commit transaction.
+    scheduler.commit(t_id);
+
+    Ok("deleted".to_string())
 }
 
 #[cfg(test)]

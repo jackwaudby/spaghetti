@@ -46,6 +46,20 @@ impl Index {
         }
     }
 
+    /// Remove a `Row` from the index.
+    ///
+    /// # Errors
+    ///
+    /// If `Row` does not exists for key a `RowDoesNotExist` error is returned.
+    pub fn index_remove(&self, key: PrimaryKey) -> Result<()> {
+        let res = self.i.remove(&key);
+
+        match res {
+            Some(_) => Ok(()),
+            None => Err(Box::new(SpaghettiError::RowDoesNotExist)),
+        }
+    }
+
     /// Read `columns` from a `Row` with the given `key`.
     ///
     /// # Errors
