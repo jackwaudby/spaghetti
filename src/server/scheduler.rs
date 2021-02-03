@@ -527,7 +527,7 @@ impl Scheduler {
                     self.register_lock(&lock_info.list[next_write_entry_index].name, key)
                         .unwrap();
                 } else {
-                    panic!("Next waiting request is a Read");
+                    debug!("Next waiting request is a Read");
                 }
             }
         }

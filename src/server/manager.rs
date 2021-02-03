@@ -85,56 +85,60 @@ impl TransactionManager {
                     // Send job to thread pool.
                     self.pool.execute(move || {
                         debug!("Execute request: {:?}", request);
-                        match request.transaction {
+
+                        // Transaction ID.
+                        let t_id = &request.id.unwrap();
+                        // Transaction timestamp.
+                        let t_ts = request.timestamp.unwrap();
+                        // Execute trasaction.
+                        let res = match request.transaction {
                             Transaction::Tatp(transaction) => match transaction {
                                 TatpTransaction::GetSubscriberData(params) => {
-                                    // Transaction ID.
-                                    let t_id = &request.id.unwrap();
-                                    // Transaction timestamp.
-                                    let t_ts = request.timestamp.unwrap();
-                                    // Stored procedure.
-                                    let res = tatp::procedures::get_subscriber_data(
+                                    tatp::procedures::get_subscriber_data(
                                         params, t_id, t_ts, scheduler,
-                                    );
-                                    // Package response.
-                                    let resp = match res {
-                                        Ok(res) => Response::Committed { value: Some(res) },
-                                        Err(e) => Response::Aborted {
-                                            err: format!("  Caused by: {}", e.source().unwrap()),
-                                        },
-                                    };
-                                    // Send to corresponding `WriteHandler`.
-                                    request
-                                        .response_sender
-                                        .send(Message::Response(resp))
-                                        .unwrap();
+                                    )
                                 }
                                 TatpTransaction::GetNewDestination(params) => {
-                                    // Transaction ID.
-                                    let t_id = &request.id.unwrap();
-                                    // Transaction timestamp.
-                                    let t_ts = request.timestamp.unwrap();
-                                    // Stored procedure.
-                                    let res = tatp::procedures::get_new_destination(
+                                    tatp::procedures::get_new_destination(
                                         params, t_id, t_ts, scheduler,
-                                    );
-                                    // Package response.
-                                    let resp = match res {
-                                        Ok(res) => Response::Committed { value: Some(res) },
-                                        Err(e) => Response::Aborted {
-                                            err: format!("  Caused by: {}", e.source().unwrap()),
-                                        },
-                                    };
-                                    // Send to corresponding `WriteHandler`.
-                                    request
-                                        .response_sender
-                                        .send(Message::Response(resp))
-                                        .unwrap();
+                                    )
                                 }
-                                _ => unimplemented!(),
+                                TatpTransaction::GetAccessData(params) => {
+                                    tatp::procedures::get_access_data(params, t_id, t_ts, scheduler)
+                                }
+                                TatpTransaction::UpdateSubscriberData(params) => {
+                                    tatp::procedures::update_subscriber_data(
+                                        params, t_id, t_ts, scheduler,
+                                    )
+                                }
+                                TatpTransaction::UpdateLocationData(params) => {
+                                    tatp::procedures::update_location(params, t_id, t_ts, scheduler)
+                                }
+                                TatpTransaction::InsertCallForwarding(params) => {
+                                    tatp::procedures::insert_call_forwarding(
+                                        params, t_id, t_ts, scheduler,
+                                    )
+                                }
+                                TatpTransaction::DeleteCallForwarding(params) => {
+                                    tatp::procedures::delete_call_forwarding(
+                                        params, t_id, t_ts, scheduler,
+                                    )
+                                }
                             },
                             _ => unimplemented!(),
-                        }
+                        };
+                        // Package response.
+                        let resp = match res {
+                            Ok(res) => Response::Committed { value: Some(res) },
+                            Err(e) => Response::Aborted {
+                                err: format!("  Caused by: {}", e.source().unwrap()),
+                            },
+                        };
+                        // Send to corresponding `WriteHandler`.
+                        request
+                            .response_sender
+                            .send(Message::Response(resp))
+                            .unwrap();
                     });
                 }
 
@@ -154,57 +158,59 @@ impl TransactionManager {
                     request.timestamp = Some(datetime);
 
                     self.pool.execute(move || {
-                        debug!("Execute request: {:?}", request);
-                        match request.transaction {
+                        // Transaction ID.
+                        let t_id = &request.id.unwrap();
+                        // Transaction timestamp.
+                        let t_ts = request.timestamp.unwrap();
+                        // Execute trasaction.
+                        let res = match request.transaction {
                             Transaction::Tatp(transaction) => match transaction {
                                 TatpTransaction::GetSubscriberData(params) => {
-                                    // Transaction ID.
-                                    let t_id = &request.id.unwrap();
-                                    // Transaction timestamp.x
-                                    let t_ts = request.timestamp.unwrap();
-                                    // Stored procedure.
-                                    let res = tatp::procedures::get_subscriber_data(
+                                    tatp::procedures::get_subscriber_data(
                                         params, t_id, t_ts, scheduler,
-                                    );
-                                    // Package response.
-                                    let resp = match res {
-                                        Ok(res) => Response::Committed { value: Some(res) },
-                                        Err(e) => Response::Aborted {
-                                            err: format!("  Caused by: {}", e.source().unwrap()),
-                                        },
-                                    };
-                                    // Send to corresponding `WriteHandler`.
-                                    request
-                                        .response_sender
-                                        .send(Message::Response(resp))
-                                        .unwrap();
+                                    )
                                 }
                                 TatpTransaction::GetNewDestination(params) => {
-                                    // Transaction ID.
-                                    let t_id = &request.id.unwrap();
-                                    // Transaction timestamp.
-                                    let t_ts = request.timestamp.unwrap();
-                                    // Stored procedure.
-                                    let res = tatp::procedures::get_new_destination(
+                                    tatp::procedures::get_new_destination(
                                         params, t_id, t_ts, scheduler,
-                                    );
-                                    // Package response.
-                                    let resp = match res {
-                                        Ok(res) => Response::Committed { value: Some(res) },
-                                        Err(e) => Response::Aborted {
-                                            err: format!("  Caused by: {}", e.source().unwrap()),
-                                        },
-                                    };
-                                    // Send to corresponding `WriteHandler`.
-                                    request
-                                        .response_sender
-                                        .send(Message::Response(resp))
-                                        .unwrap();
+                                    )
                                 }
-                                _ => unimplemented!(),
+                                TatpTransaction::GetAccessData(params) => {
+                                    tatp::procedures::get_access_data(params, t_id, t_ts, scheduler)
+                                }
+                                TatpTransaction::UpdateSubscriberData(params) => {
+                                    tatp::procedures::update_subscriber_data(
+                                        params, t_id, t_ts, scheduler,
+                                    )
+                                }
+                                TatpTransaction::UpdateLocationData(params) => {
+                                    tatp::procedures::update_location(params, t_id, t_ts, scheduler)
+                                }
+                                TatpTransaction::InsertCallForwarding(params) => {
+                                    tatp::procedures::insert_call_forwarding(
+                                        params, t_id, t_ts, scheduler,
+                                    )
+                                }
+                                TatpTransaction::DeleteCallForwarding(params) => {
+                                    tatp::procedures::delete_call_forwarding(
+                                        params, t_id, t_ts, scheduler,
+                                    )
+                                }
                             },
                             _ => unimplemented!(),
-                        }
+                        };
+                        // Package response.
+                        let resp = match res {
+                            Ok(res) => Response::Committed { value: Some(res) },
+                            Err(e) => Response::Aborted {
+                                err: format!("  Caused by: {}", e.source().unwrap()),
+                            },
+                        };
+                        // Send to corresponding `WriteHandler`.
+                        request
+                            .response_sender
+                            .send(Message::Response(resp))
+                            .unwrap();
                     });
                 }
             }

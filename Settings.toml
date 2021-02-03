@@ -2,7 +2,7 @@ address = "127.0.0.1"
 port = 6142
 log = "info"
 
-transactions = 100
+transactions = 10
 mpsc_size = 32
 
 workload = "tatp"
