@@ -169,7 +169,7 @@ impl Internal {
         })
     }
 
-    fn get_table(&self, name: &str) -> Result<Arc<Table>> {
+    pub fn get_table(&self, name: &str) -> Result<Arc<Table>> {
         match self.tables.get(name) {
             Some(table) => Ok(Arc::clone(table)),
             None => Err(Box::new(SpaghettiError::TableNotFound)),

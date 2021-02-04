@@ -109,8 +109,8 @@ impl Index {
     }
 }
 
-// [name,num_rows]
 impl fmt::Display for Index {
+    /// Format: [name,num_rows].
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{},{}]", self.name, self.i.len())
     }
@@ -138,6 +138,38 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(42);
         workload.populate_tables(&mut rng).unwrap();
 
+        // 1. Insert entry that already exists.
+        // Create dummy row in table
+        let table = workload.get_internals().get_table("subscriber").unwrap();
+        let row = Row::new(Arc::clone(&table));
+        assert_eq!(
+            format!(
+                "{}",
+                workload
+                    .get_internals()
+                    .get_index("sub_idx")
+                    .unwrap()
+                    .index_insert(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), row)
+                    .unwrap_err()
+            ),
+            format!("Row already exists in index.")
+        );
+
+        // 2. Remove entry that is not there.
+        assert_eq!(
+            format!(
+                "{}",
+                workload
+                    .get_internals()
+                    .get_index("sub_idx")
+                    .unwrap()
+                    .index_remove(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(0)))
+                    .unwrap_err()
+            ),
+            format!("Row does not exist in index.")
+        );
+
+        // 3. Check entry exists.
         assert_eq!(
             workload
                 .get_internals()
@@ -147,11 +179,13 @@ mod tests {
             false
         );
 
+        // 4. Test format.
         assert_eq!(
             format!("{}", workload.get_internals().get_index("sub_idx").unwrap()),
             "[sub_idx,1]"
         );
 
+        // 5. Successful read of entry.
         let cols = vec!["bit_4", "byte_2_5"];
         assert_eq!(
             datatype::to_result(
@@ -167,6 +201,7 @@ mod tests {
             "[bit_4=1, byte_2_5=205]"
         );
 
+        // 6. Successful write of entry.
         let cols = vec!["bit_4", "byte_2_5"];
         let vals = vec!["0", "69"];
         workload
