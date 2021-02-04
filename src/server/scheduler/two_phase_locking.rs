@@ -747,6 +747,15 @@ mod tests {
     }
 
     #[test]
+    fn register_lock_error_test() {
+        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
+        assert_eq!(
+            format!("{}", protocol.register_lock("t1", "r1").unwrap_err()),
+            "Transaction not registered in active transaction table"
+        );
+    }
+
+    #[test]
     fn register_test() {
         logging(false);
         // Initialise scheduler.
