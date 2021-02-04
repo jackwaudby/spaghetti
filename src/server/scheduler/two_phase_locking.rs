@@ -10,6 +10,7 @@ use crate::Result;
 
 use chashmap::CHashMap;
 use chrono::{DateTime, NaiveDate, Utc};
+use std::fmt;
 use std::sync::{Arc, Condvar, Mutex};
 use tracing::debug;
 
@@ -461,6 +462,7 @@ impl TwoPhaseLocking {
                     }
                     read_requests += 1;
                 }
+                debug!("{} read requests waiting on lock", read_requests);
                 // If some reads requests first in queue.
                 if read_requests != 0 {
                     // Wake up threads and determine new lock timestamp.
@@ -482,10 +484,13 @@ impl TwoPhaseLocking {
                         self.register_lock(&e.name, key).unwrap();
                     }
                     // Set new lock information.
+                    // Highest read timestamp.
                     lock_info.timestamp = Some(new_lock_timestamp);
+                    // Group mode.
                     lock_info.group_mode = Some(LockMode::Read);
-                    let held = lock_info.granted.unwrap();
-                    lock_info.granted = Some(held + read_requests as u32);
+                    // Granted n read requests.
+                    lock_info.granted = Some(read_requests as u32);
+                    // If all waiters have have been granted then set to false.
                     if lock_info.list.len() as u32 == lock_info.granted.unwrap() {
                         lock_info.waiting = false;
                     }
@@ -623,6 +628,15 @@ impl LockInfo {
     }
 }
 
+impl fmt::Display for LockInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "\n Group mode: {:?}\n Waiting transactions: {}\n Requests: {:?}\n timestamp: {:?}\n granted: {:?}",
+            self.group_mode, self.waiting,self.list,self.timestamp, self.granted
+        )
+    }
+}
 /// Represents an entry in the list of transactions that have requested a lock.
 ///
 /// These transactions can either be waiting for the lock or be holding it.
@@ -704,6 +718,18 @@ mod tests {
             let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
             workload
         };
+    }
+
+    #[test]
+    fn lock_request_type_test() {
+        assert_eq!(LockRequest::Granted, LockRequest::Granted);
+        let pair = Arc::new((Mutex::new(false), Condvar::new()));
+        assert_eq!(
+            LockRequest::Delay(Arc::clone(&pair)),
+            LockRequest::Delay(Arc::clone(&pair))
+        );
+        assert_eq!(LockRequest::Denied, LockRequest::Denied);
+        assert!(LockRequest::Granted != LockRequest::Denied);
     }
 
     #[test]
@@ -876,7 +902,71 @@ mod tests {
                 && lock.timestamp == Some(t_ts_2)
                 && lock.granted == Some(1),
             true,
-            "{:?}",
+            "{}",
+            *lock
+        );
+    }
+
+    // In this test a write lock is taken by Ta, followed by a read lock by Tb, which delays
+    // until the write lock is released by Ta.
+    #[test]
+    fn delay_read_request_test() {
+        logging(true);
+        // Scheduler.
+        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
+        // Handle for thread.
+        let protocol_t = protocol.clone();
+
+        // Transaction A
+        let sys_time = SystemTime::now();
+        let ta_ts: DateTime<Utc> = sys_time.into();
+        let ta_id = ta_ts.to_string();
+        let ta_id_t = ta_id.clone();
+
+        // Transaction B
+        // Timestamp is smaller/younger so it waits for lock.
+        let tb_ts: DateTime<Utc> = ta_ts - Duration::seconds(2);
+        let tb_id = tb_ts.to_string();
+
+        // Register with scheduler
+        protocol.register(&ta_id).unwrap();
+        protocol.register(&tb_id).unwrap();
+
+        let _handle = thread::spawn(move || {
+            debug!("Request write lock by Ta");
+            protocol_t.request_lock("table_1_row_12", LockMode::Write, &ta_id_t, ta_ts);
+            debug!("Request read lock by Tb");
+            let res = protocol_t.request_lock("table_1_row_12", LockMode::Read, &tb_id, tb_ts);
+            // Assert it has been denied, use dummy pair.
+            assert_eq!(
+                res,
+                LockRequest::Delay(Arc::new((Mutex::new(false), Condvar::new())))
+            );
+            if let LockRequest::Delay(pair) = res {
+                let (lock, cvar) = &*pair;
+                let mut waiting = lock.lock().unwrap();
+                while !*waiting {
+                    waiting = cvar.wait(waiting).unwrap();
+                }
+                debug!("Read lock granted to Tb");
+            };
+        });
+
+        // Sleep thread
+        let ms = time::Duration::from_secs(2);
+        thread::sleep(ms);
+        debug!("Write lock released by Ta");
+        protocol.release_lock("table_1_row_12", &ta_id);
+        let lock = protocol.lock_table.get("table_1_row_12").unwrap();
+
+        assert_eq!(
+            lock.group_mode == Some(LockMode::Read)
+                && !lock.waiting
+                && lock.list.len() as u32 == 1
+                && lock.timestamp == Some(tb_ts)
+                && lock.granted == Some(1),
+            true,
+            "{}",
             *lock
         );
     }
