@@ -417,7 +417,7 @@ impl TwoPhaseLocking {
     // TODO: This could be implemented by assigning the key to a clean up thread which periodically purges the unused locks.
 
     fn release_lock(&self, key: &str, transaction_name: &str) {
-        debug!("Retrieve lock information for {}", key);
+        debug!("Release {}'s lock on {}", transaction_name, key);
         let mut lock_info = self.lock_table.get_mut(key).unwrap();
 
         // If 1 granted lock and no waiting requests, reset lock and return.
@@ -431,6 +431,7 @@ impl TwoPhaseLocking {
             lock_info.granted = None;
             // Reset timestamp.
             lock_info.timestamp = None;
+            debug!("set to default");
             return;
         }
 
@@ -445,14 +446,11 @@ impl TwoPhaseLocking {
         // Remove transactions entry.
         let entry = lock_info.list.remove(entry_index);
 
-        // If record was locked with a Write lock then this is the only transaction with a lock
-        // on this record.
-        // Then grant the next n Read lock requests
-        // Or grant the next Write lock request
-        //
-        // If record was locked with a Read lock then the next waiting entry must be a
-        // Write request as Reads requested when a Read lock is held are always granted.
         match entry.lock_mode {
+            // If record was locked with a Write lock then this is the only transaction with a lock
+            // on this record. If so,
+            // (i) Grant the next n read lock requests, or,
+            // (ii) Grant the next write lock request
             LockMode::Write => {
                 // Calculate waiting read requests.
                 let mut read_requests = 0;
@@ -515,43 +513,59 @@ impl TwoPhaseLocking {
                     self.register_lock(&lock_info.list[0].name, key).unwrap();
                 }
             }
+            // If record was locked with a read lock then either,
+            // (i) there are n other read locks being held, or,
+            // (ii) this is the only read lock. In which case check if any write lock requests are waiting
+            // Assumption: reads requests are always granted when a read lock is held, thus none wait
             LockMode::Read => {
-                // There could be n Read locks active on this record.
-                // Entries in lock information are not sorted, thus an active Read lock could
-                // be at a higher position in the list than a waiting Write lock.
-                // Traverse entries, if this Read lock is the last active Read lock, then
-                // grant the next waiting Write lock.
-                debug!("Waiting Write lock(s): {}", lock_info.waiting);
-                if lock_info.waiting {
-                    debug!("Grant a Write lock");
-                    let next_write_entry_index = lock_info
-                        .list
-                        .iter()
-                        .position(|e| e.lock_mode == LockMode::Write)
-                        .unwrap();
-                    // Set lock information to new write lock.
-                    lock_info.group_mode = Some(LockMode::Write);
-                    lock_info.timestamp = Some(lock_info.list[next_write_entry_index].timestamp);
-                    lock_info.granted = Some(1);
-                    if lock_info.list.len() as u32 == lock_info.granted.unwrap() {
-                        lock_info.waiting = false;
+                if lock_info.granted.unwrap() > 1 {
+                    // removal of this lock still leaves the lock in read mode.
+                    // update lock information
+                    // highest remaining timestamp
+                    let dt = NaiveDate::from_ymd(1970, 1, 1).and_hms(0, 0, 0);
+                    let mut new_lock_timestamp = DateTime::<Utc>::from_utc(dt, Utc);
+                    for e in lock_info.list.iter() {
+                        if e.timestamp > new_lock_timestamp {
+                            new_lock_timestamp = e.timestamp;
+                        }
                     }
-                    // Wake up thread.
-                    let cond = Arc::clone(
-                        lock_info.list[next_write_entry_index]
-                            .waiting
-                            .as_ref()
-                            .unwrap(),
-                    );
-                    let (lock, cvar) = &*cond;
-                    let mut started = lock.lock().unwrap();
-                    *started = true;
-                    cvar.notify_all();
-                    // Register lock with transaction
-                    self.register_lock(&lock_info.list[next_write_entry_index].name, key)
-                        .unwrap();
+                    lock_info.timestamp = Some(new_lock_timestamp);
+                    // decrement locks held.
+                    let held = lock_info.granted.unwrap();
+                    lock_info.granted = Some(held - 1);
                 } else {
-                    debug!("Next waiting request is a Read");
+                    // 1 active read lock and some write lock waiting.
+                    debug!("Waiting Write lock(s): {}", lock_info.waiting);
+                    if lock_info.waiting {
+                        debug!("Grant a Write lock");
+                        let next_write_entry_index = lock_info
+                            .list
+                            .iter()
+                            .position(|e| e.lock_mode == LockMode::Write)
+                            .unwrap();
+                        // Set lock information to new write lock.
+                        lock_info.group_mode = Some(LockMode::Write);
+                        lock_info.timestamp =
+                            Some(lock_info.list[next_write_entry_index].timestamp);
+                        lock_info.granted = Some(1);
+                        if lock_info.list.len() as u32 == lock_info.granted.unwrap() {
+                            lock_info.waiting = false;
+                        }
+                        // Wake up thread.
+                        let cond = Arc::clone(
+                            lock_info.list[next_write_entry_index]
+                                .waiting
+                                .as_ref()
+                                .unwrap(),
+                        );
+                        let (lock, cvar) = &*cond;
+                        let mut started = lock.lock().unwrap();
+                        *started = true;
+                        cvar.notify_all();
+                        // Register lock with transaction
+                        self.register_lock(&lock_info.list[next_write_entry_index].name, key)
+                            .unwrap();
+                    }
                 }
             }
         }
@@ -752,42 +766,64 @@ mod tests {
         );
     }
 
+    // In this test 3 read locks are requested by Ta, Tb, and Tc, which are then released.
     #[test]
     fn request_lock_read_test() {
-        logging(false);
+        logging(true);
 
         // Initialise scheduler
         let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
         let protocol1 = protocol.clone();
 
-        // Create transaction id and timestamp.
         let sys_time = SystemTime::now();
-        let datetime: DateTime<Utc> = sys_time.into();
-        let t_id = datetime.to_string();
-        let t_ts = datetime;
 
-        // Register transaction
-        protocol.register(&t_id).unwrap();
-        // Lock
-        let req = protocol.request_lock("table_1_row_12", LockMode::Read, &t_id, t_ts);
-        assert_eq!(req, LockRequest::Granted);
+        // Ta
+        let ta_ts: DateTime<Utc> = sys_time.into();
+        let ta_id = ta_ts.to_string();
+        // Tb (younger)
+        let tb_ts: DateTime<Utc> = ta_ts - Duration::seconds(2);
+        let tb_id = tb_ts.to_string();
+        // Tc (older)
+        let tc_ts: DateTime<Utc> = ta_ts + Duration::seconds(2);
+        let tc_id = tc_ts.to_string();
+
+        // Register transactions
+        protocol.register(&ta_id).unwrap();
+        protocol.register(&tb_id).unwrap();
+        protocol.register(&tc_id).unwrap();
+
+        // Request locks.
+        assert_eq!(
+            protocol.request_lock("table_1_row_12", LockMode::Read, &ta_id, ta_ts),
+            LockRequest::Granted
+        );
+        assert_eq!(
+            protocol.request_lock("table_1_row_12", LockMode::Read, &tb_id, tb_ts),
+            LockRequest::Granted
+        );
+        assert_eq!(
+            protocol.request_lock("table_1_row_12", LockMode::Read, &tc_id, tc_ts),
+            LockRequest::Granted
+        );
         // Check
         {
             let lock = protocol1.lock_table.get("table_1_row_12").unwrap();
             assert_eq!(
                 lock.group_mode == Some(LockMode::Read)
                     && !lock.waiting
-                    && lock.list.len() as u32 == 1
-                    && lock.timestamp == Some(t_ts)
-                    && lock.granted == Some(1),
+                    && lock.list.len() as u32 == 3
+                    && lock.timestamp == Some(tc_ts)
+                    && lock.granted == Some(3),
                 true,
-                "{:?}",
-                lock
+                "{}",
+                *lock
             );
         }
 
-        // Unlock
-        protocol.release_lock("table_1_row_12", &t_id);
+        // Release locks.
+        protocol.release_lock("table_1_row_12", &ta_id);
+        protocol.release_lock("table_1_row_12", &tb_id);
+        protocol.release_lock("table_1_row_12", &tc_id);
         // Check
         {
             let lock = protocol1.lock_table.get("table_1_row_12").unwrap();
@@ -798,14 +834,15 @@ mod tests {
                     && lock.timestamp == None
                     && lock.granted == None,
                 true,
-                "{:?}",
-                lock
+                "{}",
+                *lock
             );
         }
     }
 
+    // In this test a write lock is requested and then released.
     #[test]
-    fn request_lock_write() {
+    fn request_lock_write_test() {
         logging(false);
 
         // Initialise protocol
@@ -855,6 +892,8 @@ mod tests {
         }
     }
 
+    // In this test a read lock is taken by Ta, followed by a write lock by Tb, which delays
+    // until the read lock is released by Ta.
     #[test]
     fn lock_table_test() {
         logging(false);
