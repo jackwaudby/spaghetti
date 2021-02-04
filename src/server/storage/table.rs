@@ -1,19 +1,19 @@
-//! `Table`s do not own `Row`s in Spaghetti, `Index`es do.
-//! Indexes can not create new row, thus tables track the next row id in order to create a new row wrt to the schema defined in Catalog.
-//! Ownership is then passed to the index.
-//! Tables do own Catalog and contain reference to indexes
-
 use crate::common::error::SpaghettiError;
 use crate::server::storage::catalog::Catalog;
 use crate::Result;
+
 use std::fmt;
 use std::sync::Mutex;
 
 #[derive(Debug)]
 pub struct Table {
+    /// Table schema.
     schema: Catalog,
+    /// Next valid row id.
     next_row_id: Mutex<u64>,
+    /// Primary index.
     primary_index: Mutex<Option<String>>,
+    /// Seconday index.
     secondary_index: Mutex<Option<String>>,
 }
 
@@ -47,7 +47,7 @@ impl Table {
     pub fn get_num_rows(&self) -> u64 {
         let row_id = self.next_row_id.lock().unwrap();
         // 0 indexed so add 1
-        *row_id + 1
+        *row_id
     }
 
     /// Returns a `Table`s next valid row id.
@@ -117,19 +117,30 @@ mod tests {
 
     #[test]
     fn tables() {
-        // create schema
+        // Create schema
         let table_name = String::from("products");
         let mut catalog = Catalog::init(&table_name, 1);
         catalog.add_column(("id", "int")).unwrap();
         catalog.add_column(("price", "double")).unwrap();
         catalog.add_column(("desc", "string")).unwrap();
+        let c_catalog = catalog.clone();
 
         // create table
         let table = Table::init(catalog);
-
         assert_eq!(table.get_table_name(), table_name);
+        assert_eq!(table.schema(), &c_catalog);
         assert_eq!(table.get_table_id(), 1);
 
+        assert_eq!(table.get_num_rows(), 0);
+        assert_eq!(table.get_next_row_id(), 0);
+        assert_eq!(table.get_secondary_index(), None);
+        assert_eq!(table.set_secondary_index("n_idx"), ());
+        assert_eq!(table.get_secondary_index(), Some("n_idx".to_string()));
+
+        assert_eq!(
+            format!("{}", table),
+            "schema: [products,1,(id, int),(price, double),(desc, varchar)]\nindexes: [null,n_idx]"
+        );
         // Generate new rows
         let t = Arc::new(table);
 
@@ -138,12 +149,12 @@ mod tests {
 
         assert_eq!(
             format!("{}", r1),
-            String::from("[0, None, products, null, null, null]")
+            String::from("[1, None, products, null, null, null]")
         );
 
         assert_eq!(
             format!("{}", r2),
-            String::from("[1, None, products, null, null, null]")
+            String::from("[2, None, products, null, null, null]")
         );
     }
 }

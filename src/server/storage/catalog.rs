@@ -4,7 +4,7 @@ use crate::Result;
 use std::fmt;
 
 // A `Catalog` contains the schema of a `Table`.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Catalog {
     /// Table name.
     table_name: String,
@@ -99,7 +99,7 @@ impl fmt::Display for Catalog {
 }
 
 /// An entry in a `Catalog`s list of columns.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Column {
     name: String,
     kind: ColumnKind,
@@ -133,7 +133,7 @@ impl fmt::Display for Column {
 }
 
 /// Column datatypes.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ColumnKind {
     Int,
     VarChar,
