@@ -880,4 +880,48 @@ mod tests {
             *lock
         );
     }
+
+    #[test]
+    fn denied_lock_test() {
+        logging(false);
+        // Init scheduler.
+        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
+
+        // Create transaction ids and timestamps.
+        let sys_time = SystemTime::now();
+        let datetime: DateTime<Utc> = sys_time.into();
+        let t_id = datetime.to_string();
+
+        // Read with higher/newer ts.
+        let datetime_r: DateTime<Utc> = datetime + Duration::seconds(2);
+        let t_id_r = datetime_r.to_string();
+
+        // Write with higher/newer ts.
+        let datetime_w: DateTime<Utc> = datetime + Duration::seconds(5);
+        let t_id_w = datetime_w.to_string();
+
+        // Register transactions.
+        protocol.register(&t_id).unwrap();
+        protocol.register(&t_id_r).unwrap();
+        protocol.register(&t_id_w).unwrap();
+
+        // Take first write lock.
+        debug!("Request write lock");
+        protocol.request_lock("table_1_row_12", LockMode::Write, &t_id, datetime);
+
+        // Attempt to get read and write locks.
+        debug!("Request Read lock");
+        assert_eq!(
+            protocol.request_lock("table_1_row_12", LockMode::Read, &t_id_r, datetime_r),
+            LockRequest::Denied
+        );
+        debug!("Request another write lock");
+        assert_eq!(
+            protocol.request_lock("table_1_row_12", LockMode::Write, &t_id_w, datetime_w),
+            LockRequest::Denied
+        );
+        // Release initial write lock.
+        debug!("Release write lock");
+        protocol.release_lock("table_1_row_12", &t_id);
+    }
 }
