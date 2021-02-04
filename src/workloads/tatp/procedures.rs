@@ -1,5 +1,5 @@
 use crate::common::error::SpaghettiError;
-use crate::server::scheduler::Scheduler;
+use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::server::storage::row::Row;
 use crate::workloads::tatp::helper;
@@ -20,7 +20,7 @@ pub fn get_subscriber_data(
     params: GetSubscriberData,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Scheduler>,
+    scheduler: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "\nSELECT s_id, sub_nbr,
@@ -91,7 +91,7 @@ pub fn get_new_destination(
     params: GetNewDestination,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Scheduler>,
+    scheduler: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "\nSELECT cf.numberx
@@ -160,7 +160,7 @@ pub fn get_access_data(
     params: GetAccessData,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Scheduler>,
+    scheduler: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "SELECT data1, data2, data3, data4
@@ -195,7 +195,7 @@ pub fn update_subscriber_data(
     params: UpdateSubscriberData,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Scheduler>,
+    scheduler: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "UPDATE Subscriber
@@ -242,7 +242,7 @@ pub fn update_location(
     params: UpdateLocationData,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Scheduler>,
+    scheduler: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "UPDATE Subscriber
@@ -278,7 +278,7 @@ pub fn insert_call_forwarding(
     params: InsertCallForwarding,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Scheduler>,
+    scheduler: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "SELECT <s_id bind subid s_id>
@@ -323,7 +323,7 @@ pub fn insert_call_forwarding(
     ));
     // Initialise empty row.
     let cf_name = "call_forwarding";
-    let cf_t = scheduler.data.get_internals().get_table(cf_name)?;
+    let cf_t = scheduler.get_internals().get_table(cf_name)?;
     let mut row = Row::new(Arc::clone(&cf_t));
     row.set_primary_key(pk_cf);
     row.set_value("s_id", &params.s_id.to_string())?;
@@ -346,7 +346,7 @@ pub fn delete_call_forwarding(
     params: DeleteCallForwarding,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Scheduler>,
+    scheduler: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "SELECT <s_id bind subid s_id>
@@ -432,8 +432,8 @@ mod tests {
         let internals = Internal::new("tatp_schema.txt", config).unwrap();
         loader::populate_tables(&internals, &mut rng).unwrap();
         let workload = Arc::new(Workload::Tatp(internals));
-        // Scheduler
-        let scheduler = Arc::new(Scheduler::new(Arc::clone(&workload)));
+        // Protocol
+        let scheduler = Arc::new(Protocol::new(Arc::clone(&workload)));
         let sys_time = SystemTime::now();
         let datetime: DateTime<Utc> = sys_time.into();
         let t_id = datetime.to_string();

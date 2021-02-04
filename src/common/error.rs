@@ -5,7 +5,7 @@
 //! (3) Wrap errors with spaghetti's error type, defining an enum of causes
 
 use crate::common::frame::ParseError;
-use crate::server::scheduler::TwoPhaseLockingError;
+use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 
 use serde::{Deserialize, Serialize};
 use std::error;

@@ -1,6 +1,6 @@
 use crate::common::message::{Message, Request, Response, Transaction};
 use crate::server::pool::ThreadPool;
-use crate::server::scheduler::Scheduler;
+use crate::server::scheduler::Protocol;
 use crate::workloads::tatp;
 use crate::workloads::tatp::profiles::TatpTransaction;
 
@@ -65,7 +65,7 @@ impl TransactionManager {
         }
     }
 
-    pub fn run(&mut self, scheduler: Arc<Scheduler>) {
+    pub fn run(&mut self, scheduler: Arc<Protocol>) {
         loop {
             // Check if shutdown initiated.
             // All `ReadHandler`s must have closed, dropping their `Sender` handles.
@@ -218,7 +218,7 @@ impl TransactionManager {
     }
 }
 
-pub fn run(mut tm: TransactionManager, s: Arc<Scheduler>) {
+pub fn run(mut tm: TransactionManager, s: Arc<Protocol>) {
     thread::spawn(move || {
         debug!("Start transaction manager");
         tm.run(s);

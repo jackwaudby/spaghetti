@@ -1,7 +1,7 @@
 use crate::common::message::Request;
 use crate::server::listener::Listener;
 use crate::server::manager::TransactionManager;
-use crate::server::scheduler::Scheduler;
+use crate::server::scheduler::Protocol;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -74,7 +74,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     // Create transaction manager.
     let tm = TransactionManager::new(2, work_rx, tm_shutdown_rx, notify_wh_tx.clone());
     // Create scheduler.
-    let s = Arc::new(Scheduler::new(Arc::clone(&workload)));
+    let s = Arc::new(Protocol::new(Arc::clone(&workload))?);
     manager::run(tm, s);
 
     // Concurrently run the server and listen for the shutdown signal.
