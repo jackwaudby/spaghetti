@@ -1,12 +1,11 @@
 use crate::common::error::SpaghettiError;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
-use crate::server::storage::row::Row;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tatp::profiles::{
     DeleteCallForwarding, GetAccessData, GetNewDestination, GetSubscriberData,
-    InsertCallForwarding, TatpTransaction, UpdateLocationData, UpdateSubscriberData,
+    InsertCallForwarding, UpdateLocationData, UpdateSubscriberData,
 };
 use crate::workloads::PrimaryKey;
 use crate::Result;
@@ -20,7 +19,7 @@ pub fn get_subscriber_data(
     params: GetSubscriberData,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Protocol>,
+    protocol: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "\nSELECT s_id, sub_nbr,
@@ -75,11 +74,13 @@ pub fn get_subscriber_data(
     // Construct primary key.
     let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
     // Register with scheduler.
-    scheduler.register(t_id)?;
+    protocol.scheduler.register(t_id)?;
     // Execute read operation.
-    let values = scheduler.read("sub_idx", pk, &columns, t_id, t_ts)?;
+    let values = protocol
+        .scheduler
+        .read("sub_idx", pk, &columns, t_id, t_ts)?;
     // Commit transaction.
-    scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id);
     // Convert to result
     let res = datatype::to_result(&columns, &values)?;
 
@@ -91,7 +92,7 @@ pub fn get_new_destination(
     params: GetNewDestination,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Protocol>,
+    protocol: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "\nSELECT cf.numberx
@@ -124,10 +125,12 @@ pub fn get_new_destination(
         params.start_time.into(),
     ));
     // Register with scheduler.
-    scheduler.register(t_id).unwrap();
+    protocol.scheduler.register(t_id).unwrap();
     // Execute read operations.
     // 1) Attempt to get the special facility record.
-    let sf_res = scheduler.read("special_idx", sf_pk, &sf_columns, t_id, t_ts)?;
+    let sf_res = protocol
+        .scheduler
+        .read("special_idx", sf_pk, &sf_columns, t_id, t_ts)?;
     // 2) Check sf.is_active = 1.
     let val = if let Data::Int(val) = sf_res[2] {
         val
@@ -138,7 +141,9 @@ pub fn get_new_destination(
         return Err(Box::new(SpaghettiError::RowDoesNotExist));
     }
     // 3) Get call forwarding record.
-    let cf_res = scheduler.read("call_idx", cf_pk, &cf_columns, t_id, t_ts)?;
+    let cf_res = protocol
+        .scheduler
+        .read("call_idx", cf_pk, &cf_columns, t_id, t_ts)?;
     // 4) Check end_time < cf.end_time
     let val = if let Data::Int(val) = cf_res[3] {
         val
@@ -149,7 +154,7 @@ pub fn get_new_destination(
         return Err(Box::new(SpaghettiError::RowDoesNotExist));
     }
     // Commit transaction.
-    scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id);
     // Convert to result
     let res = datatype::to_result(&vec![cf_columns[4].clone()], &vec![cf_res[4].clone()])?;
     Ok(res)
@@ -160,7 +165,7 @@ pub fn get_access_data(
     params: GetAccessData,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Protocol>,
+    protocol: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "SELECT data1, data2, data3, data4
@@ -179,11 +184,13 @@ pub fn get_access_data(
     ));
     debug!("{}", pk);
     // Register with scheduler.
-    scheduler.register(t_id).unwrap();
+    protocol.scheduler.register(t_id).unwrap();
     // Execute read operation.
-    let values = scheduler.read("access_idx", pk, &columns, t_id, t_ts)?;
+    let values = protocol
+        .scheduler
+        .read("access_idx", pk, &columns, t_id, t_ts)?;
     // Commit transaction.
-    scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id);
     // Convert to result
     let res = datatype::to_result(&columns, &values)?;
 
@@ -195,7 +202,7 @@ pub fn update_subscriber_data(
     params: UpdateSubscriberData,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Protocol>,
+    protocol: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "UPDATE Subscriber
@@ -225,14 +232,18 @@ pub fn update_subscriber_data(
     ));
 
     // Register with scheduler.
-    scheduler.register(t_id).unwrap();
+    protocol.scheduler.register(t_id).unwrap();
 
     // Execute write operation.
-    scheduler.write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
-    scheduler.write("special_idx", pk_sp, &columns_sp, &values_sp, t_id, t_ts)?;
+    protocol
+        .scheduler
+        .write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
+    protocol
+        .scheduler
+        .write("special_idx", pk_sp, &columns_sp, &values_sp, t_id, t_ts)?;
 
     // Commit transaction.
-    scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id);
 
     Ok("updated".to_string())
 }
@@ -242,7 +253,7 @@ pub fn update_location(
     params: UpdateLocationData,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Protocol>,
+    protocol: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "UPDATE Subscriber
@@ -262,13 +273,15 @@ pub fn update_location(
     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
 
     // Register with scheduler.
-    scheduler.register(t_id)?;
+    protocol.scheduler.register(t_id)?;
 
     // Execute write operation.
-    scheduler.write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
+    protocol
+        .scheduler
+        .write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
 
     // Commit transaction.
-    scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id);
 
     Ok("updated".to_string())
 }
@@ -278,7 +291,7 @@ pub fn insert_call_forwarding(
     params: InsertCallForwarding,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Protocol>,
+    protocol: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "SELECT <s_id bind subid s_id>
@@ -306,13 +319,17 @@ pub fn insert_call_forwarding(
     ));
 
     // Register with scheduler.
-    scheduler.register(t_id).unwrap();
+    protocol.scheduler.register(t_id).unwrap();
     // Get record from subscriber table.
     let columns_sb: Vec<&str> = vec!["s_id"];
-    scheduler.read("sub_idx", pk_sb, &columns_sb, t_id, t_ts)?;
+    protocol
+        .scheduler
+        .read("sub_idx", pk_sb, &columns_sb, t_id, t_ts)?;
     // Get record from special facility.
     let columns_sf: Vec<&str> = vec!["sf_type"];
-    scheduler.read("special_idx", pk_sf, &columns_sf, t_id, t_ts)?;
+    protocol
+        .scheduler
+        .read("special_idx", pk_sf, &columns_sf, t_id, t_ts)?;
 
     // Insert into call forwarding.
     // Calculate primary key
@@ -321,22 +338,25 @@ pub fn insert_call_forwarding(
         params.sf_type.into(),
         params.start_time.into(),
     ));
-    // Initialise empty row.
+    // Table name
     let cf_name = "call_forwarding";
-    let cf_t = scheduler.get_internals().get_table(cf_name)?;
-    let mut row = Row::new(Arc::clone(&cf_t));
-    row.set_primary_key(pk_cf);
-    row.set_value("s_id", &params.s_id.to_string())?;
-    row.set_value("sf_type", &params.sf_type.to_string())?;
-    row.set_value("start_time", &params.start_time.to_string())?;
-    row.set_value("end_time", &params.end_time.to_string())?;
-    row.set_value("number_x", &params.number_x)?;
+    // Columns
+    let columns_cf: Vec<&str> = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
+    // Values
+    let s_id = params.s_id.to_string();
+    let sf_type = params.sf_type.to_string();
+    let start_time = params.start_time.to_string();
+    let end_time = params.end_time.to_string();
+    let number_x = params.number_x.to_string();
+    let values_cf: Vec<&str> = vec![&s_id, &sf_type, &start_time, &end_time, &number_x];
 
     // Execute insert operation.
-    scheduler.insert("call_idx", pk_cf, row, t_id)?;
+    protocol
+        .scheduler
+        .insert(cf_name, pk_cf, &columns_cf, &values_cf, t_id)?;
 
     // Commit transaction.
-    scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id);
 
     Ok("inserted".to_string())
 }
@@ -346,7 +366,7 @@ pub fn delete_call_forwarding(
     params: DeleteCallForwarding,
     t_id: &str,
     t_ts: DateTime<Utc>,
-    scheduler: Arc<Protocol>,
+    protocol: Arc<Protocol>,
 ) -> Result<String> {
     info!(
         "SELECT <s_id bind subid s_id>
@@ -370,16 +390,18 @@ pub fn delete_call_forwarding(
     ));
 
     // Register with scheduler.
-    scheduler.register(t_id).unwrap();
+    protocol.scheduler.register(t_id).unwrap();
     // Get record from subscriber table.
     let columns_sb: Vec<&str> = vec!["s_id"];
-    scheduler.read("sub_idx", pk_sb, &columns_sb, t_id, t_ts)?;
+    protocol
+        .scheduler
+        .read("sub_idx", pk_sb, &columns_sb, t_id, t_ts)?;
 
     // Delete from call forwarding.
-    scheduler.delete("call_idx", pk_cf, t_id)?;
+    protocol.scheduler.delete("call_idx", pk_cf, t_id)?;
 
     // Commit transaction.
-    scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id);
 
     Ok("deleted".to_string())
 }
@@ -433,7 +455,7 @@ mod tests {
         loader::populate_tables(&internals, &mut rng).unwrap();
         let workload = Arc::new(Workload::Tatp(internals));
         // Protocol
-        let scheduler = Arc::new(Protocol::new(Arc::clone(&workload)));
+        let protocol = Arc::new(Protocol::new(Arc::clone(&workload)).unwrap());
         let sys_time = SystemTime::now();
         let datetime: DateTime<Utc> = sys_time.into();
         let t_id = datetime.to_string();
@@ -443,7 +465,7 @@ mod tests {
         //// GetSubscriberData ////
         ///////////////////////////////////////
         assert_eq!(
-            get_subscriber_data(GetSubscriberData { s_id: 1 }, &t_id, t_ts, Arc::clone(&scheduler)).unwrap(),
+            get_subscriber_data(GetSubscriberData { s_id: 1 }, &t_id, t_ts, Arc::clone(&protocol)).unwrap(),
             "[s_id=1, sub_nbr=000000000000001, bit_1=0, bit_2=1, bit_3=0, bit_4=1, bit_5=1, bit_6=1, bit_7=0, bit_8=0, bit_9=1, bit_10=0, hex_1=8, hex_2=6, hex_3=10, hex_4=8, hex_5=2, hex_6=13, hex_7=8, hex_8=10, hex_9=1, hex_10=9, byte_2_1=222, byte_2_2=248, byte_2_3=210, byte_2_4=100, byte_2_5=205, byte_2_6=163, byte_2_7=118, byte_2_8=127, byte_2_9=77, byte_2_10=52, msc_location=16]"
         );
 
@@ -454,7 +476,7 @@ mod tests {
                     GetSubscriberData { s_id: 100 },
                     &t_id,
                     t_ts,
-                    Arc::clone(&scheduler)
+                    Arc::clone(&protocol)
                 )
                 .unwrap_err()
             ),
@@ -474,7 +496,7 @@ mod tests {
                 },
                 &t_id,
                 t_ts,
-                Arc::clone(&scheduler)
+                Arc::clone(&protocol)
             )
             .unwrap(),
             "[number_x=993245295996111]"
@@ -491,7 +513,7 @@ mod tests {
                     },
                     &t_id,
                     t_ts,
-                    Arc::clone(&scheduler)
+                    Arc::clone(&protocol)
                 )
                 .unwrap_err()
             ),
@@ -509,7 +531,7 @@ mod tests {
                 },
                 &t_id,
                 t_ts,
-                Arc::clone(&scheduler)
+                Arc::clone(&protocol)
             )
             .unwrap(),
             "[data_1=165, data_2=166, data_3=FPK, data_4=BLZPL]"
@@ -525,7 +547,7 @@ mod tests {
                     },
                     &t_id,
                     t_ts,
-                    Arc::clone(&scheduler)
+                    Arc::clone(&protocol)
                 )
                 .unwrap_err()
             ),
@@ -571,7 +593,7 @@ mod tests {
                 },
                 &t_id,
                 t_ts,
-                Arc::clone(&scheduler)
+                Arc::clone(&protocol)
             )
             .unwrap(),
             "updated"
@@ -611,7 +633,7 @@ mod tests {
                     },
                     &t_id,
                     t_ts,
-                    Arc::clone(&scheduler)
+                    Arc::clone(&protocol)
                 )
                 .unwrap_err()
             ),
@@ -642,7 +664,7 @@ mod tests {
                 },
                 &t_id,
                 t_ts,
-                Arc::clone(&scheduler)
+                Arc::clone(&protocol)
             )
             .unwrap(),
             "updated"
@@ -669,7 +691,7 @@ mod tests {
                     },
                     &t_id,
                     t_ts,
-                    Arc::clone(&scheduler)
+                    Arc::clone(&protocol)
                 )
                 .unwrap_err()
             ),
@@ -707,7 +729,7 @@ mod tests {
                 },
                 &t_id,
                 t_ts,
-                Arc::clone(&scheduler)
+                Arc::clone(&protocol)
             )
             .unwrap(),
             "inserted"
@@ -754,7 +776,7 @@ mod tests {
                 },
                 &t_id,
                 t_ts,
-                Arc::clone(&scheduler)
+                Arc::clone(&protocol)
             )
             .unwrap(),
             "deleted"

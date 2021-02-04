@@ -4,7 +4,6 @@ use crate::server::scheduler::two_phase_locking::error::{
 use crate::server::scheduler::Scheduler;
 use crate::server::storage::datatype::Data;
 use crate::server::storage::row::Row;
-use crate::workloads::Internal;
 use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
 use crate::Result;
@@ -122,9 +121,26 @@ impl Scheduler for TwoPhaseLocking {
         self.cleanup(transaction_name);
     }
 
-    fn insert(&self, index: &str, pk: PrimaryKey, row: Row, transaction_name: &str) -> Result<()> {
+    fn insert(
+        &self,
+        table: &str,
+        pk: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        transaction_name: &str,
+    ) -> Result<()> {
+        // Initialise empty row.
+        let table = self.data.get_internals().get_table(table)?;
+        let mut row = Row::new(Arc::clone(&table));
+        // Set PK.
+        row.set_primary_key(pk);
+        // Set values.
+        for (i, column) in columns.iter().enumerate() {
+            row.set_value(column, &values[i].to_string())?;
+        }
         // Get index.
-        let index = self.data.get_internals().indexes.get(index).unwrap();
+        let index = table.get_primary_index()?;
+        let index = self.data.get_internals().indexes.get(&index[..]).unwrap();
         // Attempt to insert row.
         match index.index_insert(pk, row) {
             Ok(_) => Ok(()),
@@ -218,9 +234,9 @@ impl Scheduler for TwoPhaseLocking {
         }
     }
 
-    fn get_internals(&self) -> &Internal {
-        self.data.get_internals()
-    }
+    // fn get_internals(&self) -> &Internal {
+    //     self.data.get_internals()
+    // }
 }
 
 impl TwoPhaseLocking {
@@ -653,6 +669,7 @@ enum LockMode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::server::scheduler::Protocol;
     use chrono::Duration;
     use config::Config;
     use lazy_static::lazy_static;
@@ -693,11 +710,12 @@ mod tests {
     fn register_test() {
         logging(false);
         // Initialise scheduler.
-        let scheduler = Arc::new(Scheduler::new(Arc::clone(&WORKLOAD)));
+        let protocol = Arc::new(Protocol::new(Arc::clone(&WORKLOAD)).unwrap());
         // Register transaction.
-        assert_eq!(scheduler.register("some_id").unwrap(), ());
+        assert_eq!(protocol.scheduler.register("some_id").unwrap(), ());
         assert_eq!(
-            scheduler
+            protocol
+                .scheduler
                 .register("some_id")
                 .unwrap_err()
                 .downcast::<TwoPhaseLockingError>()
@@ -713,8 +731,8 @@ mod tests {
         logging(false);
 
         // Initialise scheduler
-        let scheduler = Arc::new(Scheduler::new(Arc::clone(&WORKLOAD)));
-        let scheduler1 = scheduler.clone();
+        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
+        let protocol1 = protocol.clone();
 
         // Create transaction id and timestamp.
         let sys_time = SystemTime::now();
@@ -723,13 +741,13 @@ mod tests {
         let t_ts = datetime;
 
         // Register transaction
-        scheduler.register(&t_id).unwrap();
+        protocol.register(&t_id).unwrap();
         // Lock
-        let req = scheduler.request_lock("table_1_row_12", LockMode::Read, &t_id, t_ts);
+        let req = protocol.request_lock("table_1_row_12", LockMode::Read, &t_id, t_ts);
         assert_eq!(req, LockRequest::Granted);
         // Check
         {
-            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+            let lock = protocol1.lock_table.get("table_1_row_12").unwrap();
             assert_eq!(
                 lock.group_mode == Some(LockMode::Read)
                     && !lock.waiting
@@ -743,10 +761,10 @@ mod tests {
         }
 
         // Unlock
-        scheduler.release_lock("table_1_row_12", &t_id);
+        protocol.release_lock("table_1_row_12", &t_id);
         // Check
         {
-            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+            let lock = protocol1.lock_table.get("table_1_row_12").unwrap();
             assert_eq!(
                 lock.group_mode == None
                     && !lock.waiting
@@ -764,9 +782,9 @@ mod tests {
     fn request_lock_write() {
         logging(false);
 
-        // Initialise scheduler
-        let scheduler = Arc::new(Scheduler::new(Arc::clone(&WORKLOAD)));
-        let scheduler1 = scheduler.clone();
+        // Initialise protocol
+        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
+        let protocol1 = protocol.clone();
 
         // Create transaction id and timestamp.
         let sys_time = SystemTime::now();
@@ -775,12 +793,12 @@ mod tests {
         let t_ts = datetime;
 
         // Lock
-        scheduler.register(&t_id).unwrap();
-        let req = scheduler.request_lock("table_1_row_12", LockMode::Write, &t_id, t_ts);
+        protocol.register(&t_id).unwrap();
+        let req = protocol.request_lock("table_1_row_12", LockMode::Write, &t_id, t_ts);
         assert_eq!(req, LockRequest::Granted);
 
         {
-            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+            let lock = protocol1.lock_table.get("table_1_row_12").unwrap();
             assert_eq!(
                 lock.group_mode == Some(LockMode::Write)
                     && !lock.waiting
@@ -795,9 +813,9 @@ mod tests {
         }
 
         // Unlock
-        scheduler.release_lock("table_1_row_12", &t_id);
+        protocol.release_lock("table_1_row_12", &t_id);
         {
-            let lock = scheduler1.lock_table.get("table_1_row_12").unwrap();
+            let lock = protocol1.lock_table.get("table_1_row_12").unwrap();
             assert_eq!(
                 lock.group_mode == None
                     && !lock.waiting
@@ -814,8 +832,8 @@ mod tests {
     #[test]
     fn lock_table_test() {
         logging(false);
-        let scheduler = Arc::new(Scheduler::new(Arc::clone(&WORKLOAD)));
-        let scheduler1 = scheduler.clone();
+        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
+        let protocol1 = protocol.clone();
 
         // Create transaction id and timestamp.
         let sys_time_1 = SystemTime::now();
@@ -828,15 +846,15 @@ mod tests {
         let t_id_2 = datetime_2.to_string();
         let t_ts_2 = datetime_2;
 
-        scheduler.register(&t_id_1).unwrap();
-        scheduler.register(&t_id_2).unwrap();
+        protocol.register(&t_id_1).unwrap();
+        protocol.register(&t_id_2).unwrap();
 
         let _handle = thread::spawn(move || {
             debug!("Request Read lock");
-            scheduler1.request_lock("table_1_row_12", LockMode::Read, &t_id_11, t_ts_1);
+            protocol1.request_lock("table_1_row_12", LockMode::Read, &t_id_11, t_ts_1);
             debug!("Request Write lock");
             if let LockRequest::Delay(pair) =
-                scheduler1.request_lock("table_1_row_12", LockMode::Write, &t_id_2, t_ts_2)
+                protocol1.request_lock("table_1_row_12", LockMode::Write, &t_id_2, t_ts_2)
             {
                 let (lock, cvar) = &*pair;
                 let mut waiting = lock.lock().unwrap();
@@ -849,8 +867,8 @@ mod tests {
 
         let ms = time::Duration::from_secs(2);
         thread::sleep(ms);
-        scheduler.release_lock("table_1_row_12", &t_id_1);
-        let lock = scheduler.lock_table.get("table_1_row_12").unwrap();
+        protocol.release_lock("table_1_row_12", &t_id_1);
+        let lock = protocol.lock_table.get("table_1_row_12").unwrap();
         assert_eq!(
             lock.group_mode == Some(LockMode::Write)
                 && !lock.waiting
