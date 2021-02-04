@@ -120,11 +120,12 @@ mod tests {
         let mut catalog = Catalog::init("films", 1);
         catalog.add_column(("name", "string")).unwrap();
         catalog.add_column(("year", "int")).unwrap();
+        catalog.add_column(("amount", "double")).unwrap();
         // create table
         let table = Table::init(catalog);
         // create row in table
         let mut row = Row::new(Arc::new(table));
-
+        assert_eq!(row.get_table().get_table_id(), 1);
         assert_eq!(row.get_row_id(), 0);
         assert_eq!(row.get_value("name").unwrap(), Data::Null);
         row.set_value("year", "2019").unwrap();
@@ -133,6 +134,13 @@ mod tests {
         assert_eq!(
             row.get_value("name").unwrap(),
             Data::VarChar("el camino".to_string())
+        );
+        row.set_value("amount", "53.2").unwrap();
+        assert_eq!(row.get_value("amount").unwrap(), Data::Double(53.2));
+
+        assert_eq!(
+            format!("{}", row),
+            "[0, None, films, el camino, 2019, 53.2]"
         );
     }
 }
