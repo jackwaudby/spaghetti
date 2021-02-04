@@ -1,4 +1,5 @@
 use crate::Result;
+
 use std::fmt::{self, Write};
 
 /// Element of a `Row' that holds `Data`.
@@ -25,6 +26,7 @@ impl Field {
 }
 
 impl fmt::Display for Data {
+    /// Format: value.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             Data::Int(val) => write!(f, "{}", val.to_string()),
@@ -35,8 +37,8 @@ impl fmt::Display for Data {
     }
 }
 
-// value
 impl fmt::Display for Field {
+    /// Format: value.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.data {
             Data::Int(val) => write!(f, "{}", val.to_string()),
@@ -76,14 +78,21 @@ mod tests {
     #[test]
     fn fields_test() {
         let mut f = Field::new();
+
         assert_eq!(f.get(), Data::Null);
         assert_eq!(format!("{}", f), String::from("null"));
+
         f.set(Data::Int(5));
         assert_eq!(f.get(), Data::Int(5));
         assert_eq!(format!("{}", f), String::from("5"));
+
         f.set(Data::VarChar("abc".to_string()));
         assert_eq!(f.get(), Data::VarChar("abc".to_string()));
         assert_eq!(format!("{}", f), String::from("abc"));
+
+        f.set(Data::Double(1.7));
+        assert_eq!(f.get(), Data::Double(1.7));
+        assert_eq!(format!("{}", f), String::from("1.7"));
     }
 
     #[test]
