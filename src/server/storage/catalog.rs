@@ -1,14 +1,18 @@
-//! A `Catalog` contains the schema of a `Table`.
-
 use crate::common::error::SpaghettiError;
 use crate::Result;
+
 use std::fmt;
 
+// A `Catalog` contains the schema of a `Table`.
 #[derive(Debug)]
 pub struct Catalog {
+    /// Table name.
     table_name: String,
+    /// Table identifier.
     table_id: u64,
+    /// Number of columns in table.
     column_cnt: u64,
+    /// List of columns.
     columns: Vec<Column>,
 }
 
@@ -79,7 +83,7 @@ impl Catalog {
     }
 }
 
-// [table_name,table_id,(col_name,col_type),...]
+/// Format: [table_name,table_id,(col_name,col_type),...]
 impl fmt::Display for Catalog {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let ind = self.columns.len();
@@ -94,6 +98,7 @@ impl fmt::Display for Catalog {
     }
 }
 
+/// An entry in a `Catalog`s list of columns.
 #[derive(Debug)]
 pub struct Column {
     name: String,
@@ -120,13 +125,14 @@ impl Column {
     }
 }
 
-// (name,kind)
+/// Format: (name,kind)
 impl fmt::Display for Column {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "({}, {})", self.name, self.kind)
     }
 }
 
+/// Column datatypes.
 #[derive(Debug, PartialEq)]
 pub enum ColumnKind {
     Int,
@@ -134,7 +140,7 @@ pub enum ColumnKind {
     Double,
 }
 
-// map kind to string type
+/// Format: type
 impl fmt::Display for ColumnKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let printable = match *self {
