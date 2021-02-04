@@ -234,10 +234,6 @@ impl Scheduler for TwoPhaseLocking {
             }
         }
     }
-
-    // fn get_internals(&self) -> &Internal {
-    //     self.data.get_internals()
-    // }
 }
 
 impl TwoPhaseLocking {
