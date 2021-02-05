@@ -86,10 +86,14 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
 
             let decoded: Message = bincode::deserialize(&frame.get_payload())?;
             let request = match decoded {
-                Message::TatpTransaction(transaction) => {
+                Message::TatpTransaction {
+                    request_no,
+                    params: transaction,
+                } => {
                     debug!("Received Transaction");
                     // Wrap as request.
                     Request {
+                        request_no,
                         transaction: Transaction::Tatp(transaction),
                         id: None,
                         timestamp: None,
@@ -99,6 +103,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
                 Message::TpccTransaction(transaction) => {
                     // Wrap as request.
                     Request {
+                        request_no: 0,
                         transaction: Transaction::Tpcc(transaction),
                         id: None,
                         timestamp: None,

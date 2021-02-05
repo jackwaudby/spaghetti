@@ -52,22 +52,22 @@ impl fmt::Display for SpaghettiError {
         match *self {
             Incomplete => write!(
                 f,
-                "Not enough data available in read buffer to parse message."
+                "not enough data available in read buffer to parse message."
             ),
-            Invalid => write!(f, "Invalid message encoding."),
-            CorruptedFrame => write!(f, "Remote connection closed during sending of a frame"),
-            IncorrectWorkload => write!(f, "Workload not recognised"),
-            Parse(ref e) => write!(f, "Parsing error {:?}", e),
-            TableNotFound => write!(f, "Table not found"),
-            IndexNotFound => write!(f, "Index not found"),
-            NoPrimaryIndex => write!(f, "No primary index on table"),
-            ColumnNotFound(ref c) => write!(f, "Column not found: {:?}", c),
-            UnexpectedMessage => write!(f, "Unexpected message"),
-            ConnectionUnexpectedlyClosed => write!(f, "Connection unexpectedly closed"),
-            TwoPhaseLocking(ref e) => write!(f, "2PL Error: {:?}", e),
-            RowAlreadyExists => write!(f, "Row already exists in index."),
-            RowDoesNotExist => write!(f, "Row does not exist in index."),
-            InvalidColumnType => write!(f, "Invalid column type"),
+            Invalid => write!(f, "invalid message encoding."),
+            CorruptedFrame => write!(f, "remote connection closed during sending of a frame"),
+            IncorrectWorkload => write!(f, "workload not recognised"),
+            Parse(ref e) => write!(f, "parsing error {:?}", e),
+            TableNotFound => write!(f, "table not found"),
+            IndexNotFound => write!(f, "index not found"),
+            NoPrimaryIndex => write!(f, "no primary index on table"),
+            ColumnNotFound(ref c) => write!(f, "column not found: {:?}", c),
+            UnexpectedMessage => write!(f, "unexpected message"),
+            ConnectionUnexpectedlyClosed => write!(f, "connection unexpectedly closed"),
+            TwoPhaseLocking(ref e) => write!(f, "{}", e),
+            RowAlreadyExists => write!(f, "row already exists in index."),
+            RowDoesNotExist => write!(f, "row does not exist in index."),
+            InvalidColumnType => write!(f, "invalid column type"),
         }
     }
 }

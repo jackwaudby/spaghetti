@@ -67,7 +67,13 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                                     return Ok(());
                                 }
                                 // Response received.
-                                Message::Response(response) => Message::Response(response),
+                                Message::Response {
+                                    request_no,
+                                    resp: response,
+                                } => Message::Response {
+                                    request_no,
+                                    resp: response,
+                                },
                                 // Received unexpected message.
                                 _ => return Err(SpaghettiError::UnexpectedMessage),
                             },
@@ -166,7 +172,10 @@ mod tests {
         let r = Response::Committed {
             value: Some(String::from("Test")),
         };
-        let response = Message::Response(r);
+        let response = Message::Response {
+            request_no: 1,
+            resp: r,
+        };
         let response_frame = response.into_frame();
         let r_len = response_frame.payload.len();
         let r_lens: Vec<u8> = bincode::serialize(&r_len).unwrap().into();

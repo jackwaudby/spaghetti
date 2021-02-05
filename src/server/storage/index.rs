@@ -152,7 +152,7 @@ mod tests {
                     .index_insert(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), row)
                     .unwrap_err()
             ),
-            format!("Row already exists in index.")
+            format!("row already exists in index.")
         );
 
         // 2. Remove entry that is not there.
@@ -166,7 +166,7 @@ mod tests {
                     .index_remove(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(0)))
                     .unwrap_err()
             ),
-            format!("Row does not exist in index.")
+            format!("row does not exist in index.")
         );
 
         // 3. Check entry exists.
@@ -198,7 +198,7 @@ mod tests {
                     .unwrap()
             )
             .unwrap(),
-            "[bit_4=1, byte_2_5=205]"
+            "{bit_4=\"1\", byte_2_5=\"205\"}"
         );
 
         // 6. Successful write of entry.
@@ -227,7 +227,7 @@ mod tests {
                     .unwrap()
             )
             .unwrap(),
-            "[bit_4=0, byte_2_5=69]"
+            "{bit_4=\"0\", byte_2_5=\"69\"}"
         );
     }
 }

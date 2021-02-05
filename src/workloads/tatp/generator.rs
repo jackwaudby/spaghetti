@@ -19,6 +19,8 @@ pub struct TatpGenerator {
     subscribers: u64,
     /// Rng.
     rng: StdRng,
+    /// Number of transactions generated.
+    pub generated: u32,
 }
 
 impl TatpGenerator {
@@ -30,7 +32,11 @@ impl TatpGenerator {
         } else {
             rng = SeedableRng::from_entropy();
         }
-        TatpGenerator { subscribers, rng }
+        TatpGenerator {
+            subscribers,
+            rng,
+            generated: 0,
+        }
     }
 }
 
@@ -39,11 +45,21 @@ impl Generator for TatpGenerator {
     fn generate(&mut self) -> Message {
         let n: f32 = self.rng.gen();
         let params = self.get_params(n);
-        Message::TatpTransaction(params)
+        Message::TatpTransaction {
+            request_no: self.generated,
+            params,
+        }
+    }
+    /// Get number of transactions generated.
+    fn get_generated(&self) -> u32 {
+        self.generated
     }
 }
+
 impl TatpGenerator {
+    /// Get a random transaction profile.
     fn get_params(&mut self, n: f32) -> TatpTransaction {
+        self.generated += 1;
         match n {
             x if x < 0.35 => {
                 // GET_SUBSCRIBER_DATA

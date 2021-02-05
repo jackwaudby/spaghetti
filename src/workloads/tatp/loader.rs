@@ -263,7 +263,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             datatype::to_result(&cols_s, &res).unwrap(),
-            "[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=0, bit_3=1, bit_4=1, bit_5=0, bit_6=0, bit_7=0, bit_8=1, bit_9=0, bit_10=0, hex_1=3, hex_2=12, hex_3=15, hex_4=8, hex_5=2, hex_6=3, hex_7=5, hex_8=4, hex_9=7, hex_10=0, byte_2_1=55, byte_2_2=65, byte_2_3=99, byte_2_4=138, byte_2_5=93, byte_2_6=228, byte_2_7=150, byte_2_8=132, byte_2_9=121, byte_2_10=203, msc_location=8, vlr_location=9]"
+          "{s_id=\"1\", sub_nbr=\"000000000000001\", bit_1=\"1\", bit_2=\"0\", bit_3=\"1\", bit_4=\"1\", bit_5=\"0\", bit_6=\"0\", bit_7=\"0\", bit_8=\"1\", bit_9=\"0\", bit_10=\"0\", hex_1=\"3\", hex_2=\"12\", hex_3=\"15\", hex_4=\"8\", hex_5=\"2\", hex_6=\"3\", hex_7=\"5\", hex_8=\"4\", hex_9=\"7\", hex_10=\"0\", byte_2_1=\"55\", byte_2_2=\"65\", byte_2_3=\"99\", byte_2_4=\"138\", byte_2_5=\"93\", byte_2_6=\"228\", byte_2_7=\"150\", byte_2_8=\"132\", byte_2_9=\"121\", byte_2_10=\"203\", msc_location=\"8\", vlr_location=\"9\"}"
         );
 
         // Access info.
@@ -286,8 +286,8 @@ mod tests {
                     .index_read(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2)), &cols_ai)
                     .unwrap()
             )
-            .unwrap(),
-            "[s_id=1, ai_type=2, data_1=51, data_2=20, data_3=VWD, data_4=NEVIQ]"
+                .unwrap(),
+"{s_id=\"1\", ai_type=\"2\", data_1=\"51\", data_2=\"20\", data_3=\"VWD\", data_4=\"NEVIQ\"}"
         );
 
         // Special facillity.
@@ -321,7 +321,7 @@ mod tests {
                     .unwrap()
             )
             .unwrap(),
-            "[s_id=1, sf_type=2, is_active=1, error_cntrl=75, data_a=67, data_b=RPVZV]"
+          "{s_id=\"1\", sf_type=\"2\", is_active=\"1\", error_cntrl=\"75\", data_a=\"67\", data_b=\"RPVZV\"}"
         );
 
         // Call forwarding.
@@ -344,8 +344,8 @@ mod tests {
                     )
                     .unwrap()
             )
-            .unwrap(),
-            "[s_id=1, sf_type=3, start_time=16, end_time=23, number_x=894204830213727]"
+                .unwrap(),
+            "{s_id=\"1\", sf_type=\"3\", start_time=\"16\", end_time=\"23\", number_x=\"894204830213727\"}"
         );
     }
 }

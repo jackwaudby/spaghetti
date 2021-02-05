@@ -25,6 +25,9 @@ impl Generator for TpccGenerator {
     fn generate(&mut self) -> Message {
         Message::TpccTransaction(TpccTransaction::NewOrder(NewOrder { w_id: 1 }))
     }
+    fn get_generated(&self) -> u32 {
+        1
+    }
 }
 
 // impl NewOrderParams {

@@ -16,16 +16,26 @@ pub enum Message {
     /// Indicates ther server has succesfully closed the client's connection.
     ConnectionClosed,
     /// Response to a transaction request.
-    Response(Response),
+    Response { request_no: u32, resp: Response },
     /// TATP transaction.
-    TatpTransaction(TatpTransaction),
+    TatpTransaction {
+        request_no: u32,
+        params: TatpTransaction,
+    },
     /// TPCC transaction.
     TpccTransaction(TpccTransaction),
 }
 
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        use Message::*;
+        match *self {
+            Response {
+                request_no,
+                ref resp,
+            } => write!(f, "[id=\"{}\",{}]", request_no, resp),
+            _ => write!(f, "{:?}", self),
+        }
     }
 }
 
@@ -46,9 +56,20 @@ pub enum Response {
     Aborted { err: String },
 }
 
+impl fmt::Display for Response {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Response::*;
+        match &*self {
+            Committed { value } => write!(f, "val={}", value.as_ref().unwrap()),
+            Aborted { err } => write!(f, "val={}", err),
+        }
+    }
+}
+
 /// Internal to the server, used to send the response to the correct client write handler.
 #[derive(Debug)]
 pub struct Request {
+    pub request_no: u32,
     // Transaction type and parameters.
     pub transaction: Transaction,
     // Transaction ID.

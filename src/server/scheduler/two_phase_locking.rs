@@ -747,7 +747,7 @@ mod tests {
         let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
         assert_eq!(
             format!("{}", protocol.register_lock("t1", "r1").unwrap_err()),
-            "Transaction not registered in active transaction table"
+            "transaction not registered in active transaction table"
         );
     }
 

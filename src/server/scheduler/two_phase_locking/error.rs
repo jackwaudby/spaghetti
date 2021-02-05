@@ -42,11 +42,11 @@ impl fmt::Display for TwoPhaseLockingErrorKind {
         use TwoPhaseLockingErrorKind::*;
         let err_msg = match *self {
             AlreadyRegisteredInActiveTransactions => {
-                "Transaction already registered in active transaction table"
+                "transaction already registered in active transaction table"
             }
-            LockRequestDenied => "Lock request denied",
+            LockRequestDenied => "lock request denied",
             NotRegisteredInActiveTransactions => {
-                "Transaction not registered in active transaction table"
+                "transaction not registered in active transaction table"
             }
         };
         write!(f, "{}", err_msg)
@@ -69,14 +69,14 @@ mod tests {
 
         assert_eq!(
             format!("{}", e1),
-            format!("Transaction already registered in active transaction table")
+            format!("transaction already registered in active transaction table")
         );
 
-        assert_eq!(format!("{}", e2), format!("Lock request denied"));
+        assert_eq!(format!("{}", e2), format!("lock request denied"));
 
         assert_eq!(
             format!("{}", e3),
-            format!("Transaction not registered in active transaction table")
+            format!("transaction not registered in active transaction table")
         );
     }
 }

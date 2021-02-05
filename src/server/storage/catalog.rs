@@ -184,7 +184,7 @@ mod tests {
 
         assert_eq!(
             format!("{}", catalog.add_column(("images", "blob")).unwrap_err()),
-            format!("Invalid column type")
+            format!("invalid column type")
         );
 
         assert_eq!(catalog.table_id(), 1);

@@ -85,6 +85,7 @@ impl TransactionManager {
                     // Send job to thread pool.
                     self.pool.execute(move || {
                         debug!("Execute request: {:?}", request);
+                        let request_no = request.request_no;
 
                         // Transaction ID.
                         let t_id = &request.id.unwrap();
@@ -131,13 +132,13 @@ impl TransactionManager {
                         let resp = match res {
                             Ok(res) => Response::Committed { value: Some(res) },
                             Err(e) => Response::Aborted {
-                                err: format!("  Caused by: {}", e.source().unwrap()),
+                                err: format!("err=\"{}\"", e.source().unwrap()),
                             },
                         };
                         // Send to corresponding `WriteHandler`.
                         request
                             .response_sender
-                            .send(Message::Response(resp))
+                            .send(Message::Response { request_no, resp })
                             .unwrap();
                     });
                 }
@@ -156,7 +157,7 @@ impl TransactionManager {
                     let datetime: DateTime<Utc> = sys_time.into();
                     request.id = Some(datetime.to_string());
                     request.timestamp = Some(datetime);
-
+                    let request_no = request.request_no;
                     self.pool.execute(move || {
                         // Transaction ID.
                         let t_id = &request.id.unwrap();
@@ -203,14 +204,14 @@ impl TransactionManager {
                         let resp = match res {
                             Ok(res) => Response::Committed { value: Some(res) },
                             Err(e) => Response::Aborted {
-                                err: format!("  Caused by: {}", e.source().unwrap()),
+                                err: format!("{{err=\"{}\"}}", e.source().unwrap()),
                             },
                         };
 
                         // Send to corresponding `WriteHandler`.
                         request
                             .response_sender
-                            .send(Message::Response(resp))
+                            .send(Message::Response { request_no, resp })
                             .unwrap();
                     });
                 }

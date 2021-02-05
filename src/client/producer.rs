@@ -18,13 +18,10 @@ use tracing::{debug, info};
 /// receives a keyboard interrupt.
 pub struct Producer {
     /// Parameter generator.
-    generator: ParameterGenerator,
+    pub generator: ParameterGenerator,
 
     /// Number of transactions to generate.
     transactions: u32,
-
-    /// Number of transactions generated.
-    pub generated: u32,
 
     /// Send transactions writer task.
     pub write_task_tx: tokio::sync::mpsc::Sender<Message>,
@@ -71,7 +68,6 @@ impl Producer {
         Ok(Producer {
             generator,
             transactions,
-            generated: 0,
             write_task_tx,
             notify_wh_tx,
             listen_c_rx,
@@ -94,7 +90,7 @@ impl Producer {
             };
             // Normal execution.
             debug!("Generated {:?}", maybe_transaction);
-            self.generated = self.generated + 1;
+
             sleep(Duration::from_millis(1000)).await;
             self.write_task_tx.send(maybe_transaction).await?;
         }

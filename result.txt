@@ -1,24 +1,3 @@
-Response(Aborted { err: "  Caused by: Row does not exist in index." })
-Response(Committed { value: Some("[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=1, bit_3=0, bit_4=1, bit_5=0, bit_6=1, bit_7=1, bit_8=0, bit_9=1, bit_10=0, hex_1=11, hex_2=14, hex_3=0, hex_4=14, hex_5=11, hex_6=5, hex_7=5, hex_8=2, hex_9=3, hex_10=0, byte_2_1=63, byte_2_2=41, byte_2_3=92, byte_2_4=16, byte_2_5=164, byte_2_6=19, byte_2_7=106, byte_2_8=180, byte_2_9=200, byte_2_10=107, msc_location=17]") })
-Response(Aborted { err: "  Caused by: Row already exists in index." })
-Response(Aborted { err: "  Caused by: Row does not exist in index." })
-Response(Committed { value: Some("[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=1, bit_3=0, bit_4=1, bit_5=0, bit_6=1, bit_7=1, bit_8=0, bit_9=1, bit_10=0, hex_1=11, hex_2=14, hex_3=0, hex_4=14, hex_5=11, hex_6=5, hex_7=5, hex_8=2, hex_9=3, hex_10=0, byte_2_1=63, byte_2_2=41, byte_2_3=92, byte_2_4=16, byte_2_5=164, byte_2_6=19, byte_2_7=106, byte_2_8=180, byte_2_9=200, byte_2_10=107, msc_location=17]") })
-Response(Aborted { err: "  Caused by: Row does not exist in index." })
-Response(Committed { value: Some("[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=1, bit_3=0, bit_4=1, bit_5=0, bit_6=1, bit_7=1, bit_8=0, bit_9=1, bit_10=0, hex_1=11, hex_2=14, hex_3=0, hex_4=14, hex_5=11, hex_6=5, hex_7=5, hex_8=2, hex_9=3, hex_10=0, byte_2_1=63, byte_2_2=41, byte_2_3=92, byte_2_4=16, byte_2_5=164, byte_2_6=19, byte_2_7=106, byte_2_8=180, byte_2_9=200, byte_2_10=107, msc_location=17]") })
-Response(Aborted { err: "  Caused by: Row does not exist in index." })
-Response(Committed { value: Some("[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=1, bit_3=0, bit_4=1, bit_5=0, bit_6=1, bit_7=1, bit_8=0, bit_9=1, bit_10=0, hex_1=11, hex_2=14, hex_3=0, hex_4=14, hex_5=11, hex_6=5, hex_7=5, hex_8=2, hex_9=3, hex_10=0, byte_2_1=63, byte_2_2=41, byte_2_3=92, byte_2_4=16, byte_2_5=164, byte_2_6=19, byte_2_7=106, byte_2_8=180, byte_2_9=200, byte_2_10=107, msc_location=17]") })
-Response(Aborted { err: "  Caused by: Lock request denied" })
-ConnectionClosed
-Response(Committed { value: Some("[data_1=207, data_2=144, data_3=KVF, data_4=LLDOV]") })
-Response(Committed { value: Some("[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=0, bit_3=0, bit_4=0, bit_5=1, bit_6=1, bit_7=1, bit_8=0, bit_9=1, bit_10=0, hex_1=13, hex_2=3, hex_3=15, hex_4=14, hex_5=13, hex_6=14, hex_7=13, hex_8=9, hex_9=7, hex_10=14, byte_2_1=155, byte_2_2=51, byte_2_3=24, byte_2_4=6, byte_2_5=224, byte_2_6=3, byte_2_7=153, byte_2_8=37, byte_2_9=246, byte_2_10=104, msc_location=25]") })
-Response(Committed { value: Some("[s_id=1, sub_nbr=000000000000001, bit_1=1, bit_2=0, bit_3=0, bit_4=0, bit_5=1, bit_6=1, bit_7=1, bit_8=0, bit_9=1, bit_10=0, hex_1=13, hex_2=3, hex_3=15, hex_4=14, hex_5=13, hex_6=14, hex_7=13, hex_8=9, hex_9=7, hex_10=14, byte_2_1=155, byte_2_2=51, byte_2_3=24, byte_2_4=6, byte_2_5=224, byte_2_6=3, byte_2_7=153, byte_2_8=37, byte_2_9=246, byte_2_10=104, msc_location=25]") })
-ConnectionClosed
-Response(Committed { value: Some("[s_id=1, sub_nbr=000000000000001, bit_1=0, bit_2=1, bit_3=0, bit_4=0, bit_5=1, bit_6=0, bit_7=0, bit_8=0, bit_9=0, bit_10=1, hex_1=10, hex_2=2, hex_3=14, hex_4=8, hex_5=14, hex_6=2, hex_7=7, hex_8=5, hex_9=5, hex_10=6, byte_2_1=190, byte_2_2=240, byte_2_3=144, byte_2_4=91, byte_2_5=98, byte_2_6=171, byte_2_7=19, byte_2_8=96, byte_2_9=65, byte_2_10=56, msc_location=4]") })
-ConnectionClosed
-Response(Committed { value: Some("[data_1=199, data_2=23, data_3=HUF, data_4=ODZKZ]") })
-Response(Committed { value: Some("[s_id=1, sub_nbr=000000000000001, bit_1=0, bit_2=1, bit_3=0, bit_4=0, bit_5=1, bit_6=0, bit_7=0, bit_8=0, bit_9=0, bit_10=1, hex_1=10, hex_2=2, hex_3=14, hex_4=8, hex_5=14, hex_6=2, hex_7=7, hex_8=5, hex_9=5, hex_10=6, byte_2_1=190, byte_2_2=240, byte_2_3=144, byte_2_4=91, byte_2_5=98, byte_2_6=171, byte_2_7=19, byte_2_8=96, byte_2_9=65, byte_2_10=56, msc_location=4]") })
-Response(Aborted { err: "  Caused by: Row does not exist in index." })
-ConnectionClosed
-Response(Committed { value: Some("[data_1=180, data_2=193, data_3=ZYA, data_4=GAFTY]") })
-Response(Committed { value: Some("[s_id=1, sub_nbr=000000000000001, bit_1=0, bit_2=1, bit_3=0, bit_4=1, bit_5=0, bit_6=1, bit_7=1, bit_8=1, bit_9=1, bit_10=0, hex_1=9, hex_2=8, hex_3=4, hex_4=1, hex_5=15, hex_6=15, hex_7=6, hex_8=2, hex_9=8, hex_10=5, byte_2_1=41, byte_2_2=166, byte_2_3=194, byte_2_4=108, byte_2_5=129, byte_2_6=100, byte_2_7=217, byte_2_8=245, byte_2_9=38, byte_2_10=60, msc_location=3]") })
-ConnectionClosed
+[id="1",val=test]
+[id="1",val=test]
+[id="1",val=test]

@@ -61,12 +61,12 @@ pub enum Data {
 /// Convert columns and values to a result string.
 pub fn to_result(columns: &Vec<&str>, values: &Vec<Data>) -> Result<String> {
     let mut res: String;
-    res = "[".to_string();
+    res = "{".to_string();
     for (i, column) in columns.iter().enumerate() {
-        write!(res, "{}={}, ", column, values[i])?;
+        write!(res, "{}=\"{ }\", ", column, values[i])?;
     }
     res.truncate(res.len() - 2);
-    write!(res, "]")?;
+    write!(res, "}}")?;
     Ok(res)
 }
 
@@ -106,7 +106,7 @@ mod tests {
         ];
         assert_eq!(
             to_result(&columns, &values).unwrap(),
-            "[a=1.3, b=null, c=10, d=hello]"
+            "{a=\"1.3\", b=\"null\", c=\"10\", d=\"hello\"}"
         );
     }
 }

@@ -124,7 +124,10 @@ mod tests {
             value: Some(String::from("test")),
         };
         for _ in 0..3 {
-            let m = Message::Response(response.clone());
+            let m = Message::Response {
+                request_no: 1,
+                resp: response.clone(),
+            };
             read_task_tx.send(m).await.unwrap();
         }
 
