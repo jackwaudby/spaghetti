@@ -4,7 +4,7 @@ use config::Config;
 use spaghetti::server;
 use std::sync::Arc;
 
-use tracing::{error, Level};
+use tracing::{error,Level};
 use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]

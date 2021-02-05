@@ -23,6 +23,9 @@ pub struct Producer {
     /// Number of transactions to generate.
     transactions: u32,
 
+    /// Number of transactions generated.
+    pub generated: u32,
+
     /// Send transactions writer task.
     pub write_task_tx: tokio::sync::mpsc::Sender<Message>,
 
@@ -68,6 +71,7 @@ impl Producer {
         Ok(Producer {
             generator,
             transactions,
+            generated: 0,
             write_task_tx,
             notify_wh_tx,
             listen_c_rx,
@@ -79,10 +83,10 @@ impl Producer {
         info!("Generate {:?} transaction", self.transactions);
 
         for i in 0..self.transactions {
+            // Generate transactions and concurrently listen for server closing.
             let maybe_transaction = tokio::select! {
                 res = self.generator.get_transaction() => res,
                 _ = self.listen_c_rx.recv() => {
-                    // Handles case when server unexpectedly closed.
                     self.terminate().await?;
                     info!("Generated {:?} transactions", i);
                     return Ok(());
@@ -90,6 +94,7 @@ impl Producer {
             };
             // Normal execution.
             debug!("Generated {:?}", maybe_transaction);
+            self.generated = self.generated + 1;
             sleep(Duration::from_millis(1000)).await;
             self.write_task_tx.send(maybe_transaction).await?;
         }

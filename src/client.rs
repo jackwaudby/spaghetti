@@ -85,11 +85,14 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
             // Drop shutdown channel to write handler.
             let Producer {
+                generated,
                 write_task_tx,
                 notify_wh_tx,
                 mut listen_c_rx,
                 ..
             } = producer;
+
+            info!("Generated {} transactions",generated );
 
             // Send close connection message.
             let message = Message::CloseConnection;

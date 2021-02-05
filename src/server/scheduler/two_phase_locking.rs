@@ -774,7 +774,7 @@ mod tests {
     // In this test 3 read locks are requested by Ta, Tb, and Tc, which are then released.
     #[test]
     fn request_lock_read_test() {
-        logging(true);
+        logging(false);
 
         // Initialise scheduler
         let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
@@ -955,7 +955,7 @@ mod tests {
     // until the write lock is released by Ta.
     #[test]
     fn write_delay_read_test() {
-        logging(true);
+        logging(false);
         // Scheduler.
         let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
         // Handle for thread.
@@ -1019,7 +1019,7 @@ mod tests {
     // until the write lock is released by Ta.
     #[test]
     fn write_delay_write_test() {
-        logging(true);
+        logging(false);
         // Scheduler.
         let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
         // Handle for thread.

@@ -50,7 +50,7 @@ pub async fn run(mut consumer: Consumer) {
                     // Shutdown signal received, terminate the task.
                     // Drain outstanding messages
                     while let Some(message) = consumer.read_task_rx.recv().await {
-                        info!("Received {:?}", message);
+                        debug!("Received {:?}", message);
                         // TODO: 5000 log to file.
                         let mut file = OpenOptions::new()
                             .write(true)
@@ -65,7 +65,7 @@ pub async fn run(mut consumer: Consumer) {
             };
 
             if let Some(message) = message {
-                info!("Received {:?}", message);
+                debug!("Received {:?}", message);
                 // TODO: log to file.amount
                 let mut file = OpenOptions::new()
                     .write(true)
