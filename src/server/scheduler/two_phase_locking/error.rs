@@ -25,8 +25,22 @@ pub enum TwoPhaseLockingErrorKind {
 
 impl fmt::Display for TwoPhaseLockingError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.kind)
+    }
+}
+
+impl Error for TwoPhaseLockingError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        Some(&self.kind)
+    }
+}
+
+impl Error for TwoPhaseLockingErrorKind {}
+
+impl fmt::Display for TwoPhaseLockingErrorKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use TwoPhaseLockingErrorKind::*;
-        let err_msg = match self.kind {
+        let err_msg = match *self {
             AlreadyRegisteredInActiveTransactions => {
                 "Transaction already registered in active transaction table"
             }
@@ -38,8 +52,6 @@ impl fmt::Display for TwoPhaseLockingError {
         write!(f, "{}", err_msg)
     }
 }
-
-impl Error for TwoPhaseLockingError {}
 
 #[cfg(test)]
 mod tests {

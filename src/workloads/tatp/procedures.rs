@@ -12,7 +12,7 @@ use crate::Result;
 
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::debug;
 
 /// GetSubscriberData transaction.
 pub fn get_subscriber_data(
@@ -21,7 +21,7 @@ pub fn get_subscriber_data(
     t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    info!(
+    debug!(
         "\nSELECT s_id, sub_nbr,
             bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
             bit_8, bit_9, bit_10,
@@ -94,7 +94,7 @@ pub fn get_new_destination(
     t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    info!(
+    debug!(
         "\nSELECT cf.numberx
            FROM Special_Facility AS sf, Call_Forwarding AS cf
            WHERE
@@ -167,7 +167,7 @@ pub fn get_access_data(
     t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    info!(
+    debug!(
         "SELECT data1, data2, data3, data4
            FROM Access_Info
          WHERE s_id = {:?}
@@ -204,7 +204,7 @@ pub fn update_subscriber_data(
     t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    info!(
+    debug!(
         "UPDATE Subscriber
            SET bit_1 = {:?}
            WHERE s_id = {:?}
@@ -255,7 +255,7 @@ pub fn update_location(
     t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    info!(
+    debug!(
         "UPDATE Subscriber
              SET vlr_location = {}
              WHERE sub_nbr = {};",
@@ -293,7 +293,7 @@ pub fn insert_call_forwarding(
     t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    info!(
+    debug!(
         "SELECT <s_id bind subid s_id>
            FROM Subscriber
            WHERE sub_nbr = {};
@@ -368,7 +368,7 @@ pub fn delete_call_forwarding(
     t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    info!(
+    debug!(
         "SELECT <s_id bind subid s_id>
          FROM Subscriber
          WHERE sub_nbr = {};

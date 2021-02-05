@@ -206,6 +206,7 @@ impl TransactionManager {
                                 err: format!("  Caused by: {}", e.source().unwrap()),
                             },
                         };
+
                         // Send to corresponding `WriteHandler`.
                         request
                             .response_sender
