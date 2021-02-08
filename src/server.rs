@@ -105,11 +105,14 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     debug!("Close channel to transaction manager.");
     drop(notify_tm_tx);
     debug!("Wait for transaction manger to shutdown.");
-    wh_shutdown_rx.recv().await?;
+    match wh_shutdown_rx.recv().await {
+        Ok(_) => (),
+        Err(_) => (),
+    }
     debug!("Close channel to listener.");
     drop(notify_listener_tx);
     debug!("Wait for write handlers to shutdown.");
     listener_shutdown_rx.recv().await;
-    info!("Clean shutdown");
+    info!("Server shutdown");
     Ok(())
 }
