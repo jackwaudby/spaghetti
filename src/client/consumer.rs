@@ -94,10 +94,8 @@ mod tests {
         // Delete file.
         std::fs::remove_file("result.txt").expect("could not remove file");
 
-        // `ReadHandler` to `Consumer`
-        let (notify_c_tx, listen_rh_rx) = tokio::sync::mpsc::channel(1);
-        // `Consumer` to `Producer`
-        let (notify_p_tx, _) = tokio::sync::mpsc::channel(1);
+        // `Consumer` to `Main`
+        let (notify_m_tx, _) = tokio::sync::mpsc::channel(1);
         // `ReadHandler` to `Consumer`.
         let (read_task_tx, read_task_rx): (Sender<Message>, Receiver<Message>) =
             mpsc::channel(32 as usize);
@@ -105,30 +103,31 @@ mod tests {
         let response = Response::Committed {
             value: Some(String::from("test")),
         };
-        for _ in 0..3 {
+
+        for i in 0..3 {
             let m = Message::Response {
-                request_no: 1,
+                request_no: i,
                 resp: response.clone(),
             };
             read_task_tx.send(m).await.unwrap();
         }
 
         // Create consumer
-        let consumer = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx.clone());
+        let consumer = Consumer::new(read_task_rx, notify_m_tx);
 
         // Spawn task
-        let h = tokio::spawn(async move { run(consumer).await });
+        let h = run(consumer);
 
-        // Drop shutdown listener.
-        drop(notify_c_tx);
+        // Drop channel
+        drop(read_task_tx);
 
-        // join task
+        // Join task
         h.await.unwrap();
 
         let file = File::open("result.txt").unwrap();
         let count: Vec<_> = io::BufReader::new(file)
             .lines()
-            .collect::<Result<_, _>>()
+            .collect::<std::result::Result<_, _>>()
             .unwrap();
 
         assert_eq!(3, count.len());

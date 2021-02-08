@@ -146,8 +146,8 @@ mod tests {
         // Create read handler.
         let r = ReadConnection::new(mock);
         let (read_task_tx, _): (Sender<Message>, Receiver<Message>) = mpsc::channel(32);
-        let (notify_c_tx, _) = mpsc::channel(1);
-        let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
+
+        let rh = ReadHandler::new(r, read_task_tx);
         // Run read handler.
         let res = tokio_test::block_on(run(rh));
 
@@ -206,8 +206,8 @@ mod tests {
         let r = ReadConnection::new(mock);
         let (read_task_tx, mut read_task_rx): (Sender<Message>, Receiver<Message>) =
             mpsc::channel(32);
-        let (notify_c_tx, _) = mpsc::channel(1);
-        let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
+
+        let rh = ReadHandler::new(r, read_task_tx);
         // Run read handler.
         let res = tokio_test::block_on(run(rh));
         assert_eq!(res.unwrap(), ());
@@ -244,8 +244,7 @@ mod tests {
         // Create read handler.
         let r = ReadConnection::new(mock);
         let (read_task_tx, _): (Sender<Message>, Receiver<Message>) = mpsc::channel(32);
-        let (notify_c_tx, _) = mpsc::channel(1);
-        let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
+        let rh = ReadHandler::new(r, read_task_tx);
         // Run read handler.
         let res = tokio_test::block_on(run(rh));
         assert_eq!(
