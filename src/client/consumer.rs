@@ -91,8 +91,6 @@ mod tests {
     async fn run_drain_test() {
         // Init logging.
         logging(false);
-        // Delete file.
-        std::fs::remove_file("result.txt").expect("could not remove file");
 
         // `Consumer` to `Main`
         let (notify_m_tx, _) = tokio::sync::mpsc::channel(1);
