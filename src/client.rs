@@ -12,7 +12,7 @@ use tokio::io;
 use tokio::net::TcpStream;
 use tokio::signal;
 use tokio::sync::mpsc::{self, Receiver, Sender};
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 
 pub mod producer;
 
@@ -71,7 +71,19 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
             let rhh = read_handler::run(rh);
             let chh = consumer::run(c);
             // Wait on all tasks.
-            let (_p,_rh, _wh, _ch) = tokio::join!(phh, rhh, whh, chh);
+            let (p, rh, wh, ch) = tokio::join!(phh, rhh, whh, chh);
+            p.unwrap_or_else(|error| {
+                error!("Producer: {}", format!("{}", error));
+            });
+            rh.unwrap_or_else(|error| {
+                error!("Read handler: {}", format!("{}", error));
+            });
+            wh.unwrap_or_else(|error| {
+                error!("Write handler: {}", format!("{}", error));
+            });
+            ch.unwrap_or_else(|error| {
+                error!("Consumer: {}", format!("{}", error));
+            });
         } => res,
         _ = signal::ctrl_c() => {
             info!("Keyboard interrupt");
