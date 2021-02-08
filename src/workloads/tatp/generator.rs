@@ -50,7 +50,7 @@ impl Generator for TatpGenerator {
             params,
         }
     }
-    /// Get number of transactions generated.
+
     fn get_generated(&self) -> u32 {
         self.generated
     }

@@ -41,6 +41,7 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
 impl<R: AsyncRead + Unpin> Drop for ReadHandler<R> {
     fn drop(&mut self) {
         debug!("Drop read handler");
+        debug!("{}", self.requests);
     }
 }
 

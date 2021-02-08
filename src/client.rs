@@ -25,12 +25,10 @@ pub mod read_handler;
 /// Run `spaghetti` client.
 pub async fn run(config: Arc<Config>) -> Result<()> {
     //// Shutdown channels. ////
-    // `Producer` to `WriteHandler`.
-    let (notify_wh_tx, listen_p_rx) = tokio::sync::mpsc::channel(1);
-    // `ReadHandler` to `Consumer`
-    let (notify_c_tx, listen_rh_rx) = tokio::sync::mpsc::channel(1);
-    // `Consumer` to `Producer`
-    let (notify_p_tx, listen_c_rx) = tokio::sync::mpsc::channel(1);
+    // `Main` to `Producer`
+    let (notify_p_tx, listen_m_rx) = tokio::sync::mpsc::channel(1);
+    // `Consumer` to `Main`
+    let (notify_m_tx, mut listen_c_rx) = tokio::sync::mpsc::channel(1);
 
     //// Work channels. ////
     // `Producer` to `WriteHandler`.
@@ -42,12 +40,10 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         mpsc::channel(mpsc_size as usize);
 
     //// Producer ////
-    let mut producer = Producer::new(
-        Arc::clone(&config),
-        write_task_tx,
-        notify_wh_tx,
-        listen_c_rx,
-    )?;
+    let p = Producer::new(Arc::clone(&config), write_task_tx, listen_m_rx)?;
+
+    //// Consumer ////
+    let c = Consumer::new(read_task_rx, notify_m_tx);
 
     //// Handlers ////
     // Open a connection to the server.
@@ -61,54 +57,34 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let r = ReadConnection::new(rd);
 
     //// WriteHandler ////
-    let wh = WriteHandler::new(w, write_task_rx, listen_p_rx);
+    let wh = WriteHandler::new(w, write_task_rx);
 
     //// ReadHandler ////
-    let rh = ReadHandler::new(r, read_task_tx, notify_c_tx);
+    let rh = ReadHandler::new(r, read_task_tx);
 
-    //// Consumer ////
-    let c = Consumer::new(read_task_rx, listen_rh_rx, notify_p_tx);
-
-    // run the producer whilst listening for shutdown signal.
-    let run = tokio::select! {
-         res = async {
-             let whh = write_handler::run(wh);
-             let rhh = read_handler::run(rh);
-             let chh = consumer::run(c);
-             let (p, _rh, _wh, _ch) = tokio::join!(producer.run(), rhh, whh, chh);
-             producer.wait().await;
-             p
-         } => res,
+    // Join tasks and listen for shutdown.
+    tokio::select! {
+        res = async {
+            // Spawn tasks
+            let phh = producer::run(p);
+            let whh = write_handler::run(wh);
+            let rhh = read_handler::run(rh);
+            let chh = consumer::run(c);
+            // Wait on all tasks.
+            let (_p,_rh, _wh, _ch) = tokio::join!(phh, rhh, whh, chh);
+        } => res,
         _ = signal::ctrl_c() => {
             info!("Keyboard interrupt");
-            // Handles case when client unexpectedly closed.
 
-            // Drop shutdown channel to write handler.
-            let Producer {
-                mut generator,
-                write_task_tx,
-                notify_wh_tx,
-                mut listen_c_rx,
-                ..
-            } = producer;
-
-            info!("Generated {} transactions", generator.get_generated());
-
-            // Send close connection message.
-            let message = Message::CloseConnection;
-            debug!("Send {:?}", message);
-            write_task_tx.send(message).await?;
-
-            // Notify write handler of shutdown.
-            drop(notify_wh_tx);
-
+            debug!("Notify producer");
+            drop(notify_p_tx);
+            debug!("Wait for consumer to terminate");
             // Wait until `Consumer` closes channel.
             listen_c_rx.recv().await;
-            Ok(())
+           debug!("Consumer terminated");
         }
     };
 
     info!("Client shutdown");
-    // Ok(())
-    run
+    Ok(())
 }

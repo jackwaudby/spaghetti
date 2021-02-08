@@ -8,7 +8,7 @@ use std::fmt::Debug;
 use std::marker::Unpin;
 use std::sync::Arc;
 use tokio::io::AsyncWrite;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Represents the handler for the write half of a client connection.
 #[derive(Debug)]
@@ -67,7 +67,7 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                     // Send connected closed message.
                     let closed = Message::ConnectionClosed;
                     let c = closed.into_frame();
-                    debug!("Send connection closed message");
+                    info!("Closed connection");
                     self.connection.write_frame(&c).await?;
                     return Ok(());
                 }
@@ -169,5 +169,6 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
 impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
     fn drop(&mut self) {
         debug!("Drop write handler");
+        debug!("Sent {} to client", self.responses_sent);
     }
 }

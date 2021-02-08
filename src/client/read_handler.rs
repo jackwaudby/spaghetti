@@ -12,8 +12,6 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
     pub connection: ReadConnection<R>,
     /// `Message` channel to `Consumer`.
     pub read_task_tx: tokio::sync::mpsc::Sender<Message>,
-    /// Notify `Consumer` of shutdown.
-    _notify_c_tx: tokio::sync::mpsc::Sender<()>,
 }
 
 impl<R: AsyncRead + Unpin> ReadHandler<R> {
@@ -21,19 +19,17 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
     pub fn new(
         connection: ReadConnection<R>,
         read_task_tx: tokio::sync::mpsc::Sender<Message>,
-        _notify_c_tx: tokio::sync::mpsc::Sender<()>,
     ) -> ReadHandler<R> {
         ReadHandler {
             connection,
             read_task_tx,
-            _notify_c_tx,
         }
     }
 }
 
 impl<R: AsyncRead + Unpin> Drop for ReadHandler<R> {
     fn drop(&mut self) {
-        debug!("Drop client's read handler");
+        debug!("Drop read handler");
     }
 }
 
@@ -62,7 +58,8 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                             Ok(decoded) => match decoded {
                                 // Connection gracefully closed.
                                 Message::ConnectionClosed => {
-                                    debug!("Received {:?}", decoded);
+                                    debug!("Connection closed");
+                                    debug!("Read handler has sent connection closed message to consumer");
                                     rh.read_task_tx.send(decoded).await.unwrap();
                                     return Ok(());
                                 }

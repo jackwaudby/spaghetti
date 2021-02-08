@@ -11,26 +11,22 @@ use std::sync::Arc;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, info};
 
-/// `Producer` generates transactions and sends them to the `client`s write socket.
-///
-/// Spawned by `client` and lives on its main thread.
-/// Generates transactions until the specified amount is produced or the `client`
-/// receives a keyboard interrupt.
+/// `Producer` generates transactions and sends them to the 'WriteHandler`.
 pub struct Producer {
     /// Parameter generator.
     pub generator: ParameterGenerator,
 
     /// Number of transactions to generate.
-    transactions: u32,
+    pub transactions: u32,
 
-    /// Send transactions writer task.
+    /// Transactions sent to write handler.
+    pub sent: u32,
+
+    /// Channel to `WriteHandler`.
     pub write_task_tx: tokio::sync::mpsc::Sender<Message>,
 
-    /// Notify `WriteHandler` of shutdown.
-    pub notify_wh_tx: tokio::sync::mpsc::Sender<()>,
-
-    /// Listen for shutdown notification from `Consumer`.
-    pub listen_c_rx: Shutdown<tokio::sync::mpsc::Receiver<()>>,
+    /// Listen for client shutdown notification.
+    pub listen_m_rx: Shutdown<tokio::sync::mpsc::Receiver<()>>,
 }
 
 impl Producer {
@@ -38,8 +34,7 @@ impl Producer {
     pub fn new(
         configuration: Arc<Config>,
         write_task_tx: tokio::sync::mpsc::Sender<Message>,
-        notify_wh_tx: tokio::sync::mpsc::Sender<()>,
-        listen_c_rx: tokio::sync::mpsc::Receiver<()>,
+        listen_m_rx: tokio::sync::mpsc::Receiver<()>,
     ) -> Result<Producer> {
         // Get workload type.
         let workload = configuration.get_str("workload")?;
@@ -61,55 +56,62 @@ impl Producer {
             }
             _ => return Err(Box::new(SpaghettiError::IncorrectWorkload)),
         };
+        // Create shutdown listener.
+        let listen_m_rx = Shutdown::new_mpsc(listen_m_rx);
         // Get transaction to generate.
         let transactions = configuration.get_int("transactions")? as u32;
-        // Create shutdown listener.
-        let listen_c_rx = Shutdown::new_mpsc(listen_c_rx);
         Ok(Producer {
             generator,
+            sent: 0,
             transactions,
             write_task_tx,
-            notify_wh_tx,
-            listen_c_rx,
+            listen_m_rx,
         })
     }
 
-    /// Run the producer.
-    pub async fn run(&mut self) -> Result<()> {
-        info!("Generate {:?} transaction", self.transactions);
+    /// Send close connection message.
+    pub async fn terminate(&mut self) -> Result<()> {
+        // Create message.
+        let message = Message::CloseConnection;
+        // Send message to write handler.
+        self.write_task_tx.send(message).await?;
+        Ok(())
+    }
+}
 
-        for i in 0..self.transactions {
-            // Generate transactions and concurrently listen for server closing.
+/// Run the producer.
+pub async fn run(mut producer: Producer) -> Result<()> {
+    let handle = tokio::spawn(async move {
+        info!("Generate {} transaction(s)", producer.transactions);
+        // Generate transactions and listen for shutdown notification.
+        for _i in 1..=producer.transactions {
             let maybe_transaction = tokio::select! {
-                res = self.generator.get_transaction() => res,
-                _ = self.listen_c_rx.recv() => {
-                    self.terminate().await?;
-                    info!("Generated {:?} transactions", i);
+                res = producer.generator.get_transaction() => res,
+                _ = producer.listen_m_rx.recv() => {
+                    producer.terminate().await?;
+                    debug!("Generated {} transactions", producer.sent);
                     return Ok(());
                 }
             };
-            // Normal execution.
-            debug!("Generated {:?}", maybe_transaction);
-
+            // Delay
             sleep(Duration::from_millis(1000)).await;
-            self.write_task_tx.send(maybe_transaction).await?;
+            // Send to write handler, waiting until capacity.
+            producer.write_task_tx.send(maybe_transaction).await?;
+            // Increment transactions sent.
+            producer.sent += 1;
         }
-        self.terminate().await?;
-        debug!("Generated all messages");
+        // Send close connection message.
+        producer.terminate().await?;
+        info!("Generated all messages");
         Ok(())
-    }
+    });
 
-    /// Send `CloseConnection` message.
-    pub async fn terminate(&mut self) -> Result<()> {
-        let message = Message::CloseConnection;
-        debug!("Send {:?}", message);
-        self.write_task_tx.send(message).await?;
+    handle.await?
+}
 
-        Ok(())
-    }
-
-    /// Wait for consumer to shutdown.
-    pub async fn wait(&mut self) {
-        self.listen_c_rx.recv().await;
+impl Drop for Producer {
+    fn drop(&mut self) {
+        debug!("Drop producer");
+        debug!("Sent {} transctions to write handler", self.sent);
     }
 }
