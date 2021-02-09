@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 pub mod two_phase_locking;
 
+pub mod serialization_graph_testing;
+
 pub struct Protocol {
     pub scheduler: Box<dyn Scheduler + Send + Sync + 'static>,
 }
@@ -33,6 +35,17 @@ impl Protocol {
 pub trait Scheduler {
     fn register(&self, transaction_name: &str) -> Result<()>;
 
+    fn commit(&self, transaction_name: &str);
+
+    fn insert(
+        &self,
+        table: &str,
+        pk: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        transaction_name: &str,
+    ) -> Result<()>;
+
     fn read(
         &self,
         index: &str,
@@ -41,10 +54,6 @@ pub trait Scheduler {
         transaction_name: &str,
         transaction_ts: DateTime<Utc>,
     ) -> Result<Vec<Data>>;
-
-    fn delete(&self, index: &str, pk: PrimaryKey, transaction_name: &str) -> Result<()>;
-
-    fn commit(&self, transaction_name: &str);
 
     fn write(
         &self,
@@ -56,12 +65,5 @@ pub trait Scheduler {
         transaction_ts: DateTime<Utc>,
     ) -> Result<()>;
 
-    fn insert(
-        &self,
-        table: &str,
-        pk: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
-        transaction_name: &str,
-    ) -> Result<()>;
+    fn delete(&self, index: &str, pk: PrimaryKey, transaction_name: &str) -> Result<()>;
 }

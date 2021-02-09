@@ -4,7 +4,6 @@ use bytes::{Buf, BytesMut}; // traits for working with buffer implementations
 use std::io::Cursor;
 use std::marker::Unpin;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
-use tokio::net::TcpStream; // byte stream between peers
 use tracing::debug;
 
 #[derive(Debug)]

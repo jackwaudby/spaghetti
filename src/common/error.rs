@@ -1,4 +1,5 @@
 use crate::common::frame::ParseError;
+use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,8 @@ pub enum SpaghettiError {
     ConnectionUnexpectedlyClosed,
     /// Two phase locking error.
     TwoPhaseLocking(TwoPhaseLockingError),
+    /// SGT error.
+    SerializationGraphTesting(SerializationGraphTestingError),
     /// Row already exists in index.
     RowAlreadyExists,
     /// Row does not exist in index.
@@ -59,6 +62,7 @@ impl fmt::Display for SpaghettiError {
             UnexpectedMessage => write!(f, "unexpected message"),
             ConnectionUnexpectedlyClosed => write!(f, "connection unexpectedly closed"),
             TwoPhaseLocking(ref e) => write!(f, "{}", e),
+            SerializationGraphTesting(ref e) => write!(f, "{}", e),
             RowAlreadyExists => write!(f, "row already exists in index."),
             RowDoesNotExist => write!(f, "row does not exist in index."),
             InvalidColumnType => write!(f, "invalid column type"),
@@ -77,7 +81,6 @@ impl error::Error for SpaghettiError {
     }
 }
 
-// Implement the conversion from ParseError to SpaghettiError
 impl From<ParseError> for SpaghettiError {
     fn from(error: ParseError) -> Self {
         SpaghettiError::Parse(error)
@@ -87,6 +90,12 @@ impl From<ParseError> for SpaghettiError {
 impl From<TwoPhaseLockingError> for SpaghettiError {
     fn from(error: TwoPhaseLockingError) -> Self {
         SpaghettiError::TwoPhaseLocking(error)
+    }
+}
+
+impl From<SerializationGraphTestingError> for SpaghettiError {
+    fn from(error: SerializationGraphTestingError) -> Self {
+        SpaghettiError::SerializationGraphTesting(error)
     }
 }
 
