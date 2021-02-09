@@ -1,9 +1,3 @@
-//! There are a few ways to handle error types.
-//! (1) Define an error type to mask all other error types, convert all types to spaghetti's error
-//! type.
-//! (2) Box errors which preserve the underlying errors. This is to be avoided in any hot path.
-//! (3) Wrap errors with spaghetti's error type, defining an enum of causes
-
 use crate::common::frame::ParseError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 
@@ -93,5 +87,46 @@ impl From<ParseError> for SpaghettiError {
 impl From<TwoPhaseLockingError> for SpaghettiError {
     fn from(error: TwoPhaseLockingError) -> Self {
         SpaghettiError::TwoPhaseLocking(error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tpl_error_test() {
+        let e1 = SpaghettiError::Incomplete;
+        let e2 = SpaghettiError::Invalid;
+        let e3 = SpaghettiError::CorruptedFrame;
+        let e4 = SpaghettiError::IncorrectWorkload;
+        let e5 = SpaghettiError::TableNotFound;
+        let e6 = SpaghettiError::IndexNotFound;
+        let e7 = SpaghettiError::NoPrimaryIndex;
+        let e8 = SpaghettiError::UnexpectedMessage;
+        let e9 = SpaghettiError::ConnectionUnexpectedlyClosed;
+        let e10 = SpaghettiError::RowAlreadyExists;
+        let e11 = SpaghettiError::RowDoesNotExist;
+        let e12 = SpaghettiError::InvalidColumnType;
+
+        assert_eq!(
+            format!("{}", e1),
+            format!("not enough data available in read buffer to parse message.")
+        );
+
+        assert_eq!(format!("{}", e2), format!("invalid message encoding."));
+        assert_eq!(
+            format!("{}", e3),
+            format!("remote connection closed during sending of a frame")
+        );
+        assert_eq!(format!("{}", e4), format!("workload not recognised"));
+        assert_eq!(format!("{}", e5), format!("table not found"));
+        assert_eq!(format!("{}", e6), format!("index not found"));
+        assert_eq!(format!("{}", e7), format!("no primary index on table"));
+        assert_eq!(format!("{}", e8), format!("unexpected message"));
+        assert_eq!(format!("{}", e9), format!("connection unexpectedly closed"));
+        assert_eq!(format!("{}", e10), format!("row already exists in index."));
+        assert_eq!(format!("{}", e11), format!("row does not exist in index."));
+        assert_eq!(format!("{}", e12), format!("invalid column type"));
     }
 }
