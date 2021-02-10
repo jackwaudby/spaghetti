@@ -248,7 +248,7 @@ mod tests {
         // Get transaction ID.
         assert_eq!(n.get_transaction_id().unwrap(), "t1".to_string());
 
-        // Add edge
+        // Insert edge.
         assert_eq!(n.insert_edge(1, EdgeType::Outgoing).unwrap(), ());
         assert_eq!(n.insert_edge(2, EdgeType::Outgoing).unwrap(), ());
         assert_eq!(
@@ -259,16 +259,24 @@ mod tests {
             format!("{}", n.insert_edge(0, EdgeType::Outgoing).unwrap_err()),
             format!("attempted to insert self edge")
         );
+        // Get outgoing.
         assert_eq!(n.get_outgoing().unwrap(), vec![1, 2]);
         assert_eq!(n.has_incoming().unwrap(), false);
-        n.insert_edge(2, EdgeType::Incoming).unwrap();
+
+        // Incoming.
+        assert_eq!(n.insert_edge(2, EdgeType::Incoming).unwrap(), ());
         assert_eq!(
             format!("{}", n.insert_edge(2, EdgeType::Incoming).unwrap_err()),
             format!("edge already exists between two nodes")
         );
         assert_eq!(n.has_incoming().unwrap(), true);
-        n.delete_edge(2, EdgeType::Incoming).unwrap();
+        assert_eq!(n.delete_edge(2, EdgeType::Incoming).unwrap(), ());
         assert_eq!(n.has_incoming().unwrap(), false);
+
+        // Delete edge.
+        assert_eq!(n.delete_edge(1, EdgeType::Outgoing).unwrap(), ());
+
+        // Node state.
         assert_eq!(n.get_state().unwrap(), State::Free);
         n.set_state(State::Active).unwrap();
         assert_eq!(n.get_state().unwrap(), State::Active);
