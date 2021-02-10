@@ -144,8 +144,8 @@ mod tests {
         // Generate new rows
         let t = Arc::new(table);
 
-        let r1 = Row::new(Arc::clone(&t));
-        let r2 = Row::new(Arc::clone(&t));
+        let r1 = Row::new(Arc::clone(&t), "2pl");
+        let r2 = Row::new(Arc::clone(&t), "2pl");
 
         assert_eq!(
             format!("{}", r1),

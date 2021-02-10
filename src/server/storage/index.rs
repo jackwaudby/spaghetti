@@ -223,7 +223,7 @@ mod tests {
         // 1. Insert entry that already exists.
         // Create dummy row in table
         let table = workload.get_internals().get_table("subscriber").unwrap();
-        let row = Row::new(Arc::clone(&table));
+        let row = Row::new(Arc::clone(&table), "2pl");
         assert_eq!(
             format!(
                 "{}",
@@ -245,7 +245,7 @@ mod tests {
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
-                    .index_remove(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(0)))
+                    .index_remove(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(0)), "2pl")
                     .unwrap_err()
             ),
             format!("row does not exist in index.")
@@ -276,7 +276,14 @@ mod tests {
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
-                    .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &cols)
+                    .index_read(
+                        PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                        &cols,
+                        "2pl",
+                        "t1"
+                    )
+                    .unwrap()
+                    .get_values()
                     .unwrap()
             )
             .unwrap(),
@@ -294,6 +301,8 @@ mod tests {
                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
                 &cols,
                 &vals,
+                "2pl",
+                "t1",
             )
             .unwrap();
 
@@ -305,7 +314,14 @@ mod tests {
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
-                    .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &cols)
+                    .index_read(
+                        PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                        &cols,
+                        "2pl",
+                        "t1"
+                    )
+                    .unwrap()
+                    .get_values()
                     .unwrap()
             )
             .unwrap(),

@@ -262,7 +262,14 @@ mod tests {
         ];
 
         let res = index
-            .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &cols_s)
+            .index_read(
+                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                &cols_s,
+                "2pl",
+                "t1",
+            )
+            .unwrap()
+            .get_values()
             .unwrap();
         assert_eq!(
             datatype::to_result(&cols_s, &res).unwrap(),
@@ -286,8 +293,9 @@ mod tests {
             datatype::to_result(
                 &cols_ai,
                 &index
-                    .index_read(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2)), &cols_ai)
-                    .unwrap()
+                    .index_read(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2)), &cols_ai,"2pl","t1")
+                      .unwrap().get_values().unwrap()
+
             )
                 .unwrap(),
 "{s_id=\"1\", ai_type=\"2\", data_1=\"51\", data_2=\"20\", data_3=\"VWD\", data_4=\"NEVIQ\"}"
@@ -319,9 +327,11 @@ mod tests {
                 &index
                     .index_read(
                         PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 2)),
-                        &cols_sf
+                        &cols_sf,
+                        "2pl",
+                        "t1",
                     )
-                    .unwrap()
+                    .unwrap().get_values().unwrap()
             )
             .unwrap(),
           "{s_id=\"1\", sf_type=\"2\", is_active=\"1\", error_cntrl=\"75\", data_a=\"67\", data_b=\"RPVZV\"}"
@@ -343,9 +353,11 @@ mod tests {
                 &index
                     .index_read(
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
-                        &cols_cf
+                        &cols_cf,
+                        "2pl",
+                        "t1",
                     )
-                    .unwrap()
+                    .unwrap().get_values().unwrap()
             )
                 .unwrap(),
             "{s_id=\"1\", sf_type=\"3\", start_time=\"16\", end_time=\"23\", number_x=\"894204830213727\"}"

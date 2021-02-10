@@ -408,38 +408,88 @@ impl SerializationGraphTesting {
 
 #[cfg(test)]
 mod test {
-
     use super::*;
+    use crate::server::scheduler::Protocol;
+    use chrono::Duration;
+    use config::Config;
+    use lazy_static::lazy_static;
+    use std::sync::Once;
+    use std::thread;
+    use std::time;
+    use std::time::SystemTime;
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+
+    static LOG: Once = Once::new();
+
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
+    }
+
+    lazy_static! {
+        static ref WORKLOAD: Arc<Workload> = {
+            // Initialise configuration.
+            let mut c = Config::default();
+            c.merge(config::File::with_name("Test.toml")).unwrap();
+            let config = Arc::new(c);
+            // Initalise workload.
+            let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
+            workload
+        };
+    }
 
     #[test]
-    fn graph() {
-        let g = Graph::new(4);
-        assert_eq!(g.nodes.len(), 4);
-        assert_eq!(g.register(), Some(0));
-        assert_eq!(g.register(), Some(1));
-        assert_eq!(g.register(), Some(2));
-        assert_eq!(g.register(), Some(3));
-        assert_eq!(g.register(), None);
+    fn sgt_test() {
+        logging(true);
+        // Initialise scheduler.
+        let sgt = SerializationGraphTesting::new(3, Arc::clone(&WORKLOAD));
 
-        for node in &g.nodes {
-            assert_eq!(node.read().unwrap().get_status(), Status::Active);
+        // Register.
+        assert_eq!(sgt.nodes.len(), 3);
+        assert_eq!(sgt.register("t1").unwrap(), ());
+        assert_eq!(sgt.register("t2").unwrap(), ());
+        assert_eq!(sgt.register("t3").unwrap(), ());
+        assert_eq!(
+            format!("{}", sgt.register("t4").unwrap_err()),
+            format!("no nodes free in graph")
+        );
+
+        // Check status.
+        for node in &sgt.nodes {
+            assert_eq!(node.read().unwrap().get_state().unwrap(), State::Active);
         }
 
-        g.add_edge(1, 2, true).unwrap(); // succeed - edge added
-        g.add_edge(1, 2, false).unwrap(); // fail - already exists
-        assert_eq!(g.get_node(2).read().unwrap().get_status(), Status::Active);
-        g.get_node(2).write().unwrap().set_status(Status::Aborted);
-        assert_eq!(g.get_node(2).read().unwrap().get_status(), Status::Aborted);
-
-        let result = g.add_edge(2, 3, false).map_err(|e| e.kind());
-        let expected = Err(ErrorKind::SerializableError);
-        assert_eq!(result, expected); // fail - aborted and ww or wr edge
-
-        g.get_node(3).write().unwrap().set_status(Status::Committed);
+        // Add some edge.
+        assert_eq!(sgt.add_edge(1, 2, true).unwrap(), ());
         assert_eq!(
-            g.get_node(3).read().unwrap().get_status(),
-            Status::Committed
+            format!("{}", sgt.add_edge(1, 2, false).unwrap_err()),
+            format!("edge already exists between two nodes")
         );
-        g.add_edge(3, 1, false).unwrap(); // succeed - parent already committed
+
+        // Change state.
+        assert_eq!(
+            sgt.get_node(2).read().unwrap().get_state().unwrap(),
+            State::Active
+        );
+        assert_eq!(
+            sgt.get_node(2)
+                .write()
+                .unwrap()
+                .set_state(State::Aborted)
+                .unwrap(),
+            ()
+        );
+        assert_eq!(
+            sgt.get_node(2).read().unwrap().get_state().unwrap(),
+            State::Aborted
+        );
     }
 }

@@ -164,7 +164,7 @@ mod tests {
         // create table
         let table = Table::init(catalog);
         // create row in table
-        let mut row = Row::new(Arc::new(table));
+        let mut row = Row::new(Arc::new(table), "2pl");
         assert_eq!(row.get_table().get_table_id(), 1);
         assert_eq!(row.get_row_id(), 0);
         assert_eq!(row.get_value("name").unwrap(), Data::Null);

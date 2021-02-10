@@ -566,7 +566,12 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &columns_sb)
+            .index_read(
+                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                &columns_sb,
+                "2pl",
+                "t1",
+            )
             .unwrap();
         let values_sf = workload
             .get_internals()
@@ -575,11 +580,13 @@ mod tests {
             .index_read(
                 PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 1)),
                 &columns_sf,
+                "2pl",
+                "t1",
             )
             .unwrap();
 
-        let res_sb = datatype::to_result(&columns_sb, &values_sb).unwrap();
-        let res_sf = datatype::to_result(&columns_sf, &values_sf).unwrap();
+        let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
+        let res_sf = datatype::to_result(&columns_sf, &values_sf.get_values().unwrap()).unwrap();
         assert_eq!(res_sb, "{bit_1=\"0\"}");
         assert_eq!(res_sf, "{data_a=\"73\"}");
 
@@ -604,7 +611,12 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &columns_sb)
+            .index_read(
+                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                &columns_sb,
+                "2pl",
+                "t1",
+            )
             .unwrap();
         let values_sf = workload
             .get_internals()
@@ -613,11 +625,13 @@ mod tests {
             .index_read(
                 PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 1)),
                 &columns_sf,
+                "2pl",
+                "t1",
             )
             .unwrap();
 
-        let res_sb = datatype::to_result(&columns_sb, &values_sb).unwrap();
-        let res_sf = datatype::to_result(&columns_sf, &values_sf).unwrap();
+        let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
+        let res_sf = datatype::to_result(&columns_sf, &values_sf.get_values().unwrap()).unwrap();
         assert_eq!(res_sb, "{bit_1=\"1\"}");
         assert_eq!(res_sf, "{data_a=\"29\"}");
 
@@ -651,9 +665,14 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &columns_sb)
+            .index_read(
+                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                &columns_sb,
+                "2pl",
+                "t1",
+            )
             .unwrap();
-        let res_sb = datatype::to_result(&columns_sb, &values_sb).unwrap();
+        let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
         assert_eq!(res_sb, "{vlr_location=\"12\"}");
 
         assert_eq!(
@@ -675,10 +694,15 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_read(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), &columns_sb)
+            .index_read(
+                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                &columns_sb,
+                "2pl",
+                "t1",
+            )
             .unwrap();
 
-        let res_sb = datatype::to_result(&columns_sb, &values_sb).unwrap();
+        let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
         assert_eq!(res_sb, "{vlr_location=\"4\"}");
 
         assert_eq!(
@@ -712,6 +736,8 @@ mod tests {
                     .index_read(
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
                         &columns_cf,
+                        "2pl",
+                        "t1",
                     )
                     .unwrap_err()
             ),
@@ -742,9 +768,11 @@ mod tests {
             .index_read(
                 PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
                 &columns_cf,
+                "2pl",
+                "t1",
             )
             .unwrap();
-        let res_cf = datatype::to_result(&columns_cf, &values_cf).unwrap();
+        let res_cf = datatype::to_result(&columns_cf, &values_cf.get_values().unwrap()).unwrap();
 
         assert_eq!(res_cf, "{number_x=\"551795089196026\"}");
 
@@ -761,9 +789,11 @@ mod tests {
             .index_read(
                 PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
                 &columns_cf,
+                "2pl",
+                "t1",
             )
             .unwrap();
-        let res_cf = datatype::to_result(&columns_cf, &values_cf).unwrap();
+        let res_cf = datatype::to_result(&columns_cf, &values_cf.get_values().unwrap()).unwrap();
 
         assert_eq!(res_cf, "{number_x=\"551795089196025\"}");
 
@@ -792,6 +822,8 @@ mod tests {
                     .index_read(
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
                         &columns_cf,
+                        "2pl",
+                        "t1",
                     )
                     .unwrap_err()
             ),
