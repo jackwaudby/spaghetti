@@ -356,4 +356,90 @@ impl SerializationGraphTesting {
         }
         Ok(false)
     }
+
+    fn clean_up_graph(&self, this_node_id: usize) {
+        // Take shared lock.
+        let this_node = self.nodes[this_node_id].read().unwrap();
+        // Get state.
+        let state = this_node.get_state().unwrap();
+        match state {
+            State::Committed => {
+                // Get outgoing edges
+                let outgoing_nodes = this_node.get_outgoing().unwrap();
+                for out in outgoing_nodes {
+                    // Get read lock on outgoing.
+                    let outgoing_node = self.get_node(out).read().unwrap();
+                    // Delete from edge sets.
+                    outgoing_node
+                        .delete_edge(this_node_id, EdgeType::Incoming)
+                        .unwrap();
+                    this_node
+                        .delete_edge(outgoing_node.id, EdgeType::Outgoing)
+                        .unwrap();
+                }
+            }
+            State::Aborted => {
+                // Get outgoing edges
+                let outgoing_nodes = this_node.get_outgoing().unwrap();
+                for out in outgoing_nodes {
+                    let outgoing_node = self.get_node(out).read().unwrap();
+                    // Abort children.
+                    if outgoing_node.get_state().unwrap() == State::Active {
+                        outgoing_node.set_state(State::Aborted).unwrap();
+                    }
+                    // Delete from edge sets
+                    outgoing_node
+                        .delete_edge(this_node_id, EdgeType::Incoming)
+                        .unwrap();
+                    this_node
+                        .delete_edge(outgoing_node.id, EdgeType::Outgoing)
+                        .unwrap();
+                }
+            }
+            _ => panic!("Node should not be in this state"),
+        }
+
+        // tx.send(this_node).unwrap();
+        // send id to garbage collector
+    }
+
+    // TODO: clean up database.
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+
+    #[test]
+    fn graph() {
+        let g = Graph::new(4);
+        assert_eq!(g.nodes.len(), 4);
+        assert_eq!(g.register(), Some(0));
+        assert_eq!(g.register(), Some(1));
+        assert_eq!(g.register(), Some(2));
+        assert_eq!(g.register(), Some(3));
+        assert_eq!(g.register(), None);
+
+        for node in &g.nodes {
+            assert_eq!(node.read().unwrap().get_status(), Status::Active);
+        }
+
+        g.add_edge(1, 2, true).unwrap(); // succeed - edge added
+        g.add_edge(1, 2, false).unwrap(); // fail - already exists
+        assert_eq!(g.get_node(2).read().unwrap().get_status(), Status::Active);
+        g.get_node(2).write().unwrap().set_status(Status::Aborted);
+        assert_eq!(g.get_node(2).read().unwrap().get_status(), Status::Aborted);
+
+        let result = g.add_edge(2, 3, false).map_err(|e| e.kind());
+        let expected = Err(ErrorKind::SerializableError);
+        assert_eq!(result, expected); // fail - aborted and ww or wr edge
+
+        g.get_node(3).write().unwrap().set_status(Status::Committed);
+        assert_eq!(
+            g.get_node(3).read().unwrap().get_status(),
+            Status::Committed
+        );
+        g.add_edge(3, 1, false).unwrap(); // succeed - parent already committed
+    }
 }
