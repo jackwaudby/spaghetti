@@ -61,6 +61,18 @@ impl Node {
         Ok(())
     }
 
+    pub fn get_transaction_id(&self) -> Result<String> {
+        let tid = self
+            .transaction_id
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .clone();
+        Ok(tid)
+        // TODO: error handling.
+    }
+
     /// Insert edge into a `Node`.
     ///
     /// # Errors

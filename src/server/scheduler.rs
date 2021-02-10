@@ -35,7 +35,7 @@ impl Protocol {
 pub trait Scheduler {
     fn register(&self, transaction_name: &str) -> Result<()>;
 
-    fn commit(&self, transaction_name: &str);
+    fn commit(&self, transaction_name: &str) -> Result<()>;
 
     fn insert(
         &self,

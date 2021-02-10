@@ -36,9 +36,10 @@ fn populate_item_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let i = data.get_index(&i_name)?;
 
     let max_items = data.config.get_int("max_items")? as u64;
+    let protocol = data.config.get_str("protocol")?;
 
     for i_id in 0..max_items + 1 {
-        let mut row = Row::new(Arc::clone(&t));
+        let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Item(i_id));
         row.set_primary_key(pk);
         row.set_value("i_id", &i_id.to_string())?;
@@ -63,9 +64,10 @@ fn populate_warehouse_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let t = data.get_table(t_name)?;
     let i_name = t.get_primary_index()?;
     let i = data.get_index(&i_name)?;
+    let protocol = data.config.get_str("protocol")?;
 
     for w_id in 0..n {
-        let mut row = Row::new(Arc::clone(&t));
+        let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Warehouse(w_id));
         row.set_primary_key(pk);
         row.set_value("w_id", &w_id.to_string())?;
@@ -95,10 +97,11 @@ fn populate_district_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let i = data.get_index(&i_name)?;
     let n = data.config.get_int("warehouses")? as u64;
     let d = data.config.get_int("districts")? as u64;
+    let protocol = data.config.get_str("protocol")?;
 
     for w_id in 0..n {
         for d_id in 0..d {
-            let mut row = Row::new(Arc::clone(&t));
+            let mut row = Row::new(Arc::clone(&t), &protocol);
             let pk = PrimaryKey::Tpcc(TpccPrimaryKey::District(w_id, d_id));
             row.set_primary_key(pk);
             row.set_value("d_id", &d_id.to_string())?;
@@ -130,12 +133,13 @@ fn populate_stock_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let i = data.get_index(&i_name)?;
 
     let n = data.config.get_int("warehouses")? as u64;
+    let protocol = data.config.get_str("protocol")?;
 
     let mi = data.config.get_int("max_items")? as u64;
 
     for w_id in 0..n {
         for s_i_id in 0..mi {
-            let mut row = Row::new(Arc::clone(&t));
+            let mut row = Row::new(Arc::clone(&t), &protocol);
             let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Stock(w_id, s_i_id));
             row.set_primary_key(pk);
             row.set_value("s_i_id", &s_i_id.to_string())?;
@@ -163,11 +167,12 @@ fn populate_customer_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let w = data.config.get_int("warehouses")? as u64;
     let d = data.config.get_int("districts")? as u64;
     let c = data.config.get_int("customers")? as u64;
+    let protocol = data.config.get_str("protocol")?;
 
     for w_id in 0..w {
         for d_id in 0..d {
             for c_id in 0..c {
-                let mut row = Row::new(Arc::clone(&t));
+                let mut row = Row::new(Arc::clone(&t), &protocol);
                 let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Customer(w_id, d_id, c_id));
                 row.set_primary_key(pk);
                 row.set_value("c_id", &c_id.to_string())?;

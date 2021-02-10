@@ -28,6 +28,10 @@ pub enum SerializationGraphTestingErrorKind {
     SelfEdge,
     /// Locking mutex failed
     MutexLockFailed,
+    /// Locking rw lock failed
+    RwLockFailed,
+    /// Serializable error
+    SerializableError,
 }
 
 impl fmt::Display for SerializationGraphTestingError {
@@ -53,6 +57,8 @@ impl fmt::Display for SerializationGraphTestingErrorKind {
             EdgeExists => "edge already exists between two nodes",
             SelfEdge => "attempted to insert self edge",
             MutexLockFailed => "locking mutex failed",
+            RwLockFailed => "locking rw lock failed",
+            SerializableError => "Serializable error",
         };
         write!(f, "{}", err_msg)
     }

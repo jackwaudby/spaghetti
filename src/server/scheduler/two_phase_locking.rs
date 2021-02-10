@@ -62,6 +62,8 @@ impl Scheduler for TwoPhaseLocking {
             "Transaction {:?} requesting read lock on {:?}",
             transaction_name, key
         );
+        let protocol = self.data.get_internals().config.get_str("protocol")?;
+
         let req = self.request_lock(
             &key.to_string(),
             LockMode::Read,
@@ -75,7 +77,8 @@ impl Scheduler for TwoPhaseLocking {
                     key, transaction_name
                 );
                 let index = self.data.get_internals().indexes.get(index).unwrap();
-                let vals = match index.index_read(key, columns) {
+
+                let vals = match index.index_read(key, columns, &protocol, transaction_name) {
                     Ok(v) => v,
                     Err(e) => {
                         debug!("Abort transaction {:?}: {:?}", transaction_name, e);
@@ -84,7 +87,7 @@ impl Scheduler for TwoPhaseLocking {
                         return Err(e);
                     }
                 };
-                Ok(vals)
+                Ok(vals.get_values().unwrap())
             }
             LockRequest::Delay(pair) => {
                 debug!("Waiting for read lock");
@@ -95,7 +98,7 @@ impl Scheduler for TwoPhaseLocking {
                 }
                 debug!("Read lock granted");
                 let index = self.data.get_internals().indexes.get(index).unwrap();
-                let vals = match index.index_read(key, columns) {
+                let vals = match index.index_read(key, columns, &protocol, transaction_name) {
                     Ok(v) => v,
                     Err(e) => {
                         debug!("Abort transaction {:?}: {:?}", transaction_name, e);
@@ -105,7 +108,7 @@ impl Scheduler for TwoPhaseLocking {
                     }
                 };
 
-                Ok(vals)
+                Ok(vals.get_values().unwrap())
             }
             LockRequest::Denied => {
                 debug!("Read lock denied");
@@ -116,10 +119,11 @@ impl Scheduler for TwoPhaseLocking {
             }
         }
     }
-    fn commit(&self, transaction_name: &str) {
+    fn commit(&self, transaction_name: &str) -> Result<()> {
         debug!("Commit transaction {:?}", transaction_name);
         self.release_locks(transaction_name);
         self.cleanup(transaction_name);
+        Ok(())
     }
 
     fn insert(
@@ -132,7 +136,9 @@ impl Scheduler for TwoPhaseLocking {
     ) -> Result<()> {
         // Initialise empty row.
         let table = self.data.get_internals().get_table(table)?;
-        let mut row = Row::new(Arc::clone(&table));
+        let protocol = self.data.get_internals().config.get_str("protocol")?;
+
+        let mut row = Row::new(Arc::clone(&table), &protocol);
         // Set PK.
         row.set_primary_key(pk);
         // Set values.
@@ -153,10 +159,12 @@ impl Scheduler for TwoPhaseLocking {
     }
 
     fn delete(&self, index: &str, pk: PrimaryKey, transaction_name: &str) -> Result<()> {
+        let protocol = self.data.get_internals().config.get_str("protocol")?;
+
         // Get index.
         let index = self.data.get_internals().indexes.get(index).unwrap();
         // Attempt to remove row.
-        match index.index_remove(pk) {
+        match index.index_remove(pk, &protocol) {
             Ok(_) => Ok(()),
             Err(e) => {
                 self.cleanup(transaction_name);
@@ -178,6 +186,8 @@ impl Scheduler for TwoPhaseLocking {
             "Transaction {:?} requesting write lock on {:?}",
             transaction_name, key
         );
+        let protocol = self.data.get_internals().config.get_str("protocol")?;
+
         let req = self.request_lock(
             &key.to_string(),
             LockMode::Write,
@@ -192,17 +202,18 @@ impl Scheduler for TwoPhaseLocking {
                     key, transaction_name
                 );
                 let index = self.data.get_internals().indexes.get(index).unwrap();
-                let vals = match index.index_write(key, columns, values) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        debug!("Abort transaction {:?}: {:?}", transaction_name, e);
-                        self.release_locks(transaction_name);
-                        self.cleanup(transaction_name);
-                        return Err(e);
-                    }
-                };
+                let _vals =
+                    match index.index_write(key, columns, values, &protocol, transaction_name) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                            self.release_locks(transaction_name);
+                            self.cleanup(transaction_name);
+                            return Err(e);
+                        }
+                    };
 
-                Ok(vals)
+                Ok(())
             }
             LockRequest::Delay(pair) => {
                 debug!("Waiting for write lock");
@@ -213,17 +224,18 @@ impl Scheduler for TwoPhaseLocking {
                 }
                 debug!("Write lock granted");
                 let index = self.data.get_internals().indexes.get(index).unwrap();
-                let vals = match index.index_write(key, columns, values) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        debug!("Abort transaction {:?}: {:?}", transaction_name, e);
-                        self.release_locks(transaction_name);
-                        self.cleanup(transaction_name);
-                        return Err(e);
-                    }
-                };
+                let _vals =
+                    match index.index_write(key, columns, values, &protocol, transaction_name) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            debug!("Abort transaction {:?}: {:?}", transaction_name, e);
+                            self.release_locks(transaction_name);
+                            self.cleanup(transaction_name);
+                            return Err(e);
+                        }
+                    };
 
-                Ok(vals)
+                Ok(())
             }
             LockRequest::Denied => {
                 debug!("Write lock denied");

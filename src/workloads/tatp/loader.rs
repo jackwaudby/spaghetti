@@ -33,10 +33,11 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
     let t = data.get_table(s_name)?;
     let i_name = t.get_primary_index()?;
     let i = data.get_index(&i_name)?;
+    let protocol = data.config.get_str("protocol")?;
 
     let subs = data.config.get_int("subscribers")? as u64;
     for s_id in 1..=subs {
-        let mut row = Row::new(Arc::clone(&t));
+        let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
         row.set_primary_key(pk);
         row.set_value("s_id", &s_id.to_string())?;
@@ -75,6 +76,7 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let t = data.get_table(ai_name)?;
     let i_name = t.get_primary_index()?;
     let i = data.get_index(&i_name)?;
+    let protocol = data.config.get_str("protocol")?;
 
     // Range of values for ai_type records.
     let ai_type_values = vec![1, 2, 3, 4];
@@ -86,7 +88,7 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
         let sample = ai_type_values.iter().choose_multiple(rng, n_ai);
         for record in 1..=n_ai {
             // Initialise empty row.
-            let mut row = Row::new(Arc::clone(&t));
+            let mut row = Row::new(Arc::clone(&t), &protocol);
             // Calculate primary key
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(s_id, record as u64));
             row.set_primary_key(pk);
@@ -124,6 +126,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
     let t = data.get_table(sf_name)?;
     let i_name = t.get_primary_index()?;
     let i = data.get_index(&i_name)?;
+    let protocol = data.config.get_str("protocol")?;
 
     // Get handle to `CallForwarding` and `Index`.
     let cf_name = "call_forwarding";
@@ -145,7 +148,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
         let sample = sf_type_values.iter().choose_multiple(rng, n_sf);
         for record in 1..=n_sf {
             // Initialise empty row.
-            let mut row = Row::new(Arc::clone(&t));
+            let mut row = Row::new(Arc::clone(&t), &protocol);
             // Calculate is_active
             let is_active = helper::is_active(rng);
             // Calculate primary key
@@ -176,7 +179,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                     let pk =
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(s_id, record as u64, st));
                     // Initialise empty row.
-                    let mut row = Row::new(Arc::clone(&cf_t));
+                    let mut row = Row::new(Arc::clone(&cf_t), &protocol);
                     row.set_primary_key(pk);
                     row.set_value("s_id", &s_id.to_string())?;
                     row.set_value("sf_type", &sample[record - 1].to_string())?;

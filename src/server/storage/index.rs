@@ -6,6 +6,7 @@ use crate::Result;
 
 use chashmap::CHashMap;
 use std::fmt;
+use std::sync::Mutex;
 
 /// An `Index` is used to access data.
 ///
@@ -15,7 +16,7 @@ pub struct Index {
     /// Index name.
     name: String,
     /// Concurrrent hashmap.
-    i: CHashMap<PrimaryKey, Row>,
+    i: CHashMap<PrimaryKey, Mutex<Row>>,
 }
 
 impl Index {
@@ -38,7 +39,7 @@ impl Index {
     ///
     /// If `Row` already exists for key an `RowAlreadyExists` entry is returned.
     pub fn index_insert(&self, key: PrimaryKey, row: Row) -> Result<()> {
-        let res = self.i.insert(key, row);
+        let res = self.i.insert(key, Mutex::new(row));
 
         match res {
             Some(existing_row) => {
@@ -55,12 +56,26 @@ impl Index {
     /// # Errors
     ///
     /// If `Row` does not exists for key a `RowDoesNotExist` error is returned.
-    pub fn index_remove(&self, key: PrimaryKey) -> Result<()> {
-        let res = self.i.remove(&key);
+    pub fn index_remove(&self, key: PrimaryKey, protocol: &str) -> Result<OperationResult> {
+        let row = self.i.remove(&key);
 
-        match res {
-            Some(_) => Ok(()),
-            None => Err(SpaghettiError::RowDoesNotExist.into()),
+        match row {
+            Some(row) => {
+                match protocol {
+                    "sgt" => {
+                        // Get access history.
+                        let ah = row.lock().unwrap().get_access_history().unwrap();
+                        let res = OperationResult::new(None, Some(ah));
+
+                        return Ok(res);
+                    }
+                    _ => {
+                        let res = OperationResult::new(None, None);
+                        return Ok(res);
+                    }
+                };
+            }
+            None => return Err(SpaghettiError::RowDoesNotExist.into()),
         }
     }
 
@@ -69,20 +84,41 @@ impl Index {
     /// # Errors
     ///
     /// `RowDoesNotexist` if the row does not exist in the index.
-    pub fn index_read(&self, key: PrimaryKey, columns: &Vec<&str>) -> Result<Vec<Data>> {
+    pub fn index_read(
+        &self,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        protocol: &str,
+        transaction_id: &str,
+    ) -> Result<OperationResult> {
         // Attempt to get read guard.
         let read_guard = self
             .i
             .get(&key)
             .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
         // Deref to row.
-        let row = &*read_guard;
+        let row = &mut *read_guard.lock().unwrap();
 
-        let mut res = Vec::new();
+        let access_history = match protocol {
+            "sgt" => {
+                // Get access history.
+                let ah = row.get_access_history().unwrap();
+                // Append access.
+                row.append_access(Access::Read(transaction_id.to_string()))
+                    .unwrap();
+                Some(ah)
+            }
+            _ => None,
+        };
+
+        // Values
+        let mut values = Vec::new();
         for column in columns {
             let value = row.get_value(column)?;
-            res.push(value);
+            values.push(value);
         }
+
+        let res = OperationResult::new(Some(values), access_history);
 
         Ok(res)
     }
@@ -93,19 +129,36 @@ impl Index {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-    ) -> Result<()> {
+        protocol: &str,
+        transaction_id: &str,
+    ) -> Result<OperationResult> {
         // Attempt to get write guard.
-        let mut write_guard = self
+        let write_guard = self
             .i
-            .get_mut(&key)
+            .get(&key)
             .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
         // Deref to row.
-        let row = &mut *write_guard;
+        let row = &mut *write_guard.lock().unwrap();
+
+        let access_history = match protocol {
+            "sgt" => {
+                // Get access history.
+                let ah = row.get_access_history().unwrap();
+                // Append access.
+                row.append_access(Access::Write(transaction_id.to_string()))
+                    .unwrap();
+                Some(ah)
+            }
+            _ => None,
+        };
 
         for (i, name) in columns.iter().enumerate() {
             row.set_value(name, values[i])?;
         }
-        Ok(())
+
+        let res = OperationResult::new(None, access_history);
+
+        Ok(res)
     }
 }
 
@@ -113,6 +166,35 @@ impl fmt::Display for Index {
     /// Format: [name,num_rows].
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{},{}]", self.name, self.i.len())
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Access {
+    Read(String),
+    Write(String),
+}
+
+#[derive(Debug)]
+pub struct OperationResult {
+    values: Option<Vec<Data>>,
+    access_history: Option<Vec<Access>>,
+}
+
+impl OperationResult {
+    fn new(values: Option<Vec<Data>>, access_history: Option<Vec<Access>>) -> OperationResult {
+        OperationResult {
+            values,
+            access_history,
+        }
+    }
+
+    pub fn get_values(&self) -> Option<Vec<Data>> {
+        self.values.clone()
+    }
+
+    pub fn get_access_history(&self) -> Option<Vec<Access>> {
+        self.access_history.clone()
     }
 }
 

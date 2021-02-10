@@ -80,7 +80,7 @@ pub fn get_subscriber_data(
         .scheduler
         .read("sub_idx", pk, &columns, t_id, t_ts)?;
     // Commit transaction.
-    protocol.scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id)?;
     // Convert to result
     let res = datatype::to_result(&columns, &values)?;
 
@@ -154,7 +154,7 @@ pub fn get_new_destination(
         return Err(Box::new(SpaghettiError::RowDoesNotExist));
     }
     // Commit transaction.
-    protocol.scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id)?;
     // Convert to result
     let res = datatype::to_result(&vec![cf_columns[4].clone()], &vec![cf_res[4].clone()])?;
     Ok(res)
@@ -190,7 +190,7 @@ pub fn get_access_data(
         .scheduler
         .read("access_idx", pk, &columns, t_id, t_ts)?;
     // Commit transaction.
-    protocol.scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id)?;
     // Convert to result
     let res = datatype::to_result(&columns, &values)?;
 
@@ -243,7 +243,7 @@ pub fn update_subscriber_data(
         .write("special_idx", pk_sp, &columns_sp, &values_sp, t_id, t_ts)?;
 
     // Commit transaction.
-    protocol.scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id)?;
 
     Ok("{\"updated 2 rows.\"}".to_string())
 }
@@ -281,7 +281,7 @@ pub fn update_location(
         .write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
 
     // Commit transaction.
-    protocol.scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id)?;
 
     Ok("{\"updated 1 row.\"}".to_string())
 }
@@ -356,7 +356,7 @@ pub fn insert_call_forwarding(
         .insert(cf_name, pk_cf, &columns_cf, &values_cf, t_id)?;
 
     // Commit transaction.
-    protocol.scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id)?;
 
     Ok("{\"inserted 1 row into call_forwarding.\"}".to_string())
 }
@@ -401,7 +401,7 @@ pub fn delete_call_forwarding(
     protocol.scheduler.delete("call_idx", pk_cf, t_id)?;
 
     // Commit transaction.
-    protocol.scheduler.commit(t_id);
+    protocol.scheduler.commit(t_id)?;
 
     Ok("{\"deleted 1 row from call_forwarding.\"}".to_string())
 }
