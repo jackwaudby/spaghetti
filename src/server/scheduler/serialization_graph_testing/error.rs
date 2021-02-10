@@ -32,6 +32,8 @@ pub enum SerializationGraphTestingErrorKind {
     RwLockFailed,
     /// Serializable error
     SerializableError,
+    /// Transaction ID not set
+    TransactionIdNotSet,
 }
 
 impl fmt::Display for SerializationGraphTestingError {
@@ -59,6 +61,7 @@ impl fmt::Display for SerializationGraphTestingErrorKind {
             MutexLockFailed => "locking mutex failed",
             RwLockFailed => "locking rw lock failed",
             SerializableError => "Serializable error",
+            TransactionIdNotSet => "transaction id not set",
         };
         write!(f, "{}", err_msg)
     }
@@ -86,7 +89,9 @@ mod tests {
         let e7 = SerializationGraphTestingError::new(
             SerializationGraphTestingErrorKind::SerializableError,
         );
-
+        let e8 = SerializationGraphTestingError::new(
+            SerializationGraphTestingErrorKind::TransactionIdNotSet,
+        );
         assert_eq!(format!("{}", e1), format!("no nodes free in graph"));
         assert_eq!(
             format!("{}", e2),
@@ -101,5 +106,6 @@ mod tests {
 
         assert_eq!(format!("{}", e6), format!("locking rw lock failed"));
         assert_eq!(format!("{}", e7), format!("Serializable error"));
+        assert_eq!(format!("{}", e8), format!("transaction id not set"));
     }
 }

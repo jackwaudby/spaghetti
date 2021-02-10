@@ -39,10 +39,10 @@ impl Node {
         }
     }
 
-    /// Set transaction id of `Node`.
+    /// Set transaction ID of `Node`.
     ///
     /// # Errors
-    /// - Transaction id already set.
+    /// - Transaction ID already set.
     pub fn set_transaction_id(&self, tid: &str) -> Result<()> {
         let mut mg = self.transaction_id.lock().map_err(|_| {
             SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
@@ -61,13 +61,20 @@ impl Node {
         Ok(())
     }
 
+    /// Get transaction ID of `Node`.
     pub fn get_transaction_id(&self) -> Result<String> {
         let tid = self
             .transaction_id
             .lock()
-            .unwrap()
+            .map_err(|_| {
+                SerializationGraphTestingError::new(
+                    SerializationGraphTestingErrorKind::MutexLockFailed,
+                )
+            })?
             .as_ref()
-            .unwrap()
+            .ok_or(SerializationGraphTestingError::new(
+                SerializationGraphTestingErrorKind::TransactionIdNotSet,
+            ))?
             .clone();
         Ok(tid)
         // TODO: error handling.
@@ -224,9 +231,26 @@ mod tests {
 
     #[test]
     fn node_test() {
+        // Create node.
         let n = Node::new(0);
-        n.insert_edge(1, EdgeType::Outgoing).unwrap();
-        n.insert_edge(2, EdgeType::Outgoing).unwrap();
+        // Get transaction ID error.
+        assert_eq!(
+            format!("{}", n.get_transaction_id().unwrap_err()),
+            format!("transaction id not set")
+        );
+        // Set transaction ID.
+        assert_eq!(n.set_transaction_id("t1").unwrap(), ());
+        // Set transaction ID error.
+        assert_eq!(
+            format!("{}", n.set_transaction_id("t1").unwrap_err()),
+            format!("transaction id field already set")
+        );
+        // Get transaction ID.
+        assert_eq!(n.get_transaction_id().unwrap(), "t1".to_string());
+
+        // Add edge
+        assert_eq!(n.insert_edge(1, EdgeType::Outgoing).unwrap(), ());
+        assert_eq!(n.insert_edge(2, EdgeType::Outgoing).unwrap(), ());
         assert_eq!(
             format!("{}", n.insert_edge(1, EdgeType::Outgoing).unwrap_err()),
             format!("edge already exists between two nodes")
@@ -235,16 +259,13 @@ mod tests {
             format!("{}", n.insert_edge(0, EdgeType::Outgoing).unwrap_err()),
             format!("attempted to insert self edge")
         );
-
         assert_eq!(n.get_outgoing().unwrap(), vec![1, 2]);
         assert_eq!(n.has_incoming().unwrap(), false);
-
         n.insert_edge(2, EdgeType::Incoming).unwrap();
         assert_eq!(
             format!("{}", n.insert_edge(2, EdgeType::Incoming).unwrap_err()),
             format!("edge already exists between two nodes")
         );
-
         assert_eq!(n.has_incoming().unwrap(), true);
         n.delete_edge(2, EdgeType::Incoming).unwrap();
         assert_eq!(n.has_incoming().unwrap(), false);
