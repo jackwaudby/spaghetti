@@ -69,10 +69,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tpl_error_test() {
+    fn sgt_error_test() {
         let e1 =
             SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::NoSpaceInGraph);
+        let e2 = SerializationGraphTestingError::new(
+            SerializationGraphTestingErrorKind::TransactionIdAlreadySet,
+        );
+        let e3 =
+            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::EdgeExists);
+        let e4 = SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::SelfEdge);
+        let e5 = SerializationGraphTestingError::new(
+            SerializationGraphTestingErrorKind::MutexLockFailed,
+        );
+        let e6 =
+            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::RwLockFailed);
+        let e7 = SerializationGraphTestingError::new(
+            SerializationGraphTestingErrorKind::SerializableError,
+        );
 
         assert_eq!(format!("{}", e1), format!("no nodes free in graph"));
+        assert_eq!(
+            format!("{}", e2),
+            format!("transaction id field already set")
+        );
+        assert_eq!(
+            format!("{}", e3),
+            format!("edge already exists between two nodes")
+        );
+        assert_eq!(format!("{}", e4), format!("attempted to insert self edge"));
+        assert_eq!(format!("{}", e5), format!("locking mutex failed"));
+
+        assert_eq!(format!("{}", e6), format!("locking rw lock failed"));
+        assert_eq!(format!("{}", e7), format!("Serializable error"));
     }
 }
