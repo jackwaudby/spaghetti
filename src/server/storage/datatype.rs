@@ -40,12 +40,7 @@ impl fmt::Display for Data {
 impl fmt::Display for Field {
     /// Format: value.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &self.data {
-            Data::Int(val) => write!(f, "{}", val.to_string()),
-            Data::VarChar(ref val) => write!(f, "{}", val),
-            Data::Double(val) => write!(f, "{}", val.to_string()),
-            Data::Null => write!(f, "null"),
-        }
+        write!(f, "{}", self.data)
     }
 }
 
