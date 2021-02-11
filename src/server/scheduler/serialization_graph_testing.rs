@@ -58,6 +58,7 @@ impl Scheduler for SerializationGraphTesting {
         )))
     }
 
+    /// Execute a read operation.
     fn read(
         &self,
         index: &str,
@@ -409,14 +410,20 @@ impl SerializationGraphTesting {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::server::scheduler::Protocol;
-    use chrono::Duration;
+    // use crate::server::scheduler::Protocol;
+    // use crate::server::storage::datatype;
+    use crate::workloads::tatp;
+    // use crate::workloads::tatp::keys::TatpPrimaryKey;
+    use crate::workloads::Internal;
+    // use chrono::Duration;
     use config::Config;
     use lazy_static::lazy_static;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
     use std::sync::Once;
-    use std::thread;
-    use std::time;
-    use std::time::SystemTime;
+    // use std::thread;
+    // use std::time;
+    // use std::time::SystemTime;
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
 
@@ -435,20 +442,27 @@ mod test {
     }
 
     lazy_static! {
-        static ref WORKLOAD: Arc<Workload> = {
+       static ref WORKLOAD: Arc<Workload> = {
             // Initialise configuration.
             let mut c = Config::default();
-            c.merge(config::File::with_name("Test.toml")).unwrap();
+            // Load from test file.
+            c.merge(config::File::with_name("Sgt.toml")).unwrap();
             let config = Arc::new(c);
-            // Initalise workload.
-            let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
-            workload
+           // Rng with fixed seed.
+           let mut rng = StdRng::seed_from_u64(42);
+           // Initialise internals.
+           let internals = Internal::new("tatp_schema.txt", config).unwrap();
+           // Load tables.
+           tatp::loader::populate_tables(&internals, &mut rng).unwrap();
+           // Create workload.
+           let workload = Arc::new(Workload::Tatp(internals));
+           workload
         };
     }
 
     #[test]
     fn sgt_test() {
-        logging(true);
+        logging(false);
         // Initialise scheduler.
         let sgt = SerializationGraphTesting::new(3, Arc::clone(&WORKLOAD));
 
@@ -462,34 +476,13 @@ mod test {
             format!("no nodes free in graph")
         );
 
-        // Check status.
-        for node in &sgt.nodes {
-            assert_eq!(node.read().unwrap().get_state().unwrap(), State::Active);
-        }
+        // Get index.
+        let _sub_idx = WORKLOAD.get_internals().get_index("sub_idx").unwrap();
 
-        // Add some edge.
-        assert_eq!(sgt.add_edge(1, 2, true).unwrap(), ());
-        assert_eq!(
-            format!("{}", sgt.add_edge(1, 2, false).unwrap_err()),
-            format!("edge already exists between two nodes")
-        );
+        // Values to read/write.
+        let _cols = vec!["bit_4", "byte_2_5"];
+        let _vals = vec!["0", "69"];
 
-        // Change state.
-        assert_eq!(
-            sgt.get_node(2).read().unwrap().get_state().unwrap(),
-            State::Active
-        );
-        assert_eq!(
-            sgt.get_node(2)
-                .write()
-                .unwrap()
-                .set_state(State::Aborted)
-                .unwrap(),
-            ()
-        );
-        assert_eq!(
-            sgt.get_node(2).read().unwrap().get_state().unwrap(),
-            State::Aborted
-        );
+        // Read
     }
 }

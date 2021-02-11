@@ -95,7 +95,7 @@ impl fmt::Display for Internal {
 
 impl Internal {
     /// Create empty tables and initialise indexes.
-    fn new(filename: &str, config: Arc<Config>) -> Result<Internal> {
+    pub fn new(filename: &str, config: Arc<Config>) -> Result<Internal> {
         // Load schema file.
         let path = Path::new(filename);
         let mut file = File::open(&path)?;

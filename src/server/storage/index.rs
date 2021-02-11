@@ -16,7 +16,7 @@ pub struct Index {
     /// Index name.
     name: String,
     /// Concurrrent hashmap.
-    i: CHashMap<PrimaryKey, Mutex<Row>>,
+    pub i: CHashMap<PrimaryKey, Mutex<Row>>,
 }
 
 impl Index {
