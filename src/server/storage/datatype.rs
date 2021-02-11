@@ -3,7 +3,7 @@ use crate::Result;
 use std::fmt::{self, Write};
 
 /// Element of a `Row' that holds `Data`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Field {
     data: Data,
 }

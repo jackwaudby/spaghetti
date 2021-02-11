@@ -39,8 +39,12 @@ pub enum SpaghettiError {
     RowAlreadyExists,
     /// Row does not exist in index.
     RowDoesNotExist,
-    /// Invalid column type
+    /// Invalid column type.
     InvalidColumnType,
+    /// Row dirty.
+    RowDirty,
+    // Access history not initalised.
+    NotTrackingAccessHistory,
 }
 
 impl fmt::Display for SpaghettiError {
@@ -66,6 +70,8 @@ impl fmt::Display for SpaghettiError {
             RowAlreadyExists => write!(f, "row already exists in index."),
             RowDoesNotExist => write!(f, "row does not exist in index."),
             InvalidColumnType => write!(f, "invalid column type"),
+            RowDirty => write!(f, "row already dirty"),
+            NotTrackingAccessHistory => write!(f, "not tracking access history"),
         }
     }
 }
@@ -117,6 +123,8 @@ mod tests {
         let e10 = SpaghettiError::RowAlreadyExists;
         let e11 = SpaghettiError::RowDoesNotExist;
         let e12 = SpaghettiError::InvalidColumnType;
+        let e13 = SpaghettiError::RowDirty;
+        let e14 = SpaghettiError::NotTrackingAccessHistory;
 
         assert_eq!(
             format!("{}", e1),
@@ -137,5 +145,7 @@ mod tests {
         assert_eq!(format!("{}", e10), format!("row already exists in index."));
         assert_eq!(format!("{}", e11), format!("row does not exist in index."));
         assert_eq!(format!("{}", e12), format!("invalid column type"));
+        assert_eq!(format!("{}", e13), format!("row already dirty"));
+        assert_eq!(format!("{}", e14), format!("not tracking access history"));
     }
 }

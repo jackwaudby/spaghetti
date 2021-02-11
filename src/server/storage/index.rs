@@ -1,5 +1,7 @@
 use crate::common::error::SpaghettiError;
 use crate::server::storage::datatype::Data;
+use crate::server::storage::row::Access;
+use crate::server::storage::row::OperationResult;
 use crate::server::storage::row::Row;
 use crate::workloads::PrimaryKey;
 use crate::Result;
@@ -111,14 +113,7 @@ impl Index {
             _ => None,
         };
 
-        // Values
-        let mut values = Vec::new();
-        for column in columns {
-            let value = row.get_value(column)?;
-            values.push(value);
-        }
-
-        let res = OperationResult::new(Some(values), access_history);
+        let res = row.get_values(columns, protocol, transaction_id)?;
 
         Ok(res)
     }
@@ -166,35 +161,6 @@ impl fmt::Display for Index {
     /// Format: [name,num_rows].
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "[{},{}]", self.name, self.i.len())
-    }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum Access {
-    Read(String),
-    Write(String),
-}
-
-#[derive(Debug)]
-pub struct OperationResult {
-    values: Option<Vec<Data>>,
-    access_history: Option<Vec<Access>>,
-}
-
-impl OperationResult {
-    fn new(values: Option<Vec<Data>>, access_history: Option<Vec<Access>>) -> OperationResult {
-        OperationResult {
-            values,
-            access_history,
-        }
-    }
-
-    pub fn get_values(&self) -> Option<Vec<Data>> {
-        self.values.clone()
-    }
-
-    pub fn get_access_history(&self) -> Option<Vec<Access>> {
-        self.access_history.clone()
     }
 }
 

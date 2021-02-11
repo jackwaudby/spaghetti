@@ -4,8 +4,7 @@ use crate::server::scheduler::serialization_graph_testing::error::{
 use crate::server::scheduler::serialization_graph_testing::node::{EdgeType, Node, State};
 use crate::server::scheduler::Scheduler;
 use crate::server::storage::datatype::Data;
-use crate::server::storage::index::Access;
-use crate::server::storage::row::Row;
+use crate::server::storage::row::{Access, Row};
 use crate::workloads::{PrimaryKey, Workload};
 use crate::Result;
 
