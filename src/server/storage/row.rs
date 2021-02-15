@@ -37,7 +37,7 @@ pub struct Row {
 /// Represents the type of access made to row.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Access {
-    /// Get.
+    /// Get
     Read(String),
     /// Set.
     Write(String),
