@@ -147,7 +147,7 @@ impl Row {
     }
 
     /// Initialise the value of a field in a row.
-    pub fn set_value(&mut self, col_name: &str, col_value: &str) -> Result<()> {
+    pub fn init_value(&mut self, col_name: &str, col_value: &str) -> Result<()> {
         // Get handle to table.
         let table = Arc::clone(&self.table);
         // Get index of field in row.
@@ -563,6 +563,69 @@ mod tests {
         assert_eq!(
             format!("{}", row),
             "[0, None, false, cars, el camino, 2019, 53.2, Some([Read(\"t3\")])]"
+        );
+    }
+
+    #[test]
+    fn row_edge_cases_test() {
+        // create table schema
+        let mut catalog = Catalog::init("cars", 1);
+        catalog.add_column(("name", "string")).unwrap();
+        catalog.add_column(("year", "int")).unwrap();
+        catalog.add_column(("amount", "double")).unwrap();
+        // create table
+        let table = Arc::new(Table::init(catalog));
+        // create row in table
+        let mut row = Row::new(Arc::clone(&table), "sgt");
+
+        assert_eq!(row.get_table().get_table_id(), 1);
+        assert_eq!(row.get_row_id(), 0);
+
+        let columns = vec!["name", "year", "amount"];
+        let values = vec!["el camino", "2019", "53.2"];
+
+        // writes
+        let w1 = row.set_values(&columns, &values, "sgt", "t1").unwrap();
+
+        assert_eq!(
+            format!(
+                "{}",
+                row.set_values(&columns, &values, "sgt", "t2").unwrap_err()
+            ),
+            "row already dirty"
+        );
+
+        // access history error.
+        let mut row1 = Row::new(Arc::clone(&table), "2pl");
+
+        assert_eq!(
+            format!(
+                "{}",
+                row1.append_access(Access::Read("t1".to_string()))
+                    .unwrap_err()
+            ),
+            "not tracking access history"
+        );
+
+        assert_eq!(
+            format!("{}", row1.get_access_history().unwrap_err()),
+            "not tracking access history"
+        );
+
+        // init_value
+        let mut row1 = Row::new(Arc::clone(&table), "sgt");
+        assert_eq!(row1.init_value("name", "jack").unwrap(), ());
+        assert_eq!(row1.init_value("year", "40").unwrap(), ());
+        assert_eq!(row1.init_value("amount", "43.2").unwrap(), ());
+        // row dirty
+        let w1 = row1.set_values(&columns, &values, "sgt", "t2").unwrap();
+
+        assert_eq!(
+            format!(
+                "{}",
+                row1.set_values(&columns, &values, "sgt", "t2").unwrap_err()
+            ),
+            "row already dirty"
         );
     }
 }

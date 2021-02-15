@@ -42,11 +42,11 @@ fn populate_item_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Item(i_id));
         row.set_primary_key(pk);
-        row.set_value("i_id", &i_id.to_string())?;
-        row.set_value("i_im_id", &rng.gen_range(1..=10000).to_string())?;
-        row.set_value("i_name", &helper::random_string(14, 24, rng))?;
-        row.set_value("i_price", &helper::random_float(1.0, 100.0, 2, rng))?;
-        row.set_value("i_data", &helper::item_data(rng))?;
+        row.init_value("i_id", &i_id.to_string())?;
+        row.init_value("i_im_id", &rng.gen_range(1..=10000).to_string())?;
+        row.init_value("i_name", &helper::random_string(14, 24, rng))?;
+        row.init_value("i_price", &helper::random_float(1.0, 100.0, 2, rng))?;
+        row.init_value("i_data", &helper::item_data(rng))?;
         i.index_insert(pk, row)?;
     }
     Ok(())
@@ -70,15 +70,15 @@ fn populate_warehouse_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Warehouse(w_id));
         row.set_primary_key(pk);
-        row.set_value("w_id", &w_id.to_string())?;
-        row.set_value("w_name", &helper::random_string(6, 10, rng))?;
-        row.set_value("w_street_1", &helper::random_string(10, 20, rng))?;
-        row.set_value("w_street_2", &helper::random_string(10, 20, rng))?;
-        row.set_value("w_city", &helper::random_string(10, 20, rng))?;
-        row.set_value("w_state", &helper::random_string(2, 2, rng))?;
-        row.set_value("w_zip", &helper::zip(rng))?;
-        row.set_value("w_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
-        row.set_value("w_ytd", "300000.0")?;
+        row.init_value("w_id", &w_id.to_string())?;
+        row.init_value("w_name", &helper::random_string(6, 10, rng))?;
+        row.init_value("w_street_1", &helper::random_string(10, 20, rng))?;
+        row.init_value("w_street_2", &helper::random_string(10, 20, rng))?;
+        row.init_value("w_city", &helper::random_string(10, 20, rng))?;
+        row.init_value("w_state", &helper::random_string(2, 2, rng))?;
+        row.init_value("w_zip", &helper::zip(rng))?;
+        row.init_value("w_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
+        row.init_value("w_ytd", "300000.0")?;
         i.index_insert(pk, row)?;
     }
     Ok(())
@@ -104,17 +104,17 @@ fn populate_district_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
             let mut row = Row::new(Arc::clone(&t), &protocol);
             let pk = PrimaryKey::Tpcc(TpccPrimaryKey::District(w_id, d_id));
             row.set_primary_key(pk);
-            row.set_value("d_id", &d_id.to_string())?;
-            row.set_value("d_w_id", &w_id.to_string())?;
-            row.set_value("d_name", &helper::random_string(6, 10, rng))?;
-            row.set_value("d_street_1", &helper::random_string(10, 20, rng))?;
-            row.set_value("d_street_2", &helper::random_string(10, 20, rng))?;
-            row.set_value("d_city", &helper::random_string(10, 20, rng))?;
-            row.set_value("d_state", &helper::random_string(2, 2, rng))?;
-            row.set_value("d_zip", &helper::zip(rng))?;
-            row.set_value("d_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
-            row.set_value("d_ytd", "30000.0")?;
-            row.set_value("d_next_o_id", "3001")?;
+            row.init_value("d_id", &d_id.to_string())?;
+            row.init_value("d_w_id", &w_id.to_string())?;
+            row.init_value("d_name", &helper::random_string(6, 10, rng))?;
+            row.init_value("d_street_1", &helper::random_string(10, 20, rng))?;
+            row.init_value("d_street_2", &helper::random_string(10, 20, rng))?;
+            row.init_value("d_city", &helper::random_string(10, 20, rng))?;
+            row.init_value("d_state", &helper::random_string(2, 2, rng))?;
+            row.init_value("d_zip", &helper::zip(rng))?;
+            row.init_value("d_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
+            row.init_value("d_ytd", "30000.0")?;
+            row.init_value("d_next_o_id", "3001")?;
             i.index_insert(pk, row)?;
         }
     }
@@ -142,10 +142,10 @@ fn populate_stock_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
             let mut row = Row::new(Arc::clone(&t), &protocol);
             let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Stock(w_id, s_i_id));
             row.set_primary_key(pk);
-            row.set_value("s_i_id", &s_i_id.to_string())?;
-            row.set_value("s_w_id", &w_id.to_string())?;
-            row.set_value("s_quantity", &rng.gen_range(10..=100).to_string())?;
-            row.set_value("s_remote_cnt", "0")?;
+            row.init_value("s_i_id", &s_i_id.to_string())?;
+            row.init_value("s_w_id", &w_id.to_string())?;
+            row.init_value("s_quantity", &rng.gen_range(10..=100).to_string())?;
+            row.init_value("s_remote_cnt", "0")?;
             i.index_insert(pk, row)?;
         }
     }
@@ -175,14 +175,14 @@ fn populate_customer_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
                 let mut row = Row::new(Arc::clone(&t), &protocol);
                 let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Customer(w_id, d_id, c_id));
                 row.set_primary_key(pk);
-                row.set_value("c_id", &c_id.to_string())?;
-                row.set_value("c_d_id", &d_id.to_string())?;
-                row.set_value("c_w_id", &w_id.to_string())?;
-                row.set_value("c_last", &helper::last_name(c_id, rng))?;
-                row.set_value("c_discount", &helper::random_float(0.0, 0.5, 4, rng))?;
-                row.set_value("c_balance", "-10.0")?;
-                row.set_value("c_ytd_payment", "10.0")?;
-                row.set_value("c_payment_cnt", "1")?;
+                row.init_value("c_id", &c_id.to_string())?;
+                row.init_value("c_d_id", &d_id.to_string())?;
+                row.init_value("c_w_id", &w_id.to_string())?;
+                row.init_value("c_last", &helper::last_name(c_id, rng))?;
+                row.init_value("c_discount", &helper::random_float(0.0, 0.5, 4, rng))?;
+                row.init_value("c_balance", "-10.0")?;
+                row.init_value("c_ytd_payment", "10.0")?;
+                row.init_value("c_payment_cnt", "1")?;
                 i.index_insert(pk, row)?;
             }
         }

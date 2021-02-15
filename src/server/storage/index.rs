@@ -148,7 +148,7 @@ impl Index {
         };
 
         for (i, name) in columns.iter().enumerate() {
-            row.set_value(name, values[i])?;
+            row.init_value(name, values[i])?;
         }
 
         let res = OperationResult::new(None, access_history);

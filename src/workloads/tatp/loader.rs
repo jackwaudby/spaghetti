@@ -40,24 +40,24 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
         row.set_primary_key(pk);
-        row.set_value("s_id", &s_id.to_string())?;
-        row.set_value("sub_nbr", &helper::to_sub_nbr(s_id))?;
+        row.init_value("s_id", &s_id.to_string())?;
+        row.init_value("sub_nbr", &helper::to_sub_nbr(s_id))?;
         for i in 1..=10 {
-            row.set_value(
+            row.init_value(
                 format!("bit_{}", i).as_str(),
                 &rng.gen_range(0..=1).to_string(),
             )?;
-            row.set_value(
+            row.init_value(
                 format!("hex_{}", i).as_str(),
                 &rng.gen_range(0..=15).to_string(),
             )?;
-            row.set_value(
+            row.init_value(
                 format!("byte_2_{}", i).as_str(),
                 &rng.gen_range(0..=255).to_string(),
             )?;
         }
-        row.set_value("msc_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
-        row.set_value("vlr_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
+        row.init_value("msc_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
+        row.init_value("vlr_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
         debug!("{}", row);
         i.index_insert(pk, row)?;
     }
@@ -92,12 +92,12 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
             // Calculate primary key
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(s_id, record as u64));
             row.set_primary_key(pk);
-            row.set_value("s_id", &s_id.to_string())?;
-            row.set_value("ai_type", &sample[record - 1].to_string())?;
-            row.set_value("data_1", &rng.gen_range(0..=255).to_string())?;
-            row.set_value("data_2", &rng.gen_range(0..=255).to_string())?;
-            row.set_value("data_3", &helper::get_data_x(3, rng))?;
-            row.set_value("data_4", &helper::get_data_x(5, rng))?;
+            row.init_value("s_id", &s_id.to_string())?;
+            row.init_value("ai_type", &sample[record - 1].to_string())?;
+            row.init_value("data_1", &rng.gen_range(0..=255).to_string())?;
+            row.init_value("data_2", &rng.gen_range(0..=255).to_string())?;
+            row.init_value("data_3", &helper::get_data_x(3, rng))?;
+            row.init_value("data_4", &helper::get_data_x(5, rng))?;
             debug!("{}", row);
             i.index_insert(pk, row)?;
         }
@@ -154,12 +154,12 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
             // Calculate primary key
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(s_id, record as u64));
             row.set_primary_key(pk);
-            row.set_value("s_id", &s_id.to_string())?;
-            row.set_value("sf_type", &sample[record - 1].to_string())?;
-            row.set_value("is_active", &is_active.to_string())?;
-            row.set_value("error_cntrl", &rng.gen_range(0..=255).to_string())?;
-            row.set_value("data_a", &rng.gen_range(0..=255).to_string())?;
-            row.set_value("data_b", &helper::get_data_x(5, rng))?;
+            row.init_value("s_id", &s_id.to_string())?;
+            row.init_value("sf_type", &sample[record - 1].to_string())?;
+            row.init_value("is_active", &is_active.to_string())?;
+            row.init_value("error_cntrl", &rng.gen_range(0..=255).to_string())?;
+            row.init_value("data_a", &rng.gen_range(0..=255).to_string())?;
+            row.init_value("data_b", &helper::get_data_x(5, rng))?;
             debug!("{}", row);
             i.index_insert(pk, row)?;
 
@@ -181,11 +181,11 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                     // Initialise empty row.
                     let mut row = Row::new(Arc::clone(&cf_t), &protocol);
                     row.set_primary_key(pk);
-                    row.set_value("s_id", &s_id.to_string())?;
-                    row.set_value("sf_type", &sample[record - 1].to_string())?;
-                    row.set_value("start_time", &st.to_string())?;
-                    row.set_value("end_time", &et.to_string())?;
-                    row.set_value("number_x", &nx)?;
+                    row.init_value("s_id", &s_id.to_string())?;
+                    row.init_value("sf_type", &sample[record - 1].to_string())?;
+                    row.init_value("start_time", &st.to_string())?;
+                    row.init_value("end_time", &et.to_string())?;
+                    row.init_value("number_x", &nx)?;
                     debug!("{}", row);
                     cf_i.index_insert(pk, row)?;
                 }

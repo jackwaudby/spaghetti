@@ -154,7 +154,7 @@ impl Scheduler for SerializationGraphTesting {
         row.set_primary_key(pk);
         // Set values.
         for (i, column) in columns.iter().enumerate() {
-            row.set_value(column, &values[i].to_string())?;
+            row.init_value(column, &values[i].to_string())?;
         }
         // Get index.
         let index = table.get_primary_index()?;

@@ -62,22 +62,25 @@ impl Scheduler for TwoPhaseLocking {
             "Transaction {:?} requesting read lock on {:?}",
             transaction_name, key
         );
+        // Get protocol.
         let protocol = self.data.get_internals().config.get_str("protocol")?;
-
+        // Get read lock on row with pk `key`.
         let req = self.request_lock(
             &key.to_string(),
             LockMode::Read,
             transaction_name,
             transaction_ts,
         );
+
         match req {
             LockRequest::Granted => {
                 debug!(
                     "Read lock for {:?} granted to transaction {:?}",
                     key, transaction_name
                 );
+                // Get index for this key's table.
                 let index = self.data.get_internals().indexes.get(index).unwrap();
-
+                // Execute read operation through index.
                 let vals = match index.index_read(key, columns, &protocol, transaction_name) {
                     Ok(v) => v,
                     Err(e) => {
@@ -121,7 +124,11 @@ impl Scheduler for TwoPhaseLocking {
     }
     fn commit(&self, transaction_name: &str) -> Result<()> {
         debug!("Commit transaction {:?}", transaction_name);
+        // Make values permanent.
+
+        // Release locks.
         self.release_locks(transaction_name);
+        // Clean up data structures.
         self.cleanup(transaction_name);
         Ok(())
     }
@@ -143,7 +150,7 @@ impl Scheduler for TwoPhaseLocking {
         row.set_primary_key(pk);
         // Set values.
         for (i, column) in columns.iter().enumerate() {
-            row.set_value(column, &values[i].to_string())?;
+            row.init_value(column, &values[i].to_string())?;
         }
         // Get index.
         let index = table.get_primary_index()?;
