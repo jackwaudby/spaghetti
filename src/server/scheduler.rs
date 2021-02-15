@@ -37,6 +37,8 @@ pub trait Scheduler {
 
     fn commit(&self, transaction_name: &str) -> Result<()>;
 
+    fn abort(&self, transaction_name: &str) -> Result<()>;
+
     fn insert(
         &self,
         table: &str,

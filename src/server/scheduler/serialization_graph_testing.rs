@@ -205,6 +205,10 @@ impl Scheduler for SerializationGraphTesting {
         };
     }
 
+    fn abort(&self, transaction_name: &str) -> Result<()> {
+        Ok(())
+    }
+
     fn commit(&self, transaction_name: &str) -> Result<()> {
         // Get position of this transaction in the graph.
         let this_node_id = self.get_node_position(transaction_name).unwrap();

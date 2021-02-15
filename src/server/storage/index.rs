@@ -1,6 +1,4 @@
 use crate::common::error::SpaghettiError;
-use crate::server::storage::datatype::Data;
-use crate::server::storage::row::Access;
 use crate::server::storage::row::OperationResult;
 use crate::server::storage::row::Row;
 use crate::workloads::PrimaryKey;
@@ -131,6 +129,44 @@ impl Index {
         let res = row.set_values(columns, values, protocol, transaction_id)?;
 
         Ok(res)
+    }
+
+    pub fn index_commit(
+        &self,
+        key: PrimaryKey,
+        protocol: &str,
+        transaction_id: &str,
+    ) -> Result<()> {
+        // Attempt to get read guard.
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+        // Deref to row.
+        let row = &mut *read_guard.lock().unwrap();
+        // Commit changes.
+        row.commit(protocol, transaction_id);
+
+        Ok(())
+    }
+
+    pub fn index_revert(
+        &self,
+        key: PrimaryKey,
+        protocol: &str,
+        transaction_id: &str,
+    ) -> Result<()> {
+        // Attempt to get read guard.
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+        // Deref to row.
+        let row = &mut *read_guard.lock().unwrap();
+        // Commit changes.
+        row.revert(protocol, transaction_id);
+
+        Ok(())
     }
 }
 
