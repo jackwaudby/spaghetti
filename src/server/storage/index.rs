@@ -18,7 +18,7 @@ pub struct Index {
     /// Index name.
     name: String,
     /// Concurrrent hashmap.
-    pub i: CHashMap<PrimaryKey, Mutex<Row>>,
+    map: CHashMap<PrimaryKey, Mutex<Row>>,
 }
 
 impl Index {
@@ -26,13 +26,18 @@ impl Index {
     pub fn init(name: &str) -> Self {
         Index {
             name: String::from(name),
-            i: CHashMap::new(),
+            map: CHashMap::new(),
         }
+    }
+
+    /// Get shared reference to map.
+    pub fn get_map(&self) -> &CHashMap<PrimaryKey, Mutex<Row>> {
+        &self.map
     }
 
     /// Check if a key exists in the index.
     pub fn key_exists(&self, key: PrimaryKey) -> bool {
-        self.i.contains_key(&key)
+        self.map.contains_key(&key)
     }
 
     /// Insert a `Row` into the index.
@@ -41,12 +46,12 @@ impl Index {
     ///
     /// If `Row` already exists for key an `RowAlreadyExists` entry is returned.
     pub fn index_insert(&self, key: PrimaryKey, row: Row) -> Result<()> {
-        let res = self.i.insert(key, Mutex::new(row));
+        let res = self.map.insert(key, Mutex::new(row));
 
         match res {
             Some(existing_row) => {
                 // A row already existed for this pk, which has now been overwritten, put back
-                self.i.insert(key, existing_row);
+                self.map.insert(key, existing_row);
                 Err(Box::new(SpaghettiError::RowAlreadyExists))
             }
             None => Ok(()),
@@ -59,16 +64,16 @@ impl Index {
     ///
     /// If `Row` does not exists for key a `RowDoesNotExist` error is returned.
     pub fn index_remove(&self, key: PrimaryKey, protocol: &str) -> Result<OperationResult> {
-        let row = self.i.remove(&key);
+        // Remove the row from the map.
+        let row = self.map.remove(&key);
 
         match row {
             Some(row) => {
                 match protocol {
                     "sgt" => {
                         // Get access history.
-                        let ah = row.lock().unwrap().get_access_history().unwrap();
+                        let ah = row.lock().unwrap().get_access_history()?;
                         let res = OperationResult::new(None, Some(ah));
-
                         return Ok(res);
                     }
                     _ => {
@@ -77,7 +82,7 @@ impl Index {
                     }
                 };
             }
-            None => return Err(SpaghettiError::RowDoesNotExist.into()),
+            None => return Err(Box::new(SpaghettiError::RowDoesNotExist)),
         }
     }
 
@@ -95,24 +100,12 @@ impl Index {
     ) -> Result<OperationResult> {
         // Attempt to get read guard.
         let read_guard = self
-            .i
+            .map
             .get(&key)
             .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
-
-        let access_history = match protocol {
-            "sgt" => {
-                // Get access history.
-                let ah = row.get_access_history().unwrap();
-                // Append access.
-                row.append_access(Access::Read(transaction_id.to_string()))
-                    .unwrap();
-                Some(ah)
-            }
-            _ => None,
-        };
-
+        // Execute read operation.
         let res = row.get_values(columns, protocol, transaction_id)?;
 
         Ok(res)
@@ -129,29 +122,13 @@ impl Index {
     ) -> Result<OperationResult> {
         // Attempt to get write guard.
         let write_guard = self
-            .i
+            .map
             .get(&key)
             .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
         // Deref to row.
         let row = &mut *write_guard.lock().unwrap();
-
-        let access_history = match protocol {
-            "sgt" => {
-                // Get access history.
-                let ah = row.get_access_history().unwrap();
-                // Append access.
-                row.append_access(Access::Write(transaction_id.to_string()))
-                    .unwrap();
-                Some(ah)
-            }
-            _ => None,
-        };
-
-        for (i, name) in columns.iter().enumerate() {
-            row.init_value(name, values[i])?;
-        }
-
-        let res = OperationResult::new(None, access_history);
+        // Execute write operation.
+        let res = row.set_values(columns, values, protocol, transaction_id)?;
 
         Ok(res)
     }
@@ -160,7 +137,7 @@ impl Index {
 impl fmt::Display for Index {
     /// Format: [name,num_rows].
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{},{}]", self.name, self.i.len())
+        write!(f, "[{},{}]", self.name, self.get_map().len())
     }
 }
 
