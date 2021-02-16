@@ -144,20 +144,22 @@ impl Scheduler for TwoPhaseLocking {
             LockRequest::Granted => {
                 debug!("Read lock for {:?} granted to transaction {:?}", key, tid);
                 // Execute read operation.
-                let result = index
-                    .read(key, columns, "2pl", tid)
-                    .map_err(|e| {
-                        self.abort(tid);
-                        return Aborted {
-                            reason: format!("{}", e),
-                        };
-                    })
-                    .unwrap();
+                let result = index.read(key, columns, "2pl", tid);
                 // Register lock.
                 self.active_transactions.get_mut(tid).unwrap().add_lock(key);
-                // Get values.
-                let vals = result.get_values().unwrap();
-                Ok(vals)
+                match result {
+                    Ok(res) => {
+                        // Get values.
+                        let vals = res.get_values().unwrap();
+                        return Ok(vals);
+                    }
+                    Err(e) => {
+                        self.abort(tid);
+                        return Err(Aborted {
+                            reason: format!("{}", e),
+                        });
+                    }
+                }
             }
 
             LockRequest::Delay(pair) => {
@@ -168,30 +170,34 @@ impl Scheduler for TwoPhaseLocking {
                     waiting = cvar.wait(waiting).unwrap();
                 }
                 debug!("Read lock granted");
-                // Execute read operation.
-                let result = index
-                    .read(key, columns, "2pl", tid)
-                    .map_err(|e| {
-                        self.abort(tid);
-                        return Aborted {
-                            reason: format!("{}", e),
-                        };
-                    })
-                    .unwrap();
                 // Register lock.
                 self.active_transactions.get_mut(tid).unwrap().add_lock(key);
-                // Get values
-                let vals = result.get_values().unwrap();
-                Ok(vals)
+
+                // Execute read operation.
+                let result = index.read(key, columns, "2pl", tid);
+
+                match result {
+                    Ok(res) => {
+                        // Get values.
+                        let vals = res.get_values().unwrap();
+                        return Ok(vals);
+                    }
+                    Err(e) => {
+                        self.abort(tid);
+                        return Err(Aborted {
+                            reason: format!("{}", e),
+                        });
+                    }
+                }
             }
 
             LockRequest::Denied => {
                 debug!("Read lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
                 self.abort(tid);
-                Err(Aborted {
+                return Err(Aborted {
                     reason: format!("{}", err),
-                })
+                });
             }
         }
     }
@@ -232,17 +238,22 @@ impl Scheduler for TwoPhaseLocking {
         match request {
             LockRequest::Granted => {
                 debug!("Write lock for {:?} granted to transaction {:?}", key, tid);
-                // Execute update.
-                index.update(key, columns, values, "2pl", tid).map_err(|e| {
-                    self.abort(tid);
-                    return Aborted {
-                        reason: format!("{}", e),
-                    };
-                });
                 // Register lock.
                 self.active_transactions.get_mut(tid).unwrap().add_lock(key);
 
-                Ok(())
+                // Execute update.
+                let result = index.update(key, columns, values, "2pl", tid);
+                match result {
+                    Ok(res) => {
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        self.abort(tid);
+                        return Err(Aborted {
+                            reason: format!("{}", e),
+                        });
+                    }
+                }
             }
             LockRequest::Delay(pair) => {
                 debug!("Waiting for write lock");
@@ -252,24 +263,29 @@ impl Scheduler for TwoPhaseLocking {
                     waiting = cvar.wait(waiting).unwrap();
                 }
                 debug!("Write lock granted");
-                index.update(key, columns, values, "2pl", tid).map_err(|e| {
-                    self.abort(tid);
-                    return Aborted {
-                        reason: format!("{}", e),
-                    };
-                });
                 // Register lock.
                 self.active_transactions.get_mut(tid).unwrap().add_lock(key);
-
-                Ok(())
+                // Execute update.
+                let result = index.update(key, columns, values, "2pl", tid);
+                match result {
+                    Ok(res) => {
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        self.abort(tid);
+                        return Err(Aborted {
+                            reason: format!("{}", e),
+                        });
+                    }
+                }
             }
             LockRequest::Denied => {
                 debug!("Write lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
                 self.abort(tid);
-                Err(Aborted {
+                return Err(Aborted {
                     reason: format!("{}", err),
-                })
+                });
             }
         }
     }
@@ -304,15 +320,23 @@ impl Scheduler for TwoPhaseLocking {
         match request {
             LockRequest::Granted => {
                 debug!("Write lock for {:?} granted to transaction {:?}", key, tid);
-                // Execute delete.
-                index.delete(key).map_err(|e| {
-                    self.abort(tid);
-                    return Aborted {
-                        reason: format!("{}", e),
-                    };
-                });
+
                 // Register lock.
                 self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+
+                // Execute delete.
+                let result = index.delete(key);
+                match result {
+                    Ok(res) => {
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        self.abort(tid);
+                        return Err(Aborted {
+                            reason: format!("{}", e),
+                        });
+                    }
+                }
             }
             LockRequest::Delay(pair) => {
                 debug!("Waiting for write lock");
@@ -322,13 +346,23 @@ impl Scheduler for TwoPhaseLocking {
                     waiting = cvar.wait(waiting).unwrap();
                 }
                 debug!("Write lock granted");
+
+                // Register lock.
+                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+
                 // Execute delete.
-                index.delete(key).map_err(|e| {
-                    self.abort(tid);
-                    return Aborted {
-                        reason: format!("{}", e),
-                    };
-                });
+                let result = index.delete(key);
+                match result {
+                    Ok(res) => {
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        self.abort(tid);
+                        return Err(Aborted {
+                            reason: format!("{}", e),
+                        });
+                    }
+                }
             }
             LockRequest::Denied => {
                 debug!("Write lock denied");
@@ -345,7 +379,7 @@ impl Scheduler for TwoPhaseLocking {
 
     /// Commit a transaction.
     fn commit(&self, tid: &str) -> Result<(), Aborted> {
-        debug!("Commit transaction {:?}", 1);
+        debug!("Commit transaction {:?}", tid);
         // (tid) Remove from active transactions.
         let mut at = self.active_transactions.remove(tid).unwrap();
 
@@ -357,7 +391,7 @@ impl Scheduler for TwoPhaseLocking {
         }
 
         // (4) Release locks.
-        self.release_locks(tid, true);
+        self.release_locks(tid, at, true);
 
         Ok(())
     }
@@ -365,9 +399,11 @@ impl Scheduler for TwoPhaseLocking {
     /// Abort a transaction.
     fn abort(&self, tid: &str) -> crate::Result<()> {
         debug!("Abort transaction {:?}", tid);
+        //  Remove from active transactions.
+        let mut at = self.active_transactions.remove(tid).unwrap();
 
         // Release locks.
-        self.release_locks(tid, false);
+        self.release_locks(tid, at, false);
 
         Ok(())
     }
@@ -416,6 +452,7 @@ impl TwoPhaseLocking {
         // Retrieve the lock information.
         let mut lock_info = self.lock_table.get_mut(&key).unwrap();
 
+        debug!("{}", lock_info.reclaimed);
         // Check not in process of being reclaimed.
         if lock_info.reclaimed {
             return LockRequest::Denied;
@@ -679,43 +716,42 @@ impl TwoPhaseLocking {
         UnlockRequest::Ok
     }
 
-    fn release_locks(&self, tid: &str, commit: bool) {
-        for lock in self.active_transactions.get(tid).unwrap().get_locks_held() {
+    fn release_locks(&self, tid: &str, at: ActiveTransaction, commit: bool) {
+        for lock in at.get_locks_held() {
             if let UnlockRequest::Reclaim = self.release_lock(*lock, tid, commit) {
                 self.lock_table.remove(lock);
             }
         }
+        debug!("All locks released for {:?}", tid);
     }
 
     /// Get shared reference to a table.
     fn get_table(&self, table: &str, tid: &str) -> Result<Arc<Table>, Aborted> {
         // Get table.
-        let table = self
-            .data
-            .get_internals()
-            .get_table(table)
-            .map_err(|e| {
+        let res = self.data.get_internals().get_table(table);
+        match res {
+            Ok(table) => Ok(table),
+            Err(e) => {
                 self.abort(tid);
-                return Aborted {
+                Err(Aborted {
                     reason: format!("{}", e),
-                };
-            })
-            .unwrap();
-        Ok(table)
+                })
+            }
+        }
     }
 
     /// Get primary index name on a table.
     fn get_index_name(&self, table: Arc<Table>, tid: &str) -> Result<String, Aborted> {
-        let index_name = table
-            .get_primary_index()
-            .map_err(|e| {
+        let res = table.get_primary_index();
+        match res {
+            Ok(index_name) => Ok(index_name),
+            Err(e) => {
                 self.abort(tid);
-                return Aborted {
+                Err(Aborted {
                     reason: format!("{}", e),
-                };
-            })
-            .unwrap();
-        Ok(index_name)
+                })
+            }
+        }
     }
 
     /// Get shared reference to index for a table.
@@ -724,18 +760,16 @@ impl TwoPhaseLocking {
         let index_name = self.get_index_name(table, tid)?;
 
         // Get index for this key's table.
-        let index = self
-            .data
-            .get_internals()
-            .get_index(&index_name)
-            .map_err(|e| {
+        let res = self.data.get_internals().get_index(&index_name);
+        match res {
+            Ok(index) => Ok(index),
+            Err(e) => {
                 self.abort(tid);
-                return Aborted {
+                Err(Aborted {
                     reason: format!("{}", e),
-                };
-            })
-            .unwrap();
-        Ok(index)
+                })
+            }
+        }
     }
 }
 
@@ -769,9 +803,13 @@ mod tests {
     use super::*;
     use crate::server::scheduler::Protocol;
     use crate::workloads::tatp::keys::TatpPrimaryKey;
+    use crate::workloads::tatp::loader;
+    use crate::workloads::Internal;
     use chrono::Duration;
     use config::Config;
     use lazy_static::lazy_static;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
     use std::sync::Once;
     use std::thread;
     use std::time;
@@ -799,14 +837,16 @@ mod tests {
             let mut c = Config::default();
             c.merge(config::File::with_name("Test.toml")).unwrap();
             let config = Arc::new(c);
-            // Initalise workload.
-            let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
+            let internals = Internal::new("tatp_schema.txt", config).unwrap();
+            let mut rng = StdRng::seed_from_u64(42);
+            loader::populate_tables(&internals, &mut rng).unwrap();
+            let workload = Arc::new(Workload::Tatp(internals));
             workload
         };
     }
 
     #[test]
-    fn lock_request_type_test() {
+    fn tpl_lock_request_type_test() {
         assert_eq!(LockRequest::Granted, LockRequest::Granted);
         let pair = Arc::new((Mutex::new(false), Condvar::new()));
         assert_eq!(
@@ -818,38 +858,21 @@ mod tests {
     }
 
     #[test]
-    fn register_lock_error_test() {
-        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
-        assert_eq!(
-            format!("{}", protocol.register_lock("t1", pk).unwrap_err()),
-            "transaction not registered in active transaction table"
-        );
-    }
-
-    #[test]
-    fn register_test() {
+    fn tpl_register_test() {
         logging(false);
         // Initialise scheduler.
         let protocol = Arc::new(Protocol::new(Arc::clone(&WORKLOAD)).unwrap());
         // Register transaction.
         assert_eq!(protocol.scheduler.register("some_id").unwrap(), ());
         assert_eq!(
-            protocol
-                .scheduler
-                .register("some_id")
-                .unwrap_err()
-                .downcast::<TwoPhaseLockingError>()
-                .unwrap(),
-            Box::new(TwoPhaseLockingError::new(
-                TwoPhaseLockingErrorKind::AlreadyRegisteredInActiveTransactions
-            ))
+            format!("{}", protocol.scheduler.register("some_id").unwrap_err()),
+            "Aborted: transaction already registered in active transaction table"
         );
     }
 
     // In this test 3 read locks are requested by Ta, Tb, and Tc, which are then released.
     #[test]
-    fn request_lock_read_test() {
+    fn tpl_request_lock_read_test() {
         logging(false);
 
         // Initialise scheduler
@@ -878,15 +901,15 @@ mod tests {
 
         // Request locks.
         assert_eq!(
-            protocol.request_lock(pk, LockMode::Read, &ta_id, ta_ts, index),
+            protocol.request_lock(index, pk, LockMode::Read, &ta_id, ta_ts),
             LockRequest::Granted
         );
         assert_eq!(
-            protocol.request_lock(pk, LockMode::Read, &tb_id, tb_ts, index),
+            protocol.request_lock(index, pk, LockMode::Read, &tb_id, tb_ts),
             LockRequest::Granted
         );
         assert_eq!(
-            protocol.request_lock(pk, LockMode::Read, &tc_id, tc_ts, index),
+            protocol.request_lock(index, pk, LockMode::Read, &tc_id, tc_ts),
             LockRequest::Granted
         );
         // Check
@@ -926,7 +949,7 @@ mod tests {
 
     // In this test a write lock is requested and then released.
     #[test]
-    fn request_lock_write_test() {
+    fn tpl_request_lock_write_test() {
         logging(false);
 
         // Initialise protocol
@@ -943,7 +966,7 @@ mod tests {
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
         // Lock
         protocol.register(&t_id).unwrap();
-        let req = protocol.request_lock(pk, LockMode::Write, &t_id, t_ts, index);
+        let req = protocol.request_lock(index, pk, LockMode::Write, &t_id, t_ts);
         assert_eq!(req, LockRequest::Granted);
 
         {
@@ -981,7 +1004,7 @@ mod tests {
     // In this test a read lock is taken by Ta, followed by a write lock by Tb, which delays
     // until the read lock is released by Ta.
     #[test]
-    fn read_delay_write_test() {
+    fn tpl_read_delay_write_test() {
         logging(false);
         let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
         let protocol1 = protocol.clone();
@@ -1005,10 +1028,10 @@ mod tests {
 
         let _handle = thread::spawn(move || {
             debug!("Request Read lock");
-            protocol1.request_lock(pk, LockMode::Read, &t_id_11, t_ts_1, index);
+            protocol1.request_lock(index, pk, LockMode::Read, &t_id_11, t_ts_1);
             debug!("Request Write lock");
             if let LockRequest::Delay(pair) =
-                protocol1.request_lock(pk, LockMode::Write, &t_id_2, t_ts_2, index)
+                protocol1.request_lock(index, pk, LockMode::Write, &t_id_2, t_ts_2)
             {
                 let (lock, cvar) = &*pair;
                 let mut waiting = lock.lock().unwrap();
@@ -1038,7 +1061,7 @@ mod tests {
     // In this test a write lock is taken by Ta, followed by a read lock by Tb, which delays
     // until the write lock is released by Ta.
     #[test]
-    fn write_delay_read_test() {
+    fn tpl_write_delay_read_test() {
         logging(false);
         // Scheduler.
         let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
@@ -1065,9 +1088,9 @@ mod tests {
 
         let _handle = thread::spawn(move || {
             debug!("Request write lock by Ta");
-            protocol_t.request_lock(pk, LockMode::Write, &ta_id_t, ta_ts, index);
+            protocol_t.request_lock(index, pk, LockMode::Write, &ta_id_t, ta_ts);
             debug!("Request read lock by Tb");
-            let res = protocol_t.request_lock(pk, LockMode::Read, &tb_id, tb_ts, index);
+            let res = protocol_t.request_lock(index, pk, LockMode::Read, &tb_id, tb_ts);
             // Assert it has been denied, use dummy pair.
             assert_eq!(
                 res,
@@ -1105,7 +1128,7 @@ mod tests {
     // In this test a write lock is taken by Ta, followed by a write lock by Tb, which delays
     // until the write lock is released by Ta.
     #[test]
-    fn write_delay_write_test() {
+    fn tpl_write_delay_write_test() {
         logging(false);
         // Scheduler.
         let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
@@ -1132,9 +1155,9 @@ mod tests {
 
         let _handle = thread::spawn(move || {
             debug!("Request write lock by Ta");
-            protocol_t.request_lock(pk, LockMode::Write, &ta_id_t, ta_ts, index);
+            protocol_t.request_lock(index, pk, LockMode::Write, &ta_id_t, ta_ts);
             debug!("Request write lock by Tb");
-            let res = protocol_t.request_lock(pk, LockMode::Write, &tb_id, tb_ts, index);
+            let res = protocol_t.request_lock(index, pk, LockMode::Write, &tb_id, tb_ts);
             // Assert it has been denied, use dummy pair.
             assert_eq!(
                 res,
@@ -1170,7 +1193,7 @@ mod tests {
     }
 
     #[test]
-    fn denied_lock_test() {
+    fn tpl_denied_lock_test() {
         logging(false);
         // Init scheduler.
         let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
@@ -1189,30 +1212,48 @@ mod tests {
         let t_id_w = datetime_w.to_string();
 
         // Register transactions.
-        protocol.register(&t_id).unwrap();
-        protocol.register(&t_id_r).unwrap();
-        protocol.register(&t_id_w).unwrap();
+        assert_eq!(protocol.register(&t_id).unwrap(), ());
+        assert_eq!(protocol.register(&t_id_r).unwrap(), ());
+        assert_eq!(protocol.register(&t_id_w).unwrap(), ());
 
-        let index = "access_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
-
-        // Take first write lock.
-        debug!("Request write lock");
-        protocol.request_lock(pk, LockMode::Write, &t_id, datetime, index);
-
-        // Attempt to get read and write locks.
-        debug!("Request Read lock");
+        let index = "sub_idx";
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1));
+        let columns: Vec<&str> = vec!["bit_1"];
+        let values_a: Vec<&str> = vec!["0"];
+        let values_b: Vec<&str> = vec!["1"];
+        // Write by Ta.
         assert_eq!(
-            protocol.request_lock(pk, LockMode::Read, &t_id_r, datetime_r, index),
-            LockRequest::Denied
+            protocol
+                .update("subscriber", pk, &columns, &values_a, &t_id, datetime)
+                .unwrap(),
+            ()
         );
-        debug!("Request another write lock");
+
+        // Write by Tb
         assert_eq!(
-            protocol.request_lock(pk, LockMode::Write, &t_id_w, datetime_w, index),
-            LockRequest::Denied
+            format!(
+                "{}",
+                protocol
+                    .update("subscriber", pk, &columns, &values_b, &t_id_w, datetime_w)
+                    .unwrap_err()
+            ),
+            "Aborted: lock request denied"
         );
-        // Release initial write lock.
-        debug!("Release write lock");
-        protocol.release_lock(pk, &t_id, true);
+
+        // Write by Tc
+        assert_eq!(
+            format!(
+                "{}",
+                protocol
+                    .read("subscriber", pk, &columns, &t_id_r, datetime_r)
+                    .unwrap_err()
+            ),
+            "Aborted: lock request denied"
+        );
+
+        // Commit Ta
+        assert_eq!(protocol.commit(&t_id).unwrap(), ());
+
+        assert_eq!(protocol.lock_table.is_empty(), true);
     }
 }

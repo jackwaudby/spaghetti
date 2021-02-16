@@ -229,7 +229,7 @@ mod tests {
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
-                    .index_insert(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), row)
+                    .insert(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), row)
                     .unwrap_err()
             ),
             format!("row already exists in index.")
@@ -243,7 +243,7 @@ mod tests {
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
-                    .index_remove(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(0)), "2pl")
+                    .remove(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(0)))
                     .unwrap_err()
             ),
             format!("row does not exist in index.")
@@ -274,7 +274,7 @@ mod tests {
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
-                    .index_read(
+                    .read(
                         PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
                         &cols,
                         "2pl",
@@ -295,7 +295,7 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_write(
+            .update(
                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
                 &cols,
                 &vals,
@@ -312,7 +312,7 @@ mod tests {
                     .get_internals()
                     .get_index("sub_idx")
                     .unwrap()
-                    .index_read(
+                    .read(
                         PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
                         &cols,
                         "2pl",

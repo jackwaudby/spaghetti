@@ -78,7 +78,7 @@ pub fn get_subscriber_data(
     // Execute read operation.
     let values = protocol
         .scheduler
-        .read("sub_idx", pk, &columns, t_id, t_ts)?;
+        .read("subscriber", pk, &columns, t_id, t_ts)?;
     // Commit transaction.
     protocol.scheduler.commit(t_id)?;
     // Convert to result
@@ -130,7 +130,7 @@ pub fn get_new_destination(
     // 1) Attempt to get the special facility record.
     let sf_res = protocol
         .scheduler
-        .read("special_idx", sf_pk, &sf_columns, t_id, t_ts)?;
+        .read("special_facility", sf_pk, &sf_columns, t_id, t_ts)?;
     // 2) Check sf.is_active = 1.
     let val = if let Data::Int(val) = sf_res[2] {
         val
@@ -143,7 +143,7 @@ pub fn get_new_destination(
     // 3) Get call forwarding record.
     let cf_res = protocol
         .scheduler
-        .read("call_idx", cf_pk, &cf_columns, t_id, t_ts)?;
+        .read("call_forwarding", cf_pk, &cf_columns, t_id, t_ts)?;
     // 4) Check end_time < cf.end_time
     let val = if let Data::Int(val) = cf_res[3] {
         val
@@ -188,7 +188,7 @@ pub fn get_access_data(
     // Execute read operation.
     let values = protocol
         .scheduler
-        .read("access_idx", pk, &columns, t_id, t_ts)?;
+        .read("access_info", pk, &columns, t_id, t_ts)?;
     // Commit transaction.
     protocol.scheduler.commit(t_id)?;
     // Convert to result
@@ -238,9 +238,14 @@ pub fn update_subscriber_data(
     protocol
         .scheduler
         .update("subscriber", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
-    protocol
-        .scheduler
-        .update("special_idx", pk_sp, &columns_sp, &values_sp, t_id, t_ts)?;
+    protocol.scheduler.update(
+        "special_facility",
+        pk_sp,
+        &columns_sp,
+        &values_sp,
+        t_id,
+        t_ts,
+    )?;
 
     // Commit transaction.
     protocol.scheduler.commit(t_id)?;
@@ -278,7 +283,7 @@ pub fn update_location(
     // Execute write operation.
     protocol
         .scheduler
-        .update("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
+        .update("subscriber", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
 
     // Commit transaction.
     protocol.scheduler.commit(t_id)?;
@@ -324,12 +329,12 @@ pub fn insert_call_forwarding(
     let columns_sb: Vec<&str> = vec!["s_id"];
     protocol
         .scheduler
-        .read("sub_idx", pk_sb, &columns_sb, t_id, t_ts)?;
+        .read("subscriber", pk_sb, &columns_sb, t_id, t_ts)?;
     // Get record from special facility.
     let columns_sf: Vec<&str> = vec!["sf_type"];
     protocol
         .scheduler
-        .read("special_idx", pk_sf, &columns_sf, t_id, t_ts)?;
+        .read("special_facility", pk_sf, &columns_sf, t_id, t_ts)?;
 
     // Insert into call forwarding.
     // Calculate primary key
@@ -449,7 +454,7 @@ mod tests {
 
     #[test]
     fn transactions_test() {
-        logging(false);
+        logging(true);
         // Workload with fixed seed
         let mut rng = StdRng::seed_from_u64(42);
         let config = Arc::clone(&CONFIG);
@@ -482,7 +487,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("row does not exist in index.")
+            format!("Aborted: row does not exist in index.")
         );
 
         ///////////////////////////////////////
@@ -519,7 +524,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("row does not exist in index.")
+            format!("Aborted: row does not exist in index.")
         );
 
         //////////////////////////////////
@@ -553,7 +558,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("row does not exist in index.")
+            format!("Aborted: row does not exist in index.")
         );
 
         ////////////////////////////////////////////
@@ -568,7 +573,7 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_read(
+            .read(
                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
                 &columns_sb,
                 "2pl",
@@ -579,7 +584,7 @@ mod tests {
             .get_internals()
             .get_index("special_idx")
             .unwrap()
-            .index_read(
+            .read(
                 PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 1)),
                 &columns_sf,
                 "2pl",
@@ -613,7 +618,7 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_read(
+            .read(
                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
                 &columns_sb,
                 "2pl",
@@ -624,7 +629,7 @@ mod tests {
             .get_internals()
             .get_index("special_idx")
             .unwrap()
-            .index_read(
+            .read(
                 PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 1)),
                 &columns_sf,
                 "2pl",
@@ -653,7 +658,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("row does not exist in index.")
+            format!("Aborted: row does not exist in index.")
         );
 
         ////////////////////////////////
@@ -667,7 +672,7 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_read(
+            .read(
                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
                 &columns_sb,
                 "2pl",
@@ -696,7 +701,7 @@ mod tests {
             .get_internals()
             .get_index("sub_idx")
             .unwrap()
-            .index_read(
+            .read(
                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
                 &columns_sb,
                 "2pl",
@@ -721,7 +726,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("row does not exist in index.")
+            format!("Aborted: row does not exist in index.")
         );
 
         /////////////////////////////////////////
@@ -735,7 +740,7 @@ mod tests {
                     .get_internals()
                     .get_index("call_idx")
                     .unwrap()
-                    .index_read(
+                    .read(
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
                         &columns_cf,
                         "2pl",
@@ -767,7 +772,7 @@ mod tests {
             .get_internals()
             .get_index("call_idx")
             .unwrap()
-            .index_read(
+            .read(
                 PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
                 &columns_cf,
                 "2pl",
@@ -788,7 +793,7 @@ mod tests {
             .get_internals()
             .get_index("call_idx")
             .unwrap()
-            .index_read(
+            .read(
                 PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
                 &columns_cf,
                 "2pl",
@@ -821,7 +826,7 @@ mod tests {
                     .get_internals()
                     .get_index("call_idx")
                     .unwrap()
-                    .index_read(
+                    .read(
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
                         &columns_cf,
                         "2pl",

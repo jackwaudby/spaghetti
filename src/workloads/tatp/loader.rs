@@ -262,7 +262,7 @@ mod tests {
         ];
 
         let res = index
-            .index_read(
+            .read(
                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
                 &cols_s,
                 "2pl",
@@ -293,7 +293,7 @@ mod tests {
             datatype::to_result(
                 &cols_ai,
                 &index
-                    .index_read(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2)), &cols_ai,"2pl","t1")
+                    .read(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2)), &cols_ai,"2pl","t1")
                       .unwrap().get_values().unwrap()
 
             )
@@ -325,7 +325,7 @@ mod tests {
             datatype::to_result(
                 &cols_sf,
                 &index
-                    .index_read(
+                    .read(
                         PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 2)),
                         &cols_sf,
                         "2pl",
@@ -351,7 +351,7 @@ mod tests {
             datatype::to_result(
                 &cols_cf,
                 &index
-                    .index_read(
+                    .read(
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
                         &cols_cf,
                         "2pl",
