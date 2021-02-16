@@ -30,6 +30,9 @@ pub struct Row {
     /// Dirty flag.
     dirty: bool,
 
+    /// Delete flag.
+    delete: bool,
+
     /// Optional list of accesses.
     access_history: Option<Vec<Access>>,
 }
@@ -79,6 +82,7 @@ impl Row {
             current_fields: fields,
             prev_fields: None,
             dirty: false,
+            delete: false,
             access_history,
         }
     }
@@ -254,28 +258,43 @@ impl Row {
 
     /// Revert to previous version of row.
     pub fn revert(&mut self, protocol: &str, tid: &str) {
-        // Retrieve old values.
-        let old_fields = self.prev_fields.take();
-        // Reset.
-        self.current_fields = old_fields.unwrap();
-        self.set_dirty(false);
-        // Trim access history.
-        match protocol {
-            "sgt" => {
-                let mut ah = self.access_history.take().unwrap();
+        // Handle case when record has been flagged for deletion.
+        if self.delete {
+            self.delete = false;
+        } else {
+            // Handle case when record has been updated.
+            // Retrieve old values.
+            let old_fields = self.prev_fields.take();
+            // Reset.
+            self.current_fields = old_fields.unwrap();
+            self.set_dirty(false);
+            // Trim access history.
+            match protocol {
+                "sgt" => {
+                    let mut ah = self.access_history.take().unwrap();
 
-                // Get index of this write.
-                let ind = ah
-                    .iter()
-                    .position(|a| a == &Access::Write(tid.to_string()))
-                    .unwrap();
-                // Remove "old" access information.
-                ah.split_off(ind);
-                // Reset access history
-                self.access_history = Some(ah);
-            }
-            _ => {}
-        };
+                    // Get index of this write.
+                    let ind = ah
+                        .iter()
+                        .position(|a| a == &Access::Write(tid.to_string()))
+                        .unwrap();
+                    // Remove "old" access information.
+                    ah.split_off(ind);
+                    // Reset access history
+                    self.access_history = Some(ah);
+                }
+                _ => {}
+            };
+        }
+    }
+
+    /// Revert to previous version of row.
+    pub fn revert_read(&mut self, tid: &str) {
+        // Remove read from access history
+        self.access_history
+            .as_mut()
+            .unwrap()
+            .retain(|a| a != &Access::Read(tid.to_string()));
     }
 
     /// Set previous version of row.
@@ -309,6 +328,16 @@ impl Row {
     // Set dirty flag.
     fn set_dirty(&mut self, dirty: bool) {
         self.dirty = dirty;
+    }
+
+    /// Get delete flag.
+    pub fn is_deleted(&self) -> bool {
+        self.delete
+    }
+
+    // Set delete flag.
+    pub fn set_deleted(&mut self, delete: bool) {
+        self.delete = delete;
     }
 }
 

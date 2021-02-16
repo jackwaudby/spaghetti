@@ -43,7 +43,7 @@ pub enum SpaghettiError {
     InvalidColumnType,
     /// Row dirty.
     RowDirty,
-    // Access history not initalised.
+    /// Access history not initalised.
     NotTrackingAccessHistory,
 }
 

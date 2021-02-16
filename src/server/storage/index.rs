@@ -43,7 +43,7 @@ impl Index {
     /// # Errors
     ///
     /// If `Row` already exists for key an `RowAlreadyExists` entry is returned.
-    pub fn index_insert(&self, key: PrimaryKey, row: Row) -> Result<()> {
+    pub fn insert(&self, key: PrimaryKey, row: Row) -> Result<()> {
         let res = self.map.insert(key, Mutex::new(row));
 
         match res {
@@ -56,30 +56,36 @@ impl Index {
         }
     }
 
+    /// Delete a `Row` from the index.
+    ///
+    /// # Errors
+    ///
+    /// If `Row` does not exists for key a `RowDoesNotExist` error is returned.
+    pub fn delete(&self, key: PrimaryKey) -> Result<()> {
+        // Attempt to get write guard.
+        let write_guard = self
+            .map
+            .get(&key)
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+        // Deref to row.
+        let row = &mut *write_guard.lock().unwrap();
+        // Execute write operation.
+        let res = row.set_deleted(true);
+
+        Ok(())
+    }
+
     /// Remove a `Row` from the index.
     ///
     /// # Errors
     ///
     /// If `Row` does not exists for key a `RowDoesNotExist` error is returned.
-    pub fn index_remove(&self, key: PrimaryKey, protocol: &str) -> Result<OperationResult> {
+    pub fn remove(&self, key: PrimaryKey) -> Result<Row> {
         // Remove the row from the map.
         let row = self.map.remove(&key);
 
         match row {
-            Some(row) => {
-                match protocol {
-                    "sgt" => {
-                        // Get access history.
-                        let ah = row.lock().unwrap().get_access_history()?;
-                        let res = OperationResult::new(None, Some(ah));
-                        return Ok(res);
-                    }
-                    _ => {
-                        let res = OperationResult::new(None, None);
-                        return Ok(res);
-                    }
-                };
-            }
+            Some(row) => Ok(row.into_inner().unwrap()),
             None => return Err(Box::new(SpaghettiError::RowDoesNotExist)),
         }
     }
@@ -89,12 +95,12 @@ impl Index {
     /// # Errors
     ///
     /// `RowDoesNotexist` if the row does not exist in the index.
-    pub fn index_read(
+    pub fn read(
         &self,
         key: PrimaryKey,
         columns: &Vec<&str>,
         protocol: &str,
-        transaction_id: &str,
+        tid: &str,
     ) -> Result<OperationResult> {
         // Attempt to get read guard.
         let read_guard = self
@@ -104,19 +110,19 @@ impl Index {
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Execute read operation.
-        let res = row.get_values(columns, protocol, transaction_id)?;
+        let res = row.get_values(columns, protocol, tid)?;
 
         Ok(res)
     }
 
     /// Write `values` to `columns`.
-    pub fn index_write(
+    pub fn update(
         &self,
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
         protocol: &str,
-        transaction_id: &str,
+        tid: &str,
     ) -> Result<OperationResult> {
         // Attempt to get write guard.
         let write_guard = self
@@ -126,36 +132,35 @@ impl Index {
         // Deref to row.
         let row = &mut *write_guard.lock().unwrap();
         // Execute write operation.
-        let res = row.set_values(columns, values, protocol, transaction_id)?;
+        let res = row.set_values(columns, values, protocol, tid)?;
 
         Ok(res)
     }
 
-    pub fn index_commit(
-        &self,
-        key: PrimaryKey,
-        protocol: &str,
-        transaction_id: &str,
-    ) -> Result<()> {
-        // Attempt to get read guard.
-        let read_guard = self
-            .map
-            .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
-        // Deref to row.
-        let row = &mut *read_guard.lock().unwrap();
-        // Commit changes.
-        row.commit(protocol, transaction_id);
+    pub fn commit(&self, key: PrimaryKey, protocol: &str, transaction_id: &str) -> Result<()> {
+        // Check to be deleted
+        let df = self.map.get(&key).unwrap().lock().unwrap().is_deleted();
+        if df {
+            // Remove row.
+            self.remove(key).unwrap();
+        } else {
+            // Commit changes
+            // Attempt to get read guard.
+            let read_guard = self
+                .map
+                .get(&key)
+                .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+            // Deref to row.
+            let row = &mut *read_guard.lock().unwrap();
+
+            // Commit changes.
+            row.commit(protocol, transaction_id);
+        }
 
         Ok(())
     }
 
-    pub fn index_revert(
-        &self,
-        key: PrimaryKey,
-        protocol: &str,
-        transaction_id: &str,
-    ) -> Result<()> {
+    pub fn revert(&self, key: PrimaryKey, protocol: &str, transaction_id: &str) -> Result<()> {
         // Attempt to get read guard.
         let read_guard = self
             .map
@@ -163,8 +168,22 @@ impl Index {
             .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
-        // Commit changes.
+        // Revert changes.
         row.revert(protocol, transaction_id);
+
+        Ok(())
+    }
+
+    pub fn index_revert_read(&self, key: PrimaryKey, transaction_id: &str) -> Result<()> {
+        // Attempt to get read guard.
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+        // Deref to row.
+        let row = &mut *read_guard.lock().unwrap();
+        // Revert changes.
+        row.revert_read(transaction_id);
 
         Ok(())
     }

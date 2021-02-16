@@ -2,16 +2,15 @@ use crate::server::scheduler::serialization_graph_testing::error::{
     SerializationGraphTestingError, SerializationGraphTestingErrorKind,
 };
 use crate::server::scheduler::serialization_graph_testing::node::{EdgeType, Node, State};
-use crate::server::scheduler::Scheduler;
+use crate::server::scheduler::{Aborted, Scheduler};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{Access, Row};
 use crate::workloads::{PrimaryKey, Workload};
-use crate::Result;
 
 use chrono::{DateTime, Utc};
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
-use tracing::info;
+use tracing::{debug, info};
 
 pub mod node;
 
@@ -33,28 +32,29 @@ pub struct SerializationGraphTesting {
 
 impl Scheduler for SerializationGraphTesting {
     /// Register a transaction with the serialization graph.
-    fn register(&self, transaction_name: &str) -> Result<()> {
-        // Find free node in graph.
-        for node in &self.nodes {
-            // Take exculsive access of node.
-            let node = node.write().map_err(|_| {
-                SerializationGraphTestingError::new(
-                    SerializationGraphTestingErrorKind::RwLockFailed,
-                )
-            })?;
-            if node.get_state()? == State::Free {
-                // Set to active.
-                node.set_state(State::Active)?;
-                // Set transaction id.
-                node.set_transaction_id(transaction_name)?;
-                return Ok(());
-            } else {
-                continue;
-            }
-        }
-        Err(Box::new(SerializationGraphTestingError::new(
-            SerializationGraphTestingErrorKind::NoSpaceInGraph,
-        )))
+    fn register(&self, tid: &str) -> Result<(), Aborted> {
+        // // Find free node in graph.
+        // for node in &self.nodes {
+        //     // Take exculsive access of node.
+        //     let node = node.write().map_err(|_| {
+        //         SerializationGraphTestingError::new(
+        //             SerializationGraphTestingErrorKind::RwLockFailed,
+        //         )
+        //     });
+        //     if node.get_state() == State::Free {
+        //         // Set to active.
+        //         node.set_state(State::Active);
+        //         // Set transaction id.
+        //         node.set_transaction_id(tid);
+        //         return Ok(());
+        //     } else {
+        //         continue;
+        //     }
+        // }
+        // Err(Box::new(SerializationGraphTestingError::new(
+        //     SerializationGraphTestingErrorKind::NoSpaceInGraph,
+        // )))
+        Ok(())
     }
 
     /// Execute a read operation.
@@ -63,190 +63,335 @@ impl Scheduler for SerializationGraphTesting {
         index: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        transaction_name: &str,
+        tid: &str,
         _transaction_ts: DateTime<Utc>,
-    ) -> Result<Vec<Data>> {
-        // Get index.
-        let index = self.data.get_internals().indexes.get(index).unwrap();
-        // Do read
-        match index.index_read(key, columns, "sgt", transaction_name) {
-            Ok(op_res) => {
-                // Detect conflicts.
-                let access_history = op_res.get_access_history().unwrap();
-                // Get position of this transaction in the graph.
-                let this_node = self.get_node_position(transaction_name).unwrap();
-                for access in access_history {
-                    if let Access::Write(transaction_id) = access {
-                        // Find the node for conflicting transaction
-                        let from_node = self.get_node_position(&transaction_id).unwrap();
-                        // Insert edges
-                        self.add_edge(from_node, this_node, false)?;
-                    }
-                }
-                return Ok(op_res.get_values().unwrap());
-            }
-            Err(e) => {
-                // TODO: debug!("Abort transaction {:?}: {:?}", transaction_name, e);
-                // TODO: self.cleanup(transaction_name);
-                return Err(e);
-            }
-        };
+    ) -> Result<Vec<Data>, Aborted> {
+        // // Get index.
+        // let ind = self.data.get_internals().get_index(index)?;
+
+        // // Execute read.
+        // let res = match ind.read(key, columns, "sgt", tid) {
+        //     Ok(res) => {
+        //         // Get access history.
+        //         let access_history = res.get_access_history().unwrap();
+        //         // Get position of this transaction in the graph.
+        //         let this_node = self.get_node_position(tid)?;
+        //         // Detect conflicts and insert edges.
+        //         for access in access_history {
+        //             // WR conflict
+        //             if let Access::Write(tid) = access {
+        //                 // Get position of the the conflicting transaction in the graph.
+        //                 let from_node = self.get_node_position(&tid)?;
+        //                 // Insert edges
+        //                 self.add_edge(from_node, this_node, false)?;
+        //             }
+        //         }
+        //         let this_node = self.get_node(this_node);
+        //         // Record read of this key.
+        //         this_node
+        //             .read()
+        //             .unwrap()
+        //             .keys_read
+        //             .lock()
+        //             .unwrap()
+        //             .push((index.to_string(), key));
+        //         // Get values
+        //         res.get_values().unwrap()
+        //     }
+        //     Err(e) => {
+        //         debug!("Abort transaction {:?}: {:?}", tid, e);
+        //         self.abort(tid);
+        //         return Err(e);
+        //     }
+        // };
+        // Ok(res)
+        Ok(vec![])
     }
 
-    fn write(
+    /// Execute a write operation.
+    fn update(
         &self,
         index: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        transaction_name: &str,
+        tid: &str,
         _transaction_ts: DateTime<Utc>,
-    ) -> Result<()> {
-        // Get index.
-        let index = self.data.get_internals().indexes.get(index).unwrap();
-        // Do write
-        match index.index_write(key, columns, values, "sgt", transaction_name) {
-            Ok(op_res) => {
-                // Detect conflicts.
-                let access_history = op_res.get_access_history().unwrap();
-                // Get position of this transaction in the graph.
-                let this_node = self.get_node_position(transaction_name).unwrap();
-                for access in access_history {
-                    match access {
-                        Access::Write(transaction_id) => {
-                            // Find the node for conflicting transaction
-                            let from_node = self.get_node_position(&transaction_id).unwrap();
-                            // Insert edges
-                            self.add_edge(from_node, this_node, false)?;
-                        }
-                        Access::Read(transaction_id) => {
-                            // Find the node for conflicting transaction
-                            let from_node = self.get_node_position(&transaction_id).unwrap();
-                            // Insert edges
-                            self.add_edge(from_node, this_node, true)?;
-                        }
-                    }
-                }
-                return Ok(());
-            }
-            Err(e) => {
-                // TODO: debug!("Abort transaction {:?}: {:?}", transaction_name, e);
-                // TODO: self.cleanup(transaction_name);
-                return Err(e);
-            }
-        };
-    }
+    ) -> Result<(), Aborted> {
+        // // Get index.
+        // let index = self.data.get_internals().get_index(&index).unwrap();
+        // // Execute write operation.
+        // match index.update(key, columns, values, "sgt", tid) {
+        //     Ok(res) => {
+        //         // Get access history.
+        //         let access_history = res.get_access_history().unwrap();
+        //         // Get position of this transaction in the graph.
+        //         let this_node = self.get_node_position(tid)?;
+        //         // Detect conflicts.
+        //         for access in access_history {
+        //             match access {
+        //                 // WW conflict
+        //                 Access::Write(tid) => {
+        //                     // Get position of conflicting transaction in the graph.
+        //                     let from_node = self.get_node_position(&tid)?;
+        //                     // Insert edges
+        //                     self.add_edge(from_node, this_node, false)?;
+        //                 }
+        //                 // RW conflict
+        //                 Access::Read(tid) => {
+        //                     // Get position of conflicting transaction in the graph.
+        //                     let from_node = self.get_node_position(&tid).unwrap();
+        //                     // Insert edges
+        //                     self.add_edge(from_node, this_node, true)?;
+        //                 }
+        //             }
+        //         }
+        //         // Record write
+        //         self.get_node(this_node)
+        //             .read()
+        //             .unwrap()
+        //             .keys_written
+        //             .lock()
+        //             .unwrap()
+        //             .push((index.to_string(), key));
+        //         return Ok(());
+        //     }
+        //     Err(e) => {
+        //         debug!("Abort transaction {:?}: {:?}", tid, e);
+        //         self.abort(tid);
+        //         return Err(e);
+        //     }
+        // };
 
-    fn insert(
-        &self,
-        table: &str,
-        pk: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
-        _transaction_name: &str,
-    ) -> Result<()> {
-        // Initialise empty row.
-        let table = self.data.get_internals().get_table(table)?;
-        let protocol = self.data.get_internals().config.get_str("protocol")?;
-
-        let mut row = Row::new(Arc::clone(&table), &protocol);
-        // Set PK.
-        row.set_primary_key(pk);
-        // Set values.
-        for (i, column) in columns.iter().enumerate() {
-            row.init_value(column, &values[i].to_string())?;
-        }
-        // Get index.
-        let index = table.get_primary_index()?;
-        let index = self.data.get_internals().indexes.get(&index[..]).unwrap();
-        // Attempt to insert row.
-        match index.index_insert(pk, row) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                // TODO:                self.cleanup(transaction_name);
-                Err(e)
-            }
-        }
-    }
-
-    fn delete(&self, index: &str, pk: PrimaryKey, transaction_name: &str) -> Result<()> {
-        // Get index.
-        let index = self.data.get_internals().indexes.get(index).unwrap();
-        // Do write
-        match index.index_remove(pk, "sgt") {
-            Ok(op_res) => {
-                // Detect conflicts.
-                let access_history = op_res.get_access_history().unwrap();
-                // Get position of this transaction in the graph.
-                let this_node = self.get_node_position(transaction_name).unwrap();
-                for access in access_history {
-                    match access {
-                        Access::Write(transaction_id) => {
-                            // Find the node for conflicting transaction
-                            let from_node = self.get_node_position(&transaction_id).unwrap();
-                            // Insert edges
-                            self.add_edge(from_node, this_node, false)?;
-                        }
-                        Access::Read(transaction_id) => {
-                            // Find the node for conflicting transaction
-                            let from_node = self.get_node_position(&transaction_id).unwrap();
-                            // Insert edges
-                            self.add_edge(from_node, this_node, true)?;
-                        }
-                    }
-                }
-                return Ok(());
-            }
-            Err(e) => {
-                // TODO: debug!("Abort transaction {:?}: {:?}", transaction_name, e);
-                // TODO: self.cleanup(transaction_name);
-                return Err(e);
-            }
-        };
-    }
-
-    fn abort(&self, transaction_name: &str) -> Result<()> {
         Ok(())
     }
 
-    fn commit(&self, transaction_name: &str) -> Result<()> {
-        // Get position of this transaction in the graph.
-        let this_node_id = self.get_node_position(transaction_name).unwrap();
-        // Take exculsive lock
-        let this_node = self.nodes[this_node_id].write().unwrap();
+    /// Insert row into table.
+    fn create(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<(), Aborted> {
+        // // Initialise empty row.
+        // let table = self.data.get_internals().get_table(table)?;
+        // let mut row = Row::new(Arc::clone(&table), "sgt");
+        // // Set KEY.
+        // row.set_primary_key(key);
+        // // Set values.
+        // for (i, column) in columns.iter().enumerate() {
+        //     row.init_value(column, &values[i].to_string())?;
+        // }
+        // // Get index.
+        // let index = table.get_primary_index()?;
+        // let index = self.data.get_internals().get_index(&index)?;
+        // // Attempt to insert row.
+        // match index.insert(key, row) {
+        //     Ok(_) => Ok(()),
+        //     Err(e) => {
+        //         debug!("Abort transaction {:?}: {:?}", tid, e);
+        //         self.abort(tid);
+        //         Err(e)
+        //     }
+        // }
+        Ok(())
+    }
 
-        while let State::Active = this_node.get_state().unwrap() {
-            // Get incoming
-            let incoming = this_node.has_incoming().unwrap();
-            if incoming {
-                // Do cycle check.
-                let is_cycle = self.reduced_depth_first_search(this_node_id).unwrap();
-                if is_cycle {
-                    this_node.set_state(State::Aborted).unwrap();
-                }
-            } else {
-                // Set status to commit
-                this_node.set_state(State::Committed).unwrap();
-                break;
-            }
-        }
+    /// Delete from row.
+    fn delete(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<(), Aborted> {
+        // // Get index.
+        // let index = table;
+        // let index = self.data.get_internals().get_index(index)?;
+        // // Execute remove op.
+        // match index.remove(key) {
+        //     Ok(res) => {
+        //         // Get the access history
+        //         let access_history = res.get_access_history()?;
+        //         // Get position of this transaction in the graph.
+        //         let this_node = self.get_node_position(tid)?;
+        //         // Detect conflicts.
+        //         for access in access_history {
+        //             match access {
+        //                 // WW conflict
+        //                 Access::Write(tid) => {
+        //                     // Find the node for conflicting transaction
+        //                     let from_node = self.get_node_position(&tid)?;
+        //                     // Insert edges
+        //                     self.add_edge(from_node, this_node, false)?;
+        //                 }
+        //                 // RW conflict
+        //                 Access::Read(tid) => {
+        //                     // Find the node for conflicting transaction
+        //                     let from_node = self.get_node_position(&tid).unwrap();
+        //                     // Insert edges
+        //                     self.add_edge(from_node, this_node, true)?;
+        //                 }
+        //             }
+        //         }
+        //         return Ok(());
+        //     }
+        //     Err(e) => {
+        //         debug!("Abort transaction {:?}: {:?}", tid, e);
+        //         self.abort(tid);
+        //         return Err(e);
+        //     }
+        // };xs
+        Ok(())
+    }
 
-        match this_node.get_state().unwrap() {
-            State::Aborted => {
-                // TODO: clean up.
-                return Err(Box::new(SerializationGraphTestingError::new(
-                    SerializationGraphTestingErrorKind::SerializableError,
-                )));
-            }
-            State::Committed => {
-                // TODO: CLEAN UP
+    /// Abort a transaction.
+    fn abort(&self, tid: &str) -> crate::Result<()> {
+        // // Get position of this transaction in the graph.
+        // let this_node_id = self.get_node_position(tid)?;
+        // // (1) Set state to abort.
+        // {
+        //     self.get_node(this_node_id)
+        //         .write()
+        //         .unwrap()
+        //         .set_state(State::Aborted)
+        //         .unwrap();
+        //     // Drop write lock on node.
+        // }
+        // // (2) Revert writes.
+        // let written = self
+        //     .get_node(this_node_id)
+        //     .read()
+        //     .unwrap()
+        //     .get_keys_written()
+        //     .unwrap();
+        // for (index, key) in &written {
+        //     // Get index.
+        //     let index = self.data.get_internals().get_index(&index).unwrap();
+        //     // Revert.
+        //     index.index_revert(*key, "sgt", tid).unwrap();
+        // }
+        // // (3) Remove read accesses from rows read.
+        // let read = self
+        //     .get_node(this_node_id)
+        //     .read()
+        //     .unwrap()
+        //     .get_keys_read()
+        //     .unwrap();
+        // for (index, key) in written {
+        //     // Get index.
+        //     let index = self.data.get_internals().get_index(&index).unwrap();
+        //     // Revert.
+        //     index.index_revert_read(key, tid).unwrap();
+        // }
+        // // (4) Remove inserted values.
+        // let inserted = self
+        //     .get_node(this_node_id)
+        //     .read()
+        //     .unwrap()
+        //     .get_rows_inserted()
+        //     .unwrap();
+        // for (index, key) in inserted {
+        //     // Get index.
+        //     let index = self.data.get_internals().get_index(&index).unwrap();
+        //     // Revert.
+        //     index.remove(key).unwrap();
+        // }
 
-                return Ok(());
-            }
-            State::Free => panic!("trying to commit a free sloted"),
+        // // (5) Remove deleted values.
+        // let deleted = self
+        //     .get_node(this_node_id)
+        //     .read()
+        //     .unwrap()
+        //     .get_rows_deleted()
+        //     .unwrap();
+        // for (index, row) in deleted {
+        //     // Get index.
+        //     let index = self.data.get_internals().get_index(&index).unwrap();
+        //     let key = row.get_primary_key().unwrap();
+        //     // Revert.
+        //     index.insert(key, row).unwrap();
+        // }
+        // // No more edges can be added to this node.
+        // // Get outgoing node.
+        // let outgoing_nodes = self
+        //     .get_node(this_node_id)
+        //     .read()
+        //     .unwrap()
+        //     .get_outgoing()
+        //     .unwrap();
 
-            State::Active => panic!("node should not be active"),
-        }
+        // for out in outgoing_nodes {
+        //     let this_node = self.get_node(this_node_id).read().unwrap();
+        //     let outgoing_node = self.get_node(out).read().unwrap();
+        //     // Abort children.
+        //     if outgoing_node.get_state().unwrap() == State::Active {
+        //         outgoing_node.set_state(State::Aborted).unwrap();
+        //     }
+        //     // Delete from edge sets
+        //     outgoing_node
+        //         .delete_edge(this_node_id, EdgeType::Incoming)
+        //         .unwrap();
+        //     this_node
+        //         .delete_edge(outgoing_node.id, EdgeType::Outgoing)
+        //         .unwrap();
+        // }
+
+        // while self
+        //     .get_node(this_node_id)
+        //     .read()
+        //     .unwrap()
+        //     .has_incoming()
+        //     .unwrap()
+        // {
+        //     // wait
+        // }
+
+        Ok(())
+    }
+
+    /// Commit a transaction.
+    fn commit(&self, tid: &str) -> Result<(), Aborted> {
+        // // Get position of this transaction in the graph.
+        // let this_node_id = self.get_node_position(tid)?;
+        // // Take exculsive lock
+        // let this_node = self.nodes[this_node_id].write().unwrap();
+
+        // while let State::Active = this_node.get_state().unwrap() {
+        //     // Get incoming
+        //     let incoming = this_node.has_incoming().unwrap();
+        //     if incoming {
+        //         // Do cycle check.
+        //         let is_cycle = self.reduced_depth_first_search(this_node_id).unwrap();
+        //         if is_cycle {
+        //             this_node.set_state(State::Aborted).unwrap();
+        //         }
+        //     } else {
+        //         // Set status to commit
+        //         this_node.set_state(State::Committed).unwrap();
+        //         break;
+        //     }
+        // }
+
+        // match this_node.get_state().unwrap() {
+        //     State::Aborted => {
+        //         self.abort(tid);
+        //         return Err(Box::new(SerializationGraphTestingError::new(
+        //             SerializationGraphTestingErrorKind::SerializableError,
+        //         )));
+        //     }
+        //     State::Committed => {
+        //         self.clean_up_graph(this_node_id);
+        //         return Ok(());
+        //     }
+        //     State::Free => panic!("trying to commit a free sloted"),
+
+        //     State::Active => panic!("node should not be active"),
+        // }
+        Ok(())
     }
 }
 
@@ -271,7 +416,7 @@ impl SerializationGraphTesting {
     }
 
     /// Get node position by transaction id.
-    pub fn get_node_position(&self, transaction_id: &str) -> Result<usize> {
+    pub fn get_node_position(&self, transaction_id: &str) -> crate::Result<usize> {
         for (pos, node) in self.nodes.iter().enumerate() {
             // Take shared access of node.
             let tid = node.read().unwrap().get_transaction_id().unwrap();
@@ -285,7 +430,7 @@ impl SerializationGraphTesting {
     /// Insert an edge into the serialization graph
     ///
     /// `(from_node)--->(this_node)`
-    pub fn add_edge(&self, from_node: usize, this_node: usize, rw_edge: bool) -> Result<()> {
+    pub fn add_edge(&self, from_node: usize, this_node: usize, rw_edge: bool) -> crate::Result<()> {
         // Acquire read locks on nodes.
         let this_node = self.nodes[this_node].read().map_err(|_| {
             SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::RwLockFailed)
@@ -327,7 +472,7 @@ impl SerializationGraphTesting {
         }
     }
 
-    pub fn reduced_depth_first_search(&self, current_node: usize) -> Result<bool> {
+    pub fn reduced_depth_first_search(&self, current_node: usize) -> crate::Result<bool> {
         // Tracking nodes to visit.
         let mut stack = Vec::new();
         // Tracking visited nodes.
@@ -402,9 +547,6 @@ impl SerializationGraphTesting {
             }
             _ => panic!("Node should not be in this state"),
         }
-
-        // tx.send(this_node).unwrap();
-        // send id to garbage collector
     }
 
     // TODO: clean up database.

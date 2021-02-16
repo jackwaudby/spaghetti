@@ -47,7 +47,7 @@ fn populate_item_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         row.init_value("i_name", &helper::random_string(14, 24, rng))?;
         row.init_value("i_price", &helper::random_float(1.0, 100.0, 2, rng))?;
         row.init_value("i_data", &helper::item_data(rng))?;
-        i.index_insert(pk, row)?;
+        i.insert(pk, row)?;
     }
     Ok(())
 }
@@ -79,7 +79,7 @@ fn populate_warehouse_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         row.init_value("w_zip", &helper::zip(rng))?;
         row.init_value("w_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
         row.init_value("w_ytd", "300000.0")?;
-        i.index_insert(pk, row)?;
+        i.insert(pk, row)?;
     }
     Ok(())
 }
@@ -115,7 +115,7 @@ fn populate_district_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
             row.init_value("d_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
             row.init_value("d_ytd", "30000.0")?;
             row.init_value("d_next_o_id", "3001")?;
-            i.index_insert(pk, row)?;
+            i.insert(pk, row)?;
         }
     }
     Ok(())
@@ -146,7 +146,7 @@ fn populate_stock_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
             row.init_value("s_w_id", &w_id.to_string())?;
             row.init_value("s_quantity", &rng.gen_range(10..=100).to_string())?;
             row.init_value("s_remote_cnt", "0")?;
-            i.index_insert(pk, row)?;
+            i.insert(pk, row)?;
         }
     }
     Ok(())
@@ -183,7 +183,7 @@ fn populate_customer_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
                 row.init_value("c_balance", "-10.0")?;
                 row.init_value("c_ytd_payment", "10.0")?;
                 row.init_value("c_payment_cnt", "1")?;
-                i.index_insert(pk, row)?;
+                i.insert(pk, row)?;
             }
         }
     }

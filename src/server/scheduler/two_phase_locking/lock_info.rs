@@ -18,6 +18,8 @@ pub struct LockInfo {
     pub granted: Option<u32>,
     /// Name of index row resides in
     pub index: String,
+    /// Reclaimed flag
+    pub reclaimed: bool,
 }
 
 /// Represents an entry in the list of transactions that have requested a lock.
@@ -58,6 +60,7 @@ impl LockInfo {
             timestamp: Some(timestamp),
             granted: Some(1),
             index: index.to_string(),
+            reclaimed: false,
         }
     }
 

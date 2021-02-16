@@ -237,10 +237,10 @@ pub fn update_subscriber_data(
     // Execute write operation.
     protocol
         .scheduler
-        .write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
+        .update("subscriber", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
     protocol
         .scheduler
-        .write("special_idx", pk_sp, &columns_sp, &values_sp, t_id, t_ts)?;
+        .update("special_idx", pk_sp, &columns_sp, &values_sp, t_id, t_ts)?;
 
     // Commit transaction.
     protocol.scheduler.commit(t_id)?;
@@ -278,7 +278,7 @@ pub fn update_location(
     // Execute write operation.
     protocol
         .scheduler
-        .write("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
+        .update("sub_idx", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
 
     // Commit transaction.
     protocol.scheduler.commit(t_id)?;
@@ -353,7 +353,7 @@ pub fn insert_call_forwarding(
     // Execute insert operation.
     protocol
         .scheduler
-        .insert(cf_name, pk_cf, &columns_cf, &values_cf, t_id)?;
+        .create(cf_name, pk_cf, &columns_cf, &values_cf, t_id, t_ts)?;
 
     // Commit transaction.
     protocol.scheduler.commit(t_id)?;
@@ -395,10 +395,12 @@ pub fn delete_call_forwarding(
     let columns_sb: Vec<&str> = vec!["s_id"];
     protocol
         .scheduler
-        .read("sub_idx", pk_sb, &columns_sb, t_id, t_ts)?;
+        .read("subscriber", pk_sb, &columns_sb, t_id, t_ts)?;
 
     // Delete from call forwarding.
-    protocol.scheduler.delete("call_idx", pk_cf, t_id)?;
+    protocol
+        .scheduler
+        .delete("call_forwarding", pk_cf, t_id, t_ts)?;
 
     // Commit transaction.
     protocol.scheduler.commit(t_id)?;

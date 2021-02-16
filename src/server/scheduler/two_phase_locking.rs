@@ -1,13 +1,15 @@
+use crate::server::scheduler::two_phase_locking::active_transaction::ActiveTransaction;
 use crate::server::scheduler::two_phase_locking::error::{
     TwoPhaseLockingError, TwoPhaseLockingErrorKind,
 };
 use crate::server::scheduler::two_phase_locking::lock_info::{Entry, LockInfo, LockMode};
-use crate::server::scheduler::Scheduler;
+use crate::server::scheduler::{Aborted, Scheduler};
 use crate::server::storage::datatype::Data;
+use crate::server::storage::index::Index;
 use crate::server::storage::row::Row;
+use crate::server::storage::table::Table;
 use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
-use crate::Result;
 
 use chashmap::CHashMap;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -18,13 +20,16 @@ pub mod error;
 
 pub mod lock_info;
 
-/// Represents an operation scheduler.
-#[derive(Debug)]
+pub mod active_transaction;
+
+/// Represents a 2PL scheduler.
 pub struct TwoPhaseLocking {
     /// Map of database records  to their lock information.
     lock_table: Arc<CHashMap<PrimaryKey, LockInfo>>,
-    /// Map of active transactions to the locks they hold.
-    active_transactions: Arc<CHashMap<String, Vec<PrimaryKey>>>,
+
+    /// Map of transaction ids to neccessary runtime information.
+    active_transactions: Arc<CHashMap<String, ActiveTransaction>>,
+
     /// Handle to storage layer.
     pub data: Arc<Workload>,
 }
@@ -32,62 +37,129 @@ pub struct TwoPhaseLocking {
 impl Scheduler for TwoPhaseLocking {
     /// Register a transaction with the scheduler.
     ///
-    /// # Errors
+    /// # Aborts
     ///
-    /// If a transaction with the same name is already registered returns
-    /// `TransactionAlreadyRegistered`.
-    fn register(&self, transaction_name: &str) -> Result<()> {
-        debug!("Register transaction {:?} with scheduler", transaction_name);
-        match self
-            .active_transactions
-            .insert(transaction_name.to_string(), Vec::new())
-        {
-            Some(_) => Err(Box::new(TwoPhaseLockingError::new(
+    /// A transaction with the same name is already registered.
+    fn register(&self, tid: &str) -> Result<(), Aborted> {
+        debug!("Register {}", tid);
+        // Create runtime tracker.
+        let at = ActiveTransaction::new(tid);
+        // Add to map.
+        if let Some(_) = self.active_transactions.insert(tid.to_string(), at) {
+            let err = TwoPhaseLockingError::new(
                 TwoPhaseLockingErrorKind::AlreadyRegisteredInActiveTransactions,
-            ))),
-            None => Ok(()),
+            );
+            return Err(Aborted {
+                reason: format!("{}", err),
+            });
         }
+
+        Ok(())
     }
 
-    /// Attempt to read a `Row`.
+    /// Attempt to create a row in a table.
     ///
-    /// If the read operation fails, an error is returned.
-    fn read(
+    /// # Aborts
+    ///
+    /// The table cannot be found.
+    /// Column cannot be found in table.
+    /// Parsing error.
+    /// Row already exists.
+    fn create(
         &self,
-        index: &str,
+        table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        transaction_name: &str,
-        transaction_ts: DateTime<Utc>,
-    ) -> Result<Vec<Data>> {
-        debug!(
-            "Transaction {:?} requesting read lock on {:?}",
-            transaction_name, key
-        );
+        values: &Vec<&str>,
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<(), Aborted> {
+        // Get table.
+        let table = self.get_table(table, tid)?;
+        // Init row.
+        let mut row = Row::new(Arc::clone(&table), "2pl");
+        // Set pk.
+        row.set_primary_key(key);
+        // Init values.
+        for (i, column) in columns.iter().enumerate() {
+            row.init_value(column, &values[i].to_string()).map_err(|e| {
+                self.abort(tid);
+                return Aborted {
+                    reason: format!("{}", e),
+                };
+            });
+        }
+        // Get Index
+        let index = self.get_index(table, tid)?;
+
+        // Set values - Needed to make the row "dirty"
+        row.set_values(columns, values, "2pl", tid).map_err(|e| {
+            self.abort(tid);
+            return Aborted {
+                reason: format!("{}", e),
+            };
+        });
+
+        // Register
+        self.active_transactions
+            .get_mut(tid)
+            .unwrap()
+            .add_row_to_insert(index, row);
+
+        Ok(())
+    }
+
+    /// Attempt to read columns in row.
+    ///
+    /// # Aborts
+    ///
+    /// The table cannot be found.
+    /// There is no primary index on this table.
+    /// The index cannot be found.
+    /// Row cannot be found.
+    /// Column does not exist in the table.
+    /// Lock request denied.
+    fn read(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<Vec<Data>, Aborted> {
+        debug!("{} requesting read lock on {:?}", tid, key);
+        // Get table.
+        let table = self.get_table(table, tid)?;
+
+        // Get primary index name.
+        let index_name = self.get_index_name(Arc::clone(&table), tid)?;
 
         // Get read lock on row with pk `key`.
-        let req = self.request_lock(key, LockMode::Read, transaction_name, transaction_ts, index);
+        let request = self.request_lock(&index_name, key, LockMode::Read, tid, tts);
 
-        match req {
+        // Get index for this key's table.
+        let index = self.get_index(Arc::clone(&table), tid)?;
+
+        match request {
             LockRequest::Granted => {
-                debug!(
-                    "Read lock for {:?} granted to transaction {:?}",
-                    key, transaction_name
-                );
-                // Get index for this key's table.
-                let index = self.data.get_internals().indexes.get(index).unwrap();
-                // Execute read operation through index.
-                let vals = match index.index_read(key, columns, "2pl", transaction_name) {
-                    Ok(v) => v.get_values().unwrap(),
-                    Err(e) => {
-                        debug!("Abort transaction {:?}: {:?}", transaction_name, e);
-                        self.abort(transaction_name);
-
-                        return Err(e);
-                    }
-                };
+                debug!("Read lock for {:?} granted to transaction {:?}", key, tid);
+                // Execute read operation.
+                let result = index
+                    .read(key, columns, "2pl", tid)
+                    .map_err(|e| {
+                        self.abort(tid);
+                        return Aborted {
+                            reason: format!("{}", e),
+                        };
+                    })
+                    .unwrap();
+                // Register lock.
+                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+                // Get values.
+                let vals = result.get_values().unwrap();
                 Ok(vals)
             }
+
             LockRequest::Delay(pair) => {
                 debug!("Waiting for read lock");
                 let (lock, cvar) = &*pair;
@@ -96,135 +168,79 @@ impl Scheduler for TwoPhaseLocking {
                     waiting = cvar.wait(waiting).unwrap();
                 }
                 debug!("Read lock granted");
-                let index = self.data.get_internals().indexes.get(index).unwrap();
-                let vals = match index.index_read(key, columns, "2pl", transaction_name) {
-                    Ok(v) => v.get_values().unwrap(),
-                    Err(e) => {
-                        debug!("Abort transaction {:?}: {:?}", transaction_name, e);
-                        self.abort(transaction_name);
-
-                        return Err(e);
-                    }
-                };
-
+                // Execute read operation.
+                let result = index
+                    .read(key, columns, "2pl", tid)
+                    .map_err(|e| {
+                        self.abort(tid);
+                        return Aborted {
+                            reason: format!("{}", e),
+                        };
+                    })
+                    .unwrap();
+                // Register lock.
+                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+                // Get values
+                let vals = result.get_values().unwrap();
                 Ok(vals)
             }
+
             LockRequest::Denied => {
                 debug!("Read lock denied");
-                self.abort(transaction_name);
-                Err(Box::new(TwoPhaseLockingError::new(
-                    TwoPhaseLockingErrorKind::LockRequestDenied,
-                )))
+                let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
+                self.abort(tid);
+                Err(Aborted {
+                    reason: format!("{}", err),
+                })
             }
         }
     }
 
-    /// Commit a transaction.
-    fn commit(&self, transaction_name: &str) -> Result<()> {
-        debug!("Commit transaction {:?}", transaction_name);
-        // Release locks.
-        self.release_locks(transaction_name, true);
-        // Clean up data structures.
-        self.cleanup(transaction_name);
-        Ok(())
-    }
-
-    /// Abort a transaction.
-    fn abort(&self, transaction_name: &str) -> Result<()> {
-        debug!("Abort transaction {:?}", transaction_name);
-        // Release locks.
-        self.release_locks(transaction_name, false);
-        // Clean up data structures.
-        self.cleanup(transaction_name);
-        Ok(())
-    }
-
-    fn insert(
+    /// Attempt to update columns in row.
+    ///
+    /// # Aborts
+    ///
+    /// The table cannot be found.
+    /// There is no primary index on this table.
+    /// The index cannot be found.
+    /// Row cannot be found.
+    /// Column does not exist in the table.
+    /// Lock request denied.
+    fn update(
         &self,
         table: &str,
-        pk: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
-        transaction_name: &str,
-    ) -> Result<()> {
-        // Initialise empty row.
-        let table = self.data.get_internals().get_table(table)?;
-        let protocol = self.data.get_internals().config.get_str("protocol")?;
-
-        let mut row = Row::new(Arc::clone(&table), &protocol);
-        // Set PK.
-        row.set_primary_key(pk);
-        // Set values.
-        for (i, column) in columns.iter().enumerate() {
-            row.init_value(column, &values[i].to_string())?;
-        }
-        // Get index.
-        let index = table.get_primary_index()?;
-        let index = self.data.get_internals().indexes.get(&index[..]).unwrap();
-        // Attempt to insert row.
-        match index.index_insert(pk, row) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                self.cleanup(transaction_name);
-                Err(e)
-            }
-        }
-    }
-
-    fn delete(&self, index: &str, pk: PrimaryKey, transaction_name: &str) -> Result<()> {
-        let protocol = self.data.get_internals().config.get_str("protocol")?;
-
-        // Get index.
-        let index = self.data.get_internals().indexes.get(index).unwrap();
-        // Attempt to remove row.
-        match index.index_remove(pk, &protocol) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                self.cleanup(transaction_name);
-                Err(e)
-            }
-        }
-    }
-
-    fn write(
-        &self,
-        index: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        transaction_name: &str,
-        transaction_ts: DateTime<Utc>,
-    ) -> Result<()> {
-        debug!(
-            "Transaction {:?} requesting write lock on {:?}",
-            transaction_name, key
-        );
-        let protocol = self.data.get_internals().config.get_str("protocol")?;
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<(), Aborted> {
+        debug!("Transaction {:?} requesting write lock on {:?}", tid, key);
 
-        let req = self.request_lock(
-            key,
-            LockMode::Write,
-            transaction_name,
-            transaction_ts,
-            index,
-        );
+        // Get table.
+        let table = self.get_table(table, tid)?;
 
-        match req {
+        // Get primary index name.
+        let index_name = self.get_index_name(Arc::clone(&table), tid)?;
+
+        // Request lock.
+        let request = self.request_lock(&index_name, key, LockMode::Write, tid, tts);
+
+        // Get index for this key's table.
+        let index = self.get_index(Arc::clone(&table), tid)?;
+
+        match request {
             LockRequest::Granted => {
-                debug!(
-                    "Write lock for {:?} granted to transaction {:?}",
-                    key, transaction_name
-                );
-                let index = self.data.get_internals().indexes.get(index).unwrap();
-                let _vals =
-                    match index.index_write(key, columns, values, &protocol, transaction_name) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            debug!("Abort transaction {:?}: {:?}", transaction_name, e);
-                            self.abort(transaction_name);
-                            return Err(e);
-                        }
+                debug!("Write lock for {:?} granted to transaction {:?}", key, tid);
+                // Execute update.
+                index.update(key, columns, values, "2pl", tid).map_err(|e| {
+                    self.abort(tid);
+                    return Aborted {
+                        reason: format!("{}", e),
                     };
+                });
+                // Register lock.
+                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
 
                 Ok(())
             }
@@ -236,27 +252,124 @@ impl Scheduler for TwoPhaseLocking {
                     waiting = cvar.wait(waiting).unwrap();
                 }
                 debug!("Write lock granted");
-                let index = self.data.get_internals().indexes.get(index).unwrap();
-                let _vals =
-                    match index.index_write(key, columns, values, &protocol, transaction_name) {
-                        Ok(v) => v,
-                        Err(e) => {
-                            debug!("Abort transaction {:?}: {:?}", transaction_name, e);
-                            self.abort(transaction_name);
-                            return Err(e);
-                        }
+                index.update(key, columns, values, "2pl", tid).map_err(|e| {
+                    self.abort(tid);
+                    return Aborted {
+                        reason: format!("{}", e),
                     };
+                });
+                // Register lock.
+                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
 
                 Ok(())
             }
             LockRequest::Denied => {
                 debug!("Write lock denied");
-                self.abort(transaction_name);
-                Err(Box::new(TwoPhaseLockingError::new(
-                    TwoPhaseLockingErrorKind::LockRequestDenied,
-                )))
+                let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
+                self.abort(tid);
+                Err(Aborted {
+                    reason: format!("{}", err),
+                })
             }
         }
+    }
+
+    /// Attempt to delete row.
+    ///
+    /// # Aborts
+    ///
+    /// The table cannot be found.
+    /// There is no primary index on this table.
+    /// The index cannot be found.
+    /// Row cannot be found.
+    fn delete(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<(), Aborted> {
+        // Get table.
+        let table = self.get_table(table, tid)?;
+
+        // Get primary index name.
+        let index_name = self.get_index_name(Arc::clone(&table), tid)?;
+
+        // Request lock.
+        let request = self.request_lock(&index_name, key, LockMode::Write, tid, tts);
+
+        // Get index for this key's table.
+        let index = self.get_index(Arc::clone(&table), tid)?;
+
+        match request {
+            LockRequest::Granted => {
+                debug!("Write lock for {:?} granted to transaction {:?}", key, tid);
+                // Execute delete.
+                index.delete(key).map_err(|e| {
+                    self.abort(tid);
+                    return Aborted {
+                        reason: format!("{}", e),
+                    };
+                });
+                // Register lock.
+                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+            }
+            LockRequest::Delay(pair) => {
+                debug!("Waiting for write lock");
+                let (lock, cvar) = &*pair;
+                let mut waiting = lock.lock().unwrap();
+                while !*waiting {
+                    waiting = cvar.wait(waiting).unwrap();
+                }
+                debug!("Write lock granted");
+                // Execute delete.
+                index.delete(key).map_err(|e| {
+                    self.abort(tid);
+                    return Aborted {
+                        reason: format!("{}", e),
+                    };
+                });
+            }
+            LockRequest::Denied => {
+                debug!("Write lock denied");
+                let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
+                self.abort(tid);
+                return Err(Aborted {
+                    reason: format!("{}", err),
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Commit a transaction.
+    fn commit(&self, tid: &str) -> Result<(), Aborted> {
+        debug!("Commit transaction {:?}", 1);
+        // (tid) Remove from active transactions.
+        let mut at = self.active_transactions.remove(tid).unwrap();
+
+        // (2) Insert dirty rows
+        for row in at.get_rows_to_insert().into_iter() {
+            let (index, row) = row;
+            let key = row.get_primary_key().unwrap();
+            index.insert(key, row).unwrap();
+        }
+
+        // (4) Release locks.
+        self.release_locks(tid, true);
+
+        Ok(())
+    }
+    // TODO
+    /// Abort a transaction.
+    fn abort(&self, tid: &str) -> crate::Result<()> {
+        debug!("Abort transaction {:?}", tid);
+
+        // Release locks.
+        self.release_locks(tid, false);
+
+        Ok(())
     }
 }
 
@@ -264,32 +377,12 @@ impl TwoPhaseLocking {
     /// Creates a new scheduler with an empty lock table.
     pub fn new(workload: Arc<Workload>) -> TwoPhaseLocking {
         let lock_table = Arc::new(CHashMap::<PrimaryKey, LockInfo>::new());
-        let active_transactions = Arc::new(CHashMap::<String, Vec<PrimaryKey>>::new());
+        let active_transactions = Arc::new(CHashMap::<String, ActiveTransaction>::new());
 
         TwoPhaseLocking {
             lock_table,
             active_transactions,
             data: workload,
-        }
-    }
-
-    /// Register lock with a transaction.
-    fn register_lock(&self, transaction_name: &str, key: PrimaryKey) -> Result<()> {
-        // Attempt to get mutable value for transaction.
-        let locks_held = self.active_transactions.get_mut(transaction_name);
-
-        match locks_held {
-            Some(mut wg) => {
-                wg.push(key);
-                debug!(
-                    "Register lock for {:?} with transaction {:?}",
-                    key, transaction_name
-                );
-                Ok(())
-            }
-            None => Err(Box::new(TwoPhaseLockingError::new(
-                TwoPhaseLockingErrorKind::NotRegisteredInActiveTransactions,
-            ))),
         }
     }
 
@@ -301,33 +394,33 @@ impl TwoPhaseLocking {
     /// If the lock request is delayed `Delayed` is returned.
     fn request_lock(
         &self,
+        index: &str,
         key: PrimaryKey,
         request_mode: LockMode,
-        transaction_name: &str,
-        transaction_ts: DateTime<Utc>,
-        index: &str,
+        tid: &str,
+        tts: DateTime<Utc>,
     ) -> LockRequest {
         // If the lock table does not contain lock information for this record, insert lock information, and grant lock.
         if !self.lock_table.contains_key(&key) {
             // Create new lock information.
-            let mut lock_info = LockInfo::new(request_mode, transaction_ts, index);
+            let mut lock_info = LockInfo::new(request_mode, tts, index);
             // Create new request entry.
-            let entry = Entry::new(
-                transaction_name.to_string(),
-                request_mode,
-                None,
-                transaction_ts,
-            );
+            let entry = Entry::new(tid.to_string(), request_mode, None, tts);
             lock_info.add_entry(entry);
             // Insert into lock table
             self.lock_table.insert_new(key, lock_info);
-            self.register_lock(transaction_name, key).unwrap();
             return LockRequest::Granted;
         }
 
         // Else a lock exists for this record.
         // Retrieve the lock information.
         let mut lock_info = self.lock_table.get_mut(&key).unwrap();
+
+        // Check not in process of being reclaimed.
+        if lock_info.reclaimed {
+            return LockRequest::Denied;
+        }
+
         // The lock may be in use or not.
         // If in-use, consult the granted lock.
         if let Some(_) = lock_info.granted {
@@ -346,39 +439,33 @@ impl TwoPhaseLocking {
                     match lock_info.group_mode.unwrap() {
                         LockMode::Read => {
                             // Create new entry.
-                            let entry = Entry::new(
-                                transaction_name.to_string(),
-                                LockMode::Read,
-                                None,
-                                transaction_ts,
-                            );
+                            let entry = Entry::new(tid.to_string(), LockMode::Read, None, tts);
                             // Add to holder/request list.
                             lock_info.add_entry(entry);
                             // Update lock timestamp if this lock request has higher timestamp
-                            if transaction_ts > lock_info.timestamp.unwrap() {
-                                lock_info.timestamp = Some(transaction_ts);
+                            if tts > lock_info.timestamp.unwrap() {
+                                lock_info.timestamp = Some(tts);
                             }
                             // Increment locks held
                             let held = lock_info.granted.unwrap();
                             lock_info.granted = Some(held + 1);
                             // Grant lock.
-                            self.register_lock(transaction_name, key).unwrap();
                             return LockRequest::Granted;
                         }
                         LockMode::Write => {
                             // Record locked with write lock, read lock can not be granted.
                             // Apply wait-die deadlock detection.
-                            if lock_info.timestamp.unwrap() < transaction_ts {
+                            if lock_info.timestamp.unwrap() < tts {
                                 return LockRequest::Denied;
                             }
                             // Initialise a `Condvar` that will be used to sleep the thread.
                             let pair = Arc::new((Mutex::new(false), Condvar::new()));
                             // Create new entry for transaction request list.
                             let entry = Entry::new(
-                                transaction_name.to_string(),
+                                tid.to_string(),
                                 LockMode::Read,
                                 Some(Arc::clone(&pair)),
-                                transaction_ts,
+                                tts,
                             );
                             // Add to holder/request list.
                             lock_info.add_entry(entry);
@@ -392,17 +479,17 @@ impl TwoPhaseLocking {
                 }
                 LockMode::Write => {
                     // Apply deadlock detection.
-                    if transaction_ts > lock_info.timestamp.unwrap() {
+                    if tts > lock_info.timestamp.unwrap() {
                         return LockRequest::Denied;
                     }
                     // Initialise a `Condvar` that will be used to wake up thread.
                     let pair = Arc::new((Mutex::new(false), Condvar::new()));
                     // Create new entry.
                     let entry = Entry::new(
-                        transaction_name.to_string(),
+                        tid.to_string(),
                         LockMode::Write,
                         Some(Arc::clone(&pair)),
-                        transaction_ts,
+                        tts,
                     );
                     // Add to holder/request list.
                     lock_info.add_entry(entry);
@@ -418,27 +505,18 @@ impl TwoPhaseLocking {
             // Set group mode to request mode.
             lock_info.group_mode = Some(request_mode);
             // Create new entry for request.
-            let entry = Entry::new(
-                transaction_name.to_string(),
-                request_mode,
-                None,
-                transaction_ts,
-            );
+            let entry = Entry::new(tid.to_string(), request_mode, None, tts);
             lock_info.add_entry(entry);
             // Set lock timestamp.
-            lock_info.timestamp = Some(transaction_ts);
+            lock_info.timestamp = Some(tts);
             // Increment granted.
             lock_info.granted = Some(1);
-            self.register_lock(transaction_name, key).unwrap();
             return LockRequest::Granted;
         }
     }
 
-    // TODO: If no other transactions concurrently holding the lock and none are waiting delete lock information.
-    // TODO: This could be implemented by assigning the key to a clean up thread which periodically purges the unused locks.
-
-    fn release_lock(&self, key: PrimaryKey, transaction_name: &str, commit: bool) {
-        debug!("Release {}'s lock on {}", transaction_name, key);
+    fn release_lock(&self, key: PrimaryKey, tid: &str, commit: bool) -> UnlockRequest {
+        debug!("Release {}'s lock on {}", tid, key);
         let mut lock_info = self.lock_table.get_mut(&key).unwrap();
 
         // Get index for this key's table.
@@ -452,9 +530,9 @@ impl TwoPhaseLocking {
         // If write lock then commit or revert changes.
         if let LockMode::Write = lock_info.group_mode.unwrap() {
             if commit {
-                index.index_commit(key, "2pl", transaction_name);
+                index.commit(key, "2pl", tid);
             } else {
-                index.index_revert(key, "2pl", transaction_name);
+                index.revert(key, "2pl", tid);
             }
         }
 
@@ -469,18 +547,16 @@ impl TwoPhaseLocking {
             lock_info.granted = None;
             // Reset timestamp.
             lock_info.timestamp = None;
+            // Set reclaimed.
+            lock_info.reclaimed = true;
             debug!("set to default");
-            return;
+            return UnlockRequest::Reclaim;
         }
 
         // Find the entry for this lock request.
         // Assumption: only 1 request per transaction name and the lock request must exist
         // in list.
-        let entry_index = lock_info
-            .list
-            .iter()
-            .position(|e| e.name == transaction_name)
-            .unwrap();
+        let entry_index = lock_info.list.iter().position(|e| e.name == tid).unwrap();
         // Remove transactions entry.
         let entry = lock_info.list.remove(entry_index);
 
@@ -516,8 +592,6 @@ impl TwoPhaseLocking {
                         let mut started = lock.lock().unwrap();
                         *started = true;
                         cvar.notify_all();
-                        // Register lock with transaction
-                        self.register_lock(&e.name, key).unwrap();
                     }
                     // Set new lock information.
                     // Highest read timestamp.
@@ -547,8 +621,6 @@ impl TwoPhaseLocking {
                     let mut started = lock.lock().unwrap();
                     *started = true;
                     cvar.notify_all();
-                    // Register lock with transaction
-                    self.register_lock(&lock_info.list[0].name, key).unwrap();
                 }
             }
             // If record was locked with a read lock then either,
@@ -600,28 +672,70 @@ impl TwoPhaseLocking {
                         let mut started = lock.lock().unwrap();
                         *started = true;
                         cvar.notify_all();
-                        // Register lock with transaction
-                        self.register_lock(&lock_info.list[next_write_entry_index].name, key)
-                            .unwrap();
                     }
                 }
             }
         }
+        UnlockRequest::Ok
     }
 
-    fn release_locks(&self, transaction_name: &str, commit: bool) {
-        debug!("Release locks for {:?}", transaction_name);
-        let held_locks = self.active_transactions.get(transaction_name).unwrap();
-        debug!("Locks held: {:?}", held_locks);
-        for lock in held_locks.iter() {
-            debug!("Release lock: {:?}", lock);
-            self.release_lock(*lock, transaction_name, commit);
+    fn release_locks(&self, tid: &str, commit: bool) {
+        for lock in self.active_transactions.get(tid).unwrap().get_locks_held() {
+            if let UnlockRequest::Reclaim = self.release_lock(*lock, tid, commit) {
+                self.lock_table.remove(lock);
+            }
         }
     }
 
-    fn cleanup(&self, transaction_name: &str) {
-        debug!("Clean up {:?}", transaction_name);
-        self.active_transactions.remove(transaction_name);
+    /// Get shared reference to a table.
+    fn get_table(&self, table: &str, tid: &str) -> Result<Arc<Table>, Aborted> {
+        // Get table.
+        let table = self
+            .data
+            .get_internals()
+            .get_table(table)
+            .map_err(|e| {
+                self.abort(tid);
+                return Aborted {
+                    reason: format!("{}", e),
+                };
+            })
+            .unwrap();
+        Ok(table)
+    }
+
+    /// Get primary index name on a table.
+    fn get_index_name(&self, table: Arc<Table>, tid: &str) -> Result<String, Aborted> {
+        let index_name = table
+            .get_primary_index()
+            .map_err(|e| {
+                self.abort(tid);
+                return Aborted {
+                    reason: format!("{}", e),
+                };
+            })
+            .unwrap();
+        Ok(index_name)
+    }
+
+    /// Get shared reference to index for a table.
+    fn get_index(&self, table: Arc<Table>, tid: &str) -> Result<Arc<Index>, Aborted> {
+        // Get index name.
+        let index_name = self.get_index_name(table, tid)?;
+
+        // Get index for this key's table.
+        let index = self
+            .data
+            .get_internals()
+            .get_index(&index_name)
+            .map_err(|e| {
+                self.abort(tid);
+                return Aborted {
+                    reason: format!("{}", e),
+                };
+            })
+            .unwrap();
+        Ok(index)
     }
 }
 
@@ -630,6 +744,12 @@ enum LockRequest {
     Granted,
     Denied,
     Delay(Arc<(Mutex<bool>, Condvar)>),
+}
+
+#[derive(Debug)]
+enum UnlockRequest {
+    Ok,
+    Reclaim,
 }
 
 impl PartialEq for LockRequest {

@@ -1,6 +1,8 @@
 use crate::server::scheduler::serialization_graph_testing::error::{
     SerializationGraphTestingError, SerializationGraphTestingErrorKind,
 };
+use crate::server::storage::row::Row;
+use crate::workloads::PrimaryKey;
 use crate::Result;
 
 use std::sync::Mutex;
@@ -25,10 +27,22 @@ pub struct Node {
 
     /// List of incoming edges.
     pub incoming: Mutex<Vec<usize>>, // (other_node)->(this_node)
+
+    /// List of keys written by transaction.
+    pub keys_written: Mutex<Vec<(String, PrimaryKey)>>,
+
+    /// List of keys read by transaction.
+    pub keys_read: Mutex<Vec<(String, PrimaryKey)>>,
+
+    /// Keys inserted
+    pub keys_inserted: Mutex<Vec<(String, PrimaryKey)>>,
+
+    /// Keys deleted.
+    pub keys_deleted: Mutex<Option<Vec<(String, Row)>>>,
 }
 
 impl Node {
-    /// Create a new `Node`
+    /// Create a new `Node`.
     pub fn new(id: usize) -> Node {
         Node {
             id,
@@ -36,6 +50,10 @@ impl Node {
             outgoing: Mutex::new(vec![]),
             incoming: Mutex::new(vec![]),
             state: Mutex::new(State::Free),
+            keys_deleted: Mutex::new(Some(vec![])),
+            keys_inserted: Mutex::new(vec![]),
+            keys_read: Mutex::new(vec![]),
+            keys_written: Mutex::new(vec![]),
         }
     }
 
@@ -163,6 +181,31 @@ impl Node {
         Ok(outgoing.clone())
     }
 
+    pub fn get_keys_written(&self) -> Result<Vec<(String, PrimaryKey)>> {
+        let written = self.keys_written.lock().map_err(|_| {
+            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
+        })?;
+        Ok(written.clone())
+    }
+
+    pub fn get_keys_read(&self) -> Result<Vec<(String, PrimaryKey)>> {
+        let read = self.keys_read.lock().map_err(|_| {
+            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
+        })?;
+        Ok(read.clone())
+    }
+
+    pub fn get_rows_inserted(&self) -> Result<Vec<(String, PrimaryKey)>> {
+        let inserted = self.keys_inserted.lock().map_err(|_| {
+            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
+        })?;
+        Ok(inserted.clone())
+    }
+
+    pub fn get_rows_deleted(&self) -> Result<Vec<(String, Row)>> {
+        let deleted = self.keys_deleted.lock().unwrap().take();
+        Ok(deleted.unwrap())
+    }
     /// Get the status of the `Node`.
     ///
     /// Currently this just clones the value behind the mutex.

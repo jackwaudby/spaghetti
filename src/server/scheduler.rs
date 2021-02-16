@@ -2,9 +2,9 @@ use crate::server::scheduler::two_phase_locking::TwoPhaseLocking;
 use crate::server::storage::datatype::Data;
 use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
-use crate::Result;
 
 use chrono::{DateTime, Utc};
+use std::fmt;
 use std::sync::Arc;
 
 pub mod two_phase_locking;
@@ -16,7 +16,7 @@ pub struct Protocol {
 }
 
 impl Protocol {
-    pub fn new(w: Arc<Workload>) -> Result<Protocol> {
+    pub fn new(w: Arc<Workload>) -> crate::Result<Protocol> {
         // Determine workload type.
         match w.get_internals().config.get_str("protocol")?.as_str() {
             "2pl" => {
@@ -33,39 +33,66 @@ impl Protocol {
 }
 
 pub trait Scheduler {
-    fn register(&self, transaction_name: &str) -> Result<()>;
+    /// Register a transaction with the scheduler.
+    fn register(&self, tid: &str) -> Result<(), Aborted>;
 
-    fn commit(&self, transaction_name: &str) -> Result<()>;
+    /// Attempt to commit a transaction.
+    fn commit(&self, tid: &str) -> Result<(), Aborted>;
 
-    fn abort(&self, transaction_name: &str) -> Result<()>;
+    /// Abort a transaction.
+    fn abort(&self, tid: &str) -> crate::Result<()>;
 
-    fn insert(
+    /// Insert a new row in a table.
+    fn create(
         &self,
         table: &str,
-        pk: PrimaryKey,
+        key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        transaction_name: &str,
-    ) -> Result<()>;
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<(), Aborted>;
 
+    /// Update columns with values in a row.
+    fn update(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<(), Aborted>;
+
+    /// Read some values from a row.
     fn read(
         &self,
-        index: &str,
+        table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        transaction_name: &str,
-        transaction_ts: DateTime<Utc>,
-    ) -> Result<Vec<Data>>;
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<Vec<Data>, Aborted>;
 
-    fn write(
+    /// Delete a row from a table.
+    fn delete(
         &self,
-        index: &str,
+        table: &str,
         key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
-        transaction_name: &str,
-        transaction_ts: DateTime<Utc>,
-    ) -> Result<()>;
-
-    fn delete(&self, index: &str, pk: PrimaryKey, transaction_name: &str) -> Result<()>;
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<(), Aborted>;
 }
+
+#[derive(PartialEq, Debug, Clone)]
+pub struct Aborted {
+    pub reason: String,
+}
+
+impl fmt::Display for Aborted {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Aborted: {}", self.reason)
+    }
+}
+
+impl std::error::Error for Aborted {}

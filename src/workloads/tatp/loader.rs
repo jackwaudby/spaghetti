@@ -59,7 +59,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
         row.init_value("msc_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
         row.init_value("vlr_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
         debug!("{}", row);
-        i.index_insert(pk, row)?;
+        i.insert(pk, row)?;
     }
     info!("Loaded {} rows into subscriber", t.get_num_rows());
     Ok(())
@@ -99,7 +99,7 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
             row.init_value("data_3", &helper::get_data_x(3, rng))?;
             row.init_value("data_4", &helper::get_data_x(5, rng))?;
             debug!("{}", row);
-            i.index_insert(pk, row)?;
+            i.insert(pk, row)?;
         }
     }
     info!("Loaded {} rows into access_info", t.get_num_rows());
@@ -161,7 +161,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
             row.init_value("data_a", &rng.gen_range(0..=255).to_string())?;
             row.init_value("data_b", &helper::get_data_x(5, rng))?;
             debug!("{}", row);
-            i.index_insert(pk, row)?;
+            i.insert(pk, row)?;
 
             // For each row, insert [0,3] into call forwarding table
             // Generate the number to insert
@@ -187,7 +187,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                     row.init_value("end_time", &et.to_string())?;
                     row.init_value("number_x", &nx)?;
                     debug!("{}", row);
-                    cf_i.index_insert(pk, row)?;
+                    cf_i.insert(pk, row)?;
                 }
             }
         }
