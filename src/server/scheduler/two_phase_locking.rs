@@ -556,7 +556,12 @@ impl TwoPhaseLocking {
         }
     }
 
-    fn release_lock(&self, key: PrimaryKey, tid: &str, commit: bool) -> UnlockRequest {
+    fn release_lock(
+        &self,
+        key: PrimaryKey,
+        tid: &str,
+        commit: bool,
+    ) -> crate::Result<UnlockRequest> {
         debug!("Release {}'s lock on {}", tid, key);
         let mut lock_info = self.lock_table.get_mut(&key).unwrap();
 
@@ -573,7 +578,7 @@ impl TwoPhaseLocking {
             if commit {
                 index.commit(key, "2pl", tid).unwrap();
             } else {
-                index.revert(key, "2pl", tid).unwrap();
+                index.revert(key, "2pl", tid)?;
             }
         }
 
@@ -591,7 +596,7 @@ impl TwoPhaseLocking {
             // Set reclaimed.
             lock_info.reclaimed = true;
             debug!("set to default");
-            return UnlockRequest::Reclaim;
+            return Ok(UnlockRequest::Reclaim);
         }
 
         // Find the entry for this lock request.
@@ -717,13 +722,20 @@ impl TwoPhaseLocking {
                 }
             }
         }
-        UnlockRequest::Ok
+        Ok(UnlockRequest::Ok)
     }
 
     fn release_locks(&self, tid: &str, at: ActiveTransaction, commit: bool) {
         for lock in at.get_locks_held() {
-            if let UnlockRequest::Reclaim = self.release_lock(*lock, tid, commit) {
-                self.lock_table.remove(lock);
+            match self.release_lock(*lock, tid, commit) {
+                Ok(ur) => {
+                    if let UnlockRequest::Reclaim = ur {
+                        self.lock_table.remove(lock);
+                    }
+                }
+                Err(e) => {
+                    self.lock_table.remove(lock);
+                }
             }
         }
         debug!("All locks released for {:?}", tid);
