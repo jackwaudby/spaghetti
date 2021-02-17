@@ -56,7 +56,7 @@ pub struct OperationResult {
 }
 
 impl Row {
-    /// Return a new row instance.
+    /// Return an empty `Row`.
     pub fn new(table: Arc<Table>, protocol: &str) -> Self {
         // Get handle to table.
         let t = Arc::clone(&table);
@@ -107,18 +107,47 @@ impl Row {
         Arc::clone(&self.table)
     }
 
+    /// Initialise the value of a field in a row. Used by loaders.
+    ///
+    /// # Errors
+    ///
+    /// - Column does not exist in the table.
+    /// - Parsing error.
+    pub fn init_value(&mut self, col_name: &str, col_value: &str) -> Result<()> {
+        // Get handle to table.
+        let table = Arc::clone(&self.table);
+        // Get index of field in row.
+        let field_index = table.schema().column_position_by_name(col_name)?;
+        let field_type = table.schema().column_type_by_index(field_index);
+        // Convert value to spaghetti data type.
+        let value = match field_type {
+            ColumnKind::VarChar => Data::VarChar(col_value.to_string()),
+            ColumnKind::Int => Data::Int(col_value.parse::<i64>()?),
+            ColumnKind::Double => Data::Double(col_value.parse::<f64>()?),
+        };
+        // Set value.
+        self.current_fields[field_index].set(value);
+        Ok(())
+    }
+
     /// Get the values in a row.
     ///
     /// # Errors
     ///
     /// - Access history not initialised.
     /// - Column does not exist in the table.
+    /// - Row marked for delete.
     pub fn get_values(
         &mut self,
         columns: &Vec<&str>,
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult> {
+        // If dirty operation fails.
+        if self.is_deleted() {
+            return Err(Box::new(SpaghettiError::RowDeleted));
+        }
+
         let access_history = match protocol {
             "sgt" => {
                 // Get access history.
@@ -150,29 +179,12 @@ impl Row {
         Ok(res)
     }
 
-    /// Initialise the value of a field in a row.
-    pub fn init_value(&mut self, col_name: &str, col_value: &str) -> Result<()> {
-        // Get handle to table.
-        let table = Arc::clone(&self.table);
-        // Get index of field in row.
-        let field_index = table.schema().column_position_by_name(col_name)?;
-        let field_type = table.schema().column_type_by_index(field_index);
-        // Convert value to spaghetti data type.
-        let value = match field_type {
-            ColumnKind::VarChar => Data::VarChar(col_value.to_string()),
-            ColumnKind::Int => Data::Int(col_value.parse::<i64>()?),
-            ColumnKind::Double => Data::Double(col_value.parse::<f64>()?),
-        };
-        // Set value.
-        self.current_fields[field_index].set(value);
-        Ok(())
-    }
-
     /// Set the values of a field in a row.
     ///
     /// # Errors
     ///
     /// - The row is already dirty.
+    /// - The row is marked for delete.
     /// - Access history not initialised.
     /// - Column does not exist in the table.
     /// - Problem parsing the value.
@@ -186,6 +198,10 @@ impl Row {
         // If dirty operation fails.
         if self.is_dirty() {
             return Err(Box::new(SpaghettiError::RowDirty));
+        }
+
+        if self.is_deleted() {
+            return Err(Box::new(SpaghettiError::RowDeleted));
         }
 
         let access_history = match protocol {
@@ -231,7 +247,43 @@ impl Row {
         Ok(res)
     }
 
-    /// Make a temporary write permanent.
+    /// Mark row as deleted.
+    ///
+    /// # Errors
+    ///
+    /// - The row is already dirty.
+    /// - The row is marked for delete.
+    /// - Access history not initialised.
+    pub fn delete(&mut self, protocol: &str) -> Result<OperationResult> {
+        // If dirty operation fails.
+        if self.is_dirty() {
+            return Err(Box::new(SpaghettiError::RowDirty));
+        }
+        // If deleted operation fails.
+        if self.is_deleted() {
+            return Err(Box::new(SpaghettiError::RowDeleted));
+        }
+
+        // Set dirty flag.
+        self.set_deleted(true);
+
+        // Get access history.
+        let access_history = match protocol {
+            "sgt" => {
+                // Get access history.
+                let ah = self.get_access_history()?;
+                Some(ah)
+            }
+            _ => None,
+        };
+
+        let res = OperationResult::new(None, access_history);
+        Ok(res)
+    }
+
+    /// Make an update permanent.
+    ///
+    /// Committing a delete is handled at the index level.
     pub fn commit(&mut self, protocol: &str, tid: &str) {
         // Set dirty flag to false.
         self.set_dirty(false);
@@ -257,6 +309,8 @@ impl Row {
     }
 
     /// Revert to previous version of row.
+    ///
+    /// Handles reverting a delete and an update.
     pub fn revert(&mut self, protocol: &str, tid: &str) {
         // Handle case when record has been flagged for deletion.
         if self.delete {
@@ -279,7 +333,7 @@ impl Row {
                         .position(|a| a == &Access::Write(tid.to_string()))
                         .unwrap();
                     // Remove "old" access information.
-                    ah.split_off(ind);
+                    let _s = ah.split_off(ind);
                     // Reset access history
                     self.access_history = Some(ah);
                 }
@@ -288,7 +342,9 @@ impl Row {
         }
     }
 
-    /// Revert to previous version of row.
+    /// Revert reads to a `Row`.
+    ///
+    /// Handles reverting a read operation SGT only.
     pub fn revert_read(&mut self, tid: &str) {
         // Remove read from access history
         self.access_history
@@ -342,6 +398,7 @@ impl Row {
 }
 
 impl OperationResult {
+    /// Create new operation result.
     pub fn new(values: Option<Vec<Data>>, access_history: Option<Vec<Access>>) -> OperationResult {
         OperationResult {
             values,
@@ -349,10 +406,12 @@ impl OperationResult {
         }
     }
 
+    /// Get values.
     pub fn get_values(&self) -> Option<Vec<Data>> {
         self.values.clone()
     }
 
+    /// Get access history.
     pub fn get_access_history(&self) -> Option<Vec<Access>> {
         self.access_history.clone()
     }

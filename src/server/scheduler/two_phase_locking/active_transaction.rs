@@ -30,6 +30,11 @@ impl ActiveTransaction {
         }
     }
 
+    /// Get transaction id.
+    pub fn get_tid(&self) -> String {
+        self.tid.clone()
+    }
+
     /// Get a shared reference to the locks held by this transaction.
     pub fn get_locks_held(&self) -> &Vec<PrimaryKey> {
         &self.locks_held

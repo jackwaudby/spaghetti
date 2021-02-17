@@ -42,13 +42,13 @@ impl Index {
     ///
     /// # Errors
     ///
-    /// If `Row` already exists for key an `RowAlreadyExists` entry is returned.
+    /// - Row already exists with `key`.
     pub fn insert(&self, key: PrimaryKey, row: Row) -> Result<()> {
         let res = self.map.insert(key, Mutex::new(row));
 
         match res {
             Some(existing_row) => {
-                // A row already existed for this pk, which has now been overwritten, put back
+                // A row already existed for this key, which has now been overwritten, put back.
                 self.map.insert(key, existing_row);
                 Err(Box::new(SpaghettiError::RowAlreadyExists))
             }
@@ -56,34 +56,37 @@ impl Index {
         }
     }
 
-    /// Delete a `Row` from the index.
+    /// Delete a `Row` in the index.
+    ///
+    /// Note, this does not delete anything, merely marking the `Row` as to be deleted.
     ///
     /// # Errors
     ///
-    /// If `Row` does not exists for key a `RowDoesNotExist` error is returned.
-    pub fn delete(&self, key: PrimaryKey) -> Result<()> {
-        // Attempt to get write guard.
-        let write_guard = self
+    /// - Row does not exist with `key`.
+    /// - Row already dirty or marked for delete.
+    pub fn delete(&self, key: PrimaryKey, protocol: &str) -> Result<OperationResult> {
+        // Attempt to get read guard.
+        let read_guard = self
             .map
             .get(&key)
             .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
         // Deref to row.
-        let row = &mut *write_guard.lock().unwrap();
-        // Execute write operation.
-        let res = row.set_deleted(true);
-
-        Ok(())
+        let row = &mut *read_guard.lock().unwrap();
+        // Execute delete operation.
+        let res = row.delete(protocol)?;
+        Ok(res)
     }
 
     /// Remove a `Row` from the index.
     ///
+    /// Called at commit time, removing the row from the index.
+    ///
     /// # Errors
     ///
-    /// If `Row` does not exists for key a `RowDoesNotExist` error is returned.
+    /// - Row does not exist with `key`.
     pub fn remove(&self, key: PrimaryKey) -> Result<Row> {
         // Remove the row from the map.
         let row = self.map.remove(&key);
-
         match row {
             Some(row) => Ok(row.into_inner().unwrap()),
             None => return Err(Box::new(SpaghettiError::RowDoesNotExist)),
@@ -94,7 +97,8 @@ impl Index {
     ///
     /// # Errors
     ///
-    /// `RowDoesNotexist` if the row does not exist in the index.
+    /// - Row does not exist with `key`.
+    /// - The row is marked for delete.
     pub fn read(
         &self,
         key: PrimaryKey,
@@ -111,11 +115,16 @@ impl Index {
         let row = &mut *read_guard.lock().unwrap();
         // Execute read operation.
         let res = row.get_values(columns, protocol, tid)?;
-
         Ok(res)
     }
 
-    /// Write `values` to `columns`.
+    /// Write `values` to `columns` in a `Row` with the given `key`.
+    ///
+    /// # Errors
+    ///
+    /// - Row does not exist with `key`.
+    /// - The row is already dirty.
+    /// - The row is marked for delete.
     pub fn update(
         &self,
         key: PrimaryKey,
@@ -124,20 +133,27 @@ impl Index {
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult> {
-        // Attempt to get write guard.
-        let write_guard = self
+        // Attempt to get read guard.
+        let read_guard = self
             .map
             .get(&key)
             .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
         // Deref to row.
-        let row = &mut *write_guard.lock().unwrap();
+        let row = &mut *read_guard.lock().unwrap();
         // Execute write operation.
         let res = row.set_values(columns, values, protocol, tid)?;
-
         Ok(res)
     }
 
-    pub fn commit(&self, key: PrimaryKey, protocol: &str, transaction_id: &str) -> Result<()> {
+    /// Commit modifications to a `Row`.
+    ///
+    /// If the row was marked for deletion it is removed.
+    /// Else it was updated and these changes are made permanent.
+    ///
+    /// # Errors
+    ///
+    /// - Row does not exist with `key`.
+    pub fn commit(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<()> {
         // Check to be deleted
         let df = self.map.get(&key).unwrap().lock().unwrap().is_deleted();
         if df {
@@ -152,15 +168,20 @@ impl Index {
                 .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
             // Deref to row.
             let row = &mut *read_guard.lock().unwrap();
-
             // Commit changes.
-            row.commit(protocol, transaction_id);
+            row.commit(protocol, tid);
         }
-
         Ok(())
     }
 
-    pub fn revert(&self, key: PrimaryKey, protocol: &str, transaction_id: &str) -> Result<()> {
+    /// Revert modifications to a `Row`.
+    ///
+    /// This is handled at the row level.
+    ///
+    /// # Errors
+    ///
+    /// - Row does not exist with `key`.
+    pub fn revert(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<()> {
         // Attempt to get read guard.
         let read_guard = self
             .map
@@ -169,12 +190,18 @@ impl Index {
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Revert changes.
-        row.revert(protocol, transaction_id);
-
+        row.revert(protocol, tid);
         Ok(())
     }
 
-    pub fn index_revert_read(&self, key: PrimaryKey, transaction_id: &str) -> Result<()> {
+    /// Revert reads to a `Row`.
+    ///
+    /// SGT only.
+    ///
+    /// # Errors
+    ///
+    /// - Row does not exist with `key`.
+    pub fn revert_read(&self, key: PrimaryKey, tid: &str) -> Result<()> {
         // Attempt to get read guard.
         let read_guard = self
             .map
@@ -182,9 +209,8 @@ impl Index {
             .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
-        // Revert changes.
-        row.revert_read(transaction_id);
-
+        // Revert read.
+        row.revert_read(tid);
         Ok(())
     }
 }

@@ -43,6 +43,8 @@ pub enum SpaghettiError {
     InvalidColumnType,
     /// Row dirty.
     RowDirty,
+    /// Row deleted.
+    RowDeleted,
     /// Access history not initalised.
     NotTrackingAccessHistory,
 }
@@ -71,6 +73,7 @@ impl fmt::Display for SpaghettiError {
             RowDoesNotExist => write!(f, "row does not exist in index."),
             InvalidColumnType => write!(f, "invalid column type"),
             RowDirty => write!(f, "row already dirty"),
+            RowDeleted => write!(f, "row marked for delete"),
             NotTrackingAccessHistory => write!(f, "not tracking access history"),
         }
     }

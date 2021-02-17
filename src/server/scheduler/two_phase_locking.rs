@@ -72,7 +72,7 @@ impl Scheduler for TwoPhaseLocking {
         columns: &Vec<&str>,
         values: &Vec<&str>,
         tid: &str,
-        tts: DateTime<Utc>,
+        _tts: DateTime<Utc>,
     ) -> Result<(), Aborted> {
         // Get table.
         let table = self.get_table(table, tid)?;
@@ -82,23 +82,29 @@ impl Scheduler for TwoPhaseLocking {
         row.set_primary_key(key);
         // Init values.
         for (i, column) in columns.iter().enumerate() {
-            row.init_value(column, &values[i].to_string()).map_err(|e| {
-                self.abort(tid);
-                return Aborted {
-                    reason: format!("{}", e),
-                };
-            });
+            match row.init_value(column, &values[i].to_string()) {
+                Ok(_) => {}
+                Err(e) => {
+                    self.abort(tid).unwrap();
+                    return Err(Aborted {
+                        reason: format!("{}", e),
+                    });
+                }
+            }
         }
         // Get Index
         let index = self.get_index(table, tid)?;
 
         // Set values - Needed to make the row "dirty"
-        row.set_values(columns, values, "2pl", tid).map_err(|e| {
-            self.abort(tid);
-            return Aborted {
-                reason: format!("{}", e),
-            };
-        });
+        match row.set_values(columns, values, "2pl", tid) {
+            Ok(_) => {}
+            Err(e) => {
+                self.abort(tid).unwrap();
+                return Err(Aborted {
+                    reason: format!("{}", e),
+                });
+            }
+        }
 
         // Register
         self.active_transactions
@@ -154,7 +160,7 @@ impl Scheduler for TwoPhaseLocking {
                         return Ok(vals);
                     }
                     Err(e) => {
-                        self.abort(tid);
+                        self.abort(tid).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -183,7 +189,7 @@ impl Scheduler for TwoPhaseLocking {
                         return Ok(vals);
                     }
                     Err(e) => {
-                        self.abort(tid);
+                        self.abort(tid).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -194,7 +200,7 @@ impl Scheduler for TwoPhaseLocking {
             LockRequest::Denied => {
                 debug!("Read lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
-                self.abort(tid);
+                self.abort(tid).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", err),
                 });
@@ -244,11 +250,11 @@ impl Scheduler for TwoPhaseLocking {
                 // Execute update.
                 let result = index.update(key, columns, values, "2pl", tid);
                 match result {
-                    Ok(res) => {
+                    Ok(_) => {
                         return Ok(());
                     }
                     Err(e) => {
-                        self.abort(tid);
+                        self.abort(tid).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -268,11 +274,11 @@ impl Scheduler for TwoPhaseLocking {
                 // Execute update.
                 let result = index.update(key, columns, values, "2pl", tid);
                 match result {
-                    Ok(res) => {
+                    Ok(_) => {
                         return Ok(());
                     }
                     Err(e) => {
-                        self.abort(tid);
+                        self.abort(tid).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -282,7 +288,7 @@ impl Scheduler for TwoPhaseLocking {
             LockRequest::Denied => {
                 debug!("Write lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
-                self.abort(tid);
+                self.abort(tid).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", err),
                 });
@@ -325,13 +331,13 @@ impl Scheduler for TwoPhaseLocking {
                 self.active_transactions.get_mut(tid).unwrap().add_lock(key);
 
                 // Execute delete.
-                let result = index.delete(key);
+                let result = index.delete(key, "2pl");
                 match result {
-                    Ok(res) => {
+                    Ok(_) => {
                         return Ok(());
                     }
                     Err(e) => {
-                        self.abort(tid);
+                        self.abort(tid).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -351,13 +357,13 @@ impl Scheduler for TwoPhaseLocking {
                 self.active_transactions.get_mut(tid).unwrap().add_lock(key);
 
                 // Execute delete.
-                let result = index.delete(key);
+                let result = index.delete(key, "2pl");
                 match result {
-                    Ok(res) => {
+                    Ok(_) => {
                         return Ok(());
                     }
                     Err(e) => {
-                        self.abort(tid);
+                        self.abort(tid).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -367,14 +373,12 @@ impl Scheduler for TwoPhaseLocking {
             LockRequest::Denied => {
                 debug!("Write lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
-                self.abort(tid);
+                self.abort(tid).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", err),
                 });
             }
         }
-
-        Ok(())
     }
 
     /// Commit a transaction.
@@ -400,7 +404,7 @@ impl Scheduler for TwoPhaseLocking {
     fn abort(&self, tid: &str) -> crate::Result<()> {
         debug!("Abort transaction {:?}", tid);
         //  Remove from active transactions.
-        let mut at = self.active_transactions.remove(tid).unwrap();
+        let at = self.active_transactions.remove(tid).unwrap();
 
         // Release locks.
         self.release_locks(tid, at, false);
@@ -567,9 +571,9 @@ impl TwoPhaseLocking {
         // If write lock then commit or revert changes.
         if let LockMode::Write = lock_info.group_mode.unwrap() {
             if commit {
-                index.commit(key, "2pl", tid);
+                index.commit(key, "2pl", tid).unwrap();
             } else {
-                index.revert(key, "2pl", tid);
+                index.revert(key, "2pl", tid).unwrap();
             }
         }
 
@@ -732,7 +736,7 @@ impl TwoPhaseLocking {
         match res {
             Ok(table) => Ok(table),
             Err(e) => {
-                self.abort(tid);
+                self.abort(tid).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -746,7 +750,7 @@ impl TwoPhaseLocking {
         match res {
             Ok(index_name) => Ok(index_name),
             Err(e) => {
-                self.abort(tid);
+                self.abort(tid).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -764,7 +768,7 @@ impl TwoPhaseLocking {
         match res {
             Ok(index) => Ok(index),
             Err(e) => {
-                self.abort(tid);
+                self.abort(tid).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
