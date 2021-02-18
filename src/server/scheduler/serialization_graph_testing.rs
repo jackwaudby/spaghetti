@@ -655,82 +655,75 @@ impl SerializationGraphTesting {
     }
 }
 
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-//     // use crate::server::scheduler::Protocol;
-//     // use crate::server::storage::datatype;
-//     use crate::workloads::tatp;
-//     // use crate::workloads::tatp::keys::TatpPrimaryKey;
-//     use crate::workloads::Internal;
-//     // use chrono::Duration;
-//     use config::Config;
-//     use lazy_static::lazy_static;
-//     use rand::rngs::StdRng;
-//     use rand::SeedableRng;
-//     use std::sync::Once;
-//     // use std::thread;
-//     // use std::time;
-//     // use std::time::SystemTime;
-//     use tracing::Level;s
-//     use tracing_subscriber::FmtSubscriber;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::workloads::tatp;
+    use crate::workloads::Internal;
+    use config::Config;
+    use lazy_static::lazy_static;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    use std::sync::Once;
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
 
-//     static LOG: Once = Once::new();
+    static LOG: Once = Once::new();
 
-//     fn logging(on: bool) {
-//         if on {
-//             LOG.call_once(|| {
-//                 let subscriber = FmtSubscriber::builder()
-//                     .with_max_level(Level::DEBUG)
-//                     .finish();
-//                 tracing::subscriber::set_global_default(subscriber)
-//                     .expect("setting default subscriber failed");
-//             });
-//         }
-//     }
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
+    }
 
-//     lazy_static! {
-//        static ref WORKLOAD: Arc<Workload> = {
-//             // Initialise configuration.
-//             let mut c = Config::default();
-//             // Load from test file.
-//             c.merge(config::File::with_name("Sgt.toml")).unwrap();
-//             let config = Arc::new(c);
-//            // Rng with fixed seed.
-//            let mut rng = StdRng::seed_from_u64(42);
-//            // Initialise internals.
-//            let internals = Internal::new("tatp_schema.txt", config).unwrap();
-//            // Load tables.
-//            tatp::loader::populate_tables(&internals, &mut rng).unwrap();
-//            // Create workload.
-//            let workload = Arc::new(Workload::Tatp(internals));
-//            workload
-//         };
-//     }
+    lazy_static! {
+       static ref WORKLOAD: Arc<Workload> = {
+            // Initialise configuration.
+            let mut c = Config::default();
+            // Load from test file.
+            c.merge(config::File::with_name("Sgt.toml")).unwrap();
+            let config = Arc::new(c);
+           // Rng with fixed seed.
+           let mut rng = StdRng::seed_from_u64(42);
+           // Initialise internals.
+           let internals = Internal::new("tatp_schema.txt", config).unwrap();
+           // Load tables.
+           tatp::loader::populate_tables(&internals, &mut rng).unwrap();
+           // Create workload.
+           let workload = Arc::new(Workload::Tatp(internals));
+           workload
+        };
+    }
 
-//     #[test]
-//     fn sgt_test() {
-//         logging(false);
-//         // Initialise scheduler.
-//         let sgt = SerializationGraphTesting::new(3, Arc::clone(&WORKLOAD));
+    #[test]
+    fn sgt_test() {
+        logging(false);
+        // Initialise scheduler.
+        let sgt = SerializationGraphTesting::new(3, Arc::clone(&WORKLOAD));
 
-//         // Register.
-//         assert_eq!(sgt.nodes.len(), 3);
-//         assert_eq!(sgt.register("t1").unwrap(), ());
-//         assert_eq!(sgt.register("t2").unwrap(), ());
-//         assert_eq!(sgt.register("t3").unwrap(), ());
-//         assert_eq!(
-//             format!("{}", sgt.register("t4").unwrap_err()),
-//             format!("no nodes free in graph")
-//         );
+        // Register.
+        assert_eq!(sgt.nodes.len(), 3);
+        assert_eq!(sgt.register("t1").unwrap(), ());
+        assert_eq!(sgt.register("t2").unwrap(), ());
+        assert_eq!(sgt.register("t3").unwrap(), ());
+        assert_eq!(
+            format!("{}", sgt.register("t4").unwrap_err()),
+            format!("Aborted: no nodes free in graph")
+        );
 
-//         // Get index.
-//         let _sub_idx = WORKLOAD.get_internals().get_index("sub_idx").unwrap();
+        // Get index.
+        let _sub_idx = WORKLOAD.get_internals().get_index("sub_idx").unwrap();
 
-//         // Values to read/write.
-//         let _cols = vec!["bit_4", "byte_2_5"];
-//         let _vals = vec!["0", "69"];
+        // Values to read/write.
+        let _cols = vec!["bit_4", "byte_2_5"];
+        let _vals = vec!["0", "69"];
 
-//         // Read
-//     }
-// }
+        // Read
+    }
+}

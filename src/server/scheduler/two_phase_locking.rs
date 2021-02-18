@@ -944,9 +944,9 @@ mod tests {
         }
 
         // Release locks.
-        protocol.release_lock(pk, &ta_id, true);
-        protocol.release_lock(pk, &tb_id, true);
-        protocol.release_lock(pk, &tc_id, true);
+        protocol.release_lock(pk, &ta_id, true).unwrap();
+        protocol.release_lock(pk, &tb_id, true).unwrap();
+        protocol.release_lock(pk, &tc_id, true).unwrap();
         // Check
         {
             let lock = protocol1.lock_table.get(&pk).unwrap();
@@ -1001,7 +1001,7 @@ mod tests {
         }
 
         // Unlock
-        protocol.release_lock(pk, &t_id, true);
+        protocol.release_lock(pk, &t_id, true).unwrap();
         {
             let lock = protocol1.lock_table.get(&pk).unwrap();
             assert_eq!(
@@ -1060,7 +1060,7 @@ mod tests {
 
         let ms = time::Duration::from_secs(2);
         thread::sleep(ms);
-        protocol.release_lock(pk, &t_id_1, true);
+        protocol.release_lock(pk, &t_id_1, true).unwrap();
         let lock = protocol.lock_table.get(&pk).unwrap();
         assert_eq!(
             lock.group_mode == Some(LockMode::Write)
@@ -1126,7 +1126,7 @@ mod tests {
         let ms = time::Duration::from_secs(2);
         thread::sleep(ms);
         debug!("Write lock released by Ta");
-        protocol.release_lock(pk, &ta_id, true);
+        protocol.release_lock(pk, &ta_id, true).unwrap();
         let lock = protocol.lock_table.get(&pk).unwrap();
 
         assert_eq!(
@@ -1193,7 +1193,7 @@ mod tests {
         let ms = time::Duration::from_secs(2);
         thread::sleep(ms);
         debug!("Write lock released by Ta");
-        protocol.release_lock(pk, &ta_id, true);
+        protocol.release_lock(pk, &ta_id, true).unwrap();
         let lock = protocol.lock_table.get(&pk).unwrap();
 
         assert_eq!(
@@ -1232,7 +1232,6 @@ mod tests {
         assert_eq!(protocol.register(&t_id_r).unwrap(), ());
         assert_eq!(protocol.register(&t_id_w).unwrap(), ());
 
-        let index = "sub_idx";
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1));
         let columns: Vec<&str> = vec!["bit_1"];
         let values_a: Vec<&str> = vec!["0"];

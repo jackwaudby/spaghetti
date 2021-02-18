@@ -673,7 +673,7 @@ mod tests {
         let values = vec!["el camino", "2019", "53.2"];
 
         // writes
-        let w1 = row.set_values(&columns, &values, "sgt", "t1").unwrap();
+        row.set_values(&columns, &values, "sgt", "t1").unwrap();
 
         assert_eq!(
             format!(
@@ -706,7 +706,7 @@ mod tests {
         assert_eq!(row1.init_value("year", "40").unwrap(), ());
         assert_eq!(row1.init_value("amount", "43.2").unwrap(), ());
         // row dirty
-        let w1 = row1.set_values(&columns, &values, "sgt", "t2").unwrap();
+        row1.set_values(&columns, &values, "sgt", "t2").unwrap();
 
         assert_eq!(
             format!(
