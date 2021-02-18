@@ -1,7 +1,6 @@
 use crate::server::scheduler::serialization_graph_testing::error::{
     SerializationGraphTestingError, SerializationGraphTestingErrorKind,
 };
-use crate::server::storage::row::Row;
 use crate::workloads::PrimaryKey;
 use crate::Result;
 
@@ -36,9 +35,6 @@ pub struct Node {
 
     /// Keys inserted
     pub keys_inserted: Mutex<Vec<(String, PrimaryKey)>>,
-
-    /// Keys deleted.
-    pub keys_deleted: Mutex<Option<Vec<(String, Row)>>>,
 }
 
 impl Node {
@@ -50,11 +46,20 @@ impl Node {
             outgoing: Mutex::new(vec![]),
             incoming: Mutex::new(vec![]),
             state: Mutex::new(State::Free),
-            keys_deleted: Mutex::new(Some(vec![])),
             keys_inserted: Mutex::new(vec![]),
             keys_read: Mutex::new(vec![]),
             keys_written: Mutex::new(vec![]),
         }
+    }
+
+    pub fn reset(&mut self) {
+        *self.transaction_id.lock().unwrap() = None;
+        *self.outgoing.lock().unwrap() = vec![];
+        *self.incoming.lock().unwrap() = vec![];
+        *self.state.lock().unwrap() = State::Free;
+        *self.keys_written.lock().unwrap() = vec![];
+        *self.keys_read.lock().unwrap() = vec![];
+        *self.keys_inserted.lock().unwrap() = vec![];
     }
 
     /// Set transaction ID of `Node`.
@@ -202,10 +207,6 @@ impl Node {
         Ok(inserted.clone())
     }
 
-    pub fn get_rows_deleted(&self) -> Result<Vec<(String, Row)>> {
-        let deleted = self.keys_deleted.lock().unwrap().take();
-        Ok(deleted.unwrap())
-    }
     /// Get the status of the `Node`.
     ///
     /// Currently this just clones the value behind the mutex.

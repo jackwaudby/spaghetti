@@ -53,6 +53,16 @@ pub trait Scheduler {
         tts: DateTime<Utc>,
     ) -> Result<(), Aborted>;
 
+    /// Read some values from a row.
+    fn read(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        tid: &str,
+        tts: DateTime<Utc>,
+    ) -> Result<Vec<Data>, Aborted>;
+
     /// Update columns with values in a row.
     fn update(
         &self,
@@ -63,16 +73,6 @@ pub trait Scheduler {
         tid: &str,
         tts: DateTime<Utc>,
     ) -> Result<(), Aborted>;
-
-    /// Read some values from a row.
-    fn read(
-        &self,
-        table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        tid: &str,
-        tts: DateTime<Utc>,
-    ) -> Result<Vec<Data>, Aborted>;
 
     /// Delete a row from a table.
     fn delete(

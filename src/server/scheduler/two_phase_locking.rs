@@ -733,7 +733,7 @@ impl TwoPhaseLocking {
                         self.lock_table.remove(lock);
                     }
                 }
-                Err(e) => {
+                Err(_xb) => {
                     self.lock_table.remove(lock);
                 }
             }
