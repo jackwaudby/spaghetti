@@ -1,7 +1,6 @@
 use crate::common::message::Request;
 use crate::server::listener::Listener;
 use crate::server::manager::TransactionManager;
-use crate::server::scheduler::Protocol;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -72,10 +71,13 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     info!("Initialise transaction manager");
     // Create transaction manager.
-    let tm = TransactionManager::new(2, work_rx, tm_shutdown_rx, notify_wh_tx.clone());
-    // Create scheduler.
-    let s = Arc::new(Protocol::new(Arc::clone(&workload))?);
-    manager::run(tm, s);
+    let tm = TransactionManager::new(
+        Arc::clone(&workload),
+        work_rx,
+        tm_shutdown_rx,
+        notify_wh_tx.clone(),
+    );
+    manager::run(tm);
 
     // Concurrently run the server and listen for the shutdown signal.
     tokio::select! {

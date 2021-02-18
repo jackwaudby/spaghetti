@@ -3,6 +3,7 @@ use crate::server::pool::ThreadPool;
 use crate::server::scheduler::Protocol;
 use crate::workloads::tatp;
 use crate::workloads::tatp::profiles::TatpTransaction;
+use crate::workloads::Workload;
 
 use chrono::offset::Utc;
 use chrono::DateTime;
@@ -12,10 +13,12 @@ use std::time::SystemTime;
 use tracing::debug;
 
 /// Transaction manager owns a thread pool containing workers.
-#[derive(Debug)]
 pub struct TransactionManager {
     /// Thread pool.
     pub pool: ThreadPool,
+
+    /// Scheduler.
+    scheduler: Arc<Protocol>,
 
     /// Worker listener.
     work_rx: std::sync::mpsc::Receiver<Request>,
@@ -46,26 +49,29 @@ impl Drop for NotifyWriteHandlers {
 impl TransactionManager {
     /// Create a new `TransactionManager`.
     pub fn new(
-        size: usize,
+        workload: Arc<Workload>,
         work_rx: std::sync::mpsc::Receiver<Request>,
         shutdown_rx: std::sync::mpsc::Receiver<()>,
         _notify_wh_tx: tokio::sync::broadcast::Sender<()>,
     ) -> TransactionManager {
-        // Create thread pool.
-        let pool = ThreadPool::new(size);
+        let pool = ThreadPool::new(Arc::clone(&workload));
+
+        let scheduler = Arc::new(Protocol::new(Arc::clone(&workload)).unwrap());
+
         let nwhs = NotifyWriteHandlers {
             sender: _notify_wh_tx,
         };
 
         TransactionManager {
             pool,
+            scheduler,
             work_rx,
             shutdown_rx,
             _notify_wh_tx: nwhs,
         }
     }
 
-    pub fn run(&mut self, scheduler: Arc<Protocol>) {
+    pub fn run(&mut self) {
         loop {
             // Check if shutdown initiated.
             // All `ReadHandler`s must have closed, dropping their `Sender` handles.
@@ -75,7 +81,7 @@ impl TransactionManager {
                 while let Ok(mut request) = self.work_rx.recv() {
                     debug!("Pass request to thread pool");
                     // Get handle to scheduler.
-                    let scheduler = Arc::clone(&scheduler);
+                    let scheduler = Arc::clone(&self.scheduler);
                     // Assign transaction id and timestamp.
                     let sys_time = SystemTime::now();
                     let datetime: DateTime<Utc> = sys_time.into();
@@ -151,7 +157,7 @@ impl TransactionManager {
                 if let Ok(mut request) = self.work_rx.try_recv() {
                     debug!("Pass request to thread pool");
                     // Get handle to scheduler.
-                    let scheduler = Arc::clone(&scheduler);
+                    let scheduler = Arc::clone(&self.scheduler);
                     // Assign transaction id and timestamp.
                     let sys_time = SystemTime::now();
                     let datetime: DateTime<Utc> = sys_time.into();
@@ -220,11 +226,12 @@ impl TransactionManager {
     }
 }
 
-pub fn run(mut tm: TransactionManager, s: Arc<Protocol>) {
+pub fn run(mut tm: TransactionManager) {
     thread::spawn(move || {
         debug!("Start transaction manager");
-        tm.run(s);
+        tm.run();
     });
+
     // Transaction Manager dropped here.
     // First threadpool is dropped which cleans itself up after finishing request.
     // Send message to each Write Handler says no more requests/

@@ -1,3 +1,4 @@
+use crate::server::scheduler::serialization_graph_testing::SerializationGraphTesting;
 use crate::server::scheduler::two_phase_locking::TwoPhaseLocking;
 use crate::server::storage::datatype::Data;
 use crate::workloads::PrimaryKey;
@@ -16,19 +17,23 @@ pub struct Protocol {
 }
 
 impl Protocol {
-    pub fn new(w: Arc<Workload>) -> crate::Result<Protocol> {
+    pub fn new(workload: Arc<Workload>) -> crate::Result<Protocol> {
         // Determine workload type.
-        match w.get_internals().config.get_str("protocol")?.as_str() {
-            "2pl" => {
-                // Create scheduler
-                let scheduler = Box::new(TwoPhaseLocking::new(Arc::clone(&w)));
-                let protocol = Protocol { scheduler };
-
-                Ok(protocol)
-            }
-
+        let scheduler = match workload
+            .get_internals()
+            .config
+            .get_str("protocol")?
+            .as_str()
+        {
+            "2pl" => Protocol {
+                scheduler: Box::new(TwoPhaseLocking::new(Arc::clone(&workload))),
+            },
+            "sgt" => Protocol {
+                scheduler: Box::new(SerializationGraphTesting::new(5, Arc::clone(&workload))),
+            },
             _ => panic!("Incorrect concurrency control protocol"),
-        }
+        };
+        Ok(scheduler)
     }
 }
 

@@ -1,4 +1,6 @@
 //! A custom threadpool implementation based on the example in the Rust book.
+use crate::workloads::Workload;
+
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use tracing::debug;
@@ -20,24 +22,61 @@ impl ThreadPool {
     /// # Panics
     ///
     /// The `new` function will panic if the size is zero.
-    pub fn new(size: usize) -> ThreadPool {
-        // Must have at least 1 thread in the pool.
-        assert!(size > 0);
+    pub fn new(workload: Arc<Workload>) -> ThreadPool {
+        match workload
+            .get_internals()
+            .config
+            .get_str("protocol")
+            .unwrap()
+            .as_str()
+        {
+            "2pl" => {
+                // Get thread pool size.
+                let size = workload.get_internals().config.get_int("threads").unwrap();
 
-        // Job queue, threadpool keeps sending end.
-        let (sender, receiver) = mpsc::channel();
+                // Must have at least 1 thread in the pool.
+                assert!(size > 0);
 
-        // Wrap receiver in Mutex and Arc so can be shared across worker threads.
-        let receiver = Arc::new(Mutex::new(receiver));
+                // Job queue, threadpool keeps sending end.
+                let (sender, receiver) = mpsc::channel();
 
-        // Pre-allocate vec to hold workers.
-        let mut workers = Vec::with_capacity(size);
+                // Wrap receiver in Mutex and Arc so can be shared across worker threads.
+                let receiver = Arc::new(Mutex::new(receiver));
 
-        // Create `size` threads.
-        for id in 0..size {
-            workers.push(Worker::new(id, Arc::clone(&receiver)));
+                // Pre-allocate vec to hold workers.
+                let mut workers = Vec::with_capacity(size as usize);
+
+                // Create `size` threads.
+                for id in 0..size {
+                    workers.push(Worker::new(id as usize, None, Arc::clone(&receiver)));
+                }
+                ThreadPool { workers, sender }
+            }
+            "sgt" => {
+                // Retrieve the IDs of all active CPU cores.
+                let core_ids = core_affinity::get_core_ids().unwrap();
+
+                // Job queue, threadpool keeps sending end.
+                let (sender, receiver) = mpsc::channel();
+
+                // Wrap receiver in Mutex and Arc so can be shared across worker threads.
+                let receiver = Arc::new(Mutex::new(receiver));
+
+                // Pre-allocate vec to hold workers.
+                let mut workers = Vec::with_capacity(core_ids.len());
+
+                // Create `size` threads.
+                for (id, core_id) in core_ids.into_iter().enumerate() {
+                    workers.push(Worker::new(
+                        id as usize,
+                        Some(core_id),
+                        Arc::clone(&receiver),
+                    ));
+                }
+                ThreadPool { workers, sender }
+            }
+            _ => panic!("incorrect protocol"),
         }
-        ThreadPool { workers, sender }
     }
 
     /// Execute new job.
@@ -94,22 +133,33 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
-        let thread = thread::spawn(move || loop {
-            // Get message from job queue.
-            let message = receiver.lock().unwrap().recv().unwrap();
+    fn new(
+        id: usize,
+        core_id: Option<core_affinity::CoreId>,
+        receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
+    ) -> Worker {
+        let thread = thread::spawn(move || {
+            if let Some(core_id) = core_id {
+                // Pin this thread to a single CPU core.
+                core_affinity::set_for_current(core_id);
+            }
 
-            // Execute job.
-            match message {
-                Message::NewJob(job) => {
-                    debug!("Worker {} got a job; executing.", id);
+            loop {
+                // Get message from job queue.
+                let message = receiver.lock().unwrap().recv().unwrap();
 
-                    job.call_box();
-                }
-                Message::Terminate => {
-                    debug!("Worker {} was told to terminate.", id);
+                // Execute job.
+                match message {
+                    Message::NewJob(job) => {
+                        debug!("Worker {} got a job; executing.", id);
 
-                    break;
+                        job.call_box();
+                    }
+                    Message::Terminate => {
+                        debug!("Worker {} was told to terminate.", id);
+
+                        break;
+                    }
                 }
             }
         });
