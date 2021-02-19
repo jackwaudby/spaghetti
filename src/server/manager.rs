@@ -54,8 +54,9 @@ impl TransactionManager {
         shutdown_rx: std::sync::mpsc::Receiver<()>,
         _notify_wh_tx: tokio::sync::broadcast::Sender<()>,
     ) -> TransactionManager {
+        // Create thread pool.
         let pool = ThreadPool::new(Arc::clone(&workload));
-
+        // Create scheduler.
         let scheduler = Arc::new(Protocol::new(Arc::clone(&workload)).unwrap());
 
         let nwhs = NotifyWriteHandlers {
