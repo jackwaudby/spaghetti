@@ -29,7 +29,7 @@ fn setup_config() -> Arc<Config> {
     Arc::new(c)
 }
 
-#[test]
+// #[test]
 fn run() {
     let config = setup_config();
     let c1 = Arc::clone(&config);
