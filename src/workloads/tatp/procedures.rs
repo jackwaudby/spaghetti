@@ -392,72 +392,42 @@ mod tests {
     use crate::workloads::tatp::loader;
     use crate::workloads::{Internal, Workload};
     use config::Config;
-    use lazy_static::lazy_static;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use std::sync::Once;
-    use std::time::SystemTime;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
-
-    lazy_static! {
-        static ref CONFIG: Arc<Config> = {
-            // Initialise configuration.
-            let mut c = Config::default();
-            c.merge(config::File::with_name("Test.toml")).unwrap();
-            let config = Arc::new(c);
-            config
-        };
-    }
+    use std::convert::TryInto;
 
     #[test]
     fn transactions_test() {
-        logging(false);
-        // Workload with fixed seed
-        let mut rng = StdRng::seed_from_u64(42);
-        let config = Arc::clone(&CONFIG);
-        let internals = Internal::new("tatp_schema.txt", config).unwrap();
+        // Initialise configuration.
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test-tatp.toml")).unwrap();
+        let config = Arc::new(c);
+
+        // Workload with fixed seed.
+        let schema = config.get_str("schema").unwrap();
+        let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
+        let seed = config.get_int("seed").unwrap();
+        let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());
         loader::populate_tables(&internals, &mut rng).unwrap();
         let workload = Arc::new(Workload::Tatp(internals));
-        // Protocol
-        let protocol = Arc::new(Protocol::new(Arc::clone(&workload)).unwrap());
-        let sys_time = SystemTime::now();
-        let datetime: DateTime<Utc> = sys_time.into();
-        let t_id = datetime.to_string();
-        let t_ts = datetime;
+
+        // Scheduler.
+        let workers = config.get_int("workers").unwrap();
+        let protocol = Arc::new(Protocol::new(Arc::clone(&workload), workers as usize).unwrap());
 
         ///////////////////////////////////////
         //// GetSubscriberData ////
         ///////////////////////////////////////
         assert_eq!(
-            get_subscriber_data(GetSubscriberData { s_id: 1 }, &t_id, t_ts, Arc::clone(&protocol)).unwrap(),
+            get_subscriber_data(GetSubscriberData { s_id: 1 }, Arc::clone(&protocol)).unwrap(),
             "{s_id=\"1\", sub_nbr=\"000000000000001\", bit_1=\"0\", bit_2=\"1\", bit_3=\"0\", bit_4=\"1\", bit_5=\"1\", bit_6=\"1\", bit_7=\"0\", bit_8=\"0\", bit_9=\"1\", bit_10=\"0\", hex_1=\"8\", hex_2=\"6\", hex_3=\"10\", hex_4=\"8\", hex_5=\"2\", hex_6=\"13\", hex_7=\"8\", hex_8=\"10\", hex_9=\"1\", hex_10=\"9\", byte_2_1=\"222\", byte_2_2=\"248\", byte_2_3=\"210\", byte_2_4=\"100\", byte_2_5=\"205\", byte_2_6=\"163\", byte_2_7=\"118\", byte_2_8=\"127\", byte_2_9=\"77\", byte_2_10=\"52\", msc_location=\"16\"}"
         );
 
         assert_eq!(
             format!(
                 "{}",
-                get_subscriber_data(
-                    GetSubscriberData { s_id: 100 },
-                    &t_id,
-                    t_ts,
-                    Arc::clone(&protocol)
-                )
-                .unwrap_err()
+                get_subscriber_data(GetSubscriberData { s_id: 100 }, Arc::clone(&protocol))
+                    .unwrap_err()
             ),
             format!("Aborted: row does not exist in index.")
         );
@@ -473,8 +443,6 @@ mod tests {
                     start_time: 8,
                     end_time: 12,
                 },
-                &t_id,
-                t_ts,
                 Arc::clone(&protocol)
             )
             .unwrap(),
@@ -490,8 +458,6 @@ mod tests {
                         start_time: 0,
                         end_time: 1,
                     },
-                    &t_id,
-                    t_ts,
                     Arc::clone(&protocol)
                 )
                 .unwrap_err()
@@ -508,8 +474,6 @@ mod tests {
                     s_id: 1,
                     ai_type: 1
                 },
-                &t_id,
-                t_ts,
                 Arc::clone(&protocol)
             )
             .unwrap(),
@@ -524,8 +488,6 @@ mod tests {
                         s_id: 19,
                         ai_type: 12
                     },
-                    &t_id,
-                    t_ts,
                     Arc::clone(&protocol)
                 )
                 .unwrap_err()
@@ -577,8 +539,6 @@ mod tests {
                     bit_1: 1,
                     data_a: 29,
                 },
-                &t_id,
-                t_ts,
                 Arc::clone(&protocol)
             )
             .unwrap(),
@@ -624,8 +584,6 @@ mod tests {
                         bit_1: 0,
                         data_a: 28,
                     },
-                    &t_id,
-                    t_ts,
                     Arc::clone(&protocol)
                 )
                 .unwrap_err()
@@ -660,8 +618,6 @@ mod tests {
                     s_id: 1,
                     vlr_location: 4
                 },
-                &t_id,
-                t_ts,
                 Arc::clone(&protocol)
             )
             .unwrap(),
@@ -692,8 +648,6 @@ mod tests {
                         s_id: 1345,
                         vlr_location: 7,
                     },
-                    &t_id,
-                    t_ts,
                     Arc::clone(&protocol)
                 )
                 .unwrap_err()
@@ -732,8 +686,6 @@ mod tests {
                     end_time: 19,
                     number_x: "551795089196026".to_string()
                 },
-                &t_id,
-                t_ts,
                 Arc::clone(&protocol)
             )
             .unwrap(),
@@ -783,8 +735,6 @@ mod tests {
                     sf_type: 3,
                     start_time: 0,
                 },
-                &t_id,
-                t_ts,
                 Arc::clone(&protocol)
             )
             .unwrap(),

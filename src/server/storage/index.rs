@@ -155,7 +155,13 @@ impl Index {
     /// - Row does not exist with `key`.
     pub fn commit(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<()> {
         // Check to be deleted
-        let df = self.map.get(&key).unwrap().lock().unwrap().is_deleted();
+        let df = self
+            .map
+            .get(&key)
+            .expect(&format!("No entry for {}", key))
+            .lock()
+            .unwrap()
+            .is_deleted();
         if df {
             // Remove row.
             self.remove(key).unwrap();
@@ -237,7 +243,7 @@ mod tests {
     fn index_test() {
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test.toml")).unwrap();
+        c.merge(config::File::with_name("Test-2pl.toml")).unwrap();
         let config = Arc::new(c);
         // Initalise workload.
         let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
@@ -288,7 +294,7 @@ mod tests {
         // 4. Test format.
         assert_eq!(
             format!("{}", workload.get_internals().get_index("sub_idx").unwrap()),
-            "[sub_idx,1]"
+            "[sub_idx,3]"
         );
 
         // 5. Successful read of entry.

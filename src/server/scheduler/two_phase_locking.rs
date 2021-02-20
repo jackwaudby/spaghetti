@@ -616,6 +616,10 @@ impl TwoPhaseLocking {
         }
     }
 
+    /// Release transaction `tid`s lock on row with `key`.
+    ///
+    /// Returns `Reclaim` if there are no concurrent locks or waiting lock
+    /// requests. Else, returns `Ok`.
     fn release_lock(
         &self,
         key: PrimaryKey,
@@ -856,7 +860,7 @@ enum LockRequest {
     Delay(Arc<(Mutex<bool>, Condvar)>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum UnlockRequest {
     Ok,
     Reclaim,
@@ -877,50 +881,41 @@ impl PartialEq for LockRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::server::scheduler::Protocol;
+
     use crate::workloads::tatp::keys::TatpPrimaryKey;
     use crate::workloads::tatp::loader;
     use crate::workloads::Internal;
-    use chrono::Duration;
+
     use config::Config;
     use lazy_static::lazy_static;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use std::sync::Once;
+    use std::convert::TryInto;
     use std::thread;
-    use std::time;
-    use std::time::SystemTime;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
 
     lazy_static! {
-        static ref WORKLOAD: Arc<Workload> = {
+        // Create a scheduler and data.
+        static ref TPL: Arc<TwoPhaseLocking> = {
             // Initialise configuration.
             let mut c = Config::default();
-            c.merge(config::File::with_name("Test.toml")).unwrap();
+            c.merge(config::File::with_name("Test-2pl.toml")).unwrap();
             let config = Arc::new(c);
-            let internals = Internal::new("tatp_schema.txt", config).unwrap();
-            let mut rng = StdRng::seed_from_u64(42);
+
+            // Workload with fixed seed.
+            let schema = config.get_str("schema").unwrap();
+            let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
+            let seed = config.get_int("seed").unwrap();
+            let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());
             loader::populate_tables(&internals, &mut rng).unwrap();
             let workload = Arc::new(Workload::Tatp(internals));
-            workload
+
+            // Initialise scheduler.
+            Arc::new(TwoPhaseLocking::new(workload))
+
         };
     }
 
+    // Compare lock request types
     #[test]
     fn tpl_lock_request_type_test() {
         assert_eq!(LockRequest::Granted, LockRequest::Granted);
@@ -933,69 +928,61 @@ mod tests {
         assert!(LockRequest::Granted != LockRequest::Denied);
     }
 
-    #[test]
-    fn tpl_register_test() {
-        logging(false);
-        // Initialise scheduler.
-        let protocol = Arc::new(Protocol::new(Arc::clone(&WORKLOAD)).unwrap());
-        // Register transaction.
-        assert_eq!(protocol.scheduler.register("some_id").unwrap(), ());
-        assert_eq!(
-            format!("{}", protocol.scheduler.register("some_id").unwrap_err()),
-            "Aborted: transaction already registered in active transaction table"
-        );
-    }
-
     // In this test 3 read locks are requested by Ta, Tb, and Tc, which are then released.
     #[test]
     fn tpl_request_lock_read_test() {
-        logging(false);
+        // Get handle to 2PL scheduler.
+        let tpl = Arc::clone(&TPL);
 
-        // Initialise scheduler
-        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
-        let protocol1 = protocol.clone();
+        // Register transactions.
+        let ta = tpl.register().unwrap();
+        let tb = tpl.register().unwrap();
+        let tc = tpl.register().unwrap();
 
-        let sys_time = SystemTime::now();
-
-        // Ta
-        let ta_ts: DateTime<Utc> = sys_time.into();
-        let ta_id = ta_ts.to_string();
-        // Tb (younger)
-        let tb_ts: DateTime<Utc> = ta_ts - Duration::seconds(2);
-        let tb_id = tb_ts.to_string();
-        // Tc (older)
-        let tc_ts: DateTime<Utc> = ta_ts + Duration::seconds(2);
-        let tc_id = tc_ts.to_string();
-
-        // Register transactions
-        protocol.register(&ta_id).unwrap();
-        protocol.register(&tb_id).unwrap();
-        protocol.register(&tc_id).unwrap();
-
+        // Row transactions will contend on.
         let index = "access_idx";
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
 
         // Request locks.
         assert_eq!(
-            protocol.request_lock(index, pk, LockMode::Read, &ta_id, ta_ts),
+            tpl.request_lock(
+                index,
+                pk,
+                LockMode::Read,
+                &ta.get_id().unwrap(),
+                ta.get_ts().unwrap(),
+            ),
             LockRequest::Granted
         );
         assert_eq!(
-            protocol.request_lock(index, pk, LockMode::Read, &tb_id, tb_ts),
+            tpl.request_lock(
+                index,
+                pk,
+                LockMode::Read,
+                &tb.get_id().unwrap(),
+                tb.get_ts().unwrap(),
+            ),
             LockRequest::Granted
         );
         assert_eq!(
-            protocol.request_lock(index, pk, LockMode::Read, &tc_id, tc_ts),
+            tpl.request_lock(
+                index,
+                pk,
+                LockMode::Read,
+                &tc.get_id().unwrap(),
+                tc.get_ts().unwrap(),
+            ),
             LockRequest::Granted
         );
+
         // Check
         {
-            let lock = protocol1.lock_table.get(&pk).unwrap();
+            let lock = tpl.lock_table.get(&pk).unwrap();
             assert_eq!(
                 lock.group_mode == Some(LockMode::Read)
                     && !lock.waiting
                     && lock.list.len() as u32 == 3
-                    && lock.timestamp == Some(tc_ts)
+                    && lock.timestamp == Some(tc.get_ts().unwrap())
                     && lock.granted == Some(3),
                 true,
                 "{}",
@@ -1004,12 +991,21 @@ mod tests {
         }
 
         // Release locks.
-        protocol.release_lock(pk, &ta_id, true).unwrap();
-        protocol.release_lock(pk, &tb_id, true).unwrap();
-        protocol.release_lock(pk, &tc_id, true).unwrap();
-        // Check
+        assert_eq!(
+            tpl.release_lock(pk, &ta.get_id().unwrap(), true).unwrap(),
+            UnlockRequest::Ok
+        );
+        assert_eq!(
+            tpl.release_lock(pk, &tb.get_id().unwrap(), true).unwrap(),
+            UnlockRequest::Ok
+        );
+        assert_eq!(
+            tpl.release_lock(pk, &tc.get_id().unwrap(), true).unwrap(),
+            UnlockRequest::Reclaim
+        );
+        // Check.
         {
-            let lock = protocol1.lock_table.get(&pk).unwrap();
+            let lock = tpl.lock_table.get(&pk).unwrap();
             assert_eq!(
                 lock.group_mode == None
                     && !lock.waiting
@@ -1021,37 +1017,51 @@ mod tests {
                 *lock
             );
         }
+        // Remove from active transactions.
+        // (tid) Remove from active transactions.
+        tpl.active_transactions
+            .remove(&ta.get_id().unwrap())
+            .unwrap();
+        tpl.active_transactions
+            .remove(&tb.get_id().unwrap())
+            .unwrap();
+        tpl.active_transactions
+            .remove(&tc.get_id().unwrap())
+            .unwrap();
     }
 
     // In this test a write lock is requested and then released.
     #[test]
     fn tpl_request_lock_write_test() {
-        logging(false);
-
-        // Initialise protocol
-        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
-        let protocol1 = protocol.clone();
+        // Get handle to 2PL scheduler.
+        let tpl = Arc::clone(&TPL);
 
         // Create transaction id and timestamp.
-        let sys_time = SystemTime::now();
-        let datetime: DateTime<Utc> = sys_time.into();
-        let t_id = datetime.to_string();
-        let t_ts = datetime;
+        let t = tpl.register().unwrap();
 
-        let index = "access_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
-        // Lock
-        protocol.register(&t_id).unwrap();
-        let req = protocol.request_lock(index, pk, LockMode::Write, &t_id, t_ts);
-        assert_eq!(req, LockRequest::Granted);
+        // Row transaction will access.
+        let index = "sub_idx";
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1));
 
+        // Lock.
+        assert_eq!(
+            tpl.request_lock(
+                index,
+                pk,
+                LockMode::Write,
+                &t.get_id().unwrap(),
+                t.get_ts().unwrap()
+            ),
+            LockRequest::Granted
+        );
+        // Check
         {
-            let lock = protocol1.lock_table.get(&pk).unwrap();
+            let lock = tpl.lock_table.get(&pk).unwrap();
             assert_eq!(
                 lock.group_mode == Some(LockMode::Write)
                     && !lock.waiting
                     && lock.list.len() as u32 == 1
-                    && lock.timestamp == Some(t_ts)
+                    && lock.timestamp == Some(t.get_ts().unwrap())
                     && lock.granted == Some(1)
                     && lock.list[0].lock_mode == LockMode::Write,
                 true,
@@ -1061,9 +1071,9 @@ mod tests {
         }
 
         // Unlock
-        protocol.release_lock(pk, &t_id, true).unwrap();
+        tpl.release_lock(pk, &t.get_id().unwrap(), true).unwrap();
         {
-            let lock = protocol1.lock_table.get(&pk).unwrap();
+            let lock = tpl.lock_table.get(&pk).unwrap();
             assert_eq!(
                 lock.group_mode == None
                     && !lock.waiting
@@ -1075,98 +1085,127 @@ mod tests {
                 lock
             );
         }
+        tpl.active_transactions
+            .remove(&t.get_id().unwrap())
+            .unwrap();
     }
 
     // In this test a read lock is taken by Ta, followed by a write lock by Tb, which delays
     // until the read lock is released by Ta.
     #[test]
     fn tpl_read_delay_write_test() {
-        logging(false);
-        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
-        let protocol1 = protocol.clone();
+        // Get handle to scheduler.
+        let tpl = Arc::clone(&TPL);
+        let tpl_h = Arc::clone(&TPL);
 
         let index = "access_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(2, 2));
 
-        // Create transaction id and timestamp.
-        let sys_time_1 = SystemTime::now();
-        let datetime_1: DateTime<Utc> = sys_time_1.into();
-        let t_id_1 = datetime_1.to_string();
-        let t_id_11 = t_id_1.clone();
-        let t_ts_1 = datetime_1;
+        // Register transactions.
+        let ta = tpl.register().unwrap();
+        let tb = tpl.register().unwrap();
 
-        let datetime_2: DateTime<Utc> = datetime_1 - Duration::seconds(2);
-        let t_id_2 = datetime_2.to_string();
-        let t_ts_2 = datetime_2;
+        let ta_h = ta.clone();
+        let tb_h = tb.clone();
 
-        protocol.register(&t_id_1).unwrap();
-        protocol.register(&t_id_2).unwrap();
+        // Spawn thread.
+        let handle = thread::spawn(move || {
+            // Tb gets read lock.
+            assert_eq!(
+                tpl_h.request_lock(
+                    index,
+                    pk,
+                    LockMode::Read,
+                    &tb_h.get_id().unwrap(),
+                    tb_h.get_ts().unwrap(),
+                ),
+                LockRequest::Granted
+            );
 
-        let _handle = thread::spawn(move || {
-            debug!("Request Read lock");
-            protocol1.request_lock(index, pk, LockMode::Read, &t_id_11, t_ts_1);
+            // Ta gets read lock.
             debug!("Request Write lock");
-            if let LockRequest::Delay(pair) =
-                protocol1.request_lock(index, pk, LockMode::Write, &t_id_2, t_ts_2)
-            {
+            if let LockRequest::Delay(pair) = tpl_h.request_lock(
+                index,
+                pk,
+                LockMode::Write,
+                &ta_h.get_id().unwrap(),
+                ta_h.get_ts().unwrap(),
+            ) {
                 let (lock, cvar) = &*pair;
                 let mut waiting = lock.lock().unwrap();
                 while !*waiting {
                     waiting = cvar.wait(waiting).unwrap();
                 }
-                debug!("Write lock granted");
+                // delays
             };
         });
 
-        let ms = time::Duration::from_secs(2);
+        // Sleep this thread, giving ta time to delay.
+        let ms = std::time::Duration::from_secs(2);
         thread::sleep(ms);
-        protocol.release_lock(pk, &t_id_1, true).unwrap();
-        let lock = protocol.lock_table.get(&pk).unwrap();
+        // Release read lock
+
+        assert_eq!(
+            tpl.release_lock(pk, &tb.get_id().unwrap(), true).unwrap(),
+            UnlockRequest::Ok
+        );
+        // Check ta got the lock.
+        let lock = tpl.lock_table.get(&pk).unwrap();
         assert_eq!(
             lock.group_mode == Some(LockMode::Write)
                 && !lock.waiting
                 && lock.list.len() as u32 == 1
-                && lock.timestamp == Some(t_ts_2)
+                && lock.timestamp == Some(ta.get_ts().unwrap())
                 && lock.granted == Some(1),
             true,
             "{}",
             *lock
         );
+
+        handle.join().unwrap();
+        tpl.active_transactions
+            .remove(&ta.get_id().unwrap())
+            .unwrap();
+        tpl.active_transactions
+            .remove(&tb.get_id().unwrap())
+            .unwrap();
     }
 
     // In this test a write lock is taken by Ta, followed by a read lock by Tb, which delays
     // until the write lock is released by Ta.
     #[test]
     fn tpl_write_delay_read_test() {
-        logging(false);
-        // Scheduler.
-        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
-        // Handle for thread.
-        let protocol_t = protocol.clone();
+        // Get handle to 2PL scheduler.
+        let tpl = Arc::clone(&TPL);
 
-        // Transaction A
-        let sys_time = SystemTime::now();
-        let ta_ts: DateTime<Utc> = sys_time.into();
-        let ta_id = ta_ts.to_string();
-        let ta_id_t = ta_id.clone();
-
-        // Transaction B
-        // Timestamp is smaller/younger so it waits for lock.
-        let tb_ts: DateTime<Utc> = ta_ts - Duration::seconds(2);
-        let tb_id = tb_ts.to_string();
+        // Register transactions.
+        let ta = tpl.register().unwrap();
+        let tb = tpl.register().unwrap();
 
         let index = "access_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1));
 
-        // Register with scheduler
-        protocol.register(&ta_id).unwrap();
-        protocol.register(&tb_id).unwrap();
+        let tpl_h = Arc::clone(&TPL);
+        let ta_h = ta.clone();
+        let tb_h = tb.clone();
 
-        let _handle = thread::spawn(move || {
-            debug!("Request write lock by Ta");
-            protocol_t.request_lock(index, pk, LockMode::Write, &ta_id_t, ta_ts);
-            debug!("Request read lock by Tb");
-            let res = protocol_t.request_lock(index, pk, LockMode::Read, &tb_id, tb_ts);
+        let handle = thread::spawn(move || {
+            debug!("Request write lock by Tb");
+            tpl_h.request_lock(
+                index,
+                pk,
+                LockMode::Write,
+                &tb_h.get_id().unwrap(),
+                tb_h.get_ts().unwrap(),
+            );
+            debug!("Request read lock by Ta");
+            let res = tpl_h.request_lock(
+                index,
+                pk,
+                LockMode::Read,
+                &ta_h.get_id().unwrap(),
+                ta_h.get_ts().unwrap(),
+            );
             // Assert it has been denied, use dummy pair.
             assert_eq!(
                 res,
@@ -1178,62 +1217,70 @@ mod tests {
                 while !*waiting {
                     waiting = cvar.wait(waiting).unwrap();
                 }
-                debug!("Read lock granted to Tb");
+                debug!("Read lock granted to Ta");
             };
         });
 
         // Sleep thread
-        let ms = time::Duration::from_secs(2);
+        let ms = std::time::Duration::from_secs(2);
         thread::sleep(ms);
         debug!("Write lock released by Ta");
-        protocol.release_lock(pk, &ta_id, true).unwrap();
-        let lock = protocol.lock_table.get(&pk).unwrap();
+        tpl.release_lock(pk, &tb.get_id().unwrap(), true).unwrap();
+        let lock = tpl.lock_table.get(&pk).unwrap();
 
         assert_eq!(
             lock.group_mode == Some(LockMode::Read)
                 && !lock.waiting
                 && lock.list.len() as u32 == 1
-                && lock.timestamp == Some(tb_ts)
+                && lock.timestamp == Some(ta.get_ts().unwrap())
                 && lock.granted == Some(1),
             true,
             "{}",
             *lock
         );
+
+        handle.join().unwrap();
+        tpl.active_transactions
+            .remove(&ta.get_id().unwrap())
+            .unwrap();
+        tpl.active_transactions
+            .remove(&tb.get_id().unwrap())
+            .unwrap();
     }
 
     // In this test a write lock is taken by Ta, followed by a write lock by Tb, which delays
     // until the write lock is released by Ta.
     #[test]
     fn tpl_write_delay_write_test() {
-        logging(false);
-        // Scheduler.
-        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
-        // Handle for thread.
-        let protocol_t = protocol.clone();
+        let tpl = Arc::clone(&TPL);
+        let ta = tpl.register().unwrap();
+        let tb = tpl.register().unwrap();
 
-        // Transaction A
-        let sys_time = SystemTime::now();
-        let ta_ts: DateTime<Utc> = sys_time.into();
-        let ta_id = ta_ts.to_string();
-        let ta_id_t = ta_id.clone();
+        let tpl_h = Arc::clone(&TPL);
+        let ta_h = ta.clone();
+        let tb_h = tb.clone();
 
-        // Transaction B
-        // Timestamp is smaller/younger so it waits for lock.
-        let tb_ts: DateTime<Utc> = ta_ts - Duration::seconds(2);
-        let tb_id = tb_ts.to_string();
+        let index = "sub_idx";
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(2));
 
-        let index = "access_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
+        let handle = thread::spawn(move || {
+            // Tb
+            tpl_h.request_lock(
+                index,
+                pk,
+                LockMode::Write,
+                &tb_h.get_id().unwrap(),
+                tb_h.get_ts().unwrap(),
+            );
+            // Ta
+            let res = tpl_h.request_lock(
+                index,
+                pk,
+                LockMode::Write,
+                &ta_h.get_id().unwrap(),
+                ta_h.get_ts().unwrap(),
+            );
 
-        // Register with scheduler
-        protocol.register(&ta_id).unwrap();
-        protocol.register(&tb_id).unwrap();
-
-        let _handle = thread::spawn(move || {
-            debug!("Request write lock by Ta");
-            protocol_t.request_lock(index, pk, LockMode::Write, &ta_id_t, ta_ts);
-            debug!("Request write lock by Tb");
-            let res = protocol_t.request_lock(index, pk, LockMode::Write, &tb_id, tb_ts);
             // Assert it has been denied, use dummy pair.
             assert_eq!(
                 res,
@@ -1245,61 +1292,52 @@ mod tests {
                 while !*waiting {
                     waiting = cvar.wait(waiting).unwrap();
                 }
-                debug!("Read lock granted to Tb");
             };
         });
 
         // Sleep thread
-        let ms = time::Duration::from_secs(2);
+        let ms = std::time::Duration::from_secs(2);
         thread::sleep(ms);
-        debug!("Write lock released by Ta");
-        protocol.release_lock(pk, &ta_id, true).unwrap();
-        let lock = protocol.lock_table.get(&pk).unwrap();
+        // Tb
+        tpl.release_lock(pk, &tb.get_id().unwrap(), true).unwrap();
+        let lock = tpl.lock_table.get(&pk).unwrap();
 
         assert_eq!(
             lock.group_mode == Some(LockMode::Write)
                 && !lock.waiting
                 && lock.list.len() as u32 == 1
-                && lock.timestamp == Some(tb_ts)
+                && lock.timestamp == Some(ta.get_ts().unwrap())
                 && lock.granted == Some(1),
             true,
             "{}",
             *lock
         );
+
+        handle.join().unwrap();
+        tpl.active_transactions
+            .remove(&ta.get_id().unwrap())
+            .unwrap();
+        tpl.active_transactions
+            .remove(&tb.get_id().unwrap())
+            .unwrap();
     }
 
+    // This is tes
     #[test]
     fn tpl_denied_lock_test() {
-        logging(false);
         // Init scheduler.
-        let protocol = Arc::new(TwoPhaseLocking::new(Arc::clone(&WORKLOAD)));
+        let tpl = Arc::clone(&TPL);
+        let ta = tpl.register().unwrap();
+        let tb = tpl.register().unwrap();
+        let tc = tpl.register().unwrap();
 
-        // Create transaction ids and timestamps.
-        let sys_time = SystemTime::now();
-        let datetime: DateTime<Utc> = sys_time.into();
-        let t_id = datetime.to_string();
-
-        // Read with higher/newer ts.
-        let datetime_r: DateTime<Utc> = datetime + Duration::seconds(2);
-        let t_id_r = datetime_r.to_string();
-
-        // Write with higher/newer ts.
-        let datetime_w: DateTime<Utc> = datetime + Duration::seconds(5);
-        let t_id_w = datetime_w.to_string();
-
-        // Register transactions.
-        assert_eq!(protocol.register(&t_id).unwrap(), ());
-        assert_eq!(protocol.register(&t_id_r).unwrap(), ());
-        assert_eq!(protocol.register(&t_id_w).unwrap(), ());
-
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1));
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3));
         let columns: Vec<&str> = vec!["bit_1"];
         let values_a: Vec<&str> = vec!["0"];
         let values_b: Vec<&str> = vec!["1"];
         // Write by Ta.
         assert_eq!(
-            protocol
-                .update("subscriber", pk, &columns, &values_a, &t_id, datetime)
+            tpl.update("subscriber", pk, &columns, &values_a, ta.clone())
                 .unwrap(),
             ()
         );
@@ -1308,8 +1346,7 @@ mod tests {
         assert_eq!(
             format!(
                 "{}",
-                protocol
-                    .update("subscriber", pk, &columns, &values_b, &t_id_w, datetime_w)
+                tpl.update("subscriber", pk, &columns, &values_b, tb)
                     .unwrap_err()
             ),
             "Aborted: lock request denied"
@@ -1317,18 +1354,11 @@ mod tests {
 
         // Write by Tc
         assert_eq!(
-            format!(
-                "{}",
-                protocol
-                    .read("subscriber", pk, &columns, &t_id_r, datetime_r)
-                    .unwrap_err()
-            ),
+            format!("{}", tpl.read("subscriber", pk, &columns, tc).unwrap_err()),
             "Aborted: lock request denied"
         );
 
         // Commit Ta
-        assert_eq!(protocol.commit(&t_id).unwrap(), ());
-
-        assert_eq!(protocol.lock_table.is_empty(), true);
+        assert_eq!(tpl.commit(ta).unwrap(), ());
     }
 }

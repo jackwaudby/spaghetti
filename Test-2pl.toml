@@ -1,0 +1,5 @@
+workload = "tatp"
+protocol="2pl"
+subscribers = 3
+seed = 42
+schema = "tatp_schema.txt"

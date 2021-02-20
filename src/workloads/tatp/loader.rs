@@ -209,7 +209,7 @@ mod tests {
     fn populate_tables_test() {
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test.toml")).unwrap();
+        c.merge(config::File::with_name("Test-tatp.toml")).unwrap();
         let config = Arc::new(c);
 
         let c = Arc::clone(&config);
