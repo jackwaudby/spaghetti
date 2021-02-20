@@ -2,16 +2,16 @@ use crate::server::scheduler::serialization_graph_testing::error::{
     SerializationGraphTestingError, SerializationGraphTestingErrorKind,
 };
 use crate::server::scheduler::serialization_graph_testing::node::{EdgeType, Node, State};
-use crate::server::scheduler::{Aborted, Scheduler};
+use crate::server::scheduler::{Aborted, Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::index::Index;
 use crate::server::storage::row::{Access, Row};
 use crate::server::storage::table::Table;
 use crate::workloads::{PrimaryKey, Workload};
 
-use chrono::{DateTime, Utc};
 use std::collections::HashSet;
 use std::sync::{Arc, RwLock};
+use std::thread;
 use tracing::{debug, info};
 
 pub mod node;
@@ -29,43 +29,25 @@ pub mod error;
 pub struct SerializationGraphTesting {
     nodes: Vec<RwLock<Node>>,
     /// Handle to storage layer.
-    pub data: Arc<Workload>,
+    data: Arc<Workload>,
 }
 
 impl Scheduler for SerializationGraphTesting {
     /// Register a transaction with the serialization graph.
-    fn register(&self, tid: &str) -> Result<(), Aborted> {
-        // Find free node in graph.
-        for node in &self.nodes {
-            // Take exculsive access of node.
-            let node = node.write().map_err(|_| {
-                SerializationGraphTestingError::new(
-                    SerializationGraphTestingErrorKind::RwLockFailed,
-                )
-            });
-            match node {
-                Ok(node) => {
-                    if node.get_state().unwrap() == State::Free {
-                        // Set to active.
-                        node.set_state(State::Active).unwrap();
-                        // Set transaction id.
-                        node.set_transaction_id(tid).unwrap();
-                        return Ok(());
-                    }
-                }
-                Err(e) => {
-                    return Err(Aborted {
-                        reason: format!("{}", e),
-                    })
-                }
-            }
-        }
-        // No space in the graph.
-        let err =
-            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::NoSpaceInGraph);
-        Err(Aborted {
-            reason: format!("{}", err),
-        })
+    ///
+    /// Transaction gets the ID of the thread it is executed on.
+    fn register(&self) -> Result<TransactionInfo, Aborted> {
+        // Get thread name.
+        let tname = thread::current().name().unwrap().to_string();
+        debug!("Thread name {}", tname);
+        let node_id = tname.parse::<usize>().unwrap();
+        debug!("On thread {}", tname);
+        let node = self.get_node(node_id).write().unwrap();
+        // Set state to active.
+        node.set_state(State::Active).unwrap();
+        // Set transaction id.
+        node.set_transaction_id(&node_id.to_string()).unwrap();
+        Ok(TransactionInfo::new(Some(node_id.to_string()), None))
     }
 
     /// Insert row into table.
@@ -75,11 +57,10 @@ impl Scheduler for SerializationGraphTesting {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        tid: &str,
-        _tts: DateTime<Utc>,
+        meta: TransactionInfo,
     ) -> Result<(), Aborted> {
         // Get table.
-        let table = self.get_table(table, tid)?;
+        let table = self.get_table(table, meta.clone())?;
         // Init row.
         let mut row = Row::new(Arc::clone(&table), "sgt");
         // Set pk.
@@ -89,7 +70,7 @@ impl Scheduler for SerializationGraphTesting {
             match row.init_value(column, &values[i].to_string()) {
                 Ok(_) => {}
                 Err(e) => {
-                    self.abort(tid).unwrap();
+                    self.abort(meta.clone()).unwrap();
                     return Err(Aborted {
                         reason: format!("{}", e),
                     });
@@ -97,13 +78,13 @@ impl Scheduler for SerializationGraphTesting {
             }
         }
         // Get Index
-        let index = self.get_index(table, tid)?;
+        let index = self.get_index(table, meta.clone())?;
 
         // Set values - Needed to make the row "dirty"
-        match row.set_values(columns, values, "sgt", tid) {
+        match row.set_values(columns, values, "sgt", &meta.get_id().unwrap()) {
             Ok(_) => {}
             Err(e) => {
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", e),
                 });
@@ -111,8 +92,9 @@ impl Scheduler for SerializationGraphTesting {
         }
 
         // Get position of this transaction in the graph.
-        let this_node = self.get_node_position(tid).unwrap();
-        // Record insert
+        let tid = meta.get_id().unwrap();
+        let this_node = tid.parse::<usize>().unwrap();
+        // Record insert - used if transaction is aborted.
         self.get_node(this_node)
             .read()
             .unwrap()
@@ -126,7 +108,7 @@ impl Scheduler for SerializationGraphTesting {
             Ok(_) => Ok(()),
             Err(e) => {
                 debug!("Abort transaction {:?}: {:?}", tid, e);
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -142,22 +124,21 @@ impl Scheduler for SerializationGraphTesting {
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        tid: &str,
-        _tts: DateTime<Utc>,
+        meta: TransactionInfo,
     ) -> Result<Vec<Data>, Aborted> {
+        debug!("Execute read operation");
         // Get table.
-        let table = self.get_table(table, tid)?;
-
+        let table = self.get_table(table, meta.clone())?;
         // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), tid)?;
-
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
         // Execute read.
-        match index.read(key, columns, "sgt", tid) {
+        match index.read(key, columns, "sgt", &meta.get_id().unwrap()) {
             Ok(res) => {
                 // Get access history.
                 let access_history = res.get_access_history().unwrap();
                 // Get position of this transaction in the graph.
-                let this_node = self.get_node_position(tid).unwrap();
+                let tid = meta.get_id().unwrap();
+                let this_node = tid.parse::<usize>().unwrap();
                 // Detect conflicts and insert edges.
                 for access in access_history {
                     // WR conflict
@@ -169,7 +150,7 @@ impl Scheduler for SerializationGraphTesting {
                     }
                 }
                 let this_node = self.get_node(this_node);
-                // Record read of this key.
+                // Record read of this key - used for abort.
                 this_node
                     .read()
                     .unwrap()
@@ -182,8 +163,8 @@ impl Scheduler for SerializationGraphTesting {
                 Ok(vals)
             }
             Err(e) => {
-                debug!("Abort transaction {:?}: {:?}", tid, e);
-                self.abort(tid).unwrap();
+                debug!("Abort transaction {:?}: {:?}", meta.get_id().unwrap(), e);
+                self.abort(meta.clone()).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -200,21 +181,21 @@ impl Scheduler for SerializationGraphTesting {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        tid: &str,
-        _tts: DateTime<Utc>,
+        meta: TransactionInfo,
     ) -> Result<(), Aborted> {
         // Get table.
-        let table = self.get_table(table, tid)?;
+        let table = self.get_table(table, meta.clone())?;
         // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), tid)?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         // Execute write operation.
-        match index.update(key, columns, values, "sgt", tid) {
+        match index.update(key, columns, values, "sgt", &meta.get_id().unwrap()) {
             Ok(res) => {
                 // Get access history.
                 let access_history = res.get_access_history().unwrap();
                 // Get position of this transaction in the graph.
-                let this_node = self.get_node_position(tid).unwrap();
+                let tid = meta.get_id().unwrap();
+                let this_node = tid.parse::<usize>().unwrap();
                 // Detect conflicts.
                 for access in access_history {
                     match access {
@@ -245,8 +226,8 @@ impl Scheduler for SerializationGraphTesting {
                 Ok(())
             }
             Err(e) => {
-                debug!("Abort transaction {:?}: {:?}", tid, e);
-                self.abort(tid).unwrap();
+                debug!("Abort transaction {:?}: {:?}", meta.get_id().unwrap(), e);
+                self.abort(meta).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -255,17 +236,11 @@ impl Scheduler for SerializationGraphTesting {
     }
 
     /// Delete from row.
-    fn delete(
-        &self,
-        table: &str,
-        key: PrimaryKey,
-        tid: &str,
-        _tts: DateTime<Utc>,
-    ) -> Result<(), Aborted> {
+    fn delete(&self, table: &str, key: PrimaryKey, meta: TransactionInfo) -> Result<(), Aborted> {
         // Get table.
-        let table = self.get_table(table, tid)?;
+        let table = self.get_table(table, meta.clone())?;
         // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), tid)?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         // Execute remove op.
         match index.delete(key, "sgt") {
@@ -273,7 +248,8 @@ impl Scheduler for SerializationGraphTesting {
                 // Get the access history
                 let access_history = res.get_access_history().unwrap();
                 // Get position of this transaction in the graph.
-                let this_node = self.get_node_position(tid).unwrap();
+                let tid = meta.get_id().unwrap();
+                let this_node = tid.parse::<usize>().unwrap();
                 // Detect conflicts.
                 for access in access_history {
                     match access {
@@ -304,8 +280,8 @@ impl Scheduler for SerializationGraphTesting {
                 Ok(())
             }
             Err(e) => {
-                debug!("Abort transaction {:?}: {:?}", tid, e);
-                self.abort(tid).unwrap();
+                debug!("Abort transaction {:?}: {:?}", meta.get_id().unwrap(), e);
+                self.abort(meta).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -314,9 +290,10 @@ impl Scheduler for SerializationGraphTesting {
     }
 
     /// Abort a transaction.
-    fn abort(&self, tid: &str) -> crate::Result<()> {
+    fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
         // Get position of this transaction in the graph.
-        let this_node_id = self.get_node_position(tid).unwrap();
+        let tid = meta.get_id().unwrap();
+        let this_node_id = tid.parse::<usize>().unwrap();
 
         // (1) Set state to abort.
         {
@@ -338,7 +315,7 @@ impl Scheduler for SerializationGraphTesting {
             // Get index.
             let index = self.data.get_internals().get_index(&index).unwrap();
             // Revert.
-            index.revert(*key, "sgt", tid).unwrap();
+            index.revert(*key, "sgt", &tid).unwrap();
         }
         // (3) Remove read accesses from rows read.
         let read = self
@@ -351,7 +328,7 @@ impl Scheduler for SerializationGraphTesting {
             // Get index.
             let index = self.data.get_internals().get_index(&index).unwrap();
             // Revert.
-            index.revert_read(key, tid).unwrap();
+            index.revert_read(key, &tid).unwrap();
         }
         // (4) Remove inserted values.
         let inserted = self
@@ -409,31 +386,38 @@ impl Scheduler for SerializationGraphTesting {
     }
 
     /// Commit a transaction.
-    fn commit(&self, tid: &str) -> Result<(), Aborted> {
+    fn commit(&self, meta: TransactionInfo) -> Result<(), Aborted> {
         // Get position of this transaction in the graph.
-        let this_node_id = self.get_node_position(tid).unwrap();
-        // Take exculsive lock
-        let this_node = self.nodes[this_node_id].write().unwrap();
+        let tid = meta.get_id().unwrap();
+        let this_node_id = tid.parse::<usize>().unwrap();
+        debug!("Attempting to commit node: {}", this_node_id);
 
-        while let State::Active = this_node.get_state().unwrap() {
-            // Get incoming
-            let incoming = this_node.has_incoming().unwrap();
-            if incoming {
-                // Do cycle check.
-                let is_cycle = self.reduced_depth_first_search(this_node_id).unwrap();
-                if is_cycle {
-                    this_node.set_state(State::Aborted).unwrap();
+        // Take exculsive lock
+        {
+            let this_node = self.get_node(this_node_id).write().unwrap();
+            while let State::Active = this_node.get_state().unwrap() {
+                // Get incoming
+                let incoming = this_node.has_incoming().unwrap();
+                if incoming {
+                    debug!("Execute cycle check");
+                    // Do cycle check.
+                    let is_cycle = self.reduced_depth_first_search(this_node_id).unwrap();
+                    if is_cycle {
+                        this_node.set_state(State::Aborted).unwrap();
+                    }
+                } else {
+                    debug!("No incoming edges");
+                    // Set status to commit
+                    this_node.set_state(State::Committed).unwrap();
+                    break;
                 }
-            } else {
-                // Set status to commit
-                this_node.set_state(State::Committed).unwrap();
-                break;
             }
         }
 
+        let this_node = self.get_node(this_node_id).read().unwrap();
         match this_node.get_state().unwrap() {
             State::Aborted => {
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 let e = Box::new(SerializationGraphTestingError::new(
                     SerializationGraphTestingErrorKind::SerializableError,
                 ));
@@ -443,19 +427,26 @@ impl Scheduler for SerializationGraphTesting {
             }
             State::Committed => {
                 self.clean_up_graph(this_node_id);
-                return Ok(());
             }
             State::Free => panic!("trying to commit a free sloted"),
 
             State::Active => panic!("node should not be active"),
         }
+
+        {
+            // (7) Reset node information.
+            self.get_node(this_node_id).write().unwrap().reset();
+        }
+        Ok(())
     }
 }
 
 impl SerializationGraphTesting {
     /// Initialise serialization graph with `size` nodes.
+    ///
+    /// The number nodes is equal to the number of cores.
     pub fn new(size: i32, workload: Arc<Workload>) -> Self {
-        info!("initialise serialization graph with {} nodes", size);
+        info!("Initialise serialization graph with {} nodes", size);
         let mut nodes = vec![];
         for i in 0..size {
             let node = RwLock::new(Node::new(i as usize));
@@ -563,11 +554,15 @@ impl SerializationGraphTesting {
         Ok(false)
     }
 
-    fn clean_up_graph(&self, this_node_id: usize) {
+    /// Clean up the graph.
+    fn clean_up_graph(&self, id: usize) {
+        debug!("Cleaning up graph");
+
         // Take shared lock.
-        let this_node = self.nodes[this_node_id].read().unwrap();
+        let this_node = self.get_node(id).read().unwrap();
         // Get state.
         let state = this_node.get_state().unwrap();
+        debug!("Node state: {:?}", state);
         match state {
             State::Committed => {
                 // Get outgoing edges
@@ -576,9 +571,7 @@ impl SerializationGraphTesting {
                     // Get read lock on outgoing.
                     let outgoing_node = self.get_node(out).read().unwrap();
                     // Delete from edge sets.
-                    outgoing_node
-                        .delete_edge(this_node_id, EdgeType::Incoming)
-                        .unwrap();
+                    outgoing_node.delete_edge(id, EdgeType::Incoming).unwrap();
                     this_node
                         .delete_edge(outgoing_node.id, EdgeType::Outgoing)
                         .unwrap();
@@ -594,9 +587,7 @@ impl SerializationGraphTesting {
                         outgoing_node.set_state(State::Aborted).unwrap();
                     }
                     // Delete from edge sets
-                    outgoing_node
-                        .delete_edge(this_node_id, EdgeType::Incoming)
-                        .unwrap();
+                    outgoing_node.delete_edge(id, EdgeType::Incoming).unwrap();
                     this_node
                         .delete_edge(outgoing_node.id, EdgeType::Outgoing)
                         .unwrap();
@@ -608,13 +599,13 @@ impl SerializationGraphTesting {
 
     // TODO: clean up database.
     /// Get shared reference to a table.
-    fn get_table(&self, table: &str, tid: &str) -> Result<Arc<Table>, Aborted> {
+    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, Aborted> {
         // Get table.
         let res = self.data.get_internals().get_table(table);
         match res {
             Ok(table) => Ok(table),
             Err(e) => {
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -623,12 +614,12 @@ impl SerializationGraphTesting {
     }
 
     /// Get primary index name on a table.
-    fn get_index_name(&self, table: Arc<Table>, tid: &str) -> Result<String, Aborted> {
+    fn get_index_name(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<String, Aborted> {
         let res = table.get_primary_index();
         match res {
             Ok(index_name) => Ok(index_name),
             Err(e) => {
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -637,16 +628,16 @@ impl SerializationGraphTesting {
     }
 
     /// Get shared reference to index for a table.
-    fn get_index(&self, table: Arc<Table>, tid: &str) -> Result<Arc<Index>, Aborted> {
+    fn get_index(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<Arc<Index>, Aborted> {
         // Get index name.
-        let index_name = self.get_index_name(table, tid)?;
+        let index_name = self.get_index_name(table, meta.clone())?;
 
         // Get index for this key's table.
         let res = self.data.get_internals().get_index(&index_name);
         match res {
             Ok(index) => Ok(index),
             Err(e) => {
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })

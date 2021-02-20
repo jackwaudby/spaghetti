@@ -3,6 +3,7 @@ use crate::server::scheduler::two_phase_locking::error::{
     TwoPhaseLockingError, TwoPhaseLockingErrorKind,
 };
 use crate::server::scheduler::two_phase_locking::lock_info::{Entry, LockInfo, LockMode};
+use crate::server::scheduler::TransactionInfo;
 use crate::server::scheduler::{Aborted, Scheduler};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::index::Index;
@@ -14,6 +15,7 @@ use crate::workloads::Workload;
 use chashmap::CHashMap;
 use chrono::{DateTime, NaiveDate, Utc};
 use std::sync::{Arc, Condvar, Mutex};
+use std::time::SystemTime;
 use tracing::debug;
 
 pub mod error;
@@ -40,12 +42,17 @@ impl Scheduler for TwoPhaseLocking {
     /// # Aborts
     ///
     /// A transaction with the same name is already registered.
-    fn register(&self, tid: &str) -> Result<(), Aborted> {
-        debug!("Register {}", tid);
+    fn register(&self) -> Result<TransactionInfo, Aborted> {
+        // Assign id and timestamp.
+        let sys_time = SystemTime::now();
+        let datetime: DateTime<Utc> = sys_time.into();
+        // Create info holder.
+        let t = TransactionInfo::new(Some(datetime.to_string()), Some(datetime));
+        debug!("Register {}", t.get_id().unwrap());
         // Create runtime tracker.
-        let at = ActiveTransaction::new(tid);
+        let at = ActiveTransaction::new(&t.get_id().unwrap());
         // Add to map.
-        if let Some(_) = self.active_transactions.insert(tid.to_string(), at) {
+        if let Some(_) = self.active_transactions.insert(t.get_id().unwrap(), at) {
             let err = TwoPhaseLockingError::new(
                 TwoPhaseLockingErrorKind::AlreadyRegisteredInActiveTransactions,
             );
@@ -54,7 +61,7 @@ impl Scheduler for TwoPhaseLocking {
             });
         }
 
-        Ok(())
+        Ok(t)
     }
 
     /// Attempt to create a row in a table.
@@ -71,11 +78,10 @@ impl Scheduler for TwoPhaseLocking {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        tid: &str,
-        _tts: DateTime<Utc>,
+        meta: TransactionInfo,
     ) -> Result<(), Aborted> {
         // Get table.
-        let table = self.get_table(table, tid)?;
+        let table = self.get_table(table, meta.clone())?;
         // Init row.
         let mut row = Row::new(Arc::clone(&table), "2pl");
         // Set pk.
@@ -85,7 +91,7 @@ impl Scheduler for TwoPhaseLocking {
             match row.init_value(column, &values[i].to_string()) {
                 Ok(_) => {}
                 Err(e) => {
-                    self.abort(tid).unwrap();
+                    self.abort(meta.clone()).unwrap();
                     return Err(Aborted {
                         reason: format!("{}", e),
                     });
@@ -93,13 +99,13 @@ impl Scheduler for TwoPhaseLocking {
             }
         }
         // Get Index
-        let index = self.get_index(table, tid)?;
+        let index = self.get_index(table, meta.clone())?;
 
         // Set values - Needed to make the row "dirty"
-        match row.set_values(columns, values, "2pl", tid) {
+        match row.set_values(columns, values, "2pl", &meta.get_id().unwrap()) {
             Ok(_) => {}
             Err(e) => {
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", e),
                 });
@@ -108,7 +114,7 @@ impl Scheduler for TwoPhaseLocking {
 
         // Register
         self.active_transactions
-            .get_mut(tid)
+            .get_mut(&meta.get_id().unwrap())
             .unwrap()
             .add_row_to_insert(index, row);
 
@@ -130,29 +136,45 @@ impl Scheduler for TwoPhaseLocking {
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        tid: &str,
-        tts: DateTime<Utc>,
+        meta: TransactionInfo,
     ) -> Result<Vec<Data>, Aborted> {
-        debug!("{} requesting read lock on {:?}", tid, key);
+        debug!(
+            "{} requesting read lock on {:?}",
+            meta.get_id().unwrap(),
+            key
+        );
         // Get table.
-        let table = self.get_table(table, tid)?;
+        let table = self.get_table(table, meta.clone())?;
 
         // Get primary index name.
-        let index_name = self.get_index_name(Arc::clone(&table), tid)?;
+        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
 
         // Get read lock on row with pk `key`.
-        let request = self.request_lock(&index_name, key, LockMode::Read, tid, tts);
+        let request = self.request_lock(
+            &index_name,
+            key,
+            LockMode::Read,
+            &meta.get_id().unwrap(),
+            meta.get_ts().unwrap(),
+        );
 
         // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), tid)?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         match request {
             LockRequest::Granted => {
-                debug!("Read lock for {:?} granted to transaction {:?}", key, tid);
+                debug!(
+                    "Read lock for {:?} granted to transaction {:?}",
+                    key,
+                    meta.get_id().unwrap()
+                );
                 // Execute read operation.
-                let result = index.read(key, columns, "2pl", tid);
+                let result = index.read(key, columns, "2pl", &meta.get_id().unwrap());
                 // Register lock.
-                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key);
                 match result {
                     Ok(res) => {
                         // Get values.
@@ -160,7 +182,7 @@ impl Scheduler for TwoPhaseLocking {
                         return Ok(vals);
                     }
                     Err(e) => {
-                        self.abort(tid).unwrap();
+                        self.abort(meta.clone()).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -177,10 +199,13 @@ impl Scheduler for TwoPhaseLocking {
                 }
                 debug!("Read lock granted");
                 // Register lock.
-                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key);
 
                 // Execute read operation.
-                let result = index.read(key, columns, "2pl", tid);
+                let result = index.read(key, columns, "2pl", &meta.get_id().unwrap());
 
                 match result {
                     Ok(res) => {
@@ -189,7 +214,7 @@ impl Scheduler for TwoPhaseLocking {
                         return Ok(vals);
                     }
                     Err(e) => {
-                        self.abort(tid).unwrap();
+                        self.abort(meta.clone()).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -200,7 +225,7 @@ impl Scheduler for TwoPhaseLocking {
             LockRequest::Denied => {
                 debug!("Read lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", err),
                 });
@@ -224,37 +249,53 @@ impl Scheduler for TwoPhaseLocking {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        tid: &str,
-        tts: DateTime<Utc>,
+        meta: TransactionInfo,
     ) -> Result<(), Aborted> {
-        debug!("Transaction {:?} requesting write lock on {:?}", tid, key);
+        debug!(
+            "Transaction {:?} requesting write lock on {:?}",
+            meta.get_id().unwrap(),
+            key
+        );
 
         // Get table.
-        let table = self.get_table(table, tid)?;
+        let table = self.get_table(table, meta.clone())?;
 
         // Get primary index name.
-        let index_name = self.get_index_name(Arc::clone(&table), tid)?;
+        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
 
         // Request lock.
-        let request = self.request_lock(&index_name, key, LockMode::Write, tid, tts);
+        let request = self.request_lock(
+            &index_name,
+            key,
+            LockMode::Write,
+            &meta.get_id().unwrap(),
+            meta.get_ts().unwrap(),
+        );
 
         // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), tid)?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         match request {
             LockRequest::Granted => {
-                debug!("Write lock for {:?} granted to transaction {:?}", key, tid);
+                debug!(
+                    "Write lock for {:?} granted to transaction {:?}",
+                    key,
+                    meta.get_id().unwrap()
+                );
                 // Register lock.
-                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key);
 
                 // Execute update.
-                let result = index.update(key, columns, values, "2pl", tid);
+                let result = index.update(key, columns, values, "2pl", &meta.get_id().unwrap());
                 match result {
                     Ok(_) => {
                         return Ok(());
                     }
                     Err(e) => {
-                        self.abort(tid).unwrap();
+                        self.abort(meta.clone()).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -270,15 +311,18 @@ impl Scheduler for TwoPhaseLocking {
                 }
                 debug!("Write lock granted");
                 // Register lock.
-                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key);
                 // Execute update.
-                let result = index.update(key, columns, values, "2pl", tid);
+                let result = index.update(key, columns, values, "2pl", &meta.get_id().unwrap());
                 match result {
                     Ok(_) => {
                         return Ok(());
                     }
                     Err(e) => {
-                        self.abort(tid).unwrap();
+                        self.abort(meta.clone()).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -288,7 +332,7 @@ impl Scheduler for TwoPhaseLocking {
             LockRequest::Denied => {
                 debug!("Write lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", err),
                 });
@@ -304,31 +348,38 @@ impl Scheduler for TwoPhaseLocking {
     /// There is no primary index on this table.
     /// The index cannot be found.
     /// Row cannot be found.
-    fn delete(
-        &self,
-        table: &str,
-        key: PrimaryKey,
-        tid: &str,
-        tts: DateTime<Utc>,
-    ) -> Result<(), Aborted> {
+    fn delete(&self, table: &str, key: PrimaryKey, meta: TransactionInfo) -> Result<(), Aborted> {
         // Get table.
-        let table = self.get_table(table, tid)?;
+        let table = self.get_table(table, meta.clone())?;
 
         // Get primary index name.
-        let index_name = self.get_index_name(Arc::clone(&table), tid)?;
+        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
 
         // Request lock.
-        let request = self.request_lock(&index_name, key, LockMode::Write, tid, tts);
+        let request = self.request_lock(
+            &index_name,
+            key,
+            LockMode::Write,
+            &meta.get_id().unwrap(),
+            meta.get_ts().unwrap(),
+        );
 
         // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), tid)?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         match request {
             LockRequest::Granted => {
-                debug!("Write lock for {:?} granted to transaction {:?}", key, tid);
+                debug!(
+                    "Write lock for {:?} granted to transaction {:?}",
+                    key,
+                    meta.get_id().unwrap()
+                );
 
                 // Register lock.
-                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key);
 
                 // Execute delete.
                 let result = index.delete(key, "2pl");
@@ -337,7 +388,7 @@ impl Scheduler for TwoPhaseLocking {
                         return Ok(());
                     }
                     Err(e) => {
-                        self.abort(tid).unwrap();
+                        self.abort(meta.clone()).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -354,7 +405,10 @@ impl Scheduler for TwoPhaseLocking {
                 debug!("Write lock granted");
 
                 // Register lock.
-                self.active_transactions.get_mut(tid).unwrap().add_lock(key);
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key);
 
                 // Execute delete.
                 let result = index.delete(key, "2pl");
@@ -363,7 +417,7 @@ impl Scheduler for TwoPhaseLocking {
                         return Ok(());
                     }
                     Err(e) => {
-                        self.abort(tid).unwrap();
+                        self.abort(meta.clone()).unwrap();
                         return Err(Aborted {
                             reason: format!("{}", e),
                         });
@@ -373,7 +427,7 @@ impl Scheduler for TwoPhaseLocking {
             LockRequest::Denied => {
                 debug!("Write lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", err),
                 });
@@ -382,10 +436,13 @@ impl Scheduler for TwoPhaseLocking {
     }
 
     /// Commit a transaction.
-    fn commit(&self, tid: &str) -> Result<(), Aborted> {
-        debug!("Commit transaction {:?}", tid);
+    fn commit(&self, meta: TransactionInfo) -> Result<(), Aborted> {
+        debug!("Commit transaction {:?}", meta.get_id().unwrap());
         // (tid) Remove from active transactions.
-        let mut at = self.active_transactions.remove(tid).unwrap();
+        let mut at = self
+            .active_transactions
+            .remove(&meta.get_id().unwrap())
+            .unwrap();
 
         // (2) Insert dirty rows
         for row in at.get_rows_to_insert().into_iter() {
@@ -395,19 +452,22 @@ impl Scheduler for TwoPhaseLocking {
         }
 
         // (4) Release locks.
-        self.release_locks(tid, at, true);
+        self.release_locks(&meta.get_id().unwrap(), at, true);
 
         Ok(())
     }
     // TODO
     /// Abort a transaction.
-    fn abort(&self, tid: &str) -> crate::Result<()> {
-        debug!("Abort transaction {:?}", tid);
+    fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
+        debug!("Abort transaction {:?}", meta.get_id().unwrap());
         //  Remove from active transactions.
-        let at = self.active_transactions.remove(tid).unwrap();
+        let at = self
+            .active_transactions
+            .remove(&meta.get_id().unwrap())
+            .unwrap();
 
         // Release locks.
-        self.release_locks(tid, at, false);
+        self.release_locks(&meta.get_id().unwrap(), at, false);
 
         Ok(())
     }
@@ -742,13 +802,13 @@ impl TwoPhaseLocking {
     }
 
     /// Get shared reference to a table.
-    fn get_table(&self, table: &str, tid: &str) -> Result<Arc<Table>, Aborted> {
+    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, Aborted> {
         // Get table.
         let res = self.data.get_internals().get_table(table);
         match res {
             Ok(table) => Ok(table),
             Err(e) => {
-                self.abort(tid).unwrap();
+                self.abort(meta).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -757,12 +817,12 @@ impl TwoPhaseLocking {
     }
 
     /// Get primary index name on a table.
-    fn get_index_name(&self, table: Arc<Table>, tid: &str) -> Result<String, Aborted> {
+    fn get_index_name(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<String, Aborted> {
         let res = table.get_primary_index();
         match res {
             Ok(index_name) => Ok(index_name),
             Err(e) => {
-                self.abort(tid).unwrap();
+                self.abort(meta).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })
@@ -771,16 +831,16 @@ impl TwoPhaseLocking {
     }
 
     /// Get shared reference to index for a table.
-    fn get_index(&self, table: Arc<Table>, tid: &str) -> Result<Arc<Index>, Aborted> {
+    fn get_index(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<Arc<Index>, Aborted> {
         // Get index name.
-        let index_name = self.get_index_name(table, tid)?;
+        let index_name = self.get_index_name(table, meta.clone())?;
 
         // Get index for this key's table.
         let res = self.data.get_internals().get_index(&index_name);
         match res {
             Ok(index) => Ok(index),
             Err(e) => {
-                self.abort(tid).unwrap();
+                self.abort(meta.clone()).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
                 })

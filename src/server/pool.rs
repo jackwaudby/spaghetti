@@ -3,7 +3,7 @@ use crate::workloads::Workload;
 
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use tracing::debug;
+use tracing::{debug, info};
 
 #[derive(Debug)]
 pub struct ThreadPool {
@@ -56,6 +56,8 @@ impl ThreadPool {
                 // Retrieve the IDs of all active CPU cores.
                 let core_ids = core_affinity::get_core_ids().unwrap();
 
+                info!("Detected {} cores", core_ids.len());
+
                 // Job queue, threadpool keeps sending end.
                 let (sender, receiver) = mpsc::channel();
 
@@ -67,6 +69,7 @@ impl ThreadPool {
 
                 // Create `size` threads.
                 for (id, core_id) in core_ids.into_iter().enumerate() {
+                    info!("Initialise worker {}", id);
                     workers.push(Worker::new(
                         id as usize,
                         Some(core_id),
@@ -91,6 +94,10 @@ impl ThreadPool {
         let job = Box::new(f);
         // Send to worker threads down the channel.
         self.sender.send(Message::NewJob(job)).unwrap();
+    }
+
+    pub fn size(&self) -> usize {
+        self.workers.len()
     }
 }
 
@@ -138,31 +145,32 @@ impl Worker {
         core_id: Option<core_affinity::CoreId>,
         receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
     ) -> Worker {
-        let thread = thread::spawn(move || {
-            if let Some(core_id) = core_id {
-                // Pin this thread to a single CPU core.
-                core_affinity::set_for_current(core_id);
-            }
+        // Set thread name to id.
+        let builder = thread::Builder::new().name(id.to_string().into());
 
-            loop {
-                // Get message from job queue.
-                let message = receiver.lock().unwrap().recv().unwrap();
-
-                // Execute job.
-                match message {
-                    Message::NewJob(job) => {
-                        debug!("Worker {} got a job; executing.", id);
-
-                        job.call_box();
-                    }
-                    Message::Terminate => {
-                        debug!("Worker {} was told to terminate.", id);
-
-                        break;
+        let thread = builder
+            .spawn(move || {
+                if let Some(core_id) = core_id {
+                    // Pin this thread to a single CPU core.
+                    core_affinity::set_for_current(core_id);
+                }
+                loop {
+                    // Get message from job queue.
+                    let message = receiver.lock().unwrap().recv().unwrap();
+                    // Execute job.
+                    match message {
+                        Message::NewJob(job) => {
+                            debug!("Worker {} got a job; executing.", id);
+                            job.call_box();
+                        }
+                        Message::Terminate => {
+                            debug!("Worker {} was told to terminate.", id);
+                            break;
+                        }
                     }
                 }
-            }
-        });
+            })
+            .unwrap();
 
         Worker {
             id,

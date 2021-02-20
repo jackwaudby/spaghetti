@@ -10,17 +10,11 @@ use crate::workloads::tatp::profiles::{
 use crate::workloads::PrimaryKey;
 use crate::Result;
 
-use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use tracing::debug;
 
 /// GetSubscriberData transaction.
-pub fn get_subscriber_data(
-    params: GetSubscriberData,
-    t_id: &str,
-    t_ts: DateTime<Utc>,
-    protocol: Arc<Protocol>,
-) -> Result<String> {
+pub fn get_subscriber_data(params: GetSubscriberData, protocol: Arc<Protocol>) -> Result<String> {
     debug!(
         "\nSELECT s_id, sub_nbr,
             bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
@@ -74,13 +68,13 @@ pub fn get_subscriber_data(
     // Construct primary key.
     let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
     // Register with scheduler.
-    protocol.scheduler.register(t_id)?;
+    let meta = protocol.scheduler.register()?;
     // Execute read operation.
     let values = protocol
         .scheduler
-        .read("subscriber", pk, &columns, t_id, t_ts)?;
+        .read("subscriber", pk, &columns, meta.clone())?;
     // Commit transaction.
-    protocol.scheduler.commit(t_id)?;
+    protocol.scheduler.commit(meta.clone())?;
     // Convert to result
     let res = datatype::to_result(&columns, &values)?;
 
@@ -88,12 +82,7 @@ pub fn get_subscriber_data(
 }
 
 /// GetNewDestination transaction.
-pub fn get_new_destination(
-    params: GetNewDestination,
-    t_id: &str,
-    t_ts: DateTime<Utc>,
-    protocol: Arc<Protocol>,
-) -> Result<String> {
+pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -> Result<String> {
     debug!(
         "\nSELECT cf.numberx
            FROM Special_Facility AS sf, Call_Forwarding AS cf
@@ -125,12 +114,12 @@ pub fn get_new_destination(
         params.start_time.into(),
     ));
     // Register with scheduler.
-    protocol.scheduler.register(t_id).unwrap();
+    let meta = protocol.scheduler.register().unwrap();
     // Execute read operations.
     // 1) Attempt to get the special facility record.
     let sf_res = protocol
         .scheduler
-        .read("special_facility", sf_pk, &sf_columns, t_id, t_ts)?;
+        .read("special_facility", sf_pk, &sf_columns, meta.clone())?;
     // 2) Check sf.is_active = 1.
     let val = if let Data::Int(val) = sf_res[2] {
         val
@@ -143,7 +132,7 @@ pub fn get_new_destination(
     // 3) Get call forwarding record.
     let cf_res = protocol
         .scheduler
-        .read("call_forwarding", cf_pk, &cf_columns, t_id, t_ts)?;
+        .read("call_forwarding", cf_pk, &cf_columns, meta.clone())?;
     // 4) Check end_time < cf.end_time
     let val = if let Data::Int(val) = cf_res[3] {
         val
@@ -154,19 +143,14 @@ pub fn get_new_destination(
         return Err(Box::new(SpaghettiError::RowDoesNotExist));
     }
     // Commit transaction.
-    protocol.scheduler.commit(t_id)?;
+    protocol.scheduler.commit(meta.clone())?;
     // Convert to result
     let res = datatype::to_result(&vec![cf_columns[4].clone()], &vec![cf_res[4].clone()])?;
     Ok(res)
 }
 
 /// GetAccessData transaction.
-pub fn get_access_data(
-    params: GetAccessData,
-    t_id: &str,
-    t_ts: DateTime<Utc>,
-    protocol: Arc<Protocol>,
-) -> Result<String> {
+pub fn get_access_data(params: GetAccessData, protocol: Arc<Protocol>) -> Result<String> {
     debug!(
         "SELECT data1, data2, data3, data4
            FROM Access_Info
@@ -184,13 +168,13 @@ pub fn get_access_data(
     ));
     debug!("{}", pk);
     // Register with scheduler.
-    protocol.scheduler.register(t_id).unwrap();
+    let meta = protocol.scheduler.register().unwrap();
     // Execute read operation.
     let values = protocol
         .scheduler
-        .read("access_info", pk, &columns, t_id, t_ts)?;
+        .read("access_info", pk, &columns, meta.clone())?;
     // Commit transaction.
-    protocol.scheduler.commit(t_id)?;
+    protocol.scheduler.commit(meta.clone())?;
     // Convert to result
     let res = datatype::to_result(&columns, &values)?;
 
@@ -200,8 +184,6 @@ pub fn get_access_data(
 /// Update subscriber transaction.
 pub fn update_subscriber_data(
     params: UpdateSubscriberData,
-    t_id: &str,
-    t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
     debug!(
@@ -232,34 +214,28 @@ pub fn update_subscriber_data(
     ));
 
     // Register with scheduler.
-    protocol.scheduler.register(t_id).unwrap();
+    let meta = protocol.scheduler.register().unwrap();
 
     // Execute write operation.
     protocol
         .scheduler
-        .update("subscriber", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
+        .update("subscriber", pk_sb, &columns_sb, &values_sb, meta.clone())?;
     protocol.scheduler.update(
         "special_facility",
         pk_sp,
         &columns_sp,
         &values_sp,
-        t_id,
-        t_ts,
+        meta.clone(),
     )?;
 
     // Commit transaction.
-    protocol.scheduler.commit(t_id)?;
+    protocol.scheduler.commit(meta.clone())?;
 
     Ok("{\"updated 2 rows.\"}".to_string())
 }
 
 /// Update location transaction.
-pub fn update_location(
-    params: UpdateLocationData,
-    t_id: &str,
-    t_ts: DateTime<Utc>,
-    protocol: Arc<Protocol>,
-) -> Result<String> {
+pub fn update_location(params: UpdateLocationData, protocol: Arc<Protocol>) -> Result<String> {
     debug!(
         "UPDATE Subscriber
              SET vlr_location = {}
@@ -278,15 +254,15 @@ pub fn update_location(
     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
 
     // Register with scheduler.
-    protocol.scheduler.register(t_id)?;
+    let meta = protocol.scheduler.register()?;
 
     // Execute write operation.
     protocol
         .scheduler
-        .update("subscriber", pk_sb, &columns_sb, &values_sb, t_id, t_ts)?;
+        .update("subscriber", pk_sb, &columns_sb, &values_sb, meta.clone())?;
 
     // Commit transaction.
-    protocol.scheduler.commit(t_id)?;
+    protocol.scheduler.commit(meta.clone())?;
 
     Ok("{\"updated 1 row.\"}".to_string())
 }
@@ -294,8 +270,6 @@ pub fn update_location(
 /// Insert call forwarding transaction.
 pub fn insert_call_forwarding(
     params: InsertCallForwarding,
-    t_id: &str,
-    t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
     debug!(
@@ -324,17 +298,17 @@ pub fn insert_call_forwarding(
     ));
 
     // Register with scheduler.
-    protocol.scheduler.register(t_id).unwrap();
+    let meta = protocol.scheduler.register().unwrap();
     // Get record from subscriber table.
     let columns_sb: Vec<&str> = vec!["s_id"];
     protocol
         .scheduler
-        .read("subscriber", pk_sb, &columns_sb, t_id, t_ts)?;
+        .read("subscriber", pk_sb, &columns_sb, meta.clone())?;
     // Get record from special facility.
     let columns_sf: Vec<&str> = vec!["sf_type"];
     protocol
         .scheduler
-        .read("special_facility", pk_sf, &columns_sf, t_id, t_ts)?;
+        .read("special_facility", pk_sf, &columns_sf, meta.clone())?;
 
     // Insert into call forwarding.
     // Calculate primary key
@@ -358,10 +332,10 @@ pub fn insert_call_forwarding(
     // Execute insert operation.
     protocol
         .scheduler
-        .create(cf_name, pk_cf, &columns_cf, &values_cf, t_id, t_ts)?;
+        .create(cf_name, pk_cf, &columns_cf, &values_cf, meta.clone())?;
 
     // Commit transaction.
-    protocol.scheduler.commit(t_id)?;
+    protocol.scheduler.commit(meta.clone())?;
 
     Ok("{\"inserted 1 row into call_forwarding.\"}".to_string())
 }
@@ -369,8 +343,6 @@ pub fn insert_call_forwarding(
 /// Delete call forwarding transaction.
 pub fn delete_call_forwarding(
     params: DeleteCallForwarding,
-    t_id: &str,
-    t_ts: DateTime<Utc>,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
     debug!(
@@ -395,20 +367,20 @@ pub fn delete_call_forwarding(
     ));
 
     // Register with scheduler.
-    protocol.scheduler.register(t_id).unwrap();
+    let meta = protocol.scheduler.register().unwrap();
     // Get record from subscriber table.
     let columns_sb: Vec<&str> = vec!["s_id"];
     protocol
         .scheduler
-        .read("subscriber", pk_sb, &columns_sb, t_id, t_ts)?;
+        .read("subscriber", pk_sb, &columns_sb, meta.clone())?;
 
     // Delete from call forwarding.
     protocol
         .scheduler
-        .delete("call_forwarding", pk_cf, t_id, t_ts)?;
+        .delete("call_forwarding", pk_cf, meta.clone())?;
 
     // Commit transaction.
-    protocol.scheduler.commit(t_id)?;
+    protocol.scheduler.commit(meta.clone())?;
 
     Ok("{\"deleted 1 row from call_forwarding.\"}".to_string())
 }

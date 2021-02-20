@@ -3,8 +3,6 @@ use crate::workloads::tatp::profiles::TatpTransaction;
 use crate::workloads::tpcc::profiles::TpccTransaction;
 
 use bytes::Bytes;
-use chrono::offset::Utc;
-use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -72,10 +70,6 @@ pub struct Request {
     pub request_no: u32,
     // Transaction type and parameters.
     pub transaction: Transaction,
-    // Transaction ID.
-    pub id: Option<String>,
-    // Timestamp used in deadlock detection.
-    pub timestamp: Option<DateTime<Utc>>,
     // Channel to route response to `WriteHandler`.
     pub response_sender: tokio::sync::mpsc::UnboundedSender<Message>,
 }

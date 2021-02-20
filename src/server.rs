@@ -61,6 +61,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     // Initialise server listener state.
     let mut list = Listener {
         listener,
+        active_connections: 0,
         notify_read_handlers_tx,
         notify_tm_tx: notify_tm_tx,
         wh_shutdown_rx: notify_wh_tx.subscribe(),

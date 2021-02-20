@@ -9,6 +9,7 @@ use crate::Result;
 use config::Config;
 use core::fmt::Debug;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::io;
 use tokio::net::TcpListener;
 use tracing::info;
@@ -18,6 +19,9 @@ use tracing::info;
 pub struct Listener {
     /// TCP listener.
     pub listener: TcpListener,
+
+    /// Active connections.
+    pub active_connections: u32,
 
     /// Sender of channel between `Listener` and `ReadHandler`s.
     /// Used for sending notification of shutdown triggered by keyboard interupt.
@@ -57,6 +61,10 @@ impl Listener {
             // Accept new incoming connection from tcp listener.
             let (socket, _) = self.listener.accept().await?;
             info!("New connection accepted");
+            // Increment active connections.
+            self.active_connections += 1;
+
+            info!("Active connections: {}", self.active_connections);
 
             // Response routing channel between `TransactionManager`s `Worker` and the
             // corresponding 'WriteHandler`.

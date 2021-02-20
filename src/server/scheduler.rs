@@ -16,8 +16,16 @@ pub struct Protocol {
     pub scheduler: Box<dyn Scheduler + Send + Sync + 'static>,
 }
 
+#[derive(Clone)]
+pub struct TransactionInfo {
+    // Transaction ID.
+    id: Option<String>,
+    // Timestamp used in deadlock detection.
+    ts: Option<DateTime<Utc>>,
+}
+
 impl Protocol {
-    pub fn new(workload: Arc<Workload>) -> crate::Result<Protocol> {
+    pub fn new(workload: Arc<Workload>, cores: usize) -> crate::Result<Protocol> {
         // Determine workload type.
         let scheduler = match workload
             .get_internals()
@@ -29,7 +37,10 @@ impl Protocol {
                 scheduler: Box::new(TwoPhaseLocking::new(Arc::clone(&workload))),
             },
             "sgt" => Protocol {
-                scheduler: Box::new(SerializationGraphTesting::new(5, Arc::clone(&workload))),
+                scheduler: Box::new(SerializationGraphTesting::new(
+                    cores as i32,
+                    Arc::clone(&workload),
+                )),
             },
             _ => panic!("Incorrect concurrency control protocol"),
         };
@@ -37,15 +48,28 @@ impl Protocol {
     }
 }
 
+impl TransactionInfo {
+    pub fn new(id: Option<String>, ts: Option<DateTime<Utc>>) -> TransactionInfo {
+        TransactionInfo { id, ts }
+    }
+
+    pub fn get_id(&self) -> Option<String> {
+        self.id.clone()
+    }
+    pub fn get_ts(&self) -> Option<DateTime<Utc>> {
+        self.ts.clone()
+    }
+}
+
 pub trait Scheduler {
     /// Register a transaction with the scheduler.
-    fn register(&self, tid: &str) -> Result<(), Aborted>;
+    fn register(&self) -> Result<TransactionInfo, Aborted>;
 
     /// Attempt to commit a transaction.
-    fn commit(&self, tid: &str) -> Result<(), Aborted>;
+    fn commit(&self, meta: TransactionInfo) -> Result<(), Aborted>;
 
     /// Abort a transaction.
-    fn abort(&self, tid: &str) -> crate::Result<()>;
+    fn abort(&self, meta: TransactionInfo) -> crate::Result<()>;
 
     /// Insert a new row in a table.
     fn create(
@@ -54,8 +78,7 @@ pub trait Scheduler {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        tid: &str,
-        tts: DateTime<Utc>,
+        meta: TransactionInfo,
     ) -> Result<(), Aborted>;
 
     /// Read some values from a row.
@@ -64,8 +87,7 @@ pub trait Scheduler {
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        tid: &str,
-        tts: DateTime<Utc>,
+        meta: TransactionInfo,
     ) -> Result<Vec<Data>, Aborted>;
 
     /// Update columns with values in a row.
@@ -75,18 +97,11 @@ pub trait Scheduler {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        tid: &str,
-        tts: DateTime<Utc>,
+        meta: TransactionInfo,
     ) -> Result<(), Aborted>;
 
     /// Delete a row from a table.
-    fn delete(
-        &self,
-        table: &str,
-        key: PrimaryKey,
-        tid: &str,
-        tts: DateTime<Utc>,
-    ) -> Result<(), Aborted>;
+    fn delete(&self, table: &str, key: PrimaryKey, meta: TransactionInfo) -> Result<(), Aborted>;
 }
 
 #[derive(PartialEq, Debug, Clone)]

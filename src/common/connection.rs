@@ -19,7 +19,7 @@ impl<W: AsyncWrite + Unpin> WriteConnection<W> {
     }
 
     pub async fn write_frame(&mut self, frame: &Frame) -> crate::Result<()> {
-        debug!("Serializing.");
+        // debug!("Serializing.");
         // Get length and serialize
         let len = frame.payload.len();
         let lens: Vec<u8> = bincode::serialize(&len)?.into();
@@ -30,7 +30,7 @@ impl<W: AsyncWrite + Unpin> WriteConnection<W> {
         self.stream.write_all(&frame.payload).await?;
         self.stream.write_all(b"\r\n").await?;
         // Flush from buffer to socket
-        debug!("Flushing to stream.");
+        // debug!("Flushing to stream.");
 
         self.stream.flush().await?;
         Ok(())
@@ -66,17 +66,17 @@ impl<R: AsyncRead + Unpin> ReadConnection<R> {
                 Err(e) => match e.kind {
                     ParseErrorKind::Incomplete => {
                         // Not enough buffered data to read a frame.
-                        debug!("Not enough data in buffer");
+                        //   debug!("Not enough data in buffer");
                         // Attempt to read more from the socket.
                         if 0 == self.stream.read_buf(&mut self.buffer).await? {
-                            debug!("Socket is empty");
+                            // debug!("Socket is empty");
                             // If socket is empty so should the buffer.
                             if self.buffer.is_empty() {
-                                debug!("Buffer is empty");
+                                // debug!("Buffer is empty");
                                 // Remote cleanly closed the connection.
                                 return Ok(None);
                             } else {
-                                debug!("Partial frame");
+                                // debug!("Partial frame");
                                 // Remote closed while sending a frame.
                                 return Err(ParseError::new(ParseErrorKind::CorruptedFrame).into());
                             }
@@ -91,17 +91,17 @@ impl<R: AsyncRead + Unpin> ReadConnection<R> {
     }
 
     fn parse_frame(&mut self) -> Result<Frame, ParseError> {
-        debug!("Attempting parse");
+        // debug!("Attempting parse");
         // create cursor over buffer
         let mut buff = Cursor::new(&self.buffer[..]);
-        debug!("Validating");
+        // debug!("Validating");
         Frame::validate(&mut buff)?;
-        debug!("Validated");
+        // debug!("Validated");
         // Validate function advanced cursor to the end of the frame.
         let len = buff.position();
         // Reset cursor to 0, ready for parse.
         buff.set_position(0);
-        debug!("Actual parse");
+        // debug!("Actual parse");
         // Parse
         let frame = Frame::parse(&mut buff)?;
 
