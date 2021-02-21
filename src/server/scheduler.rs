@@ -16,7 +16,7 @@ pub struct Protocol {
     pub scheduler: Box<dyn Scheduler + Send + Sync + 'static>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct TransactionInfo {
     // Transaction ID.
     id: Option<String>,

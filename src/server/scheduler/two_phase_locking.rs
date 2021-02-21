@@ -901,6 +901,7 @@ mod tests {
             c.merge(config::File::with_name("Test-2pl.toml")).unwrap();
             let config = Arc::new(c);
 
+
             // Workload with fixed seed.
             let schema = config.get_str("schema").unwrap();
             let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();

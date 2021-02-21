@@ -1,12 +1,6 @@
-address = "127.0.0.1"
-port = 6142
-log = "info"
-
-protocol="sgt"
-
-transactions = 5
-mpsc_size = 32
-
 workload = "tatp"
-
+protocol="sgt"
+workers = 4
 subscribers = 1
+seed = 42
+schema = "tatp_schema.txt"

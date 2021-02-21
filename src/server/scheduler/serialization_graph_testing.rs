@@ -433,10 +433,11 @@ impl Scheduler for SerializationGraphTesting {
             State::Active => panic!("node should not be active"),
         }
 
-        {
-            // (7) Reset node information.
-            self.get_node(this_node_id).write().unwrap().reset();
-        }
+        // {
+        //     // (7) Reset node information.
+        //     debug!("Reset node info");
+        //     self.get_node(this_node_id).write().unwrap().reset();
+        // }
         Ok(())
     }
 }
@@ -646,75 +647,116 @@ impl SerializationGraphTesting {
     }
 }
 
-// #[cfg(test)]
-// mod test {
-//     use super::*;
-//     use crate::workloads::tatp;
-//     use crate::workloads::Internal;
-//     use config::Config;
-//     use lazy_static::lazy_static;
-//     use rand::rngs::StdRng;
-//     use rand::SeedableRng;
-//     use std::sync::Once;
-//     use tracing::Level;
-//     use tracing_subscriber::FmtSubscriber;
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::common::message::Request;
+    use crate::server::TransactionManager;
+    use crate::workloads::tatp;
+    use crate::workloads::Internal;
+    use config::Config;
+    use lazy_static::lazy_static;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    use std::sync::mpsc::{Receiver, Sender};
+    use std::sync::Once;
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
 
-//     static LOG: Once = Once::new();
+    static LOG: Once = Once::new();
 
-//     fn logging(on: bool) {
-//         if on {
-//             LOG.call_once(|| {
-//                 let subscriber = FmtSubscriber::builder()
-//                     .with_max_level(Level::DEBUG)
-//                     .finish();
-//                 tracing::subscriber::set_global_default(subscriber)
-//                     .expect("setting default subscriber failed");
-//             });
-//         }
-//     }
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
+    }
 
-//     lazy_static! {
-//        static ref WORKLOAD: Arc<Workload> = {
-//             // Initialise configuration.
-//             let mut c = Config::default();
-//             // Load from test file.
-//             c.merge(config::File::with_name("Sgt.toml")).unwrap();
-//             let config = Arc::new(c);
-//            // Rng with fixed seed.
-//            let mut rng = StdRng::seed_from_u64(42);
-//            // Initialise internals.
-//            let internals = Internal::new("tatp_schema.txt", config).unwrap();
-//            // Load tables.
-//            tatp::loader::populate_tables(&internals, &mut rng).unwrap();
-//            // Create workload.
-//            let workload = Arc::new(Workload::Tatp(internals));
-//            workload
-//         };
-//     }
+    lazy_static! {
+        static ref WORKLOAD: Arc<Workload> = {
+            // Initialise configuration.
+           let mut c = Config::default();
+            // Load from test file.
+            c.merge(config::File::with_name("Test-sgt.toml")).unwrap();
+           let config = Arc::new(c);
 
-//     #[test]
-//     fn sgt_test() {
-//         logging(false);
-//         // Initialise scheduler.
-//         let sgt = SerializationGraphTesting::new(3, Arc::clone(&WORKLOAD));
+            // Workload with fixed seed.
+            let schema = config.get_str("schema").unwrap();
+            let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
+            let seed = config.get_int("seed").unwrap() as u64;
+            let mut rng = StdRng::seed_from_u64(seed);
+            tatp::loader::populate_tables(&internals, &mut rng).unwrap();
+            Arc::new(Workload::Tatp(internals))
+        };
+    }
 
-//         // Register.
-//         assert_eq!(sgt.nodes.len(), 3);
-//         assert_eq!(sgt.register("t1").unwrap(), ());
-//         assert_eq!(sgt.register("t2").unwrap(), ());
-//         assert_eq!(sgt.register("t3").unwrap(), ());
-//         assert_eq!(
-//             format!("{}", sgt.register("t4").unwrap_err()),
-//             format!("Aborted: no nodes free in graph")
-//         );
+    #[test]
+    fn sgt_test() {
+        logging(true);
 
-//         // Get index.
-//         let _sub_idx = WORKLOAD.get_internals().get_index("sub_idx").unwrap();
+        // Shutdown channels.
+        let (notify_tm_tx, tm_shutdown_rx) = std::sync::mpsc::channel();
+        let (notify_wh_tx, _) = tokio::sync::broadcast::channel(1);
 
-//         // Values to read/write.
-//         let _cols = vec!["bit_4", "byte_2_5"];
-//         let _vals = vec!["0", "69"];
+        // Work channels.
+        let (_, work_rx): (Sender<Request>, Receiver<Request>) = std::sync::mpsc::channel();
 
-//         // Read
-//     }
-// }
+        // Create transaction manager.
+        let tm = TransactionManager::new(
+            Arc::clone(&WORKLOAD),
+            work_rx,
+            tm_shutdown_rx,
+            notify_wh_tx.clone(),
+        );
+
+        let scheduler1 = Arc::clone(&tm.get_scheduler());
+        let scheduler2 = Arc::clone(&tm.get_scheduler());
+        tm.get_pool().execute(move || {
+            assert_eq!(
+                format!(
+                    "{}",
+                    tatp::procedures::get_new_destination(
+                        tatp::profiles::GetNewDestination {
+                            s_id: 10,
+                            sf_type: 1,
+                            start_time: 0,
+                            end_time: 1,
+                        },
+                        scheduler1
+                    )
+                    .unwrap_err()
+                ),
+                format!("Aborted: row does not exist in index.")
+            );
+            debug!("Here A");
+        });
+
+        tm.get_pool().execute(move || {
+            assert_eq!(
+                tatp::procedures::get_new_destination(
+                    tatp::profiles::GetNewDestination {
+                        s_id: 1,
+                        sf_type: 1,
+                        start_time: 8,
+                        end_time: 12,
+                    },
+                    scheduler2
+                )
+                .unwrap(),
+                "{number_x=\"993245295996111\"}"
+            );
+
+            debug!("Here B");
+        });
+
+        // // destructure TM
+        // let TransactionManager { pool, .. } = tm;
+
+        // drop(pool);
+    }
+}

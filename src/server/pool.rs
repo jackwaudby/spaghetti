@@ -118,6 +118,8 @@ impl Drop for ThreadPool {
             if let Some(thread) = worker.thread.take() {
                 thread.join().unwrap();
             }
+
+            debug!("Shutdown worker {}", worker.id);
         }
 
         debug!("Workers shutdown.");
