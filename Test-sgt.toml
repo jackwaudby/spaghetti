@@ -8,3 +8,4 @@ workload = "tatp"
 transactions = 3
 subscribers = 1
 seed = 42
+schema = "tatp_schema.txt"
