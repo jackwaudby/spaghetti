@@ -53,10 +53,14 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let (notify_read_handlers_tx, _) = tokio::sync::broadcast::channel(1);
     let (notify_tm_tx, tm_shutdown_rx) = std::sync::mpsc::channel();
     let (notify_wh_tx, _) = tokio::sync::broadcast::channel(1);
-    let (notify_listener_tx, listener_shutdown_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    let (notify_listener_tx, listener_shutdown_rx) = tokio::sync::broadcast::channel(10);
+    // tokio::sync::mpsc::unbounded_channel();
 
     // Work channels.
     let (work_tx, work_rx): (Sender<Request>, Receiver<Request>) = std::sync::mpsc::channel();
+
+    let listener_shutdown_rx = notify_listener_tx.subscribe();
 
     // Initialise server listener state.
     let mut list = Listener {
@@ -66,6 +70,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         notify_tm_tx: notify_tm_tx,
         wh_shutdown_rx: notify_wh_tx.subscribe(),
         notify_listener_tx,
+        // listener_shutdown_rx,
         listener_shutdown_rx,
     };
     info!("Server listening on {:?}", format!("{}:{}", add, port));
@@ -78,12 +83,10 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         tm_shutdown_rx,
         notify_wh_tx.clone(),
     );
-    manager::run(tm);
 
     // Concurrently run the server and listen for the shutdown signal.
     tokio::select! {
-        res = list.run(work_tx, notify_wh_tx, Arc::clone(&config)) => {
-            // All errors bubble up to here.
+        res = list.run(work_tx, notify_wh_tx, Arc::clone(&config),tm) => {
             if let Err(err) = res {
                 error!("{:?}",err);
             }

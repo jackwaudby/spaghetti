@@ -47,6 +47,8 @@ pub enum SpaghettiError {
     RowDeleted,
     /// Access history not initalised.
     NotTrackingAccessHistory,
+    ReadSocketUnexpectedlyClosed,
+    WriteHandlerUnexpectedlyClosed,
 }
 
 impl fmt::Display for SpaghettiError {
@@ -75,6 +77,11 @@ impl fmt::Display for SpaghettiError {
             RowDirty => write!(f, "row already dirty"),
             RowDeleted => write!(f, "row marked for delete"),
             NotTrackingAccessHistory => write!(f, "not tracking access history"),
+            ReadSocketUnexpectedlyClosed => write!(f, "read socket unexpectedly closed"),
+            WriteHandlerUnexpectedlyClosed => write!(
+                f,
+                "channel between read and write handler unexpectedly closed"
+            ),
         }
     }
 }

@@ -35,7 +35,8 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     // Channel for notify the transaction manager of shutdown.
     // Implicitly dropped when handler is dropped (safely finished).
     // Communication channel between async and sync code.
-    pub _notify_listener_tx: tokio::sync::mpsc::UnboundedSender<()>,
+    pub notify_listener_tx: tokio::sync::broadcast::Sender<()>,
+    // tokio::sync::mpsc::UnboundedSender<()>,
 }
 
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
@@ -87,88 +88,14 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                 }
             }
         }
-
-        // debug!("HERE");
-        // loop {
-        //     debug!("NOW HERE");
-        //     // If close connection message received terminate task.
-        //     if let Ok(requests) = self.listen_rh_requests.try_recv() {
-        //         debug!("AAA - Write handler should send {:?} responses", requests);
-        //         // Set expected responses sent.
-        //         self.expected_responses_sent = Some(requests);
-        //         // Receive responses from transaction manager.
-        //         while self.responses_sent != self.expected_responses_sent.unwrap() {
-        //             let response = self.response_rx.recv().await;
-        //             // Increment sent.
-        //             self.responses_sent = self.responses_sent + 1;
-        //             match response {
-        //                 Some(response) => {
-        //                     debug!("AAA- Write handler sending response: {:?}", response);
-        //                     let f = response.into_frame();
-        //                     self.connection.write_frame(&f).await?;
-        //                 }
-        //                 None => {}
-        //             }
-        //         }
-        //         // Send connected closed message.
-        //         let closed = Message::ConnectionClosed;
-        //         let c = closed.into_frame();
-        //         debug!("AAA - Send connection closed message");
-        //         self.connection.write_frame(&c).await?;
-        //         return Ok(());
-        //     }
-        //     debug!("ALSO HERE");
-        //     // Else normal operation.
-        //     // Concurrently receive responses from transaction manager and listen for
-        //     // shutdown notification.
-        //     tokio::select! {
-        //         Some(response) = self.response_rx.recv() => {
-        //             // Increment responses sent.
-        //             self.responses_sent = self.responses_sent + 1;
-        //             debug!("BBB - Write handler sending response: {:?}", response);
-        //             let f = response.into_frame();
-        //             self.connection.write_frame(&f).await?;
-        //         },
-        //         _ = self.shutdown.recv() => {
-        //             debug!("BBB - Write handler received shutdown");
-        //             // If shutdown then write handler will have received a expected responses
-        //             loop {
-        //                 if let Ok(requests) = self.listen_rh_requests.try_recv() {
-        //                     // Set expected responses sent.
-        //                     self.expected_responses_sent = Some(requests);
-        //                     break;
-        //                 }
-        //             }
-
-        //             while self.responses_sent != self.expected_responses_sent.unwrap() {
-        //                 let response = self.response_rx.recv().await;
-        //                 // Increment sent.
-        //                 self.responses_sent = self.responses_sent + 1;
-        //                 match response {
-        //                     Some(response) => {
-        //                         debug!("BBB - Write handler sending response: {:?}", response);
-        //                         let f = response.into_frame();
-        //                         self.connection.write_frame(&f).await?;
-        //                     }
-        //                     None => {}
-        //                 }
-        //             }
-
-        //             // Send connected closed message.
-        //             let closed = Message::ConnectionClosed;
-        //             let c = closed.into_frame();
-        //             debug!("BBB - Send connection closed message");
-        //             self.connection.write_frame(&c).await?;
-        //             return Ok(());
-        //         }
-        //     };
-        // }
     }
 }
 
 impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
     fn drop(&mut self) {
         debug!("Drop write handler");
+
+        self.notify_listener_tx.send(());
         debug!("Sent {} to client", self.responses_sent);
     }
 }
