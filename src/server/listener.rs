@@ -65,18 +65,17 @@ impl Listener {
     ) -> Result<()> {
         // Start transaction manager.
         manager::run(tm);
-
+        // Listen for connections.
         info!("Accepting new connections");
         loop {
             info!("Active connections: {}", self.active_connections);
-            while let Ok(message) = self.listener_shutdown_rx.try_recv() {
+            while let Ok(_) = self.listener_shutdown_rx.try_recv() {
                 info!("A connection was closed");
                 self.active_connections -= 1;
-                info!("Active connections: {}", self.active_connections);
             }
 
-            let t = timeout(Duration::from_millis(10000), self.listener.accept()).await;
-            match t {
+            // Start timer.
+            match timeout(Duration::from_millis(10000), self.listener.accept()).await {
                 Ok(res) => {
                     let (socket, _) = res?;
                     info!("New connection accepted");
@@ -122,7 +121,7 @@ impl Listener {
                         info!("Server timed out");
                         break;
                     } else {
-                        info!("Server still active");
+                        // Server still active
                         continue;
                     }
                 }

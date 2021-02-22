@@ -53,9 +53,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let (notify_read_handlers_tx, _) = tokio::sync::broadcast::channel(1);
     let (notify_tm_tx, tm_shutdown_rx) = std::sync::mpsc::channel();
     let (notify_wh_tx, _) = tokio::sync::broadcast::channel(1);
-
-    let (notify_listener_tx, listener_shutdown_rx) = tokio::sync::broadcast::channel(10);
-    // tokio::sync::mpsc::unbounded_channel();
+    let (notify_listener_tx, _) = tokio::sync::broadcast::channel(10);
 
     // Work channels.
     let (work_tx, work_rx): (Sender<Request>, Receiver<Request>) = std::sync::mpsc::channel();
@@ -118,7 +116,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     debug!("Close channel to listener.");
     drop(notify_listener_tx);
     debug!("Wait for write handlers to shutdown.");
-    listener_shutdown_rx.recv().await;
+    listener_shutdown_rx.recv().await?;
     info!("Server shutdown");
     Ok(())
 }
