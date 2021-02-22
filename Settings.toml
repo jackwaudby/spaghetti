@@ -1,16 +1,14 @@
 address = "127.0.0.1"
 port = 6142
 log = "info"
-protocol="2pl"
-transactions = 10
+timeout = 5
 mpsc_size = 32
-workload = "tatp"
+protocol="2pl"
 threads = 4
-
-
+workload = "tatp"
+transactions = 10
 warehouses = 5
 districts = 10
 customers = 100
 max_items = 100
-
 subscribers = 1

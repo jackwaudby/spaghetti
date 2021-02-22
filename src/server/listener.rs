@@ -55,7 +55,6 @@ impl Listener {
     ///
     /// Initialise the workload and populates tables and indexes.
     /// Listens for inbound connections.1
-
     pub async fn run(
         &mut self,
         work_tx: std::sync::mpsc::Sender<Request>,
@@ -74,8 +73,10 @@ impl Listener {
                 self.active_connections -= 1;
             }
 
+            let to = config.get_int("timeout")?;
+
             // Start timer.
-            match timeout(Duration::from_millis(10000), self.listener.accept()).await {
+            match timeout(Duration::from_secs(to as u64), self.listener.accept()).await {
                 Ok(res) => {
                     let (socket, _) = res?;
                     info!("New connection accepted");

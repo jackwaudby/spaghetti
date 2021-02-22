@@ -116,7 +116,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     debug!("Close channel to listener.");
     drop(notify_listener_tx);
     debug!("Wait for write handlers to shutdown.");
-    listener_shutdown_rx.recv().await?;
+    listener_shutdown_rx.recv().await;
     info!("Server shutdown");
     Ok(())
 }
