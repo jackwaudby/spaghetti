@@ -19,12 +19,12 @@ fn setup_config() -> Arc<Config> {
     // Initialise configuration.
     let mut c = Config::default();
     // Load from test file.
-    c.merge(config::File::with_name("Test-sgt.toml")).unwrap();
+    c.merge(config::File::with_name("Test-2pl.toml")).unwrap();
     Arc::new(c)
 }
 
 #[tokio::test]
-async fn sgt_integration_test() {
+async fn tpl_integration_test() {
     // Configuration.
     let config = setup_config();
     // Logging.
