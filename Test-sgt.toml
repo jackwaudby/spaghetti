@@ -1,6 +1,10 @@
-workload = "tatp"
+address = "127.0.0.1"
+port = 6142
+log = "info"
+timeout = 5
+mpsc_size = 32
 protocol="sgt"
-workers = 4
+workload = "tatp"
+transactions = 3
 subscribers = 1
 seed = 42
-schema = "tatp_schema.txt"

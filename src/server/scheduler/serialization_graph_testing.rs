@@ -697,7 +697,7 @@ mod test {
 
     #[test]
     fn sgt_test() {
-        logging(true);
+        logging(false);
 
         // Shutdown channels.
         let (notify_tm_tx, tm_shutdown_rx) = std::sync::mpsc::channel();
