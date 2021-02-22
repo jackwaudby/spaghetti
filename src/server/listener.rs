@@ -24,6 +24,9 @@ pub struct Listener {
     /// TCP listener.
     pub listener: TcpListener,
 
+    /// Connections IDs.
+    pub next_id: u32,
+
     /// Active connections.
     pub active_connections: u32,
 
@@ -42,12 +45,11 @@ pub struct Listener {
 
     /// Sender of channel between `WriteHandler`s and `Listener`.
     /// Used to indicate shutdown of write handlers when there are no active connections.
-    pub notify_listener_tx: tokio::sync::broadcast::Sender<()>,
-    // tokio::sync::mpsc::UnboundedSender<()>,
+    pub notify_listener_tx: tokio::sync::broadcast::Sender<u32>,
+
     /// Receiver of channel between `WriteHandler`s and `Listener`.
     /// Used to indicate `WriteHandler`s have gracefully shutdown.
-    pub listener_shutdown_rx: tokio::sync::broadcast::Receiver<()>,
-    // tokio::sync::mpsc::UnboundedReceiver<()>,
+    pub listener_shutdown_rx: tokio::sync::broadcast::Receiver<u32>,
 }
 
 impl Listener {
@@ -67,9 +69,8 @@ impl Listener {
         // Listen for connections.
         info!("Accepting new connections");
         loop {
-            info!("Active connections: {}", self.active_connections);
-            while let Ok(_) = self.listener_shutdown_rx.try_recv() {
-                info!("A connection was closed");
+            while let Ok(id) = self.listener_shutdown_rx.try_recv() {
+                info!("Connection {} was closed", id);
                 self.active_connections -= 1;
             }
 
@@ -88,6 +89,7 @@ impl Listener {
                     let (sender, receiver) = tokio::sync::oneshot::channel::<u32>();
                     let (rd, wr) = io::split(socket);
                     let mut read_handler = ReadHandler {
+                        id: self.next_id,
                         connection: ReadConnection::new(rd),
                         requests: 0,
                         shutdown: Shutdown::new_broadcast(self.notify_read_handlers_tx.subscribe()),
@@ -97,6 +99,7 @@ impl Listener {
                         _notify_tm_tx: self.notify_tm_tx.clone(),
                     };
                     let mut write_handler = WriteHandler {
+                        id: self.next_id,
                         connection: WriteConnection::new(wr),
                         response_rx,
                         responses_sent: 0,
@@ -116,6 +119,9 @@ impl Listener {
                             error!("{:?}", err);
                         }
                     });
+                    // Increment next id
+                    self.next_id += 1;
+                    info!("Active connections: {}", self.active_connections);
                 }
                 Err(_) => {
                     if self.active_connections == 0 {

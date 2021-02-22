@@ -63,6 +63,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     // Initialise server listener state.
     let mut list = Listener {
         listener,
+        next_id: 0,
         active_connections: 0,
         notify_read_handlers_tx,
         notify_tm_tx: notify_tm_tx,

@@ -12,6 +12,9 @@ use tracing::debug;
 /// Represents the handler for the read half of a client connection.
 #[derive(Debug)]
 pub struct ReadHandler<R: AsyncRead + Unpin> {
+    /// Connection ID
+    pub id: u32,
+
     /// Read half of tcp stream with buffers and frame parsing utils.
     pub connection: ReadConnection<R>,
 

@@ -13,6 +13,9 @@ use tracing::{debug, info};
 /// Represents the handler for the write half of a client connection.
 #[derive(Debug)]
 pub struct WriteHandler<R: AsyncWrite + Unpin> {
+    /// Connection ID
+    pub id: u32,
+
     /// Write half of tcp stream with buffers.
     pub connection: WriteConnection<R>,
 
@@ -30,13 +33,11 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     pub shutdown: Shutdown<tokio::sync::broadcast::Receiver<()>>,
     // Channnel for sending transaction request to the transaction manager.
     // Communication channel between async and sync code.
-    // pub notify_tm_job_tx: std::sync::mpsc::Sender<tatp::TatpTransaction>,
 
     // Channel for notify the transaction manager of shutdown.
     // Implicitly dropped when handler is dropped (safely finished).
     // Communication channel between async and sync code.
-    pub notify_listener_tx: tokio::sync::broadcast::Sender<()>,
-    // tokio::sync::mpsc::UnboundedSender<()>,
+    pub notify_listener_tx: tokio::sync::broadcast::Sender<u32>,
 }
 
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
@@ -95,7 +96,7 @@ impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
     fn drop(&mut self) {
         debug!("Drop write handler");
 
-        self.notify_listener_tx.send(()).unwrap();
+        self.notify_listener_tx.send(self.id).unwrap();
         debug!("Sent {} to client", self.responses_sent);
     }
 }
