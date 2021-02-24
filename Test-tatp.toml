@@ -1,6 +1,0 @@
-workload = "tatp"
-protocol="2pl"
-workers = 4
-subscribers = 1
-seed = 42
-schema = "tatp_schema.txt"

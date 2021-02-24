@@ -38,7 +38,7 @@ async fn sgt_integration_test() {
     sleep(Duration::from_millis(1000)).await;
 
     let mut clients = vec![];
-    for _ in 0..3 {
+    for _ in 0..1 {
         let c = Arc::clone(&config);
         let client = tokio::spawn(async move {
             assert_eq!((), spaghetti::client::run(c).await.unwrap());

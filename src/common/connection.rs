@@ -4,7 +4,7 @@ use bytes::{Buf, BytesMut}; // traits for working with buffer implementations
 use std::io::Cursor;
 use std::marker::Unpin;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufWriter};
-use tracing::debug;
+//use tracing::debug;
 
 #[derive(Debug)]
 pub struct WriteConnection<W> {
@@ -59,7 +59,7 @@ impl<R: AsyncRead + Unpin> ReadConnection<R> {
     // - Error if there has been an encoding error.
     pub async fn read_frame(&mut self) -> crate::Result<Option<Frame>> {
         loop {
-            debug!("Attempt to parse");
+            // debug!("Attempt to parse");
             // Attempt to parse a frame from buffered data.
             match self.parse_frame() {
                 Ok(frame) => return Ok(Some(frame)),

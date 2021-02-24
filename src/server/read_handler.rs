@@ -7,11 +7,13 @@ use crate::Result;
 use std::fmt::Debug;
 use std::marker::Unpin;
 use tokio::io::AsyncRead;
-use tracing::debug;
 
 /// Represents the handler for the read half of a client connection.
 #[derive(Debug)]
 pub struct ReadHandler<R: AsyncRead + Unpin> {
+    /// State
+    pub state: State,
+
     /// Connection ID
     pub id: u32,
 
@@ -28,9 +30,8 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
     /// Each new request gets a clone of it.
     pub response_tx: tokio::sync::mpsc::UnboundedSender<Message>,
 
-    /// Channel for sending write handler the number of responses it should send before
-    /// terminating.
-    pub notify_wh_requests: Option<tokio::sync::oneshot::Sender<u32>>,
+    /// Channel for notifying the write handler of the state the read handler terminated in.
+    pub notify_wh_requests: Option<tokio::sync::oneshot::Sender<State>>,
 
     /// Channel for sending requests to the transaction manager.
     /// Communication channel between async and sync code.
@@ -42,37 +43,49 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
     pub _notify_tm_tx: std::sync::mpsc::Sender<()>,
 }
 
-impl<R: AsyncRead + Unpin> Drop for ReadHandler<R> {
-    fn drop(&mut self) {
-        debug!("Drop read handler");
-        debug!("{}", self.requests);
-    }
+/// Read handler state.
+#[derive(Debug, Copy, Clone)]
+pub enum State {
+    /// Normal operation.
+    Active,
+
+    /// Graceful shutdown path: (i) server timed out, (ii) client sent close connection
+    /// message, or (iii) keyboard interrupt.
+    Requests(u32),
+
+    /// A fatal error occurred.
+    InternalError,
 }
 
 impl<R: AsyncRead + Unpin> ReadHandler<R> {
     /// Run the read handler for a connection.
     ///
+    /// Whilst listening for a graceful shutdown the read handler reads from the
+    /// underlying socket. If a message is received it is decoded, coverted to a request, and
+    /// forwarded to the transaction manager. It tracks the number of requests it has
+    /// received.
+    ///
     /// # Shutdown
     ///
+    /// Graceful shutdown:
     /// - Keyboard interrupt; listener closes/drops the channel between itself and the read
     /// handler.
-    /// - Server timeout; TODO.
+    /// - Server timeout; listener closes/drops the channel between itself and the read
+    /// handler.
     /// - Close connected message received; client has finished sending requests.
     ///
     /// In each event the read handler sends the number of requests it has received to its
-    /// corresponding write handler. Then the tokio task the read handler resides in terminates,
-    /// dropping the channel to the transaction manager notifying it to shutdown.
+    /// corresponding write handler. Then the tokio task the read handler resides in
+    /// terminates, dropping the channel to the transaction manager notifying it to shutdown.
     ///
-    /// # Errors
-    ///
+    /// Internal errors:
     /// - Encoding error arising from attempting to read a frame from the socket.
     /// - Serialisation error arising from attempting to decoded a message.
     /// - Received an unexpected message.
-    /// - The socket unexpectedly closed.
-    /// - Channel to write handler unexpectedly closed.
+    /// - The read socket unexpectedly closed.
+    /// - Channel to transaction manager was unexpectedly closed.
     ///
-    /// In the event of an error the tokio task the read handler resides in terminates, dropping
-    /// the channel to the transaction manager notifying it to shutdown.
+    /// In each event the read handler notifies the write handler of an internal error,
     /// In this case there is no guarantee the client will receive a response to each request it
     /// has sent.
     pub async fn run(&mut self) -> Result<()> {
@@ -91,6 +104,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
 
             // Decode message.
             let decoded: Message = bincode::deserialize(&frame.get_payload())?;
+
             // Convert to request for transaction manager.
             let request = match decoded {
                 Message::TatpTransaction { request_no, params } => Request {
@@ -106,17 +120,12 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
             };
             // Increment transaction requests received.
             self.requests += 1;
-            // Send to transaction manager
-            self.work_tx.send(request).unwrap();
-        }
 
-        // Read handler has been shutdown.
-        // Send requests received to write handler.
-        self.notify_wh_requests
-            .take()
-            .unwrap()
-            .send(self.requests)
-            .map_err(|_| Box::new(SpaghettiError::WriteHandlerUnexpectedlyClosed))?;
+            // Attempt to send to transaction manager.
+            if let Err(_) = self.work_tx.send(request) {
+                return Err(Box::new(SpaghettiError::ThreadPoolClosed));
+            };
+        }
 
         Ok(())
     }

@@ -39,9 +39,8 @@ impl Scheduler for SerializationGraphTesting {
     fn register(&self) -> Result<TransactionInfo, Aborted> {
         // Get thread name.
         let tname = thread::current().name().unwrap().to_string();
-        debug!("Thread name {}", tname);
         let node_id = tname.parse::<usize>().unwrap();
-        debug!("On thread {}", tname);
+        debug!("Registed transaction with node {}", tname);
         let node = self.get_node(node_id).write().unwrap();
         // Set state to active.
         node.set_state(State::Active).unwrap();
@@ -700,7 +699,7 @@ mod test {
         logging(false);
 
         // Shutdown channels.
-        let (notify_tm_tx, tm_shutdown_rx) = std::sync::mpsc::channel();
+        let (_notify_tm_tx, tm_shutdown_rx) = std::sync::mpsc::channel();
         let (notify_wh_tx, _) = tokio::sync::broadcast::channel(1);
 
         // Work channels.
@@ -716,43 +715,49 @@ mod test {
 
         let scheduler1 = Arc::clone(&tm.get_scheduler());
         let scheduler2 = Arc::clone(&tm.get_scheduler());
-        tm.get_pool().execute(move || {
-            assert_eq!(
-                format!(
-                    "{}",
+        tm.get_pool()
+            .execute(move || -> crate::Result<()> {
+                assert_eq!(
+                    format!(
+                        "{}",
+                        tatp::procedures::get_new_destination(
+                            tatp::profiles::GetNewDestination {
+                                s_id: 10,
+                                sf_type: 1,
+                                start_time: 0,
+                                end_time: 1,
+                            },
+                            scheduler1
+                        )
+                        .unwrap_err()
+                    ),
+                    format!("Aborted: row does not exist in index.")
+                );
+                debug!("Here A");
+                Ok(())
+            })
+            .unwrap();
+
+        tm.get_pool()
+            .execute(move || -> crate::Result<()> {
+                assert_eq!(
                     tatp::procedures::get_new_destination(
                         tatp::profiles::GetNewDestination {
-                            s_id: 10,
+                            s_id: 1,
                             sf_type: 1,
-                            start_time: 0,
-                            end_time: 1,
+                            start_time: 8,
+                            end_time: 12,
                         },
-                        scheduler1
+                        scheduler2
                     )
-                    .unwrap_err()
-                ),
-                format!("Aborted: row does not exist in index.")
-            );
-            debug!("Here A");
-        });
+                    .unwrap(),
+                    "{number_x=\"993245295996111\"}"
+                );
 
-        tm.get_pool().execute(move || {
-            assert_eq!(
-                tatp::procedures::get_new_destination(
-                    tatp::profiles::GetNewDestination {
-                        s_id: 1,
-                        sf_type: 1,
-                        start_time: 8,
-                        end_time: 12,
-                    },
-                    scheduler2
-                )
-                .unwrap(),
-                "{number_x=\"993245295996111\"}"
-            );
-
-            debug!("Here B");
-        });
+                debug!("Here B");
+                Ok(())
+            })
+            .unwrap();
 
         // // destructure TM
         // let TransactionManager { pool, .. } = tm;

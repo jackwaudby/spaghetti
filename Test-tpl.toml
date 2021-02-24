@@ -2,11 +2,13 @@ address = "127.0.0.1"
 port = 6142
 log = "info"
 timeout = 5
-threads = 4
 mpsc_size = 32
+
 protocol="2pl"
+workers = 4
+
+transactions = 10
 workload = "tatp"
-transactions = 3
+schema = "tatp_schema.txt"
 subscribers = 3
 seed = 42
-schema = "tatp_schema.txt"

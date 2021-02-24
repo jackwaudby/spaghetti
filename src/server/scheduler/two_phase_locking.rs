@@ -898,9 +898,8 @@ mod tests {
         static ref TPL: Arc<TwoPhaseLocking> = {
             // Initialise configuration.
             let mut c = Config::default();
-            c.merge(config::File::with_name("Test-2pl.toml")).unwrap();
+            c.merge(config::File::with_name("Test-tpl.toml")).unwrap();
             let config = Arc::new(c);
-
 
             // Workload with fixed seed.
             let schema = config.get_str("schema").unwrap();

@@ -1,6 +1,8 @@
 use crate::common::connection::WriteConnection;
 use crate::common::message::Message;
 use crate::common::shutdown::Shutdown;
+use crate::server::manager::State as TransactionManagerState;
+use crate::server::read_handler::State as ReadHandlerState;
 use crate::Result;
 
 use config::Config;
@@ -27,10 +29,10 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     pub expected_responses_sent: Option<u32>,
 
     // Channel receives the requests the read has received.
-    pub listen_rh_requests: tokio::sync::oneshot::Receiver<u32>,
+    pub listen_rh_requests: tokio::sync::oneshot::Receiver<ReadHandlerState>,
 
     // Listen for server shutdown notifications.
-    pub shutdown: Shutdown<tokio::sync::broadcast::Receiver<()>>,
+    pub shutdown: Shutdown<tokio::sync::broadcast::Receiver<TransactionManagerState>>,
     // Channnel for sending transaction request to the transaction manager.
     // Communication channel between async and sync code.
 
@@ -42,31 +44,44 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
 
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
     pub async fn run(&mut self, _config: Arc<Config>) -> Result<()> {
+        // (a) read handler sends requests or internal error
+        // (b) tm closes channel.
+
         // Loop until server is interrupted.
         // while !self.shutdown.is_shutdown() {
 
         loop {
+            // Check if read handler has sent message.
             match self.listen_rh_requests.try_recv() {
-                Ok(requests) => {
-                    debug!("Write handler entered shutdown mode");
-                    // Set expected responses sent.
-                    self.expected_responses_sent = Some(requests);
-                    // Receive responses from transaction manager.
-                    while self.responses_sent != self.expected_responses_sent.unwrap() {
-                        let response = self.response_rx.recv().await;
-                        // Increment sent.
-                        self.responses_sent = self.responses_sent + 1;
-                        match response {
-                            Some(response) => {
-                                debug!("AAA- Write handler sending response: {:?}", response);
-                                let f = response.into_frame();
-                                self.connection.write_frame(&f).await?;
+                Ok(message) => {
+                    debug!("Write handler received {:?} from read handler", message);
+
+                    if let ReadHandlerState::Requests(requests) = message {
+                        // Set expected responses sent.
+                        self.expected_responses_sent = Some(requests);
+                        // Received until responses equal request.
+                        while self.responses_sent != self.expected_responses_sent.unwrap() {
+                            // Attempt to get message from channel
+                            let response = self.response_rx.recv().await;
+                            // Increment sent.
+                            match response {
+                                Some(response) => {
+                                    self.responses_sent = self.responses_sent + 1;
+                                    let f = response.into_frame();
+                                    self.connection.write_frame(&f).await?;
+                                }
+                                None => {
+                                    debug!(
+                                        "Channel closed before actual = expected: {} != {}",
+                                        self.responses_sent,
+                                        self.expected_responses_sent.unwrap()
+                                    );
+                                    break;
+                                }
                             }
-                            None => {}
                         }
                     }
-                    debug!("Expected responses sent");
-                    // Send connected closed message.
+
                     let closed = Message::ConnectionClosed;
                     let c = closed.into_frame();
                     info!("Closed connection");
@@ -80,7 +95,7 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                         Some(response) => {
                             // Increment responses sent.accept
                             self.responses_sent = self.responses_sent + 1;
-                            debug!("NORMAL OP - write handler sending response: {:?}", response);
+                            //           debug!("NORMAL OP - write handler sending response: {:?}", response);
                             let f = response.into_frame();
                             self.connection.write_frame(&f).await?;
                         }

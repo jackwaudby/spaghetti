@@ -1,10 +1,12 @@
 use crate::common::connection::{ReadConnection, WriteConnection};
+use crate::common::error::SpaghettiError;
 use crate::common::message::Message;
 use crate::common::message::Request;
 use crate::common::shutdown::Shutdown;
 use crate::server::manager;
+use crate::server::manager::State as TransactionManagerState;
 use crate::server::manager::TransactionManager;
-use crate::server::read_handler::ReadHandler;
+use crate::server::read_handler::{ReadHandler, State};
 use crate::server::write_handler::WriteHandler;
 use crate::Result;
 
@@ -41,7 +43,7 @@ pub struct Listener {
     /// Receiver of channel between `TransactionManager` and `WriteHandler`.
     /// Used to indicate shutdown of transaction manager has complleted when there are
     /// no active connections.
-    pub wh_shutdown_rx: tokio::sync::broadcast::Receiver<()>,
+    pub wh_shutdown_rx: tokio::sync::broadcast::Receiver<TransactionManagerState>,
 
     /// Sender of channel between `WriteHandler`s and `Listener`.
     /// Used to indicate shutdown of write handlers when there are no active connections.
@@ -56,11 +58,11 @@ impl Listener {
     /// Runs the listener component of the server.
     ///
     /// Initialise the workload and populates tables and indexes.
-    /// Listens for inbound connections.1
+    /// Listens for inbound connections.
     pub async fn run(
         &mut self,
         work_tx: std::sync::mpsc::Sender<Request>,
-        notify_wh_tx: tokio::sync::broadcast::Sender<()>,
+        notify_wh_tx: tokio::sync::broadcast::Sender<TransactionManagerState>,
         config: Arc<Config>,
         tm: TransactionManager,
     ) -> Result<()> {
@@ -86,9 +88,10 @@ impl Listener {
                         tokio::sync::mpsc::UnboundedSender<Message>,
                         tokio::sync::mpsc::UnboundedReceiver<Message>,
                     ) = tokio::sync::mpsc::unbounded_channel();
-                    let (sender, receiver) = tokio::sync::oneshot::channel::<u32>();
+                    let (sender, receiver) = tokio::sync::oneshot::channel::<State>();
                     let (rd, wr) = io::split(socket);
                     let mut read_handler = ReadHandler {
+                        state: State::Active,
                         id: self.next_id,
                         connection: ReadConnection::new(rd),
                         requests: 0,
@@ -109,10 +112,32 @@ impl Listener {
                         notify_listener_tx: self.notify_listener_tx.clone(),
                     };
                     let cw = Arc::clone(&config);
+
+                    // Start read handler task.
                     tokio::spawn(async move {
-                        if let Err(err) = read_handler.run().await {
+                        // Run read handler.
+                        match read_handler.run().await {
+                            // Graceful shutdown.
+                            Ok(()) => {
+                                read_handler.state = State::Requests(read_handler.requests);
+                            }
+                            // Internal error.
+                            Err(err) => {
+                                read_handler.state = State::InternalError;
+                                error!("{:?}", err);
+                            }
+                        }
+                        // Attempt to notify write handler of read handlers final state.
+                        if let Err(err) = read_handler
+                            .notify_wh_requests
+                            .take()
+                            .unwrap()
+                            .send(read_handler.state)
+                            .map_err(|_| Box::new(SpaghettiError::WriteHandlerUnexpectedlyClosed))
+                        {
                             error!("{:?}", err);
                         }
+                        // Read handler dropped, closing its channel to the transaction manager.
                     });
                     tokio::spawn(async move {
                         if let Err(err) = write_handler.run(cw).await {

@@ -209,7 +209,7 @@ mod tests {
     fn populate_tables_test() {
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test-tatp.toml")).unwrap();
+        c.merge(config::File::with_name("Test-tpl.toml")).unwrap();
         let config = Arc::new(c);
 
         let c = Arc::clone(&config);
@@ -220,7 +220,7 @@ mod tests {
         populate_subscriber_table(&internals, &mut rng).unwrap();
         assert_eq!(
             internals.get_table("subscriber").unwrap().get_next_row_id(),
-            1
+            3
         );
         let index = internals.indexes.get("sub_idx").unwrap();
 
@@ -283,7 +283,7 @@ mod tests {
                 .get_table("access_info")
                 .unwrap()
                 .get_next_row_id(),
-            2
+            10
         );
 
         let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
@@ -298,7 +298,7 @@ mod tests {
 
             )
                 .unwrap(),
-"{s_id=\"1\", ai_type=\"2\", data_1=\"51\", data_2=\"20\", data_3=\"VWD\", data_4=\"NEVIQ\"}"
+"{s_id=\"1\", ai_type=\"2\", data_1=\"77\", data_2=\"7\", data_3=\"GZH\", data_4=\"HITFS\"}"
         );
 
         // Special facillity.
@@ -308,7 +308,7 @@ mod tests {
                 .get_table("special_facility")
                 .unwrap()
                 .get_next_row_id(),
-            4
+            10
         );
 
         let cols_sf = vec![
@@ -333,8 +333,8 @@ mod tests {
                     )
                     .unwrap().get_values().unwrap()
             )
-            .unwrap(),
-          "{s_id=\"1\", sf_type=\"2\", is_active=\"1\", error_cntrl=\"75\", data_a=\"67\", data_b=\"RPVZV\"}"
+                .unwrap(),
+            "{s_id=\"1\", sf_type=\"4\", is_active=\"1\", error_cntrl=\"90\", data_a=\"95\", data_b=\"RCSAA\"}"
         );
 
         // Call forwarding.
@@ -343,7 +343,7 @@ mod tests {
                 .get_table("call_forwarding")
                 .unwrap()
                 .get_next_row_id(),
-            3
+            15
         );
         let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
         let index = internals.indexes.get("call_idx").unwrap();
@@ -352,7 +352,7 @@ mod tests {
                 &cols_cf,
                 &index
                     .read(
-                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
+                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 2, 16)),
                         &cols_cf,
                         "2pl",
                         "t1",
@@ -360,7 +360,7 @@ mod tests {
                     .unwrap().get_values().unwrap()
             )
                 .unwrap(),
-            "{s_id=\"1\", sf_type=\"3\", start_time=\"16\", end_time=\"23\", number_x=\"894204830213727\"}"
+            "{s_id=\"1\", sf_type=\"4\", start_time=\"16\", end_time=\"17\", number_x=\"365430140201306\"}"
         );
     }
 }

@@ -1,7 +1,6 @@
 use crate::common::error::SpaghettiError;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
-use crate::workloads::tatp::helper;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tatp::profiles::{
     DeleteCallForwarding, GetAccessData, GetNewDestination, GetSubscriberData,
@@ -11,23 +10,23 @@ use crate::workloads::PrimaryKey;
 use crate::Result;
 
 use std::sync::Arc;
-use tracing::debug;
+//use tracing::debug;
 
 /// GetSubscriberData transaction.
 pub fn get_subscriber_data(params: GetSubscriberData, protocol: Arc<Protocol>) -> Result<String> {
-    debug!(
-        "\nSELECT s_id, sub_nbr,
-            bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
-            bit_8, bit_9, bit_10,
-            hex_1, hex_2, hex_3, hex_4, hex_5, hex_6, hex_7,
-            hex_8, hex_9, hex_10,
-            byte2_1, byte2_2, byte2_3, byte2_4, byte2_5,
-            byte2_6, byte2_7, byte2_8, byte2_9, byte2_10,
-            msc_location, vlr_location
-   FROM Subscriber
-   WHERE s_id = {:?};",
-        params.s_id
-    );
+    //   debug!(
+    //      "\nSELECT s_id, sub_nbr,
+    //          bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
+    //          bit_8, bit_9, bit_10,
+    //          hex_1, hex_2, hex_3, hex_4, hex_5, hex_6, hex_7,
+    //          hex_8, hex_9, hex_10,
+    //          byte2_1, byte2_2, byte2_3, byte2_4, byte2_5,
+    //          byte2_6, byte2_7, byte2_8, byte2_9, byte2_10,
+    //          msc_location, vlr_location
+    // FROM Subscriber
+    // WHERE s_id = {:?};",
+    //      params.s_id
+    //  );
 
     // Columns to read.
     let columns: Vec<&str> = vec![
@@ -83,22 +82,22 @@ pub fn get_subscriber_data(params: GetSubscriberData, protocol: Arc<Protocol>) -
 
 /// GetNewDestination transaction.
 pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -> Result<String> {
-    debug!(
-        "\nSELECT cf.numberx
-           FROM Special_Facility AS sf, Call_Forwarding AS cf
-           WHERE
-             (sf.s_id = {} AND sf.sf_type = {} AND sf.is_active = 1)
-             AND
-             (cf.s_id = {} AND cf.sf_type = {})
-             AND
-            (cf.start_time <= {} AND  {} < cf.end_time);",
-        params.s_id,
-        params.sf_type,
-        params.s_id,
-        params.sf_type,
-        params.start_time,
-        params.end_time
-    );
+    // debug!(
+    //     "\nSELECT cf.numberx
+    //        FROM Special_Facility AS sf, Call_Forwarding AS cf
+    //        WHERE
+    //          (sf.s_id = {} AND sf.sf_type = {} AND sf.is_active = 1)
+    //          AND
+    //          (cf.s_id = {} AND cf.sf_type = {})
+    //          AND
+    //         (cf.start_time <= {} AND  {} < cf.end_time);",
+    //     params.s_id,
+    //     params.sf_type,
+    //     params.s_id,
+    //     params.sf_type,
+    //     params.start_time,
+    //     params.end_time
+    // );
 
     // Columns to read.
     let sf_columns: Vec<&str> = vec!["s_id", "sf_type", "is_active"];
@@ -127,7 +126,10 @@ pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -
         panic!("Unexpected type")
     };
     if val != 1 {
-        return Err(Box::new(SpaghettiError::RowDoesNotExist));
+        return Err(Box::new(SpaghettiError::RowDoesNotExist(format!(
+            "{}",
+            sf_pk
+        ))));
     }
     // 3) Get call forwarding record.
     let cf_res = protocol
@@ -140,7 +142,10 @@ pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -
         panic!("Unexpected type")
     };
     if params.end_time as i64 >= val {
-        return Err(Box::new(SpaghettiError::RowDoesNotExist));
+        return Err(Box::new(SpaghettiError::RowDoesNotExist(format!(
+            "{}",
+            cf_pk
+        ))));
     }
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
@@ -151,13 +156,13 @@ pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -
 
 /// GetAccessData transaction.
 pub fn get_access_data(params: GetAccessData, protocol: Arc<Protocol>) -> Result<String> {
-    debug!(
-        "SELECT data1, data2, data3, data4
-           FROM Access_Info
-         WHERE s_id = {:?}
-           AND ai_type = {:?} ",
-        params.s_id, params.ai_type
-    );
+    // debug!(
+    //     "SELECT data1, data2, data3, data4
+    //        FROM Access_Info
+    //      WHERE s_id = {:?}
+    //        AND ai_type = {:?} ",
+    //     params.s_id, params.ai_type
+    // );
 
     // Columns to read.
     let columns: Vec<&str> = vec!["data_1", "data_2", "data_3", "data_4"];
@@ -166,7 +171,7 @@ pub fn get_access_data(params: GetAccessData, protocol: Arc<Protocol>) -> Result
         params.s_id,
         params.ai_type.into(),
     ));
-    debug!("{}", pk);
+
     // Register with scheduler.
     let meta = protocol.scheduler.register().unwrap();
     // Execute read operation.
@@ -186,16 +191,16 @@ pub fn update_subscriber_data(
     params: UpdateSubscriberData,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    debug!(
-        "UPDATE Subscriber
-           SET bit_1 = {:?}
-           WHERE s_id = {:?}
-         UPDATE Special_Facility
-           SET data_a = {:?}
-           WHERE s_id = {:?}
-             AND sf_type = {:?};",
-        params.bit_1, params.s_id, params.data_a, params.s_id, params.sf_type
-    );
+    // debug!(
+    //     "UPDATE Subscriber
+    //        SET bit_1 = {:?}
+    //        WHERE s_id = {:?}
+    //      UPDATE Special_Facility
+    //        SET data_a = {:?}
+    //        WHERE s_id = {:?}
+    //          AND sf_type = {:?};",
+    //     params.bit_1, params.s_id, params.data_a, params.s_id, params.sf_type
+    // );
 
     // Columns to write.
     let columns_sb: Vec<&str> = vec!["bit_1"];
@@ -236,13 +241,13 @@ pub fn update_subscriber_data(
 
 /// Update location transaction.
 pub fn update_location(params: UpdateLocationData, protocol: Arc<Protocol>) -> Result<String> {
-    debug!(
-        "UPDATE Subscriber
-             SET vlr_location = {}
-             WHERE sub_nbr = {};",
-        helper::to_sub_nbr(params.s_id.into()),
-        params.vlr_location
-    );
+    // debug!(
+    //     "UPDATE Subscriber
+    //          SET vlr_location = {}
+    //          WHERE sub_nbr = {};",
+    //     helper::to_sub_nbr(params.s_id.into()),
+    //     params.vlr_location
+    // );
 
     // Columns to write.
     let columns_sb: Vec<&str> = vec!["vlr_location"];
@@ -272,23 +277,23 @@ pub fn insert_call_forwarding(
     params: InsertCallForwarding,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    debug!(
-        "SELECT <s_id bind subid s_id>
-           FROM Subscriber
-           WHERE sub_nbr = {};
-         SELECT <sf_type bind sfid sf_type>
-           FROM Special_Facility
-           WHERE s_id = {}:
-         INSERT INTO Call_Forwarding
-           VALUES ({}, {}, {}, {}, {});",
-        helper::to_sub_nbr(params.s_id.into()),
-        params.s_id,
-        params.s_id,
-        params.sf_type,
-        params.start_time,
-        params.end_time,
-        params.number_x
-    );
+    // debug!(
+    //     "SELECT <s_id bind subid s_id>
+    //        FROM Subscriber
+    //        WHERE sub_nbr = {};
+    //      SELECT <sf_type bind sfid sf_type>
+    //        FROM Special_Facility
+    //        WHERE s_id = {}:
+    //      INSERT INTO Call_Forwarding
+    //        VALUES ({}, {}, {}, {}, {});",
+    //     helper::to_sub_nbr(params.s_id.into()),
+    //     params.s_id,
+    //     params.s_id,
+    //     params.sf_type,
+    //     params.start_time,
+    //     params.end_time,
+    //     params.number_x
+    // );
 
     // Construct primary keys.
     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
@@ -345,18 +350,18 @@ pub fn delete_call_forwarding(
     params: DeleteCallForwarding,
     protocol: Arc<Protocol>,
 ) -> Result<String> {
-    debug!(
-        "SELECT <s_id bind subid s_id>
-         FROM Subscriber
-         WHERE sub_nbr = {};
-       DELETE FROM Call_Forwarding
-         WHERE s_id = <s_id value subid>
-         AND sf_type = {}
-         AND start_time = {};",
-        helper::to_sub_nbr(params.s_id.into()),
-        params.sf_type,
-        params.start_time,
-    );
+    // debug!(
+    //     "SELECT <s_id bind subid s_id>
+    //      FROM Subscriber
+    //      WHERE sub_nbr = {};
+    //    DELETE FROM Call_Forwarding
+    //      WHERE s_id = <s_id value subid>
+    //      AND sf_type = {}
+    //      AND start_time = {};",
+    //     helper::to_sub_nbr(params.s_id.into()),
+    //     params.sf_type,
+    //     params.start_time,
+    // );
 
     // Construct primary keys.
     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
@@ -395,12 +400,30 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use std::convert::TryInto;
+    use std::sync::Once;
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+
+    static LOG: Once = Once::new();
+
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
+    }
 
     #[test]
     fn transactions_test() {
+        logging(false);
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test-tatp.toml")).unwrap();
+        c.merge(config::File::with_name("Test-tpl.toml")).unwrap();
         let config = Arc::new(c);
 
         // Workload with fixed seed.
@@ -429,7 +452,7 @@ mod tests {
                 get_subscriber_data(GetSubscriberData { s_id: 100 }, Arc::clone(&protocol))
                     .unwrap_err()
             ),
-            format!("Aborted: row does not exist in index.")
+            format!("Aborted: Subscriber(100) does not exist in index.")
         );
 
         ///////////////////////////////////////
@@ -439,14 +462,14 @@ mod tests {
             get_new_destination(
                 GetNewDestination {
                     s_id: 1,
-                    sf_type: 1,
-                    start_time: 8,
+                    sf_type: 4,
+                    start_time: 16,
                     end_time: 12,
                 },
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{number_x=\"993245295996111\"}"
+            "{number_x=\"655601632274699\"}"
         );
         assert_eq!(
             format!(
@@ -462,7 +485,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("Aborted: row does not exist in index.")
+            format!("Aborted: SpecialFacility(10, 1) does not exist in index.")
         );
 
         //////////////////////////////////
@@ -477,7 +500,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{data_1=\"165\", data_2=\"166\", data_3=\"FPK\", data_4=\"BLZPL\"}"
+            "{data_1=\"57\", data_2=\"200\", data_3=\"IEU\", data_4=\"WIDHY\"}"
         );
 
         assert_eq!(
@@ -492,7 +515,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("Aborted: row does not exist in index.")
+            format!("Aborted: AccessInfo(19, 12) does not exist in index.")
         );
 
         ////////////////////////////////////////////
@@ -529,7 +552,7 @@ mod tests {
         let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
         let res_sf = datatype::to_result(&columns_sf, &values_sf.get_values().unwrap()).unwrap();
         assert_eq!(res_sb, "{bit_1=\"0\"}");
-        assert_eq!(res_sf, "{data_a=\"73\"}");
+        assert_eq!(res_sf, "{data_a=\"60\"}");
 
         assert_eq!(
             update_subscriber_data(
@@ -588,7 +611,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("Aborted: row does not exist in index.")
+            format!("Aborted: Subscriber(1345) does not exist in index.")
         );
 
         ////////////////////////////////
@@ -652,7 +675,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("Aborted: row does not exist in index.")
+            format!("Aborted: Subscriber(1345) does not exist in index.")
         );
 
         /////////////////////////////////////////
@@ -667,14 +690,14 @@ mod tests {
                     .get_index("call_idx")
                     .unwrap()
                     .read(
-                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
+                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
                         &columns_cf,
                         "2pl",
                         "t1",
                     )
                     .unwrap_err()
             ),
-            format!("row does not exist in index.")
+            format!("CallForwarding(1, 3, 0) does not exist in index.")
         );
 
         assert_eq!(
@@ -682,7 +705,7 @@ mod tests {
                 InsertCallForwarding {
                     s_id: 1,
                     sf_type: 3,
-                    start_time: 16,
+                    start_time: 0,
                     end_time: 19,
                     number_x: "551795089196026".to_string()
                 },
@@ -697,7 +720,7 @@ mod tests {
             .get_index("call_idx")
             .unwrap()
             .read(
-                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 16)),
+                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
                 &columns_cf,
                 "2pl",
                 "t1",
@@ -726,14 +749,14 @@ mod tests {
             .unwrap();
         let res_cf = datatype::to_result(&columns_cf, &values_cf.get_values().unwrap()).unwrap();
 
-        assert_eq!(res_cf, "{number_x=\"551795089196025\"}");
+        assert_eq!(res_cf, "{number_x=\"551795089196026\"}");
 
         assert_eq!(
             delete_call_forwarding(
                 DeleteCallForwarding {
-                    s_id: 1,
-                    sf_type: 3,
-                    start_time: 0,
+                    s_id: 2,
+                    sf_type: 2,
+                    start_time: 16,
                 },
                 Arc::clone(&protocol)
             )
@@ -749,14 +772,14 @@ mod tests {
                     .get_index("call_idx")
                     .unwrap()
                     .read(
-                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
+                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(2, 2, 16)),
                         &columns_cf,
                         "2pl",
                         "t1",
                     )
                     .unwrap_err()
             ),
-            format!("row does not exist in index.")
+            format!("CallForwarding(2, 2, 16) does not exist in index.")
         );
     }
 }

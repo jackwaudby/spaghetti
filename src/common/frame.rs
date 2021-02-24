@@ -4,7 +4,7 @@ use bytes::{Buf, Bytes};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io::Cursor;
-use tracing::debug;
+// use tracing::debug;
 
 /// A frame in spaghetti's network protocol.
 #[derive(Debug, PartialEq)]
@@ -25,11 +25,9 @@ impl Frame {
 
     /// Validates if an entire message can be decoded from the read buffer.
     pub fn validate(src: &mut Cursor<&[u8]>) -> Result<(), ParseError> {
-        debug!("Validating frame");
         match get_u8(src)? {
             b'$' => {
                 // Attempt to get payload length, returns Incomplete if not possible
-                debug!("matched first bytes");
                 let len = get_payload_length(src)?;
                 // There should be len + 2 bytes (\r\n) in the buffer
                 let n = len + 2;
@@ -37,7 +35,6 @@ impl Frame {
                 skip(src, n)
             }
             _ => {
-                debug!("Invalid");
                 // Invalid start byte
                 Err(ParseError::new(ParseErrorKind::Invalid))
             }
@@ -145,7 +142,6 @@ impl From<bincode::Error> for ParseError {
 ///
 /// If the cursor can move forward less than `n` bytes an `Incomplete` error is returned.
 pub fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), ParseError> {
-    debug!("Attempt to move cursor n bytes over buffer");
     if src.remaining() < n {
         Err(ParseError::new(ParseErrorKind::Incomplete))
     } else {
@@ -156,7 +152,6 @@ pub fn skip(src: &mut Cursor<&[u8]>, n: usize) -> Result<(), ParseError> {
 
 /// Calulates the size of the payload in bytes.
 pub fn get_payload_length(src: &mut Cursor<&[u8]>) -> Result<usize, ParseError> {
-    debug!("Retreive payload from buffer");
     let line = get_line(src)?;
     let decoded: usize = bincode::deserialize(&line[..])?;
     Ok(decoded)
@@ -167,7 +162,6 @@ pub fn get_payload_length(src: &mut Cursor<&[u8]>) -> Result<usize, ParseError> 
 /// Receives an exclusive reference to a cursor which references the underlying read buffer.
 /// Returns an appropiate reference to the slice of the read buffer
 pub fn get_line<'a>(src: &mut Cursor<&'a [u8]>) -> Result<&'a [u8], ParseError> {
-    debug!("Get line");
     // Get current position of cursor
     let start = src.position() as usize;
     // Get reference to buffer under the cursor to get length

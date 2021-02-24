@@ -3,10 +3,11 @@ use crate::server::scheduler::serialization_graph_testing::error::SerializationG
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 
 use serde::{Deserialize, Serialize};
+use std::any::Any;
 use std::error;
 use std::fmt;
 
-// Represents a Spaghetti error.
+/// Represents a Spaghetti error.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum SpaghettiError {
     /// Not enough data available in read buffer to parse message.
@@ -38,7 +39,7 @@ pub enum SpaghettiError {
     /// Row already exists in index.
     RowAlreadyExists,
     /// Row does not exist in index.
-    RowDoesNotExist,
+    RowDoesNotExist(String),
     /// Invalid column type.
     InvalidColumnType,
     /// Row dirty.
@@ -49,6 +50,7 @@ pub enum SpaghettiError {
     NotTrackingAccessHistory,
     ReadSocketUnexpectedlyClosed,
     WriteHandlerUnexpectedlyClosed,
+    ThreadPoolClosed,
 }
 
 impl fmt::Display for SpaghettiError {
@@ -72,7 +74,7 @@ impl fmt::Display for SpaghettiError {
             TwoPhaseLocking(ref e) => write!(f, "{}", e),
             SerializationGraphTesting(ref e) => write!(f, "{}", e),
             RowAlreadyExists => write!(f, "row already exists in index."),
-            RowDoesNotExist => write!(f, "row does not exist in index."),
+            RowDoesNotExist(ref key) => write!(f, "{} does not exist in index.", key),
             InvalidColumnType => write!(f, "invalid column type"),
             RowDirty => write!(f, "row already dirty"),
             RowDeleted => write!(f, "row marked for delete"),
@@ -82,6 +84,7 @@ impl fmt::Display for SpaghettiError {
                 f,
                 "channel between read and write handler unexpectedly closed"
             ),
+            ThreadPoolClosed => write!(f, "thread pool is closed"),
         }
     }
 }
@@ -115,6 +118,16 @@ impl From<SerializationGraphTestingError> for SpaghettiError {
     }
 }
 
+trait A {
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl A for SpaghettiError {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -131,7 +144,6 @@ mod tests {
         let e8 = SpaghettiError::UnexpectedMessage;
         let e9 = SpaghettiError::ConnectionUnexpectedlyClosed;
         let e10 = SpaghettiError::RowAlreadyExists;
-        let e11 = SpaghettiError::RowDoesNotExist;
         let e12 = SpaghettiError::InvalidColumnType;
         let e13 = SpaghettiError::RowDirty;
         let e14 = SpaghettiError::NotTrackingAccessHistory;
@@ -153,7 +165,6 @@ mod tests {
         assert_eq!(format!("{}", e8), format!("unexpected message"));
         assert_eq!(format!("{}", e9), format!("connection unexpectedly closed"));
         assert_eq!(format!("{}", e10), format!("row already exists in index."));
-        assert_eq!(format!("{}", e11), format!("row does not exist in index."));
         assert_eq!(format!("{}", e12), format!("invalid column type"));
         assert_eq!(format!("{}", e13), format!("row already dirty"));
         assert_eq!(format!("{}", e14), format!("not tracking access history"));

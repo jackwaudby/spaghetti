@@ -4,7 +4,7 @@ use crate::common::message::Message;
 use crate::Result;
 
 use tokio::io::AsyncWrite;
-use tracing::{debug, info};
+use tracing::info;
 
 /// Manages the write half of the `client` TCP stream.
 pub struct WriteHandler<W: AsyncWrite + Unpin> {
@@ -34,7 +34,7 @@ impl<W: AsyncWrite + Unpin> WriteHandler<W> {
 
 impl<W: AsyncWrite + Unpin> Drop for WriteHandler<W> {
     fn drop(&mut self) {
-        debug!("Drop write handler");
+        //    debug!("Drop write handler");
         info!("Sent {} transactions to server", self.sent);
     }
 }
@@ -61,7 +61,7 @@ pub async fn run<R: AsyncWrite + Unpin + Send + 'static>(mut wh: WriteHandler<R>
                 Ok(_) => {
                     // Do nothing
                     if let Message::CloseConnection = message {
-                        debug!("Write handler has recevied close connection message");
+                        //         debug!("Write handler has recevied close connection message");
                         info!("Close connection message sent");
                         // Do not count this message.
                         wh.sent -= 1;
@@ -72,7 +72,7 @@ pub async fn run<R: AsyncWrite + Unpin + Send + 'static>(mut wh: WriteHandler<R>
                 }
                 Err(_) => {
                     // Close receiver end from producer.
-                    debug!("Error with stream, close channel to producer");
+                    //         debug!("Error with stream, close channel to producer");
                     wh.write_task_rx.close();
                     return Err(SpaghettiError::ConnectionUnexpectedlyClosed.into());
                 }

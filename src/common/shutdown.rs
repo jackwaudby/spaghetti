@@ -14,10 +14,10 @@ pub struct Shutdown<C> {
     notify: C,
 }
 
-impl Shutdown<broadcast::Receiver<()>> {
+impl<T: Clone> Shutdown<broadcast::Receiver<T>> {
     /// Create a new `Shutdown` backed by the given `broadcast::Receiver`.
     // pub fn new(notify: broadcast::Receiver<()>) -> Shutdown {
-    pub fn new_broadcast(notify: broadcast::Receiver<()>) -> Shutdown<broadcast::Receiver<()>> {
+    pub fn new_broadcast(notify: broadcast::Receiver<T>) -> Shutdown<broadcast::Receiver<T>> {
         Shutdown {
             shutdown: false,
             notify,
@@ -41,7 +41,7 @@ impl Shutdown<broadcast::Receiver<()>> {
         let r = self.notify.recv().await;
         // Only `RecvError::Closed` can be received on this channel.
         match r {
-            Ok(()) => panic!("No message should be recieved on this channel"),
+            Ok(_) => panic!("No message should be recieved on this channel"),
             Err(RecvError::Closed) => debug!("No more active senders"),
             Err(RecvError::Lagged(_)) => panic!("No messages are sent so not receiver should lag"),
         }

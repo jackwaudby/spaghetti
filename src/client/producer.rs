@@ -9,7 +9,7 @@ use crate::Result;
 use config::Config;
 use std::sync::Arc;
 use tokio::time::{sleep, Duration};
-use tracing::{debug, info};
+use tracing::info;
 
 /// `Producer` generates transactions and sends them to the 'WriteHandler`.
 pub struct Producer {
@@ -86,13 +86,13 @@ pub async fn run(mut producer: Producer) -> Result<()> {
         // Generate transactions and listen for shutdown notification.
         for _i in 1..=producer.transactions {
             let maybe_transaction = tokio::select! {
-                res = producer.generator.get_transaction() => res,
-                _ = producer.listen_m_rx.recv() => {
-                    producer.terminate().await?;
-                    debug!("Generated {} transactions", producer.sent);
-                    return Ok(());
-                }
-            };
+                   res = producer.generator.get_transaction() => res,
+                   _ = producer.listen_m_rx.recv() => {
+                       producer.terminate().await?;
+            //           debug!("Generated {} transactions", producer.sent);
+                       return Ok(());
+                   }
+               };
             // Delay
             sleep(Duration::from_millis(1000)).await;
             // Send to write handler, waiting until capacity.
@@ -111,7 +111,7 @@ pub async fn run(mut producer: Producer) -> Result<()> {
 
 impl Drop for Producer {
     fn drop(&mut self) {
-        debug!("Drop producer");
-        debug!("Sent {} transctions to write handler", self.sent);
+        //      debug!("Drop producer");
+        //     debug!("Sent {} transctions to write handler", self.sent);
     }
 }

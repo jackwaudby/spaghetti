@@ -4,7 +4,7 @@ use crate::Result;
 use std::fs::OpenOptions;
 use std::io::prelude::*;
 
-use tracing::{debug, info};
+use tracing::info;
 
 /// Receives server responses from the read handler and logs them.
 pub struct Consumer {
@@ -29,7 +29,7 @@ impl Consumer {
 
 impl Drop for Consumer {
     fn drop(&mut self) {
-        debug!("Drop Consumer");
+        //     debug!("Drop Consumer");
     }
 }
 
@@ -39,7 +39,7 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
     let handle = tokio::spawn(async move {
         // Process messages until the channel is closed.
         while let Some(message) = consumer.read_task_rx.recv().await {
-            debug!("Received {:?}", message);
+            //        debug!("Received {:?}", message);
             // Append to file.
             let mut file = OpenOptions::new()
                 .write(true)

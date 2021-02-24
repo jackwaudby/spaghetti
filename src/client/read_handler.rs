@@ -4,7 +4,7 @@ use crate::common::frame::{ParseError, ParseErrorKind};
 use crate::common::message::Message;
 use crate::Result;
 use tokio::io::AsyncRead;
-use tracing::debug;
+//use tracing::debug;
 
 /// Manages the read half of the `client` TCP stream.
 pub struct ReadHandler<R: AsyncRead + Unpin> {
@@ -29,7 +29,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
 
 impl<R: AsyncRead + Unpin> Drop for ReadHandler<R> {
     fn drop(&mut self) {
-        debug!("Drop read handler");
+        //        debug!("Drop read handler");
     }
 }
 
@@ -58,8 +58,8 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                             Ok(decoded) => match decoded {
                                 // Connection gracefully closed.
                                 Message::ConnectionClosed => {
-                                    debug!("Connection closed");
-                                    debug!("Read handler has sent connection closed message to consumer");
+                                    // debug!("Connection closed");
+                                    // debug!("Read handler has sent connection closed message to consumer");
                                     rh.read_task_tx.send(decoded).await.unwrap();
                                     return Ok(());
                                 }
@@ -82,11 +82,11 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                     }
                     // The connection has been unexpectedly closed.
                     None => {
-                        debug!("Server unexpectedly closed");
+                        //            debug!("Server unexpectedly closed");
                         return Err(SpaghettiError::ConnectionUnexpectedlyClosed);
                     }
                 };
-                debug!("Received {:?}", response);
+                //       debug!("Received {:?}", response);
                 rh.read_task_tx.send(response).await.unwrap();
             } else {
                 // There has been an encoding error.

@@ -1,5 +1,6 @@
 use crate::common::message::Request;
 use crate::server::listener::Listener;
+use crate::server::manager::State as TransactionManagerState;
 use crate::server::manager::TransactionManager;
 use crate::workloads::Workload;
 use crate::Result;
@@ -66,7 +67,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         next_id: 0,
         active_connections: 0,
         notify_read_handlers_tx,
-        notify_tm_tx: notify_tm_tx,
+        notify_tm_tx,
         wh_shutdown_rx: notify_wh_tx.subscribe(),
         notify_listener_tx,
         // listener_shutdown_rx,
@@ -83,12 +84,24 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         notify_wh_tx.clone(),
     );
 
+    let mut tm_panicked = notify_wh_tx.subscribe();
+
     // Concurrently run the server and listen for the shutdown signal.
     tokio::select! {
         res = list.run(work_tx, notify_wh_tx, Arc::clone(&config),tm) => {
             if let Err(err) = res {
                 error!("{:?}",err);
             }
+        }
+        _ = async {
+            loop {
+                let message = tm_panicked.recv().await;
+                if let Ok(TransactionManagerState::ThreadPoolPanicked) = message {
+                  break;
+              }
+            }
+        } => {
+            info!("Panicked manager shutting down");
         }
         _ = signal::ctrl_c() => {
             info!("Shutting down server");
@@ -117,7 +130,9 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     debug!("Close channel to listener.");
     drop(notify_listener_tx);
     debug!("Wait for write handlers to shutdown.");
-    listener_shutdown_rx.recv().await;
+    if let Err(err) = listener_shutdown_rx.recv().await {
+        debug!("{}", err);
+    }
     info!("Server shutdown");
     Ok(())
 }

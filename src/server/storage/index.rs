@@ -69,7 +69,10 @@ impl Index {
         let read_guard = self
             .map
             .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
+                "{}",
+                key
+            ))))?;
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Execute delete operation.
@@ -89,7 +92,12 @@ impl Index {
         let row = self.map.remove(&key);
         match row {
             Some(row) => Ok(row.into_inner().unwrap()),
-            None => return Err(Box::new(SpaghettiError::RowDoesNotExist)),
+            None => {
+                return Err(Box::new(SpaghettiError::RowDoesNotExist(format!(
+                    "{}",
+                    key
+                ))))
+            }
         }
     }
 
@@ -110,7 +118,10 @@ impl Index {
         let read_guard = self
             .map
             .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
+                "{}",
+                key
+            ))))?;
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Execute read operation.
@@ -137,7 +148,10 @@ impl Index {
         let read_guard = self
             .map
             .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
+                "{}",
+                key
+            ))))?;
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Execute write operation.
@@ -168,10 +182,14 @@ impl Index {
         } else {
             // Commit changes
             // Attempt to get read guard.
-            let read_guard = self
-                .map
-                .get(&key)
-                .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+            let read_guard =
+                self.map
+                    .get(&key)
+                    .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
+                        "{}",
+                        key
+                    ))))?;
+
             // Deref to row.
             let row = &mut *read_guard.lock().unwrap();
             // Commit changes.
@@ -192,7 +210,11 @@ impl Index {
         let read_guard = self
             .map
             .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
+                "{}",
+                key
+            ))))?;
+
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Revert changes.
@@ -212,7 +234,11 @@ impl Index {
         let read_guard = self
             .map
             .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist))?;
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
+                "{}",
+                key
+            ))))?;
+
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Revert read.
@@ -243,7 +269,7 @@ mod tests {
     fn index_test() {
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test-2pl.toml")).unwrap();
+        c.merge(config::File::with_name("Test-tpl.toml")).unwrap();
         let config = Arc::new(c);
         // Initalise workload.
         let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
@@ -278,7 +304,7 @@ mod tests {
                     .remove(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(0)))
                     .unwrap_err()
             ),
-            format!("row does not exist in index.")
+            format!("Subscriber(0) does not exist in index.")
         );
 
         // 3. Check entry exists.
