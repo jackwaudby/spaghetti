@@ -111,7 +111,11 @@ impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
     fn drop(&mut self) {
         debug!("Drop write handler");
 
-        self.notify_listener_tx.send(self.id).unwrap();
+        let res = self.notify_listener_tx.send(self.id);
+        match res {
+            Ok(_) => {}
+            Err(_) => {}
+        }
         debug!("Sent {} to client", self.responses_sent);
     }
 }

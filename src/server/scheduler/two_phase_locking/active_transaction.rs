@@ -46,8 +46,8 @@ impl ActiveTransaction {
     }
 
     /// Get rows transaction wishes to insert.
-    pub fn get_rows_to_insert(&mut self) -> Vec<(Arc<Index>, Row)> {
-        self.rows_to_insert.take().unwrap()
+    pub fn get_rows_to_insert(&mut self) -> Option<Vec<(Arc<Index>, Row)>> {
+        self.rows_to_insert.take()
     }
 
     /// Add row to insert.

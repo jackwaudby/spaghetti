@@ -19,8 +19,10 @@ impl TwoPhaseLockingError {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum TwoPhaseLockingErrorKind {
     NotRegisteredInActiveTransactions,
-    AlreadyRegisteredInActiveTransactions,
+    AlreadyRegisteredInActiveTransactions(String),
     LockRequestDenied,
+    LockNotInTable(String),
+    LockAlreadyInTable(String),
 }
 
 impl fmt::Display for TwoPhaseLockingError {
@@ -40,16 +42,17 @@ impl Error for TwoPhaseLockingErrorKind {}
 impl fmt::Display for TwoPhaseLockingErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use TwoPhaseLockingErrorKind::*;
-        let err_msg = match *self {
-            AlreadyRegisteredInActiveTransactions => {
-                "transaction already registered in active transaction table"
+        match *self {
+            AlreadyRegisteredInActiveTransactions(ref s) => {
+                write!(f, "{} already registered in active transaction table", s)
             }
-            LockRequestDenied => "lock request denied",
+            LockRequestDenied => write!(f, "lock request for denied"),
             NotRegisteredInActiveTransactions => {
-                "transaction not registered in active transaction table"
+                write!(f, "transaction not registered in active transaction table")
             }
-        };
-        write!(f, "{}", err_msg)
+            LockNotInTable(ref s) => write!(f, "no lock in table for {} ", s),
+            LockAlreadyInTable(ref s) => write!(f, "no lock in table for {} ", s),
+        }
     }
 }
 
@@ -60,7 +63,7 @@ mod tests {
     #[test]
     fn tpl_error_test() {
         let e1 = TwoPhaseLockingError::new(
-            TwoPhaseLockingErrorKind::AlreadyRegisteredInActiveTransactions,
+            TwoPhaseLockingErrorKind::AlreadyRegisteredInActiveTransactions("t".to_string()),
         );
 
         let e2 = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
@@ -69,10 +72,10 @@ mod tests {
 
         assert_eq!(
             format!("{}", e1),
-            format!("transaction already registered in active transaction table")
+            format!("t already registered in active transaction table")
         );
 
-        assert_eq!(format!("{}", e2), format!("lock request denied"));
+        assert_eq!(format!("{}", e2), format!("lock request for denied"));
 
         assert_eq!(
             format!("{}", e3),

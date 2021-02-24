@@ -1,3 +1,4 @@
+use crate::common::error::SpaghettiError;
 use crate::common::message::Request;
 use crate::server::listener::Listener;
 use crate::server::manager::State as TransactionManagerState;
@@ -123,10 +124,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     debug!("Close channel to transaction manager.");
     drop(notify_tm_tx);
     debug!("Wait for transaction manger to shutdown.");
-    match wh_shutdown_rx.recv().await {
-        Ok(_) => (),
-        Err(_) => (),
-    }
+    let tm_state = wh_shutdown_rx.recv().await.unwrap();
     debug!("Close channel to listener.");
     drop(notify_listener_tx);
     debug!("Wait for write handlers to shutdown.");
@@ -134,5 +132,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         debug!("{}", err);
     }
     info!("Server shutdown");
+    if let TransactionManagerState::ThreadPoolPanicked = tm_state {
+        return Err(Box::new(SpaghettiError::ThreadPoolClosed));
+    }
     Ok(())
 }
