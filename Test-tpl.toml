@@ -7,7 +7,7 @@ mpsc_size = 32
 protocol="2pl"
 workers = 4
 
-transactions = 100
+transactions = 20
 workload = "tatp"
 schema = "tatp_schema.txt"
 subscribers = 3
