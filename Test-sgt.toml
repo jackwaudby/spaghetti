@@ -11,3 +11,5 @@ workload = "tatp"
 schema = "tatp_schema.txt"
 subscribers = 3
 seed = 42
+
+clients = 4

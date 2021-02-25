@@ -1,8 +1,5 @@
-use crate::server::scheduler::serialization_graph_testing::error::{
-    SerializationGraphTestingError, SerializationGraphTestingErrorKind,
-};
+use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::workloads::PrimaryKey;
-use crate::Result;
 
 use std::sync::Mutex;
 
@@ -13,19 +10,16 @@ use std::sync::Mutex;
 #[derive(Debug)]
 pub struct Node {
     /// Node's position in the graph.
-    pub id: usize,
-
-    /// ID of transaction currently residing in the node.
-    pub transaction_id: Mutex<Option<String>>,
+    id: usize,
 
     /// Node status
-    pub state: Mutex<State>,
+    state: Mutex<State>,
 
     /// List of outgoing edges.
-    pub outgoing: Mutex<Vec<usize>>, // (this_node)->(other_node)
+    outgoing: Mutex<Vec<usize>>, // (this_node)->(other_node)
 
     /// List of incoming edges.
-    pub incoming: Mutex<Vec<usize>>, // (other_node)->(this_node)
+    incoming: Mutex<Vec<usize>>, // (other_node)->(this_node)
 
     /// List of keys written by transaction.
     pub keys_written: Mutex<Vec<(String, PrimaryKey)>>,
@@ -42,7 +36,6 @@ impl Node {
     pub fn new(id: usize) -> Node {
         Node {
             id,
-            transaction_id: Mutex::new(None),
             outgoing: Mutex::new(vec![]),
             incoming: Mutex::new(vec![]),
             state: Mutex::new(State::Free),
@@ -52,95 +45,44 @@ impl Node {
         }
     }
 
-    pub fn reset(&mut self) {
-        *self.transaction_id.lock().unwrap() = None;
+    /// Reset the fields of a `Node`.
+    pub fn reset(&self) {
         *self.outgoing.lock().unwrap() = vec![];
         *self.incoming.lock().unwrap() = vec![];
-        *self.state.lock().unwrap() = State::Free;
+        // *self.state.lock().unwrap() = State::Free;
         *self.keys_written.lock().unwrap() = vec![];
         *self.keys_read.lock().unwrap() = vec![];
         *self.keys_inserted.lock().unwrap() = vec![];
     }
 
-    /// Set transaction ID of `Node`.
-    ///
-    /// # Errors
-    /// - Transaction ID already set.
-    pub fn set_transaction_id(&self, tid: &str) -> Result<()> {
-        let mut mg = self.transaction_id.lock().map_err(|_| {
-            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
-        })?;
-
-        match &*mg {
-            Some(_) => {
-                return Err(Box::new(SerializationGraphTestingError::new(
-                    SerializationGraphTestingErrorKind::TransactionIdAlreadySet,
-                )))
-            }
-            None => {
-                *mg = Some(tid.to_string());
-            }
-        }
-        Ok(())
-    }
-
-    /// Get transaction ID of `Node`.
-    pub fn get_transaction_id(&self) -> Result<String> {
-        let tid = self
-            .transaction_id
-            .lock()
-            .map_err(|_| {
-                SerializationGraphTestingError::new(
-                    SerializationGraphTestingErrorKind::MutexLockFailed,
-                )
-            })?
-            .as_ref()
-            .ok_or(SerializationGraphTestingError::new(
-                SerializationGraphTestingErrorKind::TransactionIdNotSet,
-            ))?
-            .clone();
-        Ok(tid)
-        // TODO: error handling.
-    }
-
     /// Insert edge into a `Node`.
     ///
+    /// Does nothing if edge already exists.
+    ///
     /// # Errors
-    /// - Attempting to insert a self edge.
-    /// - Edge already exists between two nodes.
-    pub fn insert_edge(&self, id: usize, edge_type: EdgeType) -> Result<()> {
-        // check for self edges, these are not added to the graph, but does not result in an error
-        if id == self.id {
-            return Err(SerializationGraphTestingError::new(
-                SerializationGraphTestingErrorKind::SelfEdge,
-            )
-            .into());
-        }
-
+    /// - Mutex lock failed.
+    pub fn insert_edge(
+        &self,
+        id: usize,
+        edge_type: EdgeType,
+    ) -> Result<(), SerializationGraphTestingError> {
         match edge_type {
             EdgeType::Incoming => {
-                let mut incoming = self.incoming.lock().map_err(|_| {
-                    SerializationGraphTestingError::new(
-                        SerializationGraphTestingErrorKind::MutexLockFailed,
-                    )
-                })?;
+                let mut incoming = self
+                    .incoming
+                    .lock()
+                    .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
                 if !incoming.contains(&id) {
                     incoming.push(id);
-                } else {
-                    return Err(SerializationGraphTestingError::new(
-                        SerializationGraphTestingErrorKind::EdgeExists,
-                    )
-                    .into());
                 }
             }
             EdgeType::Outgoing => {
-                let mut outgoing = self.outgoing.lock().unwrap();
+                let mut outgoing = self
+                    .outgoing
+                    .lock()
+                    .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
                 if !outgoing.contains(&id) {
                     outgoing.push(id);
-                } else {
-                    return Err(Box::new(SerializationGraphTestingError::new(
-                        SerializationGraphTestingErrorKind::EdgeExists,
-                    )));
                 }
             }
         }
@@ -151,59 +93,103 @@ impl Node {
     ///
     /// # Errors
     /// - Lock error
-    pub fn delete_edge(&self, id: usize, edge_type: EdgeType) -> Result<()> {
+    pub fn delete_edge(
+        &self,
+        id: usize,
+        edge_type: EdgeType,
+    ) -> Result<(), SerializationGraphTestingError> {
         match edge_type {
             EdgeType::Incoming => {
-                let mut incoming = self.incoming.lock().map_err(|_| {
-                    SerializationGraphTestingError::new(
-                        SerializationGraphTestingErrorKind::MutexLockFailed,
-                    )
-                })?;
+                let mut incoming = self
+                    .incoming
+                    .lock()
+                    .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
                 incoming.retain(|&x| x != id);
             }
             EdgeType::Outgoing => {
-                let mut outgoing = self.outgoing.lock().map_err(|_| {
-                    SerializationGraphTestingError::new(
-                        SerializationGraphTestingErrorKind::MutexLockFailed,
-                    )
-                })?;
+                let mut outgoing = self
+                    .outgoing
+                    .lock()
+                    .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
                 outgoing.retain(|&x| x != id);
             }
         }
         Ok(())
     }
 
-    /// Get the outgoing edges from a `Node`
+    /// Get the incoming edges from a `Node`.
     ///
-    /// Currently this just clones the list behind the mutex.
+    /// Clones the list behind the mutex.
     ///
     /// # Errors
     /// - Lock error
-    pub fn get_outgoing(&self) -> Result<Vec<usize>> {
-        let outgoing = self.outgoing.lock().map_err(|_| {
-            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
-        })?;
+    pub fn get_incoming(&self) -> Result<Vec<usize>, SerializationGraphTestingError> {
+        let incoming = self
+            .incoming
+            .lock()
+            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
+        Ok(incoming.clone())
+    }
+
+    /// Get the outgoing edges from a `Node`.
+    ///
+    /// Clones the list behind the mutex.
+    ///
+    /// # Errors
+    /// - Lock error
+    pub fn get_outgoing(&self) -> Result<Vec<usize>, SerializationGraphTestingError> {
+        let outgoing = self
+            .outgoing
+            .lock()
+            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
         Ok(outgoing.clone())
     }
 
-    pub fn get_keys_written(&self) -> Result<Vec<(String, PrimaryKey)>> {
-        let written = self.keys_written.lock().map_err(|_| {
-            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
-        })?;
+    /// Get the list of keys written (updated/deleted) by this transaction.
+    ///
+    /// Clones the list behind the mutex.
+    ///
+    /// # Errors
+    /// - Lock error
+    pub fn get_keys_written(
+        &self,
+    ) -> Result<Vec<(String, PrimaryKey)>, SerializationGraphTestingError> {
+        let written = self
+            .keys_written
+            .lock()
+            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
         Ok(written.clone())
     }
 
-    pub fn get_keys_read(&self) -> Result<Vec<(String, PrimaryKey)>> {
-        let read = self.keys_read.lock().map_err(|_| {
-            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
-        })?;
+    /// Get the list of keys read by this transaction.
+    ///
+    /// Clones the list behind the mutex.
+    ///
+    /// # Errors
+    /// - Lock error
+    pub fn get_keys_read(
+        &self,
+    ) -> Result<Vec<(String, PrimaryKey)>, SerializationGraphTestingError> {
+        let read = self
+            .keys_read
+            .lock()
+            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
         Ok(read.clone())
     }
 
-    pub fn get_rows_inserted(&self) -> Result<Vec<(String, PrimaryKey)>> {
-        let inserted = self.keys_inserted.lock().map_err(|_| {
-            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
-        })?;
+    /// Get the list of keys inserted by this transaction.
+    ///
+    /// Clones the list behind the mutex.
+    ///
+    /// # Errors
+    /// - Lock error
+    pub fn get_rows_inserted(
+        &self,
+    ) -> Result<Vec<(String, PrimaryKey)>, SerializationGraphTestingError> {
+        let inserted = self
+            .keys_inserted
+            .lock()
+            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
         Ok(inserted.clone())
     }
 
@@ -213,10 +199,11 @@ impl Node {
     ///
     /// # Errors
     /// - Lock error
-    pub fn get_state(&self) -> Result<State> {
-        let mg = self.state.lock().map_err(|_| {
-            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
-        })?;
+    pub fn get_state(&self) -> Result<State, SerializationGraphTestingError> {
+        let mg = self
+            .state
+            .lock()
+            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
         Ok(mg.clone())
     }
 
@@ -224,10 +211,11 @@ impl Node {
     ///
     /// # Errors
     /// - Lock error
-    pub fn set_state(&self, state: State) -> Result<()> {
-        let mut mg = self.state.lock().map_err(|_| {
-            SerializationGraphTestingError::new(SerializationGraphTestingErrorKind::MutexLockFailed)
-        })?;
+    pub fn set_state(&self, state: State) -> Result<(), SerializationGraphTestingError> {
+        let mut mg = self
+            .state
+            .lock()
+            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
         *mg = state;
         Ok(())
     }
@@ -236,15 +224,11 @@ impl Node {
     ///
     /// # Errors
     /// - Lock error
-    pub fn has_incoming(&self) -> Result<bool> {
+    pub fn has_incoming(&self) -> Result<bool, SerializationGraphTestingError> {
         Ok(!self
             .incoming
             .lock()
-            .map_err(|_| {
-                SerializationGraphTestingError::new(
-                    SerializationGraphTestingErrorKind::MutexLockFailed,
-                )
-            })?
+            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?
             .is_empty())
     }
 }
@@ -277,42 +261,18 @@ mod tests {
     fn node_test() {
         // Create node.
         let n = Node::new(0);
-        // Get transaction ID error.
-        assert_eq!(
-            format!("{}", n.get_transaction_id().unwrap_err()),
-            format!("transaction id not set")
-        );
-        // Set transaction ID.
-        assert_eq!(n.set_transaction_id("t1").unwrap(), ());
-        // Set transaction ID error.
-        assert_eq!(
-            format!("{}", n.set_transaction_id("t1").unwrap_err()),
-            format!("transaction id field already set")
-        );
-        // Get transaction ID.
-        assert_eq!(n.get_transaction_id().unwrap(), "t1".to_string());
 
         // Insert edge.
         assert_eq!(n.insert_edge(1, EdgeType::Outgoing).unwrap(), ());
         assert_eq!(n.insert_edge(2, EdgeType::Outgoing).unwrap(), ());
-        assert_eq!(
-            format!("{}", n.insert_edge(1, EdgeType::Outgoing).unwrap_err()),
-            format!("edge already exists between two nodes")
-        );
-        assert_eq!(
-            format!("{}", n.insert_edge(0, EdgeType::Outgoing).unwrap_err()),
-            format!("attempted to insert self edge")
-        );
+
         // Get outgoing.
         assert_eq!(n.get_outgoing().unwrap(), vec![1, 2]);
         assert_eq!(n.has_incoming().unwrap(), false);
 
         // Incoming.
         assert_eq!(n.insert_edge(2, EdgeType::Incoming).unwrap(), ());
-        assert_eq!(
-            format!("{}", n.insert_edge(2, EdgeType::Incoming).unwrap_err()),
-            format!("edge already exists between two nodes")
-        );
+
         assert_eq!(n.has_incoming().unwrap(), true);
         assert_eq!(n.delete_edge(2, EdgeType::Incoming).unwrap(), ());
         assert_eq!(n.has_incoming().unwrap(), false);

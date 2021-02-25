@@ -244,8 +244,10 @@ impl Worker {
                     core_affinity::set_for_current(core_id);
                 }
                 loop {
+                    debug!("Worker {} waiting for job.", id);
                     // Get message from job queue.
                     let message = receiver.lock().unwrap().recv().unwrap();
+                    debug!("Worker {} got job.", id);
                     // Execute job.
                     match message {
                         Message::NewJob(job) => {

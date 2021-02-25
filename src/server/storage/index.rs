@@ -4,9 +4,9 @@ use crate::server::storage::row::Row;
 use crate::workloads::PrimaryKey;
 use crate::Result;
 
-use chashmap::CHashMap;
+use chashmap::{CHashMap, ReadGuard};
 use std::fmt;
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard};
 
 /// An `Index` is used to access data.
 ///
@@ -26,6 +26,11 @@ impl Index {
             name: String::from(name),
             map: CHashMap::new(),
         }
+    }
+
+    /// Get shared reference to map.
+    pub fn get_name(&self) -> String {
+        self.name.clone()
     }
 
     /// Get shared reference to map.
@@ -127,6 +132,16 @@ impl Index {
         // Execute read operation.
         let res = row.get_values(columns, protocol, tid)?;
         Ok(res)
+    }
+
+    pub fn get_lock_on_row(&self, key: PrimaryKey) -> Result<ReadGuard<PrimaryKey, Mutex<Row>>> {
+        // Attempt to get read guard.
+        self.map
+            .get(&key)
+            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
+                "{}",
+                key
+            ))))
     }
 
     /// Write `values` to `columns` in a `Row` with the given `key`.

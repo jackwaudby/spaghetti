@@ -23,7 +23,7 @@ pub enum SpaghettiError {
     /// Table does not exist
     TableNotFound,
     /// Index does not exist
-    IndexNotFound,
+    IndexNotFound(String),
     /// No primary index on table.
     NoPrimaryIndex,
     /// Column does not exist in table.
@@ -66,7 +66,7 @@ impl fmt::Display for SpaghettiError {
             IncorrectWorkload => write!(f, "workload not recognised"),
             Parse(ref e) => write!(f, "parsing error {:?}", e),
             TableNotFound => write!(f, "table not found"),
-            IndexNotFound => write!(f, "index not found"),
+            IndexNotFound(ref i) => write!(f, "index: {} not found", i),
             NoPrimaryIndex => write!(f, "no primary index on table"),
             ColumnNotFound(ref c) => write!(f, "column not found: {:?}", c),
             UnexpectedMessage => write!(f, "unexpected message"),
@@ -139,7 +139,6 @@ mod tests {
         let e3 = SpaghettiError::CorruptedFrame;
         let e4 = SpaghettiError::IncorrectWorkload;
         let e5 = SpaghettiError::TableNotFound;
-        let e6 = SpaghettiError::IndexNotFound;
         let e7 = SpaghettiError::NoPrimaryIndex;
         let e8 = SpaghettiError::UnexpectedMessage;
         let e9 = SpaghettiError::ConnectionUnexpectedlyClosed;
@@ -160,7 +159,6 @@ mod tests {
         );
         assert_eq!(format!("{}", e4), format!("workload not recognised"));
         assert_eq!(format!("{}", e5), format!("table not found"));
-        assert_eq!(format!("{}", e6), format!("index not found"));
         assert_eq!(format!("{}", e7), format!("no primary index on table"));
         assert_eq!(format!("{}", e8), format!("unexpected message"));
         assert_eq!(format!("{}", e9), format!("connection unexpectedly closed"));

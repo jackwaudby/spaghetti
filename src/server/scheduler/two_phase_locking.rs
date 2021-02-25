@@ -1398,7 +1398,6 @@ mod tests {
             .unwrap();
     }
 
-    // This is tes
     #[test]
     fn tpl_denied_lock_test() {
         // Init scheduler.
