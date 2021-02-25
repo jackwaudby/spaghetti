@@ -6,7 +6,7 @@ use crate::Result;
 
 use chashmap::{CHashMap, ReadGuard};
 use std::fmt;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::Mutex;
 
 /// An `Index` is used to access data.
 ///

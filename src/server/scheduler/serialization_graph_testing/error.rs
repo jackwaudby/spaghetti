@@ -50,7 +50,7 @@ impl fmt::Display for SerializationGraphTestingError {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    //    use super::*;
 
     #[test]
     fn sgt_error_test() {

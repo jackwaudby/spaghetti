@@ -8,8 +8,7 @@ use crate::server::storage::table::Table;
 use crate::workloads::{PrimaryKey, Workload};
 
 use std::collections::HashSet;
-use std::sync::{Arc, MutexGuard, RwLock};
-use std::sync::{RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread;
 use tracing::{debug, info};
 
@@ -691,9 +690,7 @@ impl SerializationGraphTesting {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::common::message::Request;
     use crate::server::storage::datatype;
-    use crate::server::TransactionManager;
     use crate::workloads::tatp;
     use crate::workloads::tatp::keys::TatpPrimaryKey;
     use crate::workloads::Internal;
@@ -701,7 +698,6 @@ mod test {
     use lazy_static::lazy_static;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use std::sync::mpsc::{Receiver, Sender};
     use std::sync::Once;
     use tracing::Level;
     use tracing_subscriber::FmtSubscriber;
