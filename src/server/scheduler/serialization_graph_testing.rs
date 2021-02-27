@@ -51,7 +51,6 @@ impl Scheduler for SerializationGraphTesting {
     /// # Aborts
     /// - Table or index does not exist
     /// - Incorrect column or value
-
     fn create(
         &self,
         table: &str,

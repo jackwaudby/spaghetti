@@ -8,6 +8,8 @@ use chrono::{DateTime, Utc};
 use std::fmt;
 use std::sync::Arc;
 
+pub mod hit_list;
+
 pub mod two_phase_locking;
 
 pub mod serialization_graph_testing;
