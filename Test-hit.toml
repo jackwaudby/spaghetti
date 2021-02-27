@@ -1,0 +1,15 @@
+address = "127.0.0.1"
+port = 6142
+log = "debug"
+timeout = 5
+mpsc_size = 32
+
+protocol="hit"
+
+transactions = 10
+workload = "tatp"
+schema = "tatp_schema.txt"
+subscribers = 3
+seed = 42
+
+clients = 1
