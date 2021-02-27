@@ -8,6 +8,7 @@ protocol="hit"
 
 transactions = 10
 workload = "tatp"
+workers = 1
 schema = "tatp_schema.txt"
 subscribers = 3
 seed = 42

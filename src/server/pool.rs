@@ -46,7 +46,7 @@ impl ThreadPool {
             .unwrap()
             .as_str()
         {
-            "2pl" => {
+            "2pl" | "hit" => {
                 // Get thread pool size.
                 let size = workload.get_internals().config.get_int("workers").unwrap();
 

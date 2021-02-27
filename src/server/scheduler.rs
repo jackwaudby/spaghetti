@@ -1,3 +1,4 @@
+use crate::server::scheduler::hit_list::HitList;
 use crate::server::scheduler::serialization_graph_testing::SerializationGraphTesting;
 use crate::server::scheduler::two_phase_locking::TwoPhaseLocking;
 use crate::server::storage::datatype::Data;
@@ -43,6 +44,9 @@ impl Protocol {
                     cores as i32,
                     Arc::clone(&workload),
                 )),
+            },
+            "hit" => Protocol {
+                scheduler: Box::new(HitList::new(Arc::clone(&workload))),
             },
             _ => panic!("Incorrect concurrency control protocol"),
         };
