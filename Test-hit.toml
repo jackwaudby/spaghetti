@@ -6,11 +6,11 @@ mpsc_size = 32
 
 protocol="hit"
 
-transactions = 10
+transactions = 20
 workload = "tatp"
 workers = 1
 schema = "tatp_schema.txt"
 subscribers = 3
 seed = 42
 
-clients = 1
+clients = 4

@@ -5,6 +5,9 @@ pub struct ActiveTransaction {
     /// Transaction ID.
     tid: u64,
 
+    /// Start epoch.
+    start_epoch: u64,
+
     /// List of predecessors.
     predecessors: Option<HashSet<u64>>,
 
@@ -20,14 +23,19 @@ pub struct ActiveTransaction {
 
 impl ActiveTransaction {
     /// Create new runtime information tracker for a transaction.
-    pub fn new(tid: u64) -> ActiveTransaction {
+    pub fn new(tid: u64, start_epoch: u64) -> ActiveTransaction {
         ActiveTransaction {
             tid,
+            start_epoch,
             predecessors: Some(HashSet::new()),
             keys_written: Some(vec![]),
             keys_read: Some(vec![]),
             keys_inserted: Some(vec![]),
         }
+    }
+
+    pub fn get_start_epoch(&self) -> u64 {
+        self.start_epoch
     }
 
     /// Get transaction id.
