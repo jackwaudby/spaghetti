@@ -8,6 +8,7 @@ use crate::Result;
 
 use std::sync::Arc;
 use std::thread;
+use std::time::Instant;
 use tracing::{debug, error};
 
 /// Transaction manager owns a thread pool containing workers.
@@ -20,7 +21,7 @@ use tracing::{debug, error};
 /// Internal errors:
 /// Thread pool may panic and close early.
 pub struct TransactionManager {
-    // State
+    /// State
     pub state: State,
 
     /// Thread pool.
@@ -84,6 +85,8 @@ impl TransactionManager {
         let execute_request = |request: Request, scheduler| -> Result<()> {
             // Client's # request.
             let request_no = request.request_no;
+            // Start timer
+            let start = Instant::now();
             // Execute trasaction.
             let res = match request.transaction {
                 Transaction::Tatp(transaction) => match transaction {
@@ -118,6 +121,8 @@ impl TransactionManager {
                 },
                 _ => unimplemented!(),
             };
+            let latency = Some(start.elapsed());
+            debug!("Latency: {:?}", latency);
             // Package response.
             let resp = match res {
                 Ok(res) => Response::Committed { value: Some(res) },
@@ -128,7 +133,11 @@ impl TransactionManager {
             // Send to corresponding `WriteHandler`.
             request
                 .response_sender
-                .send(Message::Response { request_no, resp })
+                .send(Message::Response {
+                    request_no,
+                    resp,
+                    latency,
+                })
                 .unwrap();
             Ok(())
         };

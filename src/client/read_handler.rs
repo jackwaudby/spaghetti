@@ -67,9 +67,11 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                                 Message::Response {
                                     request_no,
                                     resp: response,
+                                    latency,
                                 } => Message::Response {
                                     request_no,
                                     resp: response,
+                                    latency,
                                 },
                                 // Received unexpected message.
                                 _ => return Err(SpaghettiError::UnexpectedMessage),
@@ -172,6 +174,7 @@ mod tests {
         let response = Message::Response {
             request_no: 1,
             resp: r,
+            latency: None,
         };
         let response_frame = response.into_frame();
         let r_len = response_frame.payload.len();

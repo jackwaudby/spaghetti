@@ -7,6 +7,8 @@ use crate::server::manager;
 use crate::server::manager::State as TransactionManagerState;
 use crate::server::manager::TransactionManager;
 use crate::server::read_handler::{ReadHandler, State};
+use crate::server::statistics::GlobalStatistics;
+use crate::server::statistics::Statistics;
 use crate::server::write_handler::WriteHandler;
 use crate::Result;
 
@@ -25,6 +27,9 @@ use tracing::{error, info};
 pub struct Listener {
     /// TCP listener.
     pub listener: TcpListener,
+
+    /// Global stats
+    pub stats: GlobalStatistics,
 
     /// Connections IDs.
     pub next_id: u32,
@@ -47,11 +52,11 @@ pub struct Listener {
 
     /// Sender of channel between `WriteHandler`s and `Listener`.
     /// Used to indicate shutdown of write handlers when there are no active connections.
-    pub notify_listener_tx: tokio::sync::broadcast::Sender<u32>,
+    pub notify_listener_tx: tokio::sync::broadcast::Sender<Statistics>,
 
     /// Receiver of channel between `WriteHandler`s and `Listener`.
     /// Used to indicate `WriteHandler`s have gracefully shutdown.
-    pub listener_shutdown_rx: tokio::sync::broadcast::Receiver<u32>,
+    pub listener_shutdown_rx: tokio::sync::broadcast::Receiver<Statistics>,
 }
 
 impl Listener {
@@ -69,10 +74,14 @@ impl Listener {
         // Start transaction manager.
         manager::run(tm);
         // Listen for connections.
+        self.stats.start();
         info!("Accepting new connections");
         loop {
-            while let Ok(id) = self.listener_shutdown_rx.try_recv() {
-                info!("Connection {} was closed", id);
+            while let Ok(local_stats) = self.listener_shutdown_rx.try_recv() {
+                // Merge stats here.
+                info!("Connection {} was closed", local_stats.get_client_id());
+                info!("Stats:\n{}", local_stats);
+                self.stats.merge_into(local_stats);
                 self.active_connections -= 1;
             }
 
@@ -103,6 +112,7 @@ impl Listener {
                     };
                     let mut write_handler = WriteHandler {
                         id: self.next_id,
+                        stats: Some(Statistics::new(self.next_id)),
                         connection: WriteConnection::new(wr),
                         response_rx,
                         responses_sent: 0,

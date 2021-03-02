@@ -1,8 +1,9 @@
 use crate::common::connection::WriteConnection;
-use crate::common::message::Message;
+use crate::common::message::{Message, Response};
 use crate::common::shutdown::Shutdown;
 use crate::server::manager::State as TransactionManagerState;
 use crate::server::read_handler::State as ReadHandlerState;
+use crate::server::statistics::Statistics;
 use crate::Result;
 
 use config::Config;
@@ -17,6 +18,9 @@ use tracing::{debug, info};
 pub struct WriteHandler<R: AsyncWrite + Unpin> {
     /// Connection ID
     pub id: u32,
+
+    /// Stats
+    pub stats: Option<Statistics>,
 
     /// Write half of tcp stream with buffers.
     pub connection: WriteConnection<R>,
@@ -39,16 +43,14 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     // Channel for notify the transaction manager of shutdown.
     // Implicitly dropped when handler is dropped (safely finished).
     // Communication channel between async and sync code.
-    pub notify_listener_tx: tokio::sync::broadcast::Sender<u32>,
+    pub notify_listener_tx: tokio::sync::broadcast::Sender<Statistics>,
 }
 
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
     pub async fn run(&mut self, _config: Arc<Config>) -> Result<()> {
+        // Shutdown avenues:
         // (a) read handler sends requests or internal error
         // (b) tm closes channel.
-
-        // Loop until server is interrupted.
-        // while !self.shutdown.is_shutdown() {
 
         loop {
             // Check if read handler has sent message.
@@ -66,6 +68,24 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                             // Increment sent.
                             match response {
                                 Some(response) => {
+                                    // Update stats
+                                    if let Message::Response {
+                                        ref resp, latency, ..
+                                    } = response
+                                    {
+                                        match resp {
+                                            Response::Committed { .. } => {
+                                                debug!("Increment committed");
+                                                self.stats.as_mut().unwrap().inc_committed();
+                                                let lat = latency.unwrap().as_nanos();
+                                                debug!("Increment latency {}", lat);
+                                                self.stats.as_mut().unwrap().add_cum_latency(lat);
+                                            }
+                                            Response::Aborted { .. } => {
+                                                self.stats.as_mut().unwrap().inc_aborted()
+                                            }
+                                        }
+                                    }
                                     self.responses_sent = self.responses_sent + 1;
                                     let f = response.into_frame();
                                     self.connection.write_frame(&f).await?;
@@ -93,9 +113,26 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                     let response = self.response_rx.recv().await;
                     match response {
                         Some(response) => {
+                            // Update stats
+                            if let Message::Response {
+                                ref resp, latency, ..
+                            } = response
+                            {
+                                match resp {
+                                    Response::Committed { .. } => {
+                                        debug!("Increment committed");
+                                        self.stats.as_mut().unwrap().inc_committed();
+                                        let lat = latency.unwrap().as_nanos();
+                                        debug!("Increment latency {}", lat);
+                                        self.stats.as_mut().unwrap().add_cum_latency(lat);
+                                    }
+                                    Response::Aborted { .. } => {
+                                        self.stats.as_mut().unwrap().inc_aborted()
+                                    }
+                                }
+                            }
                             // Increment responses sent.accept
                             self.responses_sent = self.responses_sent + 1;
-                            //           debug!("NORMAL OP - write handler sending response: {:?}", response);
                             let f = response.into_frame();
                             self.connection.write_frame(&f).await?;
                         }
@@ -111,7 +148,7 @@ impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
     fn drop(&mut self) {
         debug!("Drop write handler");
 
-        let res = self.notify_listener_tx.send(self.id);
+        let res = self.notify_listener_tx.send(self.stats.take().unwrap());
         match res {
             Ok(_) => {}
             Err(_) => {}

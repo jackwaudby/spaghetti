@@ -1,10 +1,10 @@
 use crate::common::frame::Frame;
 use crate::workloads::tatp::profiles::TatpTransaction;
 use crate::workloads::tpcc::profiles::TpccTransaction;
-
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use std::time::Duration;
 
 /// Represents all messages types that can be sent in `spaghetti`.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -14,7 +14,11 @@ pub enum Message {
     /// Indicates ther server has succesfully closed the client's connection.
     ConnectionClosed,
     /// Response to a transaction request.
-    Response { request_no: u32, resp: Response },
+    Response {
+        request_no: u32,
+        resp: Response,
+        latency: Option<Duration>,
+    },
     /// TATP transaction.
     TatpTransaction {
         request_no: u32,
@@ -31,7 +35,8 @@ impl fmt::Display for Message {
             Response {
                 request_no,
                 ref resp,
-            } => write!(f, "[id=\"{}\",{}]", request_no, resp),
+                latency,
+            } => write!(f, "[id=\"{}\",{},{:?}]", request_no, resp, latency),
             _ => write!(f, "{:?}", self),
         }
     }

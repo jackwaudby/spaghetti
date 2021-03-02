@@ -3,6 +3,7 @@ use crate::common::message::Request;
 use crate::server::listener::Listener;
 use crate::server::manager::State as TransactionManagerState;
 use crate::server::manager::TransactionManager;
+use crate::server::statistics::GlobalStatistics;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -30,6 +31,8 @@ pub mod storage;
 pub mod queue;
 
 pub mod manager;
+
+pub mod statistics;
 
 /// Runs the server.
 ///
@@ -66,6 +69,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let mut list = Listener {
         listener,
         next_id: 0,
+        stats: GlobalStatistics::new(),
         active_connections: 0,
         notify_read_handlers_tx,
         notify_tm_tx,
@@ -113,6 +117,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     // Destructure server listener to extract broadcast receiver/transmitter and mpsc transmitter.
     let Listener {
         notify_read_handlers_tx,
+        mut stats,
         notify_tm_tx,
         mut wh_shutdown_rx,
         notify_listener_tx,
@@ -131,9 +136,12 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     if let Err(err) = listener_shutdown_rx.recv().await {
         debug!("{}", err);
     }
+
     info!("Server shutdown");
     if let TransactionManagerState::ThreadPoolPanicked = tm_state {
         return Err(Box::new(SpaghettiError::ThreadPoolClosed));
     }
+    stats.end();
+    info!("{}", stats);
     Ok(())
 }

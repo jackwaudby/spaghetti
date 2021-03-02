@@ -106,6 +106,7 @@ mod tests {
             let m = Message::Response {
                 request_no: i,
                 resp: response.clone(),
+                latency: None,
             };
             read_task_tx.send(m).await.unwrap();
         }
