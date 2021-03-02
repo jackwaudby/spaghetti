@@ -81,7 +81,7 @@ impl SharedResources {
 
     /// Add started transaction to current epoch.
     pub fn add_started(&mut self, id: u64) {
-        debug!("{} started in epoch {}", id, self.current_epoch);
+        debug!("Transaction {} started in epoch {}", id, self.current_epoch);
         let ce = self.current_epoch;
         let pos = self.get_epoch(ce);
 
@@ -90,7 +90,10 @@ impl SharedResources {
 
     /// Add terminated transaction to current epoch.
     pub fn add_terminated(&mut self, id: u64, start_epoch: u64) {
-        debug!("{} terminated in epoch {}", id, self.current_epoch);
+        debug!(
+            "Add transaction {} to terminated in epoch {}",
+            id, self.current_epoch
+        );
 
         // Add to current epoch terminated
         let ce = self.current_epoch;
@@ -98,12 +101,17 @@ impl SharedResources {
         self.epochs[ce_pos].add_terminated(id);
 
         // Remove from started epoch
+        debug!(
+            "Remove transaction {} from started in in epoch {}",
+            id, start_epoch
+        );
         let se_pos = self.get_epoch(start_epoch);
         self.epochs[se_pos].remove_started(id);
     }
 
     /// Update alpha
     pub fn update_alpha(&mut self) {
+        debug!("Update alpha");
         // Get current epoch.
         let ce = self.current_epoch;
 

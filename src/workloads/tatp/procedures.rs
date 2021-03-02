@@ -10,7 +10,7 @@ use crate::workloads::PrimaryKey;
 use crate::Result;
 
 use std::sync::Arc;
-//use tracing::debug;
+use tracing::debug;
 
 /// GetSubscriberData transaction.
 pub fn get_subscriber_data(params: GetSubscriberData, protocol: Arc<Protocol>) -> Result<String> {
@@ -126,6 +126,7 @@ pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -
         panic!("Unexpected type")
     };
     if val != 1 {
+        protocol.scheduler.abort(meta.clone()).unwrap();
         return Err(Box::new(SpaghettiError::RowDoesNotExist(format!(
             "{}",
             sf_pk
@@ -142,6 +143,7 @@ pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -
         panic!("Unexpected type")
     };
     if params.end_time as i64 >= val {
+        protocol.scheduler.abort(meta.clone()).unwrap();
         return Err(Box::new(SpaghettiError::RowDoesNotExist(format!(
             "{}",
             cf_pk
@@ -179,6 +181,7 @@ pub fn get_access_data(params: GetAccessData, protocol: Arc<Protocol>) -> Result
         .scheduler
         .read("access_info", pk, &columns, meta.clone())?;
     // Commit transaction.
+    debug!("HERE");
     protocol.scheduler.commit(meta.clone())?;
     // Convert to result
     let res = datatype::to_result(&columns, &values)?;

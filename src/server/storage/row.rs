@@ -8,6 +8,7 @@ use crate::Result;
 
 use std::fmt;
 use std::sync::Arc;
+use tracing::debug;
 
 /// Represents a row in the database.
 #[derive(Debug)]
@@ -304,6 +305,7 @@ impl Row {
                 // Reset access history
                 self.access_history = Some(new_ah);
             }
+
             _ => {}
         };
     }
@@ -344,7 +346,7 @@ impl Row {
 
     /// Revert reads to a `Row`.
     ///
-    /// Handles reverting a read operation SGT only.
+    /// Handles reverting a read operation SGT and HIT only.
     pub fn revert_read(&mut self, tid: &str) {
         // Remove read from access history
         self.access_history

@@ -82,31 +82,37 @@ impl TransactionManager {
     pub fn run(&mut self) -> Result<()> {
         // Closure passed to thread pool.
         let execute_request = |request: Request, scheduler| -> Result<()> {
-            // debug!("Execute request: {:?}", request);
             // Client's # request.
             let request_no = request.request_no;
             // Execute trasaction.
             let res = match request.transaction {
                 Transaction::Tatp(transaction) => match transaction {
                     TatpTransaction::GetSubscriberData(params) => {
+                        debug!("GetSubscriberData");
                         tatp::procedures::get_subscriber_data(params, scheduler)
                     }
                     TatpTransaction::GetNewDestination(params) => {
+                        debug!("GetNewDestination");
                         tatp::procedures::get_new_destination(params, scheduler)
                     }
                     TatpTransaction::GetAccessData(params) => {
+                        debug!("GetAccessData");
                         tatp::procedures::get_access_data(params, scheduler)
                     }
                     TatpTransaction::UpdateSubscriberData(params) => {
+                        debug!("UpdateSubscriberData");
                         tatp::procedures::update_subscriber_data(params, scheduler)
                     }
                     TatpTransaction::UpdateLocationData(params) => {
+                        debug!("UpdateLocationData");
                         tatp::procedures::update_location(params, scheduler)
                     }
                     TatpTransaction::InsertCallForwarding(params) => {
+                        debug!("InsertCallForwarding");
                         tatp::procedures::insert_call_forwarding(params, scheduler)
                     }
                     TatpTransaction::DeleteCallForwarding(params) => {
+                        debug!("DeleteCallForwarding");
                         tatp::procedures::delete_call_forwarding(params, scheduler)
                     }
                 },

@@ -40,36 +40,26 @@ pub struct HitList {
 impl Scheduler for HitList {
     /// Register a transaction with the hit list.
     ///
-    /// # Aborts
-    ///
-    /// Aborts if the assigned ID is already in use.
+
     fn register(&self) -> Result<TransactionInfo, Aborted> {
         // Get transaction ID.
         let id = self.get_id();
-        debug!("Register {}", id);
-
-        // Create transaction infomation.
-        let info = TransactionInfo::new(Some(id.to_string()), None);
+        debug!("Register transaction {}", id);
 
         // Get start epoch and add to epoch tracker.
-        debug!("Get lock on shared resources");
-        let mut lock = self.asr.get_lock();
-        let start_epoch = lock.get_current_epoch();
+        debug!("Requesting lock on ASR");
+        let mut resources = self.asr.get_lock();
+        let start_epoch = resources.get_current_epoch();
+        resources.add_started(id);
+        drop(resources);
+        debug!("Dropped lock on ASR");
 
-        // Create runtime tracker.
+        // Register with active transactions.
         let at = ActiveTransaction::new(id, start_epoch);
-
-        // Add to active transactions map
-        if let Some(_) = self.active_transactions.insert(id, at) {
-            let err = HitListError::IdAlreadyInUse(id);
-            return Err(Aborted {
-                reason: format!("{}", err),
-            });
-        }
-
-        lock.add_started(id);
-        drop(lock);
-        debug!("Dropped lock on shared resources");
+        self.active_transactions.insert(id, at);
+        debug!("Inserted {} into active transaction", id);
+        // Create transaction infomation.
+        let info = TransactionInfo::new(Some(id.to_string()), None);
 
         Ok(info)
     }
@@ -126,17 +116,21 @@ impl Scheduler for HitList {
         }
 
         // Record insert - used to rollback if transaction is aborted.
-        debug!("Get write guard on active transactions list");
+        debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
         wg.add_key_inserted((index.get_name(), key));
 
         // Attempt to insert row.
         match index.insert(key, row) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                debug!("Drop write guard on active transactions list");
+            Ok(_) => {
                 drop(wg);
-                debug!("Abort transaction {}", id);
+                debug!("Dropped WG on transaction {} in active transactions", id);
+                Ok(())
+            }
+            Err(e) => {
+                drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
+                debug!("Insert by transaction {} failed", id);
                 self.abort(meta.clone()).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
@@ -167,7 +161,7 @@ impl Scheduler for HitList {
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         // Get write guard on active transaction entry.
-        debug!("Get write guard on active transactions list");
+        debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
         // Execute read.
@@ -189,14 +183,15 @@ impl Scheduler for HitList {
 
                 // Get values
                 let vals = res.get_values().unwrap();
-                debug!("Drop write guard on active transactions list");
+
                 drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
                 Ok(vals)
             }
             Err(e) => {
-                debug!("Drop write guard on active transactions list");
                 drop(wg);
-
+                debug!("Dropped WG on transaction {} in active transactions", id);
+                debug!("Read by transaction {} failed", id);
                 self.abort(meta.clone()).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", e),
@@ -224,7 +219,7 @@ impl Scheduler for HitList {
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         // Get write guard on active transaction entry.
-        debug!("Get write guard on active transactions list");
+        debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
         match index.update(key, columns, values, "hit", &meta.get_id().unwrap()) {
@@ -249,13 +244,15 @@ impl Scheduler for HitList {
                 }
 
                 // Add to keys read.
-                wg.add_key_written((index.get_name(), key));
-
+                wg.add_key_updated((index.get_name(), key));
+                drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
                 Ok(())
             }
             Err(e) => {
-                debug!("Drop write guard on active transactions list");
                 drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
+                debug!("Update by transaction {} failed", id);
                 self.abort(meta).unwrap();
                 return Err(Aborted {
                     reason: format!("{}", e),
@@ -276,7 +273,7 @@ impl Scheduler for HitList {
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         // Get write guard on active transaction entry.
-        debug!("Get write guard on active transactions list");
+        debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
         // Execute remove op.
@@ -301,13 +298,15 @@ impl Scheduler for HitList {
                 }
 
                 // Add to keys read.
-                wg.add_key_written((index.get_name(), key));
-
+                wg.add_key_deleted((index.get_name(), key));
+                drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
                 Ok(())
             }
             Err(e) => {
-                debug!("Drop write guard on active transactions list");
                 drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
+                debug!("Delete by transaction {} failed", id);
                 self.abort(meta).unwrap();
                 Err(Aborted {
                     reason: format!("{}", e),
@@ -322,36 +321,42 @@ impl Scheduler for HitList {
     /// - RWLock or Mutex error.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
-        debug!("Aborting transaction {:?}", id);
+        debug!("Aborting transaction {}", id);
+
+        // Remove from active transaction.
+        debug!("Remove transaction {} from active transactions", id);
+        let mut at = self.active_transactions.remove(&id).unwrap();
 
         // Get exculsive lock on the hit list
-        debug!("Transaction {} attempting to get lock on hit list", id);
+        debug!("Transaction {} requesting lock on ASR", id);
         let mut lock = self.asr.get_lock();
-        debug!("Transaction {} received lock on hit list", id);
+        debug!("Transaction {} received lock on ASR", id);
 
         // Remove from hit list
-        debug!("Transaction {} removed from hit list", id);
+        debug!("Remove transaction {} from hit list", id);
         debug!("Hit list before: {:?}", lock.hit_list);
         lock.hit_list.remove(&id);
         debug!("Hit list after: {:?}", lock.hit_list);
 
         // Add to terminated.
-        debug!("Register {} with terminated list", id);
+        debug!("Register transaction {} with terminated list", id);
         lock.terminated_list.insert(id);
         debug!("Terminated list: {}", id);
 
-        // Remove from active transaction.
-        debug!("Get write guard on active transactions list");
-        let mut at = self.active_transactions.remove(&id).unwrap();
-
-        debug!("Add {} to epoch tracker", id);
         let se = at.get_start_epoch();
         lock.add_terminated(id, se);
 
         // Revert updates/deletes.
         debug!("Revert updates/deleted for transaction: {}", id);
-        let written = at.get_keys_written();
-        for (index, key) in &written {
+        let deleted = at.get_keys_deleted();
+        for (index, key) in &deleted {
+            let index = self.data.get_internals().get_index(&index).unwrap();
+            index.revert(*key, "hit", &meta.get_id().unwrap()).unwrap();
+        }
+
+        debug!("Revert updates/deleted for transaction: {}", id);
+        let updated = at.get_keys_updated();
+        for (index, key) in &updated {
             let index = self.data.get_internals().get_index(&index).unwrap();
             index.revert(*key, "hit", &meta.get_id().unwrap()).unwrap();
         }
@@ -373,6 +378,7 @@ impl Scheduler for HitList {
         debug!("Hit list: {:?}", lock.hit_list);
         debug!("Terminated: {:?}", lock.terminated_list);
         drop(lock);
+        debug!("Dropped lock on ASR");
         Ok(())
     }
 
@@ -382,20 +388,53 @@ impl Scheduler for HitList {
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
         debug!("Committing transaction {:?}", id);
 
-        debug!("Lock resources");
         // Get exculsive lock on the hit list
+        debug!("Transaction {} requesting lock on ASR", id);
         let mut lock = self.asr.get_lock();
+        debug!("Transaction {} received lock on ASR", id);
 
         // Not in hit list.
         if !lock.hit_list.contains(&id) {
-            debug!("{} not in hitlist", id);
+            debug!("Transaction {} not in hitlist", id);
             // Remove from active transactions.
+            debug!("Transaction {} removed from active transactions", id);
             let mut at = self.active_transactions.remove(&id).unwrap();
 
-            // Get predecessors
-            debug!("Add predecessors to hit list");
-            let predecessors = at.get_predecessors();
+            debug!("Commit inserted for transaction: {}", id);
+            let inserted = at.get_keys_inserted();
+            for (index, key) in inserted {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                index.commit(key, "hit", &id.to_string()).unwrap();
+            }
 
+            debug!("Commit deleted for transaction: {}", id);
+            let deleted = at.get_keys_deleted();
+            for (index, key) in deleted {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                index.remove(key).unwrap();
+            }
+
+            debug!("Commit updated for transaction: {}", id);
+            let updated = at.get_keys_updated();
+            for (index, key) in updated {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                index.commit(key, "hit", &id.to_string()).unwrap();
+            }
+
+            debug!("Revert reads for transaction: {}", id);
+            let read = at.get_keys_read();
+            for (index, key) in read {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                index.revert_read(key, &meta.get_id().unwrap()).unwrap();
+            }
+
+            // Get predecessors
+            let predecessors = at.get_predecessors();
+            debug!(
+                "Add transaction {}'s predecessors {:?} to hit list",
+                id, predecessors
+            );
+            debug!("Filter already terminated transactions");
             for predecessor in predecessors {
                 // If predecessor is active add to hit list.
                 if !lock.terminated_list.contains(&predecessor) {
@@ -403,13 +442,15 @@ impl Scheduler for HitList {
                 }
             }
 
-            debug!("Add {} to epoch tracker", id);
             let se = at.get_start_epoch();
             lock.add_terminated(id, se);
             debug!("Add {} to terminated list", id);
             lock.terminated_list.insert(id);
             debug!("Hit list: {:?}", lock.hit_list);
             debug!("Terminated: {:?}", lock.terminated_list);
+            drop(lock);
+            debug!("Dropped lock on ASR");
+
             return Ok(());
         } else {
             drop(lock);
@@ -441,14 +482,16 @@ impl HitList {
                 loop {
                     let ten_millis = time::Duration::from_millis(5000);
                     thread::sleep(ten_millis);
-
+                    debug!("Collected garbage");
                     let mut lock = asr_h.lock().unwrap();
-                    debug!("{}", lock);
+                    debug!("Current epoch tracker:\n{}", lock);
 
                     lock.new_epoch();
                     lock.update_alpha();
+                    debug!("Updated epoch tracker:\n{}", lock);
 
-                    // Periodically look through data structures
+                    debug!("Hit list: {:?}", lock.hit_list);
+                    debug!("Terminated: {:?}", lock.terminated_list);
                 }
             })
             .unwrap();

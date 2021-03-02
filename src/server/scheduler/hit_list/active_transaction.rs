@@ -11,8 +11,11 @@ pub struct ActiveTransaction {
     /// List of predecessors.
     predecessors: Option<HashSet<u64>>,
 
-    /// List of keys written by transaction.
-    keys_written: Option<Vec<(String, PrimaryKey)>>,
+    /// List of keys updated by transaction.
+    keys_updated: Option<Vec<(String, PrimaryKey)>>,
+
+    /// List of keys deleted by transaction.
+    keys_deleted: Option<Vec<(String, PrimaryKey)>>,
 
     /// List of keys read by transaction.
     keys_read: Option<Vec<(String, PrimaryKey)>>,
@@ -28,7 +31,8 @@ impl ActiveTransaction {
             tid,
             start_epoch,
             predecessors: Some(HashSet::new()),
-            keys_written: Some(vec![]),
+            keys_updated: Some(vec![]),
+            keys_deleted: Some(vec![]),
             keys_read: Some(vec![]),
             keys_inserted: Some(vec![]),
         }
@@ -54,13 +58,23 @@ impl ActiveTransaction {
     }
 
     /// Get the list of keys updated/deleted by this transaction.
-    pub fn get_keys_written(&mut self) -> Vec<(String, PrimaryKey)> {
-        self.keys_written.take().unwrap()
+    pub fn get_keys_updated(&mut self) -> Vec<(String, PrimaryKey)> {
+        self.keys_updated.take().unwrap()
     }
 
     /// Add key to list of those updated/deleted by this transaction.
-    pub fn add_key_written(&mut self, key: (String, PrimaryKey)) {
-        self.keys_written.as_mut().unwrap().push(key);
+    pub fn add_key_updated(&mut self, key: (String, PrimaryKey)) {
+        self.keys_updated.as_mut().unwrap().push(key);
+    }
+
+    /// Get the list of keys updated/deleted by this transaction.
+    pub fn get_keys_deleted(&mut self) -> Vec<(String, PrimaryKey)> {
+        self.keys_deleted.take().unwrap()
+    }
+
+    /// Add key to list of those updated/deleted by this transaction.
+    pub fn add_key_deleted(&mut self, key: (String, PrimaryKey)) {
+        self.keys_deleted.as_mut().unwrap().push(key);
     }
 
     /// Get the list of keys read by this transaction.
