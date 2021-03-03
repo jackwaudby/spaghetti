@@ -1,9 +1,9 @@
 use crate::common::message::Message;
 use crate::Result;
 
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::io::prelude::*;
-
+use std::path::Path;
 use tracing::info;
 
 /// Receives server responses from the read handler and logs them.
@@ -37,6 +37,11 @@ impl Drop for Consumer {
 pub async fn run(mut consumer: Consumer) -> Result<()> {
     // Spawn tokio task.
     let handle = tokio::spawn(async move {
+        // Remove file if exists.
+        if Path::new("result.txt").exists() {
+            fs::remove_file("result.txt").unwrap();
+        }
+
         // Process messages until the channel is closed.
         while let Some(message) = consumer.read_task_rx.recv().await {
             //        debug!("Received {:?}", message);
@@ -65,8 +70,9 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
 mod tests {
     use super::*;
     use crate::common::message::{Message, Response};
-    use std::fs::File;
+    use std::fs::{self, File};
     use std::io::{self, BufRead};
+    use std::path::Path;
     use std::sync::Once;
     use tokio::sync::mpsc::{self, Receiver, Sender};
     use tracing::Level;
@@ -123,6 +129,7 @@ mod tests {
         // Join task
         h.await.unwrap();
 
+        // Create new file.
         let file = File::open("result.txt").unwrap();
         let count: Vec<_> = io::BufReader::new(file)
             .lines()

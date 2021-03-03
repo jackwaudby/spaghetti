@@ -9,7 +9,6 @@ use crate::server::storage::table::Table;
 use crate::workloads::{PrimaryKey, Workload};
 
 use chashmap::CHashMap;
-use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use std::{thread, time};
 use tracing::debug;
@@ -34,7 +33,7 @@ pub struct HitList {
     data: Arc<Workload>,
 
     /// Garbage collector.
-    garbage_collector: Option<thread::JoinHandle<()>>,
+    _garbage_collector: Option<thread::JoinHandle<()>>,
 }
 
 impl Scheduler for HitList {
@@ -500,7 +499,7 @@ impl HitList {
             id,
             active_transactions,
             asr,
-            garbage_collector: Some(thread),
+            _garbage_collector: Some(thread),
             data: workload,
         }
     }

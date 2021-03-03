@@ -8,7 +8,6 @@ use crate::Result;
 
 use std::fmt;
 use std::sync::Arc;
-use tracing::debug;
 
 /// Represents a row in the database.
 #[derive(Debug)]

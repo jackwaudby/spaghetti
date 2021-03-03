@@ -1,7 +1,6 @@
 use std::fmt;
+use std::time::Duration;
 use std::time::Instant;
-use std::time::{Duration, SystemTime};
-use tracing::{debug, info};
 
 #[derive(Debug, Clone)]
 pub struct GlobalStatistics {
