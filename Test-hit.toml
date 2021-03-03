@@ -7,7 +7,7 @@ mpsc_size = 32
 protocol="hit"
 
 warmup = 2
-
+gen_delay = 1000
 transactions = 5
 workload = "tatp"
 workers = 1

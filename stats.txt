@@ -1,7 +1,7 @@
 data generation: 0(secs)
 clients: 8
 completed transactions: 152
-committed transactions: 92
-aborted transactions: 60
-throughput: 4.3428571428571425(txn/s)
-latency: 4.3428571428571425(ms)
+committed transactions: 85
+aborted transactions: 67
+throughput: 5.066666666666666(txn/s)
+latency: 5.066666666666666(ms)

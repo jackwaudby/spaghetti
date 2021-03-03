@@ -19,6 +19,9 @@ pub struct Producer {
     /// Number of transactions to generate.
     pub transactions: u32,
 
+    /// Delay between transactions
+    pub gen_delay: u64,
+
     /// Transactions sent to write handler.
     pub sent: u32,
 
@@ -60,8 +63,11 @@ impl Producer {
         let listen_m_rx = Shutdown::new_mpsc(listen_m_rx);
         // Get transaction to generate.
         let transactions = configuration.get_int("transactions")? as u32;
+        let gen_delay = configuration.get_int("gen_delay")? as u64;
+
         Ok(Producer {
             generator,
+            gen_delay,
             sent: 0,
             transactions,
             write_task_tx,
@@ -86,15 +92,15 @@ pub async fn run(mut producer: Producer) -> Result<()> {
         // Generate transactions and listen for shutdown notification.
         for _i in 1..=producer.transactions {
             let maybe_transaction = tokio::select! {
-                   res = producer.generator.get_transaction() => res,
-                   _ = producer.listen_m_rx.recv() => {
-                       producer.terminate().await?;
-            //           debug!("Generated {} transactions", producer.sent);
-                       return Ok(());
-                   }
-               };
+                res = producer.generator.get_transaction() => res,
+                _ = producer.listen_m_rx.recv() => {
+                    producer.terminate().await?;
+                    //           debug!("Generated {} transactions", producer.sent);
+                    return Ok(());
+                }
+            };
             // Delay
-            sleep(Duration::from_millis(1000)).await;
+            sleep(Duration::from_millis(producer.gen_delay)).await;
             // Send to write handler, waiting until capacity.
             producer.write_task_tx.send(maybe_transaction).await?;
             // Increment transactions sent.

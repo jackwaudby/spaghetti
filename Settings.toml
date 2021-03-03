@@ -5,6 +5,7 @@ timeout = 5
 mpsc_size = 32
 
 warmup = 2
+gen_delay = 1000
 
 protocol="2pl"
 workers = 4
