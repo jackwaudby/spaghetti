@@ -44,7 +44,6 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
 
         // Process messages until the channel is closed.
         while let Some(message) = consumer.read_task_rx.recv().await {
-            //        debug!("Received {:?}", message);
             // Append to file.
             let mut file = OpenOptions::new()
                 .write(true)
@@ -70,9 +69,8 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
 mod tests {
     use super::*;
     use crate::common::message::{Message, Response};
-    use std::fs::{self, File};
+    use std::fs::File;
     use std::io::{self, BufRead};
-    use std::path::Path;
     use std::sync::Once;
     use tokio::sync::mpsc::{self, Receiver, Sender};
     use tracing::Level;

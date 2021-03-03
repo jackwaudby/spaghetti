@@ -22,6 +22,9 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     /// Stats
     pub stats: Option<Statistics>,
 
+    /// Benchmark state
+    pub benchmark_phase: BenchmarkPhase,
+
     /// Write half of tcp stream with buffers.
     pub connection: WriteConnection<R>,
 
@@ -46,11 +49,19 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     pub notify_listener_tx: tokio::sync::broadcast::Sender<Statistics>,
 }
 
+#[derive(Debug)]
+pub enum BenchmarkPhase {
+    Warmup,
+    Execution,
+}
+
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
-    pub async fn run(&mut self, _config: Arc<Config>) -> Result<()> {
+    pub async fn run(&mut self, config: Arc<Config>) -> Result<()> {
         // Shutdown avenues:
         // (a) read handler sends requests or internal error
         // (b) tm closes channel.
+
+        let warmup = config.get_int("warmup")? as u32;
 
         loop {
             // Check if read handler has sent message.
@@ -68,25 +79,34 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                             // Increment sent.
                             match response {
                                 Some(response) => {
-                                    // Update stats
-                                    if let Message::Response {
-                                        ref resp, latency, ..
-                                    } = response
-                                    {
-                                        match resp {
-                                            Response::Committed { .. } => {
-                                                debug!("Increment committed");
-                                                self.stats.as_mut().unwrap().inc_committed();
-                                                let lat = latency.unwrap().as_nanos();
-                                                debug!("Increment latency {}", lat);
-                                                self.stats.as_mut().unwrap().add_cum_latency(lat);
-                                            }
-                                            Response::Aborted { .. } => {
-                                                self.stats.as_mut().unwrap().inc_aborted()
+                                    // Update stats if execution phase
+                                    if let BenchmarkPhase::Execution = self.benchmark_phase {
+                                        if let Message::Response {
+                                            ref resp, latency, ..
+                                        } = response
+                                        {
+                                            match resp {
+                                                Response::Committed { .. } => {
+                                                    debug!("Increment committed");
+                                                    self.stats.as_mut().unwrap().inc_committed();
+                                                    let lat = latency.unwrap().as_nanos();
+                                                    debug!("Increment latency {}", lat);
+                                                    self.stats
+                                                        .as_mut()
+                                                        .unwrap()
+                                                        .add_cum_latency(lat);
+                                                }
+                                                Response::Aborted { .. } => {
+                                                    self.stats.as_mut().unwrap().inc_aborted()
+                                                }
                                             }
                                         }
                                     }
                                     self.responses_sent = self.responses_sent + 1;
+                                    if self.responses_sent == warmup {
+                                        self.benchmark_phase = BenchmarkPhase::Execution;
+                                        info!("Client {} warmup phase complete", self.id);
+                                    }
                                     let f = response.into_frame();
                                     self.connection.write_frame(&f).await?;
                                 }
@@ -114,25 +134,31 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                     match response {
                         Some(response) => {
                             // Update stats
-                            if let Message::Response {
-                                ref resp, latency, ..
-                            } = response
-                            {
-                                match resp {
-                                    Response::Committed { .. } => {
-                                        debug!("Increment committed");
-                                        self.stats.as_mut().unwrap().inc_committed();
-                                        let lat = latency.unwrap().as_nanos();
-                                        debug!("Increment latency {}", lat);
-                                        self.stats.as_mut().unwrap().add_cum_latency(lat);
-                                    }
-                                    Response::Aborted { .. } => {
-                                        self.stats.as_mut().unwrap().inc_aborted()
+                            if let BenchmarkPhase::Execution = self.benchmark_phase {
+                                if let Message::Response {
+                                    ref resp, latency, ..
+                                } = response
+                                {
+                                    match resp {
+                                        Response::Committed { .. } => {
+                                            debug!("Increment committed");
+                                            self.stats.as_mut().unwrap().inc_committed();
+                                            let lat = latency.unwrap().as_nanos();
+                                            debug!("Increment latency {}", lat);
+                                            self.stats.as_mut().unwrap().add_cum_latency(lat);
+                                        }
+                                        Response::Aborted { .. } => {
+                                            self.stats.as_mut().unwrap().inc_aborted()
+                                        }
                                     }
                                 }
                             }
                             // Increment responses sent.accept
                             self.responses_sent = self.responses_sent + 1;
+                            if self.responses_sent == warmup {
+                                self.benchmark_phase = BenchmarkPhase::Execution;
+                                info!("Client {} warmup phase complete", self.id);
+                            }
                             let f = response.into_frame();
                             self.connection.write_frame(&f).await?;
                         }

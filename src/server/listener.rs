@@ -9,7 +9,7 @@ use crate::server::manager::TransactionManager;
 use crate::server::read_handler::{ReadHandler, State};
 use crate::server::statistics::GlobalStatistics;
 use crate::server::statistics::Statistics;
-use crate::server::write_handler::WriteHandler;
+use crate::server::write_handler::{BenchmarkPhase, WriteHandler};
 use crate::Result;
 
 use std::time::Duration;
@@ -20,7 +20,7 @@ use core::fmt::Debug;
 use std::sync::Arc;
 use tokio::io;
 use tokio::net::TcpListener;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 /// Server listener state.
 #[derive(Debug)]
@@ -80,7 +80,7 @@ impl Listener {
             while let Ok(local_stats) = self.listener_shutdown_rx.try_recv() {
                 // Merge stats here.
                 info!("Connection {} was closed", local_stats.get_client_id());
-                info!("Stats:\n{}", local_stats);
+                debug!("Stats:\n{}", local_stats);
                 self.stats.merge_into(local_stats);
                 self.active_connections -= 1;
             }
@@ -112,6 +112,7 @@ impl Listener {
                     };
                     let mut write_handler = WriteHandler {
                         id: self.next_id,
+                        benchmark_phase: BenchmarkPhase::Warmup,
                         stats: Some(Statistics::new(self.next_id)),
                         connection: WriteConnection::new(wr),
                         response_rx,

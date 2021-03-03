@@ -4,6 +4,8 @@ log = "info"
 timeout = 5
 mpsc_size = 32
 
+warmup = 2
+
 protocol="2pl"
 workers = 4
 

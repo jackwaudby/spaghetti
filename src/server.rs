@@ -12,8 +12,10 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::net::TcpListener;
 use tokio::signal;
+
 use tracing::{debug, error, info};
 
 pub mod read_handler;
@@ -39,6 +41,8 @@ pub mod statistics;
 /// Accepts connection on the listener address, spawns handler for each.
 /// ctrl-c triggers the shutdown.
 pub async fn run(config: Arc<Config>) -> Result<()> {
+    let mut g_stats = GlobalStatistics::new();
+    let dg_start = Instant::now();
     info!("Initialise {:?} workload", config.get_str("workload")?);
 
     info!("Initialise tables and indexes");
@@ -48,6 +52,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let mut rng: StdRng = SeedableRng::from_entropy();
     workload.populate_tables(&mut rng)?;
     info!("Tables loaded");
+    let dg_end = dg_start.elapsed();
+    g_stats.set_data_generation(dg_end);
 
     info!("Initialise listener");
     let add = config.get_str("address")?;
@@ -69,7 +75,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let mut list = Listener {
         listener,
         next_id: 0,
-        stats: GlobalStatistics::new(),
+        stats: g_stats,
         active_connections: 0,
         notify_read_handlers_tx,
         notify_tm_tx,
@@ -142,6 +148,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         return Err(Box::new(SpaghettiError::ThreadPoolClosed));
     }
     stats.end();
+    stats.write_to_file();
     info!("{}", stats);
     Ok(())
 }

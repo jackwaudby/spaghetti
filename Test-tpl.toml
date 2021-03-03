@@ -6,6 +6,7 @@ mpsc_size = 32
 
 protocol="2pl"
 workers = 4
+warmup = 1
 
 transactions = 20
 workload = "tatp"

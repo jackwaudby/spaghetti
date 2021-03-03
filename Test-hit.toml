@@ -1,12 +1,14 @@
 address = "127.0.0.1"
 port = 6142
-log = "debug"
+log = "info"
 timeout = 5
 mpsc_size = 32
 
 protocol="hit"
 
-transactions = 20
+warmup = 2
+
+transactions = 5
 workload = "tatp"
 workers = 1
 schema = "tatp_schema.txt"

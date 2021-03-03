@@ -6,6 +6,8 @@ mpsc_size = 32
 
 protocol="sgt"
 
+warmup = 1
+
 transactions = 3
 workload = "tatp"
 schema = "tatp_schema.txt"
