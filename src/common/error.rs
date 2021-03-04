@@ -221,14 +221,8 @@ mod tests {
         let e1 = FatalError::Incomplete;
         let e2 = FatalError::Invalid;
         let e3 = FatalError::CorruptedFrame;
-        let e4 = FatalError::IncorrectWorkload;
-        let e5 = FatalError::TableNotFound;
-        let e7 = FatalError::NoPrimaryIndex;
         let e8 = FatalError::UnexpectedMessage;
         let e9 = FatalError::ConnectionUnexpectedlyClosed;
-        let e10 = FatalError::RowAlreadyExists;
-        let e12 = FatalError::InvalidColumnType;
-        let e13 = FatalError::RowDirty;
         let e14 = FatalError::NotTrackingAccessHistory;
 
         assert_eq!(
@@ -241,14 +235,8 @@ mod tests {
             format!("{}", e3),
             format!("remote connection closed during sending of a frame")
         );
-        assert_eq!(format!("{}", e4), format!("workload not recognised"));
-        assert_eq!(format!("{}", e5), format!("table not found"));
-        assert_eq!(format!("{}", e7), format!("no primary index on table"));
         assert_eq!(format!("{}", e8), format!("unexpected message"));
         assert_eq!(format!("{}", e9), format!("connection unexpectedly closed"));
-        assert_eq!(format!("{}", e10), format!("row already exists in index."));
-        assert_eq!(format!("{}", e12), format!("invalid column type"));
-        assert_eq!(format!("{}", e13), format!("row already dirty"));
         assert_eq!(format!("{}", e14), format!("not tracking access history"));
     }
 }

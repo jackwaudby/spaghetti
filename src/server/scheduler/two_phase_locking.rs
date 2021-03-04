@@ -1406,13 +1406,13 @@ mod tests {
                 tpl.update("subscriber", pk, &columns, &values_b, tb)
                     .unwrap_err()
             ),
-            "Aborted: lock request for denied"
+            "lock request for denied"
         );
 
         // Write by Tc
         assert_eq!(
             format!("{}", tpl.read("subscriber", pk, &columns, tc).unwrap_err()),
-            "Aborted: lock request for denied"
+            "lock request for denied"
         );
 
         // Commit Ta

@@ -466,7 +466,7 @@ mod tests {
                 get_subscriber_data(GetSubscriberData { s_id: 100 }, Arc::clone(&protocol))
                     .unwrap_err()
             ),
-            format!("Aborted: Subscriber(100) does not exist in index.")
+            format!("not found: row Subscriber(100) in index sub_idx")
         );
 
         ///////////////////////////////////////
@@ -499,7 +499,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("Aborted: SpecialFacility(10, 1) does not exist in index.")
+            format!("not found: row SpecialFacility(10, 1) in index special_idx")
         );
 
         //////////////////////////////////
@@ -529,7 +529,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("Aborted: AccessInfo(19, 12) does not exist in index.")
+            format!("not found: row AccessInfo(19, 12) in index access_idx")
         );
 
         ////////////////////////////////////////////
@@ -625,7 +625,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("Aborted: Subscriber(1345) does not exist in index.")
+            format!("not found: row Subscriber(1345) in index sub_idx")
         );
 
         ////////////////////////////////
@@ -689,7 +689,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("Aborted: Subscriber(1345) does not exist in index.")
+            format!("not found: row Subscriber(1345) in index sub_idx")
         );
 
         /////////////////////////////////////////
@@ -711,7 +711,7 @@ mod tests {
                     )
                     .unwrap_err()
             ),
-            format!("CallForwarding(1, 3, 0) does not exist in index.")
+            format!("not found: row CallForwarding(1, 3, 0) in index call_idx")
         );
 
         assert_eq!(
@@ -793,7 +793,7 @@ mod tests {
                     )
                     .unwrap_err()
             ),
-            format!("CallForwarding(2, 2, 16) does not exist in index.")
+            format!("not found: row CallForwarding(2, 2, 16) in index call_idx")
         );
     }
 }

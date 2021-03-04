@@ -170,7 +170,6 @@ impl fmt::Display for ColumnKind {
 mod tests {
 
     use super::*;
-    use crate::common::error::SpaghettiError;
 
     #[test]
     fn catalog_test() {
@@ -198,7 +197,7 @@ mod tests {
 
         assert_eq!(
             format!("{}", catalog.add_column(("images", "blob")).unwrap_err()),
-            format!("invalid column type")
+            format!("invalid: column type blob")
         );
 
         assert_eq!(catalog.table_id(), 1);
@@ -206,14 +205,6 @@ mod tests {
 
         assert_eq!(catalog.column_cnt(), 3);
         assert_eq!(catalog.column_position_by_name("price").unwrap(), 1);
-        assert_eq!(
-            *catalog
-                .column_position_by_name("location")
-                .unwrap_err()
-                .downcast::<SpaghettiError>()
-                .unwrap(),
-            SpaghettiError::ColumnNotFound("location".to_string())
-        );
 
         assert_eq!(
             catalog.column_type_by_name("desc").unwrap(),
