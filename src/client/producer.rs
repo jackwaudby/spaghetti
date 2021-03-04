@@ -8,7 +8,7 @@ use crate::Result;
 
 use config::Config;
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
+// use tokio::time::{sleep, Duration};
 use tracing::info;
 
 /// `Producer` generates transactions and sends them to the 'WriteHandler`.
@@ -28,6 +28,9 @@ pub struct Producer {
     /// Channel to `WriteHandler`.
     pub write_task_tx: tokio::sync::mpsc::Sender<Message>,
 
+    /// Channel from `ReadHandler` notifying a responses has been received.
+    pub received_rx: tokio::sync::mpsc::Receiver<()>,
+
     /// Listen for client shutdown notification.
     pub listen_m_rx: Shutdown<tokio::sync::mpsc::Receiver<()>>,
 }
@@ -38,6 +41,7 @@ impl Producer {
         configuration: Arc<Config>,
         write_task_tx: tokio::sync::mpsc::Sender<Message>,
         listen_m_rx: tokio::sync::mpsc::Receiver<()>,
+        received_rx: tokio::sync::mpsc::Receiver<()>,
     ) -> Result<Producer> {
         // Get workload type.
         let workload = configuration.get_str("workload")?;
@@ -71,6 +75,7 @@ impl Producer {
             sent: 0,
             transactions,
             write_task_tx,
+            received_rx,
             listen_m_rx,
         })
     }
@@ -99,10 +104,16 @@ pub async fn run(mut producer: Producer) -> Result<()> {
                     return Ok(());
                 }
             };
-            // Delay
-            sleep(Duration::from_millis(producer.gen_delay)).await;
-            // Send to write handler, waiting until capacity.
+
+            // Send transaction.
             producer.write_task_tx.send(maybe_transaction).await?;
+            // Wait until response received
+            producer.received_rx.recv().await.unwrap();
+
+            // Delay
+            // sleep(Duration::from_millis(producer.gen_delay)).await;
+            // Send to write handler, waiting until capacity.
+
             // Increment transactions sent.
             producer.sent += 1;
         }

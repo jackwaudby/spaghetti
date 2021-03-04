@@ -35,12 +35,14 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let mpsc_size = config.get_int("mpsc_size")?;
     let (write_task_tx, write_task_rx): (Sender<Message>, Receiver<Message>) =
         mpsc::channel(mpsc_size as usize);
+    // `ReadHandler` to `Producer` to notify request has received a response.
+    let (received_tx, received_rx): (Sender<()>, Receiver<()>) = mpsc::channel(mpsc_size as usize);
     // `ReadHandler` to `Consumer`.
     let (read_task_tx, read_task_rx): (Sender<Message>, Receiver<Message>) =
         mpsc::channel(mpsc_size as usize);
 
     //// Producer ////
-    let p = Producer::new(Arc::clone(&config), write_task_tx, listen_m_rx)?;
+    let p = Producer::new(Arc::clone(&config), write_task_tx, listen_m_rx, received_rx)?;
 
     //// Consumer ////
     let c = Consumer::new(read_task_rx, notify_m_tx);
@@ -60,7 +62,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let wh = WriteHandler::new(w, write_task_rx);
 
     //// ReadHandler ////
-    let rh = ReadHandler::new(r, read_task_tx);
+    let rh = ReadHandler::new(r, read_task_tx, received_tx);
 
     // Join tasks and listen for shutdown.
     tokio::select! {

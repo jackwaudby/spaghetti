@@ -4,7 +4,7 @@ use crate::common::frame::{ParseError, ParseErrorKind};
 use crate::common::message::Message;
 use crate::Result;
 use tokio::io::AsyncRead;
-//use tracing::debug;
+use tracing::debug;
 
 /// Manages the read half of the `client` TCP stream.
 pub struct ReadHandler<R: AsyncRead + Unpin> {
@@ -12,6 +12,8 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
     pub connection: ReadConnection<R>,
     /// `Message` channel to `Consumer`.
     pub read_task_tx: tokio::sync::mpsc::Sender<Message>,
+    /// Notify producer request has received a response
+    pub received_tx: tokio::sync::mpsc::Sender<()>,
 }
 
 impl<R: AsyncRead + Unpin> ReadHandler<R> {
@@ -19,10 +21,12 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
     pub fn new(
         connection: ReadConnection<R>,
         read_task_tx: tokio::sync::mpsc::Sender<Message>,
+        received_tx: tokio::sync::mpsc::Sender<()>,
     ) -> ReadHandler<R> {
         ReadHandler {
             connection,
             read_task_tx,
+            received_tx,
         }
     }
 }
@@ -58,8 +62,6 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                             Ok(decoded) => match decoded {
                                 // Connection gracefully closed.
                                 Message::ConnectionClosed => {
-                                    // debug!("Connection closed");
-                                    // debug!("Read handler has sent connection closed message to consumer");
                                     rh.read_task_tx.send(decoded).await.unwrap();
                                     return Ok(());
                                 }
@@ -68,11 +70,20 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                                     request_no,
                                     resp: response,
                                     latency,
-                                } => Message::Response {
-                                    request_no,
-                                    resp: response,
-                                    latency,
-                                },
+                                } => {
+                                    // Notify producer.
+                                    debug!("Notify producer");
+
+                                    if let Err(_) = rh.received_tx.send(()).await {
+                                        debug!("Producer's received dropped");
+                                    }
+
+                                    Message::Response {
+                                        request_no,
+                                        resp: response,
+                                        latency,
+                                    }
+                                }
                                 // Received unexpected message.
                                 _ => return Err(SpaghettiError::UnexpectedMessage),
                             },
@@ -148,8 +159,9 @@ mod tests {
         // Create read handler.
         let r = ReadConnection::new(mock);
         let (read_task_tx, _): (Sender<Message>, Receiver<Message>) = mpsc::channel(32);
+        let (recevied_tx, _): (Sender<()>, Receiver<()>) = mpsc::channel(32);
 
-        let rh = ReadHandler::new(r, read_task_tx);
+        let rh = ReadHandler::new(r, read_task_tx, recevied_tx);
         // Run read handler.
         let res = tokio_test::block_on(run(rh));
 
@@ -163,7 +175,7 @@ mod tests {
     #[test]
     fn read_handler_happy_path_test() {
         // Initialise logging.
-        logging(false);
+        logging(true);
         // Initialise script builder.
         let mut builder = Builder::new();
 
@@ -209,8 +221,9 @@ mod tests {
         let r = ReadConnection::new(mock);
         let (read_task_tx, mut read_task_rx): (Sender<Message>, Receiver<Message>) =
             mpsc::channel(32);
+        let (recevied_tx, _): (Sender<()>, Receiver<()>) = mpsc::channel(32);
 
-        let rh = ReadHandler::new(r, read_task_tx);
+        let rh = ReadHandler::new(r, read_task_tx, recevied_tx);
         // Run read handler.
         let res = tokio_test::block_on(run(rh));
         assert_eq!(res.unwrap(), ());
@@ -247,7 +260,9 @@ mod tests {
         // Create read handler.
         let r = ReadConnection::new(mock);
         let (read_task_tx, _): (Sender<Message>, Receiver<Message>) = mpsc::channel(32);
-        let rh = ReadHandler::new(r, read_task_tx);
+        let (recevied_tx, _): (Sender<()>, Receiver<()>) = mpsc::channel(32);
+
+        let rh = ReadHandler::new(r, read_task_tx, recevied_tx);
         // Run read handler.
         let res = tokio_test::block_on(run(rh));
         assert_eq!(
