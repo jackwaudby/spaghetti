@@ -59,7 +59,7 @@ impl Workload {
                 let internals = Internal::new("tpcc_short_schema.txt", config)?;
                 Ok(Workload::Tpcc(internals))
             }
-            _ => Err(Box::newo(FatalError::IncorrectWorkload(workload))),
+            _ => Err(Box::new(FatalError::IncorrectWorkload(workload))),
         }
     }
 
