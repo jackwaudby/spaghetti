@@ -1,4 +1,4 @@
-use crate::common::error::SpaghettiError;
+use crate::common::error::FatalError;
 use crate::common::message::Message;
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::shutdown::Shutdown;
@@ -61,7 +61,7 @@ impl Producer {
                 };
                 ParameterGenerator::Tpcc(tpcc_gen)
             }
-            _ => return Err(Box::new(SpaghettiError::IncorrectWorkload)),
+            _ => return Err(FatalError::IncorrectWorkload(workload).into()),
         };
         // Create shutdown listener.
         let listen_m_rx = Shutdown::new_mpsc(listen_m_rx);

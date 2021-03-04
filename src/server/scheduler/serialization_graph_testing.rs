@@ -1,6 +1,7 @@
+use crate::common::error::NonFatalError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::serialization_graph_testing::node::{EdgeType, Node, State};
-use crate::server::scheduler::{Aborted, Scheduler, TransactionInfo};
+use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::index::Index;
 use crate::server::storage::row::{Access, Row};
@@ -34,7 +35,7 @@ impl Scheduler for SerializationGraphTesting {
     /// Register a transaction with the serialization graph.
     ///
     /// Transaction gets the ID of the thread it is executed on.
-    fn register(&self) -> Result<TransactionInfo, Aborted> {
+    fn register(&self) -> Result<TransactionInfo, NonFatalError> {
         // Get thread name.
         let tname = thread::current().name().unwrap().to_string();
         let node_id = tname.parse::<usize>().unwrap();
@@ -49,7 +50,8 @@ impl Scheduler for SerializationGraphTesting {
     /// Create row in table. The row is immediately inserted into the table and marked as dirty.
     ///
     /// # Aborts
-    /// - Table or index does not exist
+    ///
+    /// An abort is triggered if either (i) table or index does not exist, (ii) unable to intialise row.
     /// - Incorrect column or value
     fn create(
         &self,
@@ -58,34 +60,30 @@ impl Scheduler for SerializationGraphTesting {
         columns: &Vec<&str>,
         values: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<(), Aborted> {
-        // Get table.
+    ) -> Result<(), NonFatalError> {
         let table = self.get_table(table, meta.clone())?;
-        // Init row.
         let mut row = Row::new(Arc::clone(&table), "sgt");
         row.set_primary_key(key);
-        // Init values.
         for (i, column) in columns.iter().enumerate() {
             match row.init_value(column, &values[i].to_string()) {
                 Ok(_) => {}
-                Err(e) => {
+                Err(_) => {
                     self.abort(meta.clone()).unwrap();
-                    return Err(Aborted {
-                        reason: format!("{}", e),
-                    });
+                    return Err(NonFatalError::UnableToInitialiseRow(
+                        table.to_string(),
+                        column.to_string(),
+                        values[i].to_string(),
+                    ));
                 }
             }
         }
-        // Get Index
         let index = self.get_index(table, meta.clone())?;
-        // Set values - Needed to make the row "dirty"
+        // Set values - needed to make the row "dirty"
         match row.set_values(columns, values, "sgt", &meta.get_id().unwrap()) {
             Ok(_) => {}
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e);
             }
         }
 
@@ -106,9 +104,7 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 debug!("Abort transaction {:?}: {:?}", tid, e);
                 self.abort(meta.clone()).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(e)
             }
         }
     }
@@ -122,7 +118,7 @@ impl Scheduler for SerializationGraphTesting {
         key: PrimaryKey,
         columns: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<Vec<Data>, Aborted> {
+    ) -> Result<Vec<Data>, NonFatalError> {
         debug!("Execute read operation");
         // Get table.
         let table = self.get_table(table, meta.clone())?;
@@ -134,9 +130,7 @@ impl Scheduler for SerializationGraphTesting {
             Ok(rg) => rg,
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e);
             }
         };
 
@@ -162,9 +156,7 @@ impl Scheduler for SerializationGraphTesting {
                         // Insert edges
                         if let Err(e) = self.add_edge(from_node, this_node, false) {
                             self.abort(meta.clone()).unwrap();
-                            return Err(Aborted {
-                                reason: format!("{}", e),
-                            });
+                            return Err(e.into());
                         }
                     }
                 }
@@ -182,9 +174,7 @@ impl Scheduler for SerializationGraphTesting {
             }
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e);
             }
         }
     }
@@ -199,7 +189,7 @@ impl Scheduler for SerializationGraphTesting {
         columns: &Vec<&str>,
         values: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<(), Aborted> {
+    ) -> Result<(), NonFatalError> {
         // Get table.
         let table = self.get_table(table, meta.clone())?;
         // Get index for this key's table.
@@ -210,9 +200,7 @@ impl Scheduler for SerializationGraphTesting {
             Ok(rg) => rg,
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e);
             }
         };
 
@@ -239,9 +227,7 @@ impl Scheduler for SerializationGraphTesting {
                             // Insert edges
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 self.abort(meta.clone()).unwrap();
-                                return Err(Aborted {
-                                    reason: format!("{}", e),
-                                });
+                                return Err(e.into());
                             }
                         }
                         // RW conflict
@@ -250,9 +236,7 @@ impl Scheduler for SerializationGraphTesting {
                             // Insert edges
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 self.abort(meta.clone()).unwrap();
-                                return Err(Aborted {
-                                    reason: format!("{}", e),
-                                });
+                                return Err(e.into());
                             }
                         }
                     }
@@ -268,15 +252,18 @@ impl Scheduler for SerializationGraphTesting {
             }
             Err(e) => {
                 self.abort(meta).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e);
             }
         }
     }
 
     /// Delete from row.
-    fn delete(&self, table: &str, key: PrimaryKey, meta: TransactionInfo) -> Result<(), Aborted> {
+    fn delete(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        meta: TransactionInfo,
+    ) -> Result<(), NonFatalError> {
         // Get table.
         let table = self.get_table(table, meta.clone())?;
         // Get index for this key's table.
@@ -299,9 +286,7 @@ impl Scheduler for SerializationGraphTesting {
                             // Insert edges
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 self.abort(meta.clone()).unwrap();
-                                return Err(Aborted {
-                                    reason: format!("{}", e),
-                                });
+                                return Err(e.into());
                             }
                         }
                         // RW conflict
@@ -310,9 +295,7 @@ impl Scheduler for SerializationGraphTesting {
                             let from_node: usize = tid.parse().unwrap();
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 self.abort(meta.clone()).unwrap();
-                                return Err(Aborted {
-                                    reason: format!("{}", e),
-                                });
+                                return Err(e.into());
                             }
                         }
                     }
@@ -328,9 +311,7 @@ impl Scheduler for SerializationGraphTesting {
             }
             Err(e) => {
                 self.abort(meta).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(e)
             }
         }
     }
@@ -391,7 +372,7 @@ impl Scheduler for SerializationGraphTesting {
     }
 
     /// Commit a transaction.
-    fn commit(&self, meta: TransactionInfo) -> Result<(), Aborted> {
+    fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         let id = meta.get_id().unwrap().parse::<usize>().unwrap();
         loop {
             let sl = self.get_shared_lock(id).unwrap();
@@ -425,9 +406,7 @@ impl Scheduler for SerializationGraphTesting {
             State::Aborted => {
                 self.abort(meta.clone()).unwrap();
                 let e = SerializationGraphTestingError::SerializableError;
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e.into());
             }
             State::Committed => {
                 // TODO: redunancy here.
@@ -639,36 +618,52 @@ impl SerializationGraphTesting {
     }
 
     /// Get shared reference to a table.
-    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, Aborted> {
+    ///
+    /// # Aborts
+    ///
+    /// Triggers an abort if the requested table does not exist.
+    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, NonFatalError> {
         // Get table.
         let res = self.data.get_internals().get_table(table);
         match res {
             Ok(table) => Ok(table),
-            Err(e) => {
+            Err(_) => {
                 self.abort(meta.clone()).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(NonFatalError::TableNotFound(table.to_string()))
             }
         }
     }
 
     /// Get primary index name on a table.
-    fn get_index_name(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<String, Aborted> {
+    ///
+    /// # Aborts
+    ///
+    /// Triggers an abort if the table does not have a primary index.
+    fn get_index_name(
+        &self,
+        table: Arc<Table>,
+        meta: TransactionInfo,
+    ) -> Result<String, NonFatalError> {
         let res = table.get_primary_index();
         match res {
             Ok(index_name) => Ok(index_name),
-            Err(e) => {
+            Err(_) => {
                 self.abort(meta.clone()).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(NonFatalError::NoPrimaryIndex(table.get_table_name()))
             }
         }
     }
 
     /// Get shared reference to index for a table.
-    fn get_index(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<Arc<Index>, Aborted> {
+    ///
+    /// # Aborts
+    ///
+    /// Triggers an abort if the table does not have a primary index.
+    fn get_index(
+        &self,
+        table: Arc<Table>,
+        meta: TransactionInfo,
+    ) -> Result<Arc<Index>, NonFatalError> {
         // Get index name.
         let index_name = self.get_index_name(table, meta.clone())?;
 
@@ -676,11 +671,9 @@ impl SerializationGraphTesting {
         let res = self.data.get_internals().get_index(&index_name);
         match res {
             Ok(index) => Ok(index),
-            Err(e) => {
+            Err(_) => {
                 self.abort(meta.clone()).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(NonFatalError::IndexNotFound(index_name))
             }
         }
     }

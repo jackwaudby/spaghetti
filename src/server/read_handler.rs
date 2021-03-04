@@ -1,5 +1,5 @@
 use crate::common::connection::ReadConnection;
-use crate::common::error::SpaghettiError;
+use crate::common::error::FatalError;
 use crate::common::message::{Message, Request, Transaction};
 use crate::common::shutdown::Shutdown;
 use crate::Result;
@@ -99,8 +99,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
             };
 
             // Check if socket unexpectedly closed.
-            let frame =
-                maybe_frame.ok_or(Box::new(SpaghettiError::ReadSocketUnexpectedlyClosed))?;
+            let frame = maybe_frame.ok_or(Box::new(FatalError::ReadSocketUnexpectedlyClosed))?;
 
             // Decode message.
             let decoded: Message = bincode::deserialize(&frame.get_payload())?;
@@ -115,7 +114,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
 
                 Message::CloseConnection => break,
                 _ => {
-                    return Err(Box::new(SpaghettiError::UnexpectedMessage));
+                    return Err(Box::new(FatalError::UnexpectedMessage));
                 }
             };
             // Increment transaction requests received.
@@ -123,7 +122,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
 
             // Attempt to send to transaction manager.
             if let Err(_) = self.work_tx.send(request) {
-                return Err(Box::new(SpaghettiError::ThreadPoolClosed));
+                return Err(Box::new(FatalError::ThreadPoolClosed));
             };
         }
 

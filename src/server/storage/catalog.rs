@@ -1,5 +1,4 @@
-use crate::common::error::SpaghettiError;
-use crate::Result;
+use crate::common::error::{FatalError, NonFatalError};
 
 use std::fmt;
 
@@ -8,10 +7,13 @@ use std::fmt;
 pub struct Catalog {
     /// Table name.
     table_name: String,
+
     /// Table identifier.
     table_id: u64,
+
     /// Number of columns in table.
     column_cnt: u64,
+
     /// List of columns.
     columns: Vec<Column>,
 }
@@ -37,13 +39,17 @@ impl Catalog {
         self.table_id
     }
 
-    /// Adds a column (name, type) to the schema
-    pub fn add_column(&mut self, col: (&str, &str)) -> Result<()> {
+    /// Adds a column (name, type) to the schema.
+    ///
+    /// # Fatal Error
+    ///
+    /// Returns a fatal error if the desired column type is not recognised.
+    pub fn add_column(&mut self, col: (&str, &str)) -> Result<(), FatalError> {
         let col_type = match col.1 {
             "int" | "int64_t" | "uint64_t" => ColumnKind::Int,
             "string" => ColumnKind::VarChar,
             "double" => ColumnKind::Double,
-            _ => return Err(SpaghettiError::InvalidColumnType.into()),
+            _ => return Err(FatalError::InvalidColumnType(col.1.to_string())),
         };
 
         let column = Column::new(col.0, col_type);
@@ -53,15 +59,23 @@ impl Catalog {
     }
 
     /// Given a column name returns the column position.
-    pub fn column_position_by_name(&self, name: &str) -> Result<usize> {
+    ///
+    /// # Non-Fatal Error
+    ///
+    /// Returns a non-fatal error if the column cannot be found.
+    pub fn column_position_by_name(&self, name: &str) -> Result<usize, NonFatalError> {
         match self.columns.iter().position(|x| *x.name() == name) {
             Some(pos) => Ok(pos),
-            None => Err(Box::new(SpaghettiError::ColumnNotFound(name.to_string()))),
+            None => Err(NonFatalError::ColumnNotFound(name.to_string())),
         }
     }
 
     /// Given a column name returns the column type.
-    pub fn column_type_by_name(&self, col_name: &str) -> Result<&ColumnKind> {
+    ///
+    /// # Non-Fatal Error
+    ///
+    /// Returns a non-fatal error if the column cannot be found.
+    pub fn column_type_by_name(&self, col_name: &str) -> Result<&ColumnKind, NonFatalError> {
         let pos = self.column_position_by_name(col_name)?;
         let column_type = self.columns[pos].kind();
         Ok(column_type)

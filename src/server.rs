@@ -1,4 +1,4 @@
-use crate::common::error::SpaghettiError;
+use crate::common::error::FatalError;
 use crate::common::message::Request;
 use crate::server::listener::Listener;
 use crate::server::manager::State as TransactionManagerState;
@@ -145,7 +145,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
 
     info!("Server shutdown");
     if let TransactionManagerState::ThreadPoolPanicked = tm_state {
-        return Err(Box::new(SpaghettiError::ThreadPoolClosed));
+        return Err(Box::new(FatalError::ThreadPoolClosed));
     }
     stats.end();
     stats.write_to_file();

@@ -1,4 +1,4 @@
-use crate::common::error::SpaghettiError;
+use crate::common::error::FatalError;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -135,7 +135,7 @@ impl ThreadPool {
         // If panicked then stop.
         if self.is_shutdown {
             debug!("Unable to execute request");
-            return Err(Box::new(SpaghettiError::ThreadPoolClosed));
+            return Err(Box::new(FatalError::ThreadPoolClosed));
         }
 
         // New job instance which holds the closure to pass to the thread.

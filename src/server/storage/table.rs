@@ -1,6 +1,5 @@
-use crate::common::error::SpaghettiError;
+use crate::common::error::NonFatalError;
 use crate::server::storage::catalog::Catalog;
-use crate::Result;
 
 use std::fmt;
 use std::sync::Mutex;
@@ -65,11 +64,11 @@ impl Table {
     }
 
     /// Get the primary index for a table
-    pub fn get_primary_index(&self) -> Result<String> {
+    pub fn get_primary_index(&self) -> Result<String, NonFatalError> {
         let lock = self.primary_index.lock().unwrap();
         match &*lock {
             Some(pi) => Ok(pi.clone()),
-            None => Err(Box::new(SpaghettiError::NoPrimaryIndex)),
+            None => Err(NonFatalError::NoPrimaryIndex(self.get_table_name())),
         }
     }
 

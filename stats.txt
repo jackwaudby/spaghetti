@@ -1,7 +1,0 @@
-data generation: 0(secs)
-clients: 1
-completed transactions: 2
-committed transactions: 1
-aborted transactions: 1
-throughput: 0.2(txn/s)
-latency: 0.2(ms)

@@ -1,5 +1,5 @@
 use crate::common::connection::ReadConnection;
-use crate::common::error::SpaghettiError;
+use crate::common::error::FatalError;
 use crate::common::frame::{ParseError, ParseErrorKind};
 use crate::common::message::Message;
 use crate::Result;
@@ -85,7 +85,7 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                                     }
                                 }
                                 // Received unexpected message.
-                                _ => return Err(SpaghettiError::UnexpectedMessage),
+                                _ => return Err(FatalError::UnexpectedMessage),
                             },
                             Err(e) => {
                                 let error: ParseError = e.into();
@@ -96,16 +96,14 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                     // The connection has been unexpectedly closed.
                     None => {
                         //            debug!("Server unexpectedly closed");
-                        return Err(SpaghettiError::ConnectionUnexpectedlyClosed);
+                        return Err(FatalError::ConnectionUnexpectedlyClosed);
                     }
                 };
                 //       debug!("Received {:?}", response);
                 rh.read_task_tx.send(response).await.unwrap();
             } else {
                 // There has been an encoding error.
-                return Err(SpaghettiError::from(ParseError::new(
-                    ParseErrorKind::Invalid,
-                )));
+                return Err(FatalError::from(ParseError::new(ParseErrorKind::Invalid)));
             }
         }
     });
@@ -166,8 +164,8 @@ mod tests {
         let res = tokio_test::block_on(run(rh));
 
         assert_eq!(
-            *res.unwrap_err().downcast::<SpaghettiError>().unwrap(),
-            SpaghettiError::Parse(ParseError::new(ParseErrorKind::Invalid))
+            *res.unwrap_err().downcast::<FatalError>().unwrap(),
+            FatalError::Parse(ParseError::new(ParseErrorKind::Invalid))
         );
     }
 
@@ -266,8 +264,8 @@ mod tests {
         // Run read handler.
         let res = tokio_test::block_on(run(rh));
         assert_eq!(
-            *res.unwrap_err().downcast::<SpaghettiError>().unwrap(),
-            SpaghettiError::UnexpectedMessage
+            *res.unwrap_err().downcast::<FatalError>().unwrap(),
+            FatalError::UnexpectedMessage
         );
     }
 

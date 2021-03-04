@@ -1,5 +1,5 @@
 use crate::common::connection::WriteConnection;
-use crate::common::error::SpaghettiError;
+use crate::common::error::FatalError;
 use crate::common::message::Message;
 use crate::Result;
 
@@ -74,7 +74,7 @@ pub async fn run<R: AsyncWrite + Unpin + Send + 'static>(mut wh: WriteHandler<R>
                     // Close receiver end from producer.
                     //         debug!("Error with stream, close channel to producer");
                     wh.write_task_rx.close();
-                    return Err(SpaghettiError::ConnectionUnexpectedlyClosed.into());
+                    return Err(FatalError::ConnectionUnexpectedlyClosed.into());
                 }
             }
         }

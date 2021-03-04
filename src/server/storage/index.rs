@@ -1,8 +1,7 @@
-use crate::common::error::SpaghettiError;
+use crate::common::error::NonFatalError;
 use crate::server::storage::row::OperationResult;
 use crate::server::storage::row::Row;
 use crate::workloads::PrimaryKey;
-use crate::Result;
 
 use chashmap::{CHashMap, ReadGuard};
 use std::fmt;
@@ -48,14 +47,17 @@ impl Index {
     /// # Errors
     ///
     /// - Row already exists with `key`.
-    pub fn insert(&self, key: PrimaryKey, row: Row) -> Result<()> {
+    pub fn insert(&self, key: PrimaryKey, row: Row) -> Result<(), NonFatalError> {
         let res = self.map.insert(key, Mutex::new(row));
 
         match res {
             Some(existing_row) => {
                 // A row already existed for this key, which has now been overwritten, put back.
                 self.map.insert(key, existing_row);
-                Err(Box::new(SpaghettiError::RowAlreadyExists))
+                Err(NonFatalError::RowAlreadyExists(
+                    format!("{}", key),
+                    self.get_name(),
+                ))
             }
             None => Ok(()),
         }
@@ -69,15 +71,16 @@ impl Index {
     ///
     /// - Row does not exist with `key`.
     /// - Row already dirty or marked for delete.
-    pub fn delete(&self, key: PrimaryKey, protocol: &str) -> Result<OperationResult> {
+    pub fn delete(
+        &self,
+        key: PrimaryKey,
+        protocol: &str,
+    ) -> Result<OperationResult, NonFatalError> {
         // Attempt to get read guard.
-        let read_guard = self
-            .map
-            .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
-                "{}",
-                key
-            ))))?;
+        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+            format!("{}", key),
+            self.get_name(),
+        ))?;
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Execute delete operation.
@@ -92,16 +95,16 @@ impl Index {
     /// # Errors
     ///
     /// - Row does not exist with `key`.
-    pub fn remove(&self, key: PrimaryKey) -> Result<Row> {
+    pub fn remove(&self, key: PrimaryKey) -> Result<Row, NonFatalError> {
         // Remove the row from the map.
         let row = self.map.remove(&key);
         match row {
             Some(row) => Ok(row.into_inner().unwrap()),
             None => {
-                return Err(Box::new(SpaghettiError::RowDoesNotExist(format!(
-                    "{}",
-                    key
-                ))))
+                return Err(NonFatalError::RowNotFound(
+                    format!("{}", key),
+                    self.get_name(),
+                ))
             }
         }
     }
@@ -118,15 +121,12 @@ impl Index {
         columns: &Vec<&str>,
         protocol: &str,
         tid: &str,
-    ) -> Result<OperationResult> {
+    ) -> Result<OperationResult, NonFatalError> {
         // Attempt to get read guard.
-        let read_guard = self
-            .map
-            .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
-                "{}",
-                key
-            ))))?;
+        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+            format!("{}", key),
+            self.get_name(),
+        ))?;
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Execute read operation.
@@ -134,14 +134,15 @@ impl Index {
         Ok(res)
     }
 
-    pub fn get_lock_on_row(&self, key: PrimaryKey) -> Result<ReadGuard<PrimaryKey, Mutex<Row>>> {
+    pub fn get_lock_on_row(
+        &self,
+        key: PrimaryKey,
+    ) -> Result<ReadGuard<PrimaryKey, Mutex<Row>>, NonFatalError> {
         // Attempt to get read guard.
-        self.map
-            .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
-                "{}",
-                key
-            ))))
+        self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+            format!("{}", key),
+            self.get_name(),
+        ))
     }
 
     /// Write `values` to `columns` in a `Row` with the given `key`.
@@ -158,15 +159,12 @@ impl Index {
         values: &Vec<&str>,
         protocol: &str,
         tid: &str,
-    ) -> Result<OperationResult> {
+    ) -> Result<OperationResult, NonFatalError> {
         // Attempt to get read guard.
-        let read_guard = self
-            .map
-            .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
-                "{}",
-                key
-            ))))?;
+        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+            format!("{}", key),
+            self.get_name(),
+        ))?;
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
         // Execute write operation.
@@ -182,7 +180,7 @@ impl Index {
     /// # Errors
     ///
     /// - Row does not exist with `key`.
-    pub fn commit(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<()> {
+    pub fn commit(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<(), NonFatalError> {
         // Check to be deleted
         let df = self
             .map
@@ -197,13 +195,10 @@ impl Index {
         } else {
             // Commit changes
             // Attempt to get read guard.
-            let read_guard =
-                self.map
-                    .get(&key)
-                    .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
-                        "{}",
-                        key
-                    ))))?;
+            let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+                format!("{}", key),
+                self.get_name(),
+            ))?;
 
             // Deref to row.
             let row = &mut *read_guard.lock().unwrap();
@@ -220,15 +215,12 @@ impl Index {
     /// # Errors
     ///
     /// - Row does not exist with `key`.
-    pub fn revert(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<()> {
+    pub fn revert(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<(), NonFatalError> {
         // Attempt to get read guard.
-        let read_guard = self
-            .map
-            .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
-                "{}",
-                key
-            ))))?;
+        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+            format!("{}", key),
+            self.get_name(),
+        ))?;
 
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
@@ -244,15 +236,12 @@ impl Index {
     /// # Errors
     ///
     /// - Row does not exist with `key`.
-    pub fn revert_read(&self, key: PrimaryKey, tid: &str) -> Result<()> {
+    pub fn revert_read(&self, key: PrimaryKey, tid: &str) -> Result<(), NonFatalError> {
         // Attempt to get read guard.
-        let read_guard = self
-            .map
-            .get(&key)
-            .ok_or(Box::new(SpaghettiError::RowDoesNotExist(format!(
-                "{}",
-                key
-            ))))?;
+        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+            format!("{}", key),
+            self.get_name(),
+        ))?;
 
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();

@@ -1,5 +1,5 @@
 use crate::common::connection::{ReadConnection, WriteConnection};
-use crate::common::error::SpaghettiError;
+use crate::common::error::FatalError;
 use crate::common::message::Message;
 use crate::common::message::Request;
 use crate::common::shutdown::Shutdown;
@@ -144,7 +144,7 @@ impl Listener {
                             .take()
                             .unwrap()
                             .send(read_handler.state)
-                            .map_err(|_| Box::new(SpaghettiError::WriteHandlerUnexpectedlyClosed))
+                            .map_err(|_| Box::new(FatalError::WriteHandlerUnexpectedlyClosed))
                         {
                             error!("{:?}", err);
                         }

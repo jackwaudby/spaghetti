@@ -1,10 +1,11 @@
+use crate::common::error::NonFatalError;
 use crate::server::scheduler::two_phase_locking::active_transaction::ActiveTransaction;
 use crate::server::scheduler::two_phase_locking::error::{
     TwoPhaseLockingError, TwoPhaseLockingErrorKind,
 };
 use crate::server::scheduler::two_phase_locking::lock_info::{Entry, LockInfo, LockMode};
+use crate::server::scheduler::Scheduler;
 use crate::server::scheduler::TransactionInfo;
-use crate::server::scheduler::{Aborted, Scheduler};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::index::Index;
 use crate::server::storage::row::Row;
@@ -42,7 +43,7 @@ impl Scheduler for TwoPhaseLocking {
     /// # Aborts
     ///
     /// A transaction with the same name is already registered.
-    fn register(&self) -> Result<TransactionInfo, Aborted> {
+    fn register(&self) -> Result<TransactionInfo, NonFatalError> {
         // Assign id and timestamp.
         let sys_time = SystemTime::now();
         let datetime: DateTime<Utc> = sys_time.into();
@@ -58,9 +59,7 @@ impl Scheduler for TwoPhaseLocking {
                     t.get_id().unwrap(),
                 ),
             );
-            return Err(Aborted {
-                reason: format!("{}", err),
-            });
+            return Err(err.into());
         }
 
         Ok(t)
@@ -81,7 +80,7 @@ impl Scheduler for TwoPhaseLocking {
         columns: &Vec<&str>,
         values: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<(), Aborted> {
+    ) -> Result<(), NonFatalError> {
         // Get table.
         let table = self.get_table(table, meta.clone())?;
         // Init row.
@@ -94,9 +93,7 @@ impl Scheduler for TwoPhaseLocking {
                 Ok(_) => {}
                 Err(e) => {
                     self.abort(meta.clone()).unwrap();
-                    return Err(Aborted {
-                        reason: format!("{}", e),
-                    });
+                    return Err(e);
                 }
             }
         }
@@ -108,9 +105,7 @@ impl Scheduler for TwoPhaseLocking {
             Ok(_) => {}
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e);
             }
         }
 
@@ -139,7 +134,7 @@ impl Scheduler for TwoPhaseLocking {
         key: PrimaryKey,
         columns: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<Vec<Data>, Aborted> {
+    ) -> Result<Vec<Data>, NonFatalError> {
         debug!(
             "{} requesting read lock on {:?}",
             meta.get_id().unwrap(),
@@ -187,9 +182,7 @@ impl Scheduler for TwoPhaseLocking {
                     }
                     Err(e) => {
                         self.abort(meta.clone()).unwrap();
-                        return Err(Aborted {
-                            reason: format!("{}", e),
-                        });
+                        return Err(e);
                     }
                 }
             }
@@ -219,9 +212,7 @@ impl Scheduler for TwoPhaseLocking {
                     }
                     Err(e) => {
                         self.abort(meta.clone()).unwrap();
-                        return Err(Aborted {
-                            reason: format!("{}", e),
-                        });
+                        return Err(e);
                     }
                 }
             }
@@ -230,9 +221,7 @@ impl Scheduler for TwoPhaseLocking {
                 debug!("Read lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", err),
-                });
+                return Err(err.into());
             }
         }
     }
@@ -254,7 +243,7 @@ impl Scheduler for TwoPhaseLocking {
         columns: &Vec<&str>,
         values: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<(), Aborted> {
+    ) -> Result<(), NonFatalError> {
         debug!(
             "Transaction {:?} requesting write lock on {:?}",
             meta.get_id().unwrap(),
@@ -302,9 +291,7 @@ impl Scheduler for TwoPhaseLocking {
                     }
                     Err(e) => {
                         self.abort(meta.clone()).unwrap();
-                        return Err(Aborted {
-                            reason: format!("{}", e),
-                        });
+                        return Err(e);
                     }
                 }
             }
@@ -329,9 +316,7 @@ impl Scheduler for TwoPhaseLocking {
                     }
                     Err(e) => {
                         self.abort(meta.clone()).unwrap();
-                        return Err(Aborted {
-                            reason: format!("{}", e),
-                        });
+                        return Err(e);
                     }
                 }
             }
@@ -339,9 +324,7 @@ impl Scheduler for TwoPhaseLocking {
                 debug!("Write lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", err),
-                });
+                return Err(err.into());
             }
         }
     }
@@ -354,7 +337,12 @@ impl Scheduler for TwoPhaseLocking {
     /// There is no primary index on this table.
     /// The index cannot be found.
     /// Row cannot be found.
-    fn delete(&self, table: &str, key: PrimaryKey, meta: TransactionInfo) -> Result<(), Aborted> {
+    fn delete(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        meta: TransactionInfo,
+    ) -> Result<(), NonFatalError> {
         // Get table.
         let table = self.get_table(table, meta.clone())?;
 
@@ -397,9 +385,7 @@ impl Scheduler for TwoPhaseLocking {
                     }
                     Err(e) => {
                         self.abort(meta.clone()).unwrap();
-                        return Err(Aborted {
-                            reason: format!("{}", e),
-                        });
+                        return Err(e);
                     }
                 }
             }
@@ -426,9 +412,7 @@ impl Scheduler for TwoPhaseLocking {
                     }
                     Err(e) => {
                         self.abort(meta.clone()).unwrap();
-                        return Err(Aborted {
-                            reason: format!("{}", e),
-                        });
+                        return Err(e);
                     }
                 }
             }
@@ -436,15 +420,13 @@ impl Scheduler for TwoPhaseLocking {
                 debug!("Write lock denied");
                 let err = TwoPhaseLockingError::new(TwoPhaseLockingErrorKind::LockRequestDenied);
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", err),
-                });
+                return Err(err.into());
             }
         }
     }
 
     /// Commit a transaction.
-    fn commit(&self, meta: TransactionInfo) -> Result<(), Aborted> {
+    fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         debug!("Commit transaction {:?}", meta.get_id().unwrap());
         // Get copy of rows to insert
         let rows = self
@@ -464,9 +446,7 @@ impl Scheduler for TwoPhaseLocking {
                     // Attempt to insert rows.
                     if let Err(err) = index.insert(key, row) {
                         self.abort(meta.clone()).unwrap();
-                        return Err(Aborted {
-                            reason: format!("{}", err),
-                        });
+                        return Err(err);
                     }
                 }
             }
@@ -865,36 +845,40 @@ impl TwoPhaseLocking {
     }
 
     /// Get shared reference to a table.
-    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, Aborted> {
+    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, NonFatalError> {
         // Get table.
         let res = self.data.get_internals().get_table(table);
         match res {
             Ok(table) => Ok(table),
             Err(e) => {
-                self.abort(meta).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                self.abort(meta.clone()).unwrap();
+                Err(e)
             }
         }
     }
 
     /// Get primary index name on a table.
-    fn get_index_name(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<String, Aborted> {
+    fn get_index_name(
+        &self,
+        table: Arc<Table>,
+        meta: TransactionInfo,
+    ) -> Result<String, NonFatalError> {
         let res = table.get_primary_index();
         match res {
             Ok(index_name) => Ok(index_name),
             Err(e) => {
-                self.abort(meta).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                self.abort(meta.clone()).unwrap();
+                Err(e)
             }
         }
     }
 
     /// Get shared reference to index for a table.
-    fn get_index(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<Arc<Index>, Aborted> {
+    fn get_index(
+        &self,
+        table: Arc<Table>,
+        meta: TransactionInfo,
+    ) -> Result<Arc<Index>, NonFatalError> {
         // Get index name.
         let index_name = self.get_index_name(table, meta.clone())?;
 
@@ -904,9 +888,7 @@ impl TwoPhaseLocking {
             Ok(index) => Ok(index),
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(e)
             }
         }
     }

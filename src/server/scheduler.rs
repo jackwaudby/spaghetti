@@ -1,3 +1,4 @@
+use crate::common::error::NonFatalError;
 use crate::server::scheduler::hit_list::HitList;
 use crate::server::scheduler::serialization_graph_testing::SerializationGraphTesting;
 use crate::server::scheduler::two_phase_locking::TwoPhaseLocking;
@@ -6,7 +7,6 @@ use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
 
 use chrono::{DateTime, Utc};
-use std::fmt;
 use std::sync::Arc;
 
 pub mod hit_list;
@@ -69,10 +69,10 @@ impl TransactionInfo {
 
 pub trait Scheduler {
     /// Register a transaction with the scheduler.
-    fn register(&self) -> Result<TransactionInfo, Aborted>;
+    fn register(&self) -> Result<TransactionInfo, NonFatalError>;
 
     /// Attempt to commit a transaction.
-    fn commit(&self, meta: TransactionInfo) -> Result<(), Aborted>;
+    fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError>;
 
     /// Abort a transaction.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()>;
@@ -85,7 +85,7 @@ pub trait Scheduler {
         columns: &Vec<&str>,
         values: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<(), Aborted>;
+    ) -> Result<(), NonFatalError>;
 
     /// Read some values from a row.
     fn read(
@@ -94,7 +94,7 @@ pub trait Scheduler {
         key: PrimaryKey,
         columns: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<Vec<Data>, Aborted>;
+    ) -> Result<Vec<Data>, NonFatalError>;
 
     /// Update columns with values in a row.
     fn update(
@@ -104,21 +104,13 @@ pub trait Scheduler {
         columns: &Vec<&str>,
         values: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<(), Aborted>;
+    ) -> Result<(), NonFatalError>;
 
     /// Delete a row from a table.
-    fn delete(&self, table: &str, key: PrimaryKey, meta: TransactionInfo) -> Result<(), Aborted>;
+    fn delete(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        meta: TransactionInfo,
+    ) -> Result<(), NonFatalError>;
 }
-
-#[derive(PartialEq, Debug, Clone)]
-pub struct Aborted {
-    pub reason: String,
-}
-
-impl fmt::Display for Aborted {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Aborted: {}", self.reason)
-    }
-}
-
-impl std::error::Error for Aborted {}

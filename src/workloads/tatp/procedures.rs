@@ -1,4 +1,4 @@
-use crate::common::error::SpaghettiError;
+use crate::common::error::NonFatalError;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::tatp::keys::TatpPrimaryKey;
@@ -7,13 +7,15 @@ use crate::workloads::tatp::profiles::{
     InsertCallForwarding, UpdateLocationData, UpdateSubscriberData,
 };
 use crate::workloads::PrimaryKey;
-use crate::Result;
 
 use std::sync::Arc;
 use tracing::debug;
 
 /// GetSubscriberData transaction.
-pub fn get_subscriber_data(params: GetSubscriberData, protocol: Arc<Protocol>) -> Result<String> {
+pub fn get_subscriber_data(
+    params: GetSubscriberData,
+    protocol: Arc<Protocol>,
+) -> Result<String, NonFatalError> {
     //   debug!(
     //      "\nSELECT s_id, sub_nbr,
     //          bit_1, bit_2, bit_3, bit_4, bit_5, bit_6, bit_7,
@@ -75,13 +77,16 @@ pub fn get_subscriber_data(params: GetSubscriberData, protocol: Arc<Protocol>) -
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
     // Convert to result
-    let res = datatype::to_result(&columns, &values)?;
+    let res = datatype::to_result(&columns, &values).unwrap();
 
     Ok(res)
 }
 
 /// GetNewDestination transaction.
-pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -> Result<String> {
+pub fn get_new_destination(
+    params: GetNewDestination,
+    protocol: Arc<Protocol>,
+) -> Result<String, NonFatalError> {
     // debug!(
     //     "\nSELECT cf.numberx
     //        FROM Special_Facility AS sf, Call_Forwarding AS cf
@@ -127,10 +132,10 @@ pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -
     };
     if val != 1 {
         protocol.scheduler.abort(meta.clone()).unwrap();
-        return Err(Box::new(SpaghettiError::RowDoesNotExist(format!(
-            "{}",
-            sf_pk
-        ))));
+        return Err(NonFatalError::RowNotFound(
+            format!("{}", sf_pk),
+            "special_facility".to_string(),
+        ));
     }
     // 3) Get call forwarding record.
     let cf_res = protocol
@@ -144,20 +149,23 @@ pub fn get_new_destination(params: GetNewDestination, protocol: Arc<Protocol>) -
     };
     if params.end_time as i64 >= val {
         protocol.scheduler.abort(meta.clone()).unwrap();
-        return Err(Box::new(SpaghettiError::RowDoesNotExist(format!(
-            "{}",
-            cf_pk
-        ))));
+        return Err(NonFatalError::RowNotFound(
+            format!("{}", cf_pk),
+            "call_forwarding".to_string(),
+        ));
     }
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
     // Convert to result
-    let res = datatype::to_result(&vec![cf_columns[4].clone()], &vec![cf_res[4].clone()])?;
+    let res = datatype::to_result(&vec![cf_columns[4].clone()], &vec![cf_res[4].clone()]).unwrap();
     Ok(res)
 }
 
 /// GetAccessData transaction.
-pub fn get_access_data(params: GetAccessData, protocol: Arc<Protocol>) -> Result<String> {
+pub fn get_access_data(
+    params: GetAccessData,
+    protocol: Arc<Protocol>,
+) -> Result<String, NonFatalError> {
     // debug!(
     //     "SELECT data1, data2, data3, data4
     //        FROM Access_Info
@@ -184,7 +192,7 @@ pub fn get_access_data(params: GetAccessData, protocol: Arc<Protocol>) -> Result
     debug!("HERE");
     protocol.scheduler.commit(meta.clone())?;
     // Convert to result
-    let res = datatype::to_result(&columns, &values)?;
+    let res = datatype::to_result(&columns, &values).unwrap();
 
     Ok(res)
 }
@@ -193,7 +201,7 @@ pub fn get_access_data(params: GetAccessData, protocol: Arc<Protocol>) -> Result
 pub fn update_subscriber_data(
     params: UpdateSubscriberData,
     protocol: Arc<Protocol>,
-) -> Result<String> {
+) -> Result<String, NonFatalError> {
     // debug!(
     //     "UPDATE Subscriber
     //        SET bit_1 = {:?}
@@ -243,7 +251,10 @@ pub fn update_subscriber_data(
 }
 
 /// Update location transaction.
-pub fn update_location(params: UpdateLocationData, protocol: Arc<Protocol>) -> Result<String> {
+pub fn update_location(
+    params: UpdateLocationData,
+    protocol: Arc<Protocol>,
+) -> Result<String, NonFatalError> {
     // debug!(
     //     "UPDATE Subscriber
     //          SET vlr_location = {}
@@ -279,7 +290,7 @@ pub fn update_location(params: UpdateLocationData, protocol: Arc<Protocol>) -> R
 pub fn insert_call_forwarding(
     params: InsertCallForwarding,
     protocol: Arc<Protocol>,
-) -> Result<String> {
+) -> Result<String, NonFatalError> {
     // debug!(
     //     "SELECT <s_id bind subid s_id>
     //        FROM Subscriber
@@ -352,7 +363,7 @@ pub fn insert_call_forwarding(
 pub fn delete_call_forwarding(
     params: DeleteCallForwarding,
     protocol: Arc<Protocol>,
-) -> Result<String> {
+) -> Result<String, NonFatalError> {
     // debug!(
     //     "SELECT <s_id bind subid s_id>
     //      FROM Subscriber

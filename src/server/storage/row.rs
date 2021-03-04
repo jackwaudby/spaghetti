@@ -1,10 +1,9 @@
-use crate::common::error::SpaghettiError;
+use crate::common::error::{FatalError, NonFatalError};
 use crate::server::storage::catalog::ColumnKind;
 use crate::server::storage::datatype::Data;
 use crate::server::storage::datatype::Field;
 use crate::server::storage::table::Table;
 use crate::workloads::PrimaryKey;
-use crate::Result;
 
 use std::fmt;
 use std::sync::Arc;
@@ -109,21 +108,30 @@ impl Row {
 
     /// Initialise the value of a field in a row. Used by loaders.
     ///
-    /// # Errors
+    /// # Non-Fatal Errors
     ///
-    /// - Column does not exist in the table.
+    /// A non-fatal error is returned if there is a conversion error or the column cannot be found.
     /// - Parsing error.
-    pub fn init_value(&mut self, col_name: &str, col_value: &str) -> Result<()> {
+    pub fn init_value(&mut self, col_name: &str, col_value: &str) -> Result<(), NonFatalError> {
         // Get handle to table.
         let table = Arc::clone(&self.table);
+
         // Get index of field in row.
         let field_index = table.schema().column_position_by_name(col_name)?;
         let field_type = table.schema().column_type_by_index(field_index);
+
         // Convert value to spaghetti data type.
         let value = match field_type {
             ColumnKind::VarChar => Data::VarChar(col_value.to_string()),
-            ColumnKind::Int => Data::Int(col_value.parse::<i64>()?),
-            ColumnKind::Double => Data::Double(col_value.parse::<f64>()?),
+            ColumnKind::Int => Data::Int(col_value.parse::<i64>().map_err(|_| {
+                NonFatalError::UnableToConvertToDataType(col_value.to_string(), "int".to_string())
+            })?),
+            ColumnKind::Double => Data::Double(col_value.parse::<f64>().map_err(|_| {
+                NonFatalError::UnableToConvertToDataType(
+                    col_value.to_string(),
+                    "double".to_string(),
+                )
+            })?),
         };
         // Set value.
         self.current_fields[field_index].set(value);
@@ -132,28 +140,34 @@ impl Row {
 
     /// Get the values in a row.
     ///
-    /// # Errors
+    /// # Non-Fatal Errors
     ///
-    /// - Access history not initialised.
-    /// - Column does not exist in the table.
+    /// A non-fatal error is returned if (i) row is marked for deletecolumn does not exist in the table.
     /// - Row marked for delete.
+    ///
+    /// # Fatal Errors
+    ///
+    /// The access history is not initialised.
     pub fn get_values(
         &mut self,
         columns: &Vec<&str>,
         protocol: &str,
         tid: &str,
-    ) -> Result<OperationResult> {
-        // If dirty operation fails.
+    ) -> Result<OperationResult, NonFatalError> {
+        // If deleted operation fails.
         if self.is_deleted() {
-            return Err(Box::new(SpaghettiError::RowDeleted));
+            return Err(NonFatalError::RowDeleted(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            ));
         }
 
         let access_history = match protocol {
             "sgt" | "hit" => {
                 // Get access history.
-                let ah = self.get_access_history()?;
+                let ah = self.get_access_history().unwrap();
                 // Append this operation.
-                self.append_access(Access::Read(tid.to_string()))?;
+                self.append_access(Access::Read(tid.to_string())).unwrap();
                 Some(ah)
             }
             _ => None,
@@ -180,36 +194,35 @@ impl Row {
     }
 
     /// Set the values of a field in a row.
-    ///
-    /// # Errors
-    ///
-    /// - The row is already dirty.
-    /// - The row is marked for delete.
-    /// - Access history not initialised.
-    /// - Column does not exist in the table.
-    /// - Problem parsing the value.
     pub fn set_values(
         &mut self,
         columns: &Vec<&str>,
         values: &Vec<&str>,
         protocol: &str,
         tid: &str,
-    ) -> Result<OperationResult> {
+    ) -> Result<OperationResult, NonFatalError> {
         // If dirty operation fails.
         if self.is_dirty() {
-            return Err(Box::new(SpaghettiError::RowDirty));
+            return Err(NonFatalError::RowDirty(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            ));
         }
 
+        // If deleted operation fails.
         if self.is_deleted() {
-            return Err(Box::new(SpaghettiError::RowDeleted));
+            return Err(NonFatalError::RowDeleted(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            ));
         }
 
         let access_history = match protocol {
             "sgt" | "hit" => {
                 // Get access history.
-                let ah = self.get_access_history()?;
+                let ah = self.get_access_history().unwrap();
                 // Append this operation.
-                self.append_access(Access::Write(tid.to_string()))?;
+                self.append_access(Access::Write(tid.to_string())).unwrap();
                 Some(ah)
             }
             _ => None,
@@ -233,8 +246,15 @@ impl Row {
             // Convert value to spaghetti data type.
             let new_value = match field_type {
                 ColumnKind::VarChar => Data::VarChar(value.to_string()),
-                ColumnKind::Int => Data::Int(value.parse::<i64>()?),
-                ColumnKind::Double => Data::Double(value.parse::<f64>()?),
+                ColumnKind::Int => Data::Int(value.parse::<i64>().map_err(|_| {
+                    NonFatalError::UnableToConvertToDataType(value.to_string(), "int".to_string())
+                })?),
+                ColumnKind::Double => Data::Double(value.parse::<f64>().map_err(|_| {
+                    NonFatalError::UnableToConvertToDataType(
+                        value.to_string(),
+                        "double".to_string(),
+                    )
+                })?),
             };
             // Set value.
             self.current_fields[field_index].set(new_value);
@@ -248,20 +268,21 @@ impl Row {
     }
 
     /// Mark row as deleted.
-    ///
-    /// # Errors
-    ///
-    /// - The row is already dirty.
-    /// - The row is marked for delete.
-    /// - Access history not initialised.
-    pub fn delete(&mut self, protocol: &str) -> Result<OperationResult> {
+    pub fn delete(&mut self, protocol: &str) -> Result<OperationResult, NonFatalError> {
         // If dirty operation fails.
         if self.is_dirty() {
-            return Err(Box::new(SpaghettiError::RowDirty));
+            return Err(NonFatalError::RowDirty(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            ));
         }
+
         // If deleted operation fails.
         if self.is_deleted() {
-            return Err(Box::new(SpaghettiError::RowDeleted));
+            return Err(NonFatalError::RowDeleted(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            ));
         }
 
         // Set dirty flag.
@@ -271,7 +292,7 @@ impl Row {
         let access_history = match protocol {
             "sgt" | "hit" => {
                 // Get access history.
-                let ah = self.get_access_history()?;
+                let ah = self.get_access_history().unwrap();
                 Some(ah)
             }
             _ => None,
@@ -360,19 +381,19 @@ impl Row {
     }
 
     /// Append `Access` to access history.
-    pub fn append_access(&mut self, access: Access) -> Result<()> {
+    pub fn append_access(&mut self, access: Access) -> Result<(), FatalError> {
         match &mut self.access_history {
             Some(ref mut ah) => ah.push(access),
-            None => return Err(Box::new(SpaghettiError::NotTrackingAccessHistory)),
+            None => return Err(FatalError::NotTrackingAccessHistory),
         }
         Ok(())
     }
 
     /// Get access history.
-    pub fn get_access_history(&self) -> Result<Vec<Access>> {
+    pub fn get_access_history(&self) -> Result<Vec<Access>, FatalError> {
         let ah = match &self.access_history {
             Some(ah) => ah.clone(),
-            None => return Err(Box::new(SpaghettiError::NotTrackingAccessHistory)),
+            None => return Err(FatalError::NotTrackingAccessHistory),
         };
         Ok(ah)
     }

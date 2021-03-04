@@ -1,7 +1,8 @@
+use crate::common::error::NonFatalError;
 use crate::server::scheduler::hit_list::active_transaction::ActiveTransaction;
 use crate::server::scheduler::hit_list::epoch::AtomicSharedResources;
 use crate::server::scheduler::hit_list::error::HitListError;
-use crate::server::scheduler::{Aborted, Scheduler, TransactionInfo};
+use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::index::Index;
 use crate::server::storage::row::{Access, Row};
@@ -40,7 +41,7 @@ impl Scheduler for HitList {
     /// Register a transaction with the hit list.
     ///
 
-    fn register(&self) -> Result<TransactionInfo, Aborted> {
+    fn register(&self) -> Result<TransactionInfo, NonFatalError> {
         // Get transaction ID.
         let id = self.get_id();
         debug!("Register transaction {}", id);
@@ -80,7 +81,7 @@ impl Scheduler for HitList {
         columns: &Vec<&str>,
         values: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<(), Aborted> {
+    ) -> Result<(), NonFatalError> {
         // Transaction id.
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
         debug!("Insert by transaction {}", id);
@@ -95,9 +96,7 @@ impl Scheduler for HitList {
                 Ok(_) => {}
                 Err(e) => {
                     self.abort(meta.clone()).unwrap();
-                    return Err(Aborted {
-                        reason: format!("{}", e),
-                    });
+                    return Err(e);
                 }
             }
         }
@@ -108,9 +107,7 @@ impl Scheduler for HitList {
             Ok(_) => {}
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e);
             }
         }
 
@@ -131,9 +128,7 @@ impl Scheduler for HitList {
                 debug!("Dropped WG on transaction {} in active transactions", id);
                 debug!("Insert by transaction {} failed", id);
                 self.abort(meta.clone()).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(e)
             }
         }
     }
@@ -149,7 +144,7 @@ impl Scheduler for HitList {
         key: PrimaryKey,
         columns: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<Vec<Data>, Aborted> {
+    ) -> Result<Vec<Data>, NonFatalError> {
         // Transaction id.
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
         debug!("Read by transaction {}", id);
@@ -192,9 +187,7 @@ impl Scheduler for HitList {
                 debug!("Dropped WG on transaction {} in active transactions", id);
                 debug!("Read by transaction {} failed", id);
                 self.abort(meta.clone()).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e);
             }
         }
     }
@@ -207,7 +200,7 @@ impl Scheduler for HitList {
         columns: &Vec<&str>,
         values: &Vec<&str>,
         meta: TransactionInfo,
-    ) -> Result<(), Aborted> {
+    ) -> Result<(), NonFatalError> {
         // Transaction id.
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
         debug!("Update by transaction {}", id);
@@ -253,15 +246,18 @@ impl Scheduler for HitList {
                 debug!("Dropped WG on transaction {} in active transactions", id);
                 debug!("Update by transaction {} failed", id);
                 self.abort(meta).unwrap();
-                return Err(Aborted {
-                    reason: format!("{}", e),
-                });
+                return Err(e);
             }
         }
     }
 
     /// Delete from row.
-    fn delete(&self, table: &str, key: PrimaryKey, meta: TransactionInfo) -> Result<(), Aborted> {
+    fn delete(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        meta: TransactionInfo,
+    ) -> Result<(), NonFatalError> {
         // Transaction id.
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
         debug!("Delete by transaction {}", id);
@@ -307,9 +303,7 @@ impl Scheduler for HitList {
                 debug!("Dropped WG on transaction {} in active transactions", id);
                 debug!("Delete by transaction {} failed", id);
                 self.abort(meta).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(e)
             }
         }
     }
@@ -382,7 +376,7 @@ impl Scheduler for HitList {
     }
 
     /// Commit a transaction.
-    fn commit(&self, meta: TransactionInfo) -> Result<(), Aborted> {
+    fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         // Transaction id.
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
         debug!("Committing transaction {:?}", id);
@@ -454,10 +448,9 @@ impl Scheduler for HitList {
         } else {
             drop(lock);
             self.abort(meta).unwrap();
-            let err = HitListError::IdInHitList(id);
-            return Err(Aborted {
-                reason: format!("{}", err),
-            });
+            //TODO
+            let _err = HitListError::IdInHitList(id);
+            return Err(NonFatalError::NonSerializable);
         }
     }
 }
@@ -512,36 +505,40 @@ impl HitList {
     }
 
     /// Get shared reference to a table.
-    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, Aborted> {
+    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, NonFatalError> {
         // Get table.
         let res = self.data.get_internals().get_table(table);
         match res {
             Ok(table) => Ok(table),
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(e)
             }
         }
     }
 
     /// Get primary index name on a table.
-    fn get_index_name(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<String, Aborted> {
+    fn get_index_name(
+        &self,
+        table: Arc<Table>,
+        meta: TransactionInfo,
+    ) -> Result<String, NonFatalError> {
         let res = table.get_primary_index();
         match res {
             Ok(index_name) => Ok(index_name),
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(e)
             }
         }
     }
 
     /// Get shared reference to index for a table.
-    fn get_index(&self, table: Arc<Table>, meta: TransactionInfo) -> Result<Arc<Index>, Aborted> {
+    fn get_index(
+        &self,
+        table: Arc<Table>,
+        meta: TransactionInfo,
+    ) -> Result<Arc<Index>, NonFatalError> {
         // Get index name.
         let index_name = self.get_index_name(table, meta.clone())?;
 
@@ -551,9 +548,7 @@ impl HitList {
             Ok(index) => Ok(index),
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
-                Err(Aborted {
-                    reason: format!("{}", e),
-                })
+                Err(e)
             }
         }
     }

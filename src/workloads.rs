@@ -1,10 +1,9 @@
-use crate::common::error::SpaghettiError;
+use crate::common::error::{FatalError, NonFatalError};
 use crate::server::storage::catalog::Catalog;
 use crate::server::storage::index::Index;
 use crate::server::storage::table::Table;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tpcc::keys::TpccPrimaryKey;
-use crate::Result;
 
 use config::Config;
 use rand::rngs::StdRng;
@@ -44,9 +43,12 @@ pub enum Workload {
 }
 
 impl Workload {
-    pub fn new(config: Arc<Config>) -> Result<Workload> {
+    pub fn new(config: Arc<Config>) -> crate::Result<Workload> {
         // Determine workload type.
-        match config.get_str("workload")?.as_str() {
+
+        let workload = config.get_str("workload")?;
+
+        match workload.as_str() {
             "tatp" => {
                 // Create internals from schema file
                 let internals = Internal::new("tatp_schema.txt", config)?;
@@ -57,11 +59,11 @@ impl Workload {
                 let internals = Internal::new("tpcc_short_schema.txt", config)?;
                 Ok(Workload::Tpcc(internals))
             }
-            _ => Err(Box::new(SpaghettiError::IncorrectWorkload)),
+            _ => Err(Box::newo(FatalError::IncorrectWorkload(workload))),
         }
     }
 
-    pub fn populate_tables(&self, rng: &mut StdRng) -> Result<()> {
+    pub fn populate_tables(&self, rng: &mut StdRng) -> crate::Result<()> {
         use Workload::*;
         match *self {
             Tatp(ref i) => tatp::loader::populate_tables(i, rng)?,
@@ -95,7 +97,7 @@ impl fmt::Display for Internal {
 
 impl Internal {
     /// Create empty tables and initialise indexes.
-    pub fn new(filename: &str, config: Arc<Config>) -> Result<Internal> {
+    pub fn new(filename: &str, config: Arc<Config>) -> crate::Result<Internal> {
         // Load schema file.
         let path = Path::new(filename);
         let mut file = File::open(&path)?;
@@ -169,17 +171,17 @@ impl Internal {
         })
     }
 
-    pub fn get_table(&self, name: &str) -> Result<Arc<Table>> {
+    pub fn get_table(&self, name: &str) -> Result<Arc<Table>, NonFatalError> {
         match self.tables.get(name) {
             Some(table) => Ok(Arc::clone(table)),
-            None => Err(Box::new(SpaghettiError::TableNotFound)),
+            None => Err(NonFatalError::TableNotFound(name.to_string())),
         }
     }
 
-    pub fn get_index(&self, name: &str) -> Result<Arc<Index>> {
+    pub fn get_index(&self, name: &str) -> Result<Arc<Index>, NonFatalError> {
         match self.indexes.get(name) {
             Some(index) => Ok(Arc::clone(index)),
-            None => Err(Box::new(SpaghettiError::IndexNotFound(name.to_string()))),
+            None => Err(NonFatalError::IndexNotFound(name.to_string())),
         }
     }
 }
