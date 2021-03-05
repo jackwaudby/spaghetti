@@ -59,7 +59,7 @@ pub enum FatalError {
 }
 
 /// Represents a non-fatal error.
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum NonFatalError {
     /// Table not found in database.
     TableNotFound(String),

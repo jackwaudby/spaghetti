@@ -124,11 +124,9 @@ impl TransactionManager {
             let latency = Some(start.elapsed());
             // Package response.
             let resp = match res {
-                Ok(res) => Response::Committed { value: Some(res) },
+                Ok(value) => Response::Committed { value: Some(value) },
                 // TODO: match based on abort type and workload
-                Err(_) => Response::Aborted {
-                    err: format!("err=\"{:?}\"", "TODO"),
-                },
+                Err(reason) => Response::Aborted { reason },
             };
             // Send to corresponding `WriteHandler`.
             request

@@ -1,4 +1,5 @@
 use crate::common::connection::WriteConnection;
+use crate::common::error::NonFatalError;
 use crate::common::message::{Message, Response};
 use crate::common::shutdown::Shutdown;
 use crate::server::manager::State as TransactionManagerState;
@@ -96,8 +97,23 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                                                         .unwrap()
                                                         .add_cum_latency(lat);
                                                 }
-                                                Response::Aborted { .. } => {
-                                                    self.stats.as_mut().unwrap().inc_aborted()
+                                                Response::Aborted { reason } => {
+                                                    if let NonFatalError::RowNotFound(_, _) = reason
+                                                    {
+                                                        debug!("Increment committed");
+                                                        self.stats
+                                                            .as_mut()
+                                                            .unwrap()
+                                                            .inc_committed();
+                                                        let lat = latency.unwrap().as_nanos();
+                                                        debug!("Increment latency {}", lat);
+                                                        self.stats
+                                                            .as_mut()
+                                                            .unwrap()
+                                                            .add_cum_latency(lat);
+                                                    } else {
+                                                        self.stats.as_mut().unwrap().inc_aborted()
+                                                    }
                                                 }
                                             }
                                         }
@@ -147,8 +163,16 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                                             debug!("Increment latency {}", lat);
                                             self.stats.as_mut().unwrap().add_cum_latency(lat);
                                         }
-                                        Response::Aborted { .. } => {
-                                            self.stats.as_mut().unwrap().inc_aborted()
+                                        Response::Aborted { reason } => {
+                                            if let NonFatalError::RowNotFound(_, _) = reason {
+                                                debug!("Increment committed");
+                                                self.stats.as_mut().unwrap().inc_committed();
+                                                let lat = latency.unwrap().as_nanos();
+                                                debug!("Increment latency {}", lat);
+                                                self.stats.as_mut().unwrap().add_cum_latency(lat);
+                                            } else {
+                                                self.stats.as_mut().unwrap().inc_aborted()
+                                            }
                                         }
                                     }
                                 }

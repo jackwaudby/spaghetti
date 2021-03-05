@@ -1,3 +1,4 @@
+use crate::common::error::NonFatalError;
 use crate::common::frame::Frame;
 use crate::workloads::tatp::profiles::TatpTransaction;
 use crate::workloads::tpcc::profiles::TpccTransaction;
@@ -56,7 +57,7 @@ impl Message {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Response {
     Committed { value: Option<String> },
-    Aborted { err: String },
+    Aborted { reason: NonFatalError },
 }
 
 impl fmt::Display for Response {
@@ -64,7 +65,7 @@ impl fmt::Display for Response {
         use Response::*;
         match &*self {
             Committed { value } => write!(f, "val={}", value.as_ref().unwrap()),
-            Aborted { err } => write!(f, "val={}", err),
+            Aborted { reason } => write!(f, "val={}", reason),
         }
     }
 }
