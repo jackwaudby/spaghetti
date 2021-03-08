@@ -4,9 +4,7 @@ use crate::server::scheduler::hit_list::epoch::AtomicSharedResources;
 use crate::server::scheduler::hit_list::error::HitListError;
 use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
-use crate::server::storage::index::Index;
 use crate::server::storage::row::{Access, Row};
-use crate::server::storage::table::Table;
 use crate::workloads::{PrimaryKey, Workload};
 
 use chashmap::CHashMap;
@@ -39,8 +37,6 @@ pub struct HitList {
 
 impl Scheduler for HitList {
     /// Register a transaction with the hit list.
-    ///
-
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
         // Get transaction ID.
         let id = self.get_id();
@@ -453,6 +449,10 @@ impl Scheduler for HitList {
             return Err(NonFatalError::NonSerializable);
         }
     }
+
+    fn get_data(&self) -> Arc<Workload> {
+        Arc::clone(&self.data)
+    }
 }
 
 impl HitList {
@@ -502,54 +502,5 @@ impl HitList {
         let new_id = *id;
         *id += 1;
         new_id
-    }
-
-    /// Get shared reference to a table.
-    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, NonFatalError> {
-        // Get table.
-        let res = self.data.get_internals().get_table(table);
-        match res {
-            Ok(table) => Ok(table),
-            Err(e) => {
-                self.abort(meta.clone()).unwrap();
-                Err(e)
-            }
-        }
-    }
-
-    /// Get primary index name on a table.
-    fn get_index_name(
-        &self,
-        table: Arc<Table>,
-        meta: TransactionInfo,
-    ) -> Result<String, NonFatalError> {
-        let res = table.get_primary_index();
-        match res {
-            Ok(index_name) => Ok(index_name),
-            Err(e) => {
-                self.abort(meta.clone()).unwrap();
-                Err(e)
-            }
-        }
-    }
-
-    /// Get shared reference to index for a table.
-    fn get_index(
-        &self,
-        table: Arc<Table>,
-        meta: TransactionInfo,
-    ) -> Result<Arc<Index>, NonFatalError> {
-        // Get index name.
-        let index_name = self.get_index_name(table, meta.clone())?;
-
-        // Get index for this key's table.
-        let res = self.data.get_internals().get_index(&index_name);
-        match res {
-            Ok(index) => Ok(index),
-            Err(e) => {
-                self.abort(meta.clone()).unwrap();
-                Err(e)
-            }
-        }
     }
 }
