@@ -3,9 +3,7 @@ use crate::server::scheduler::serialization_graph_testing::error::SerializationG
 use crate::server::scheduler::serialization_graph_testing::node::{EdgeType, Node, State};
 use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
-use crate::server::storage::index::Index;
 use crate::server::storage::row::{Access, Row};
-use crate::server::storage::table::Table;
 use crate::workloads::{PrimaryKey, Workload};
 
 use std::collections::HashSet;
@@ -423,6 +421,10 @@ impl Scheduler for SerializationGraphTesting {
 
         Ok(())
     }
+
+    fn get_data(&self) -> Arc<Workload> {
+        Arc::clone(&self.data)
+    }
 }
 
 impl SerializationGraphTesting {
@@ -614,67 +616,6 @@ impl SerializationGraphTesting {
             // Remove edges.
             outgoing_node.delete_edge(id, EdgeType::Incoming).unwrap();
             this_node.delete_edge(out, EdgeType::Outgoing).unwrap();
-        }
-    }
-
-    /// Get shared reference to a table.
-    ///
-    /// # Aborts
-    ///
-    /// Triggers an abort if the requested table does not exist.
-    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, NonFatalError> {
-        // Get table.
-        let res = self.data.get_internals().get_table(table);
-        match res {
-            Ok(table) => Ok(table),
-            Err(_) => {
-                self.abort(meta.clone()).unwrap();
-                Err(NonFatalError::TableNotFound(table.to_string()))
-            }
-        }
-    }
-
-    /// Get primary index name on a table.
-    ///
-    /// # Aborts
-    ///
-    /// Triggers an abort if the table does not have a primary index.
-    fn get_index_name(
-        &self,
-        table: Arc<Table>,
-        meta: TransactionInfo,
-    ) -> Result<String, NonFatalError> {
-        let res = table.get_primary_index();
-        match res {
-            Ok(index_name) => Ok(index_name),
-            Err(_) => {
-                self.abort(meta.clone()).unwrap();
-                Err(NonFatalError::NoPrimaryIndex(table.get_table_name()))
-            }
-        }
-    }
-
-    /// Get shared reference to index for a table.
-    ///
-    /// # Aborts
-    ///
-    /// Triggers an abort if the table does not have a primary index.
-    fn get_index(
-        &self,
-        table: Arc<Table>,
-        meta: TransactionInfo,
-    ) -> Result<Arc<Index>, NonFatalError> {
-        // Get index name.
-        let index_name = self.get_index_name(table, meta.clone())?;
-
-        // Get index for this key's table.
-        let res = self.data.get_internals().get_index(&index_name);
-        match res {
-            Ok(index) => Ok(index),
-            Err(_) => {
-                self.abort(meta.clone()).unwrap();
-                Err(NonFatalError::IndexNotFound(index_name))
-            }
         }
     }
 }
