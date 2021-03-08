@@ -2,7 +2,7 @@ log = "info"
 workload = "tatp"
 transactions = 10
 seed = 42
-subscribers = 1
+subscribers = 10
 
 warehouses = 5
 districts = 10
