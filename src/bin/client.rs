@@ -22,8 +22,7 @@ async fn main() -> spaghetti::Result<()> {
     .get_matches();
 
     // Initialise configuration.
-    // If configuration file is not provided use the default in `Settings.toml`
-    let file = matches.value_of("config").unwrap_or("Settings.toml");
+    let file = matches.value_of("config").unwrap_or("Client.toml");
     let mut settings = Config::default();
     settings.merge(config::File::with_name(file))?;
 
