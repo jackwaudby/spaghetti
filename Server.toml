@@ -2,6 +2,7 @@ address = "127.0.0.1"
 port = 6142
 log = "info"
 timeout = 5
+load = true
 mpsc_size = 32
 warmup = 2
 protocol="2pl"

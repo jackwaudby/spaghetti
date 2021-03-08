@@ -66,7 +66,13 @@ impl Workload {
     pub fn populate_tables(&self, rng: &mut StdRng) -> crate::Result<()> {
         use Workload::*;
         match *self {
-            Tatp(ref i) => tatp::loader::populate_tables(i, rng)?,
+            Tatp(ref i) => {
+                if self.get_internals().get_config().get_bool("load")? {
+                    tatp::loader::load_access_info_table(i)?;
+                } else {
+                    tatp::loader::populate_tables(i, rng)?;
+                }
+            }
             Tpcc(ref i) => tpcc::loader::populate_tables(i, rng)?,
         }
         Ok(())

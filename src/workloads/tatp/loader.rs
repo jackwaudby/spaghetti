@@ -1,6 +1,7 @@
 use crate::server::storage::row::Row;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
+use crate::workloads::tatp::records::AccessInfo;
 use crate::workloads::{Internal, PrimaryKey};
 use crate::Result;
 
@@ -14,6 +15,40 @@ use tracing::{debug, info};
 //////////////////////////////
 /// Table Loaders. ///
 //////////////////////////////
+
+pub fn load_access_info_table(data: &Internal) -> Result<()> {
+    info!("Loading access_info table");
+    // Get handle to `Table` and `Index`.
+    let ai_name = "access_info";
+    let t = data.get_table(ai_name)?;
+    let i_name = t.get_primary_index()?;
+    let i = data.get_index(&i_name)?;
+    let protocol = data.config.get_str("protocol")?;
+
+    let mut rdr = csv::Reader::from_path("data/access_info.csv")?;
+    for result in rdr.deserialize() {
+        // Deserialise.
+        let ai: AccessInfo = result?;
+        // Initialise empty row.
+        let mut row = Row::new(Arc::clone(&t), &protocol);
+        // Calculate primary key
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(
+            ai.s_id.parse::<u64>()?,
+            ai.ai_type.parse::<u64>()?,
+        ));
+        row.set_primary_key(pk);
+        row.init_value("s_id", &ai.s_id)?;
+        row.init_value("ai_type", &ai.ai_type)?;
+        row.init_value("data_1", &ai.data_1)?;
+        row.init_value("data_2", &ai.data_2)?;
+        row.init_value("data_3", &ai.data_3)?;
+        row.init_value("data_4", &ai.data_4)?;
+        debug!("{}", row);
+        i.insert(pk, row)?;
+    }
+    info!("Loaded {} rows into access_info", t.get_num_rows());
+    Ok(())
+}
 
 /// Populate tables.
 pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
@@ -62,6 +97,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
         i.insert(pk, row)?;
     }
     info!("Loaded {} rows into subscriber", t.get_num_rows());
+
     Ok(())
 }
 
