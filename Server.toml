@@ -8,4 +8,4 @@ warmup = 2
 protocol="2pl"
 workers = 4
 workload = "tatp"
-subscribers = 1
+subscribers = 100000

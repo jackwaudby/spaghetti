@@ -1,2 +1,0 @@
-data generation: 0(secs)
-No clients

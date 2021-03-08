@@ -1,7 +1,7 @@
 use crate::server::storage::row::Row;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
-use crate::workloads::tatp::records::AccessInfo;
+use crate::workloads::tatp::records::{AccessInfo, CallForwarding, SpecialFacility, Subscriber};
 use crate::workloads::{Internal, PrimaryKey};
 use crate::Result;
 
@@ -15,6 +15,68 @@ use tracing::{debug, info};
 //////////////////////////////
 /// Table Loaders. ///
 //////////////////////////////
+
+pub fn load_sub_table(data: &Internal) -> Result<()> {
+    info!("Loading subscriber table");
+    let s_name = "subscriber";
+    let t = data.get_table(s_name)?;
+    let i_name = t.get_primary_index()?;
+    let i = data.get_index(&i_name)?;
+    let protocol = data.config.get_str("protocol")?;
+
+    let mut rdr = csv::Reader::from_path("data/subscribers.csv")?;
+    for result in rdr.deserialize() {
+        // Deserialise.
+        let s: Subscriber = result?;
+        // Initialise empty row.
+        let mut row = Row::new(Arc::clone(&t), &protocol);
+        // Calculate primary key
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s.s_id.parse::<u64>()?));
+        row.set_primary_key(pk);
+        row.init_value("s_id", &s.s_id)?;
+
+        row.init_value("bit_1", &s.bit_1)?;
+        row.init_value("bit_2", &s.bit_2)?;
+        row.init_value("bit_3", &s.bit_3)?;
+        row.init_value("bit_4", &s.bit_4)?;
+        row.init_value("bit_5", &s.bit_5)?;
+        row.init_value("bit_6", &s.bit_6)?;
+        row.init_value("bit_7", &s.bit_7)?;
+        row.init_value("bit_8", &s.bit_8)?;
+        row.init_value("bit_9", &s.bit_9)?;
+        row.init_value("bit_10", &s.bit_10)?;
+
+        row.init_value("hex_1", &s.hex_1)?;
+        row.init_value("hex_2", &s.hex_2)?;
+        row.init_value("hex_3", &s.hex_3)?;
+        row.init_value("hex_4", &s.hex_4)?;
+        row.init_value("hex_5", &s.hex_5)?;
+        row.init_value("hex_6", &s.hex_6)?;
+        row.init_value("hex_7", &s.hex_7)?;
+        row.init_value("hex_8", &s.hex_8)?;
+        row.init_value("hex_9", &s.hex_9)?;
+        row.init_value("hex_10", &s.hex_10)?;
+
+        row.init_value("byte_2_1", &s.byte_2_1)?;
+        row.init_value("byte_2_2", &s.byte_2_2)?;
+        row.init_value("byte_2_3", &s.byte_2_3)?;
+        row.init_value("byte_2_4", &s.byte_2_4)?;
+        row.init_value("byte_2_5", &s.byte_2_5)?;
+        row.init_value("byte_2_6", &s.byte_2_6)?;
+        row.init_value("byte_2_7", &s.byte_2_7)?;
+        row.init_value("byte_2_8", &s.byte_2_8)?;
+        row.init_value("byte_2_9", &s.byte_2_9)?;
+        row.init_value("byte_2_10", &s.byte_2_10)?;
+
+        row.init_value("msc_location", &s.msc_location)?;
+        row.init_value("vlr_location", &s.vlr_location)?;
+
+        debug!("{}", row);
+        i.insert(pk, row)?;
+    }
+    info!("Loaded {} rows into subscriber", t.get_num_rows());
+    Ok(())
+}
 
 pub fn load_access_info_table(data: &Internal) -> Result<()> {
     info!("Loading access_info table");
@@ -49,6 +111,78 @@ pub fn load_access_info_table(data: &Internal) -> Result<()> {
     info!("Loaded {} rows into access_info", t.get_num_rows());
     Ok(())
 }
+
+pub fn load_call_forwarding_table(data: &Internal) -> Result<()> {
+    info!("Loading call_forwarding table");
+    // Get handle to `Table` and `Index`.
+    let cf_name = "call_forwarding";
+    let t = data.get_table(cf_name)?;
+    let i_name = t.get_primary_index()?;
+    let i = data.get_index(&i_name)?;
+    let protocol = data.config.get_str("protocol")?;
+
+    let mut rdr = csv::Reader::from_path("data/call_forwarding.csv")?;
+    for result in rdr.deserialize() {
+        // Deserialise.
+        let cf: CallForwarding = result?;
+        // Initialise empty row.
+        let mut row = Row::new(Arc::clone(&t), &protocol);
+        // Calculate primary key
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(
+            cf.s_id.parse::<u64>()?,
+            cf.sf_type.parse::<u64>()?,
+            cf.start_time.parse::<u64>()?,
+        ));
+        row.set_primary_key(pk);
+        row.init_value("s_id", &cf.s_id)?;
+        row.init_value("sf_type", &cf.sf_type)?;
+        row.init_value("start_time", &cf.start_time)?;
+        row.init_value("end_time", &cf.end_time)?;
+        row.init_value("number_x", &cf.number_x)?;
+        debug!("{}", row);
+        i.insert(pk, row)?;
+    }
+    info!("Loaded {} rows into call_forwarding", t.get_num_rows());
+    Ok(())
+}
+
+pub fn load_special_facility_table(data: &Internal) -> Result<()> {
+    info!("Loading special_facility table");
+    // Get handle to `Table` and `Index`.
+    let sf_name = "special_facility";
+    let t = data.get_table(sf_name)?;
+    let i_name = t.get_primary_index()?;
+    let i = data.get_index(&i_name)?;
+    let protocol = data.config.get_str("protocol")?;
+
+    let mut rdr = csv::Reader::from_path("data/special_facility.csv")?;
+    for result in rdr.deserialize() {
+        // Deserialise.
+        let sf: SpecialFacility = result?;
+        // Initialise empty row.
+        let mut row = Row::new(Arc::clone(&t), &protocol);
+        // Calculate primary key
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
+            sf.s_id.parse::<u64>()?,
+            sf.sf_type.parse::<u64>()?,
+        ));
+        row.set_primary_key(pk);
+        row.init_value("s_id", &sf.s_id)?;
+        row.init_value("sf_type", &sf.sf_type)?;
+        row.init_value("is_active", &sf.is_active)?;
+        row.init_value("error_cntrl", &sf.error_cntrl)?;
+        row.init_value("data_a", &sf.data_a)?;
+        row.init_value("data_b", &sf.data_b)?;
+        debug!("{}", row);
+        i.insert(pk, row)?;
+    }
+    info!("Loaded {} rows into special_facility", t.get_num_rows());
+    Ok(())
+}
+
+///////////////////////////////////////////////
+/// Table Generate and Load. ///
+///////////////////////////////////////////////
 
 /// Populate tables.
 pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {

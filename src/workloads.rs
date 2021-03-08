@@ -68,7 +68,10 @@ impl Workload {
         match *self {
             Tatp(ref i) => {
                 if self.get_internals().get_config().get_bool("load")? {
+                    tatp::loader::load_sub_table(i)?;
                     tatp::loader::load_access_info_table(i)?;
+                    tatp::loader::load_call_forwarding_table(i)?;
+                    tatp::loader::load_special_facility_table(i)?;
                 } else {
                     tatp::loader::populate_tables(i, rng)?;
                 }
