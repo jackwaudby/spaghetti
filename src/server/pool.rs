@@ -41,14 +41,18 @@ impl ThreadPool {
     pub fn new(workload: Arc<Workload>) -> ThreadPool {
         match workload
             .get_internals()
-            .config
+            .get_config()
             .get_str("protocol")
             .unwrap()
             .as_str()
         {
             "2pl" | "hit" => {
                 // Get thread pool size.
-                let size = workload.get_internals().config.get_int("workers").unwrap();
+                let size = workload
+                    .get_internals()
+                    .get_config()
+                    .get_int("workers")
+                    .unwrap();
 
                 // Must have at least 1 thread in the pool.
                 assert!(size > 0);
