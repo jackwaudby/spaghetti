@@ -54,7 +54,7 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     info!("Tables loaded");
     let dg_end = dg_start.elapsed();
     g_stats.set_data_generation(dg_end);
-
+    info!("Tables loaded, time taken: {:?}", dg_end);
     info!("Initialise listener");
     let add = config.get_str("address")?;
     let port = config.get_str("port")?;

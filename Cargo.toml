@@ -16,6 +16,10 @@ path = "src/bin/client.rs"
 name = "spag-server"
 path = "src/bin/server.rs"
 
+[[bin]]
+name = "spag-gen"
+path = "src/bin/generator.rs"
+
 [dependencies]
 chashmap = "2.2.2"
 rand = "0.8.0"
@@ -33,3 +37,4 @@ tokio-test = "0.4.0"
 chrono = "0.4"
 lazy_static = "1.4.0"
 core_affinity = "0.5.10"
+csv = "1.1.6"

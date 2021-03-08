@@ -34,7 +34,7 @@ impl Protocol {
         // Determine workload type.
         let scheduler = match workload
             .get_internals()
-            .config
+            .get_config()
             .get_str("protocol")?
             .as_str()
         {

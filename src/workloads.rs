@@ -35,7 +35,7 @@ impl fmt::Display for PrimaryKey {
     }
 }
 
-// Type of workload.
+/// Represent the workload.
 #[derive(Debug)]
 pub enum Workload {
     Tatp(Internal),
@@ -43,11 +43,10 @@ pub enum Workload {
 }
 
 impl Workload {
+    /// Create new `Workload`.
     pub fn new(config: Arc<Config>) -> crate::Result<Workload> {
         // Determine workload type.
-
         let workload = config.get_str("workload")?;
-
         match workload.as_str() {
             "tatp" => {
                 // Create internals from schema file
@@ -63,15 +62,26 @@ impl Workload {
         }
     }
 
+    /// Populate indexes with data.
     pub fn populate_tables(&self, rng: &mut StdRng) -> crate::Result<()> {
         use Workload::*;
         match *self {
-            Tatp(ref i) => tatp::loader::populate_tables(i, rng)?,
+            Tatp(ref i) => {
+                if self.get_internals().get_config().get_bool("load")? {
+                    tatp::loader::load_sub_table(i)?;
+                    tatp::loader::load_access_info_table(i)?;
+                    tatp::loader::load_call_forwarding_table(i)?;
+                    tatp::loader::load_special_facility_table(i)?;
+                } else {
+                    tatp::loader::populate_tables(i, rng)?;
+                }
+            }
             Tpcc(ref i) => tpcc::loader::populate_tables(i, rng)?,
         }
         Ok(())
     }
 
+    /// Get reference to internals of workload.
     pub fn get_internals(&self) -> &Internal {
         use Workload::*;
         match *self {
@@ -81,14 +91,20 @@ impl Workload {
     }
 }
 
-// Represents a workload's information.
+/// Represents the data for a given workload.
 #[derive(Debug)]
 pub struct Internal {
-    pub tables: Arc<HashMap<String, Arc<Table>>>,
-    pub indexes: Arc<HashMap<String, Arc<Index>>>,
-    pub config: Arc<Config>,
+    /// Hashmap of tables.
+    tables: Arc<HashMap<String, Arc<Table>>>,
+
+    /// Hashmap of indexes; data is owned by the index.
+    indexes: Arc<HashMap<String, Arc<Index>>>,
+
+    /// Reference to configuration.
+    config: Arc<Config>,
 }
 
+// TODO: improve display.
 impl fmt::Display for Internal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{:#?}", self.tables)
@@ -96,7 +112,7 @@ impl fmt::Display for Internal {
 }
 
 impl Internal {
-    /// Create empty tables and initialise indexes.
+    /// Create tables and initialise empty indexes.
     pub fn new(filename: &str, config: Arc<Config>) -> crate::Result<Internal> {
         // Load schema file.
         let path = Path::new(filename);
@@ -171,6 +187,7 @@ impl Internal {
         })
     }
 
+    /// Get atomic shared reference to `Table`.
     pub fn get_table(&self, name: &str) -> Result<Arc<Table>, NonFatalError> {
         match self.tables.get(name) {
             Some(table) => Ok(Arc::clone(table)),
@@ -178,10 +195,16 @@ impl Internal {
         }
     }
 
+    /// Get atomic shared reference to `Index`.
     pub fn get_index(&self, name: &str) -> Result<Arc<Index>, NonFatalError> {
         match self.indexes.get(name) {
             Some(index) => Ok(Arc::clone(index)),
             None => Err(NonFatalError::IndexNotFound(name.to_string())),
         }
+    }
+
+    /// Get atomic shared reference to `Config`.
+    pub fn get_config(&self) -> Arc<Config> {
+        Arc::clone(&self.config)
     }
 }

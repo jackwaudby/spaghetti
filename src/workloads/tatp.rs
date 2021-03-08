@@ -9,3 +9,5 @@ pub mod generator;
 pub mod procedures;
 
 pub mod keys;
+
+pub mod records;

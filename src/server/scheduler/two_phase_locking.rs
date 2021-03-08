@@ -674,8 +674,7 @@ impl TwoPhaseLocking {
         let index = self
             .data
             .get_internals()
-            .indexes
-            .get(&lock_info.index)
+            .get_index(&lock_info.index)
             .unwrap();
 
         // If write lock then commit or revert changes.
