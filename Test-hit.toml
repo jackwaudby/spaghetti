@@ -3,6 +3,7 @@ port = 6142
 log = "info"
 timeout = 5
 mpsc_size = 32
+load = false
 
 protocol="hit"
 
