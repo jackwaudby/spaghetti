@@ -7,6 +7,8 @@ use rand::SeedableRng;
 use serde::Serialize;
 use spaghetti::workloads::tatp::helper;
 use spaghetti::Result;
+use std::fs;
+use std::path::Path;
 
 fn main() -> Result<()> {
     // Initialise configuration.
@@ -29,12 +31,20 @@ fn main() -> Result<()> {
         }
     }
 
+    // Remove directory.
+    if Path::new("./data").exists() {
+        fs::remove_dir_all("./data")?;
+    }
+    // Create directory
+    fs::create_dir("./data")?;
+
     // Generate
     match workload.as_str() {
         "tatp" => {
             let s = settings.get_int("subscribers")? as u64;
             subscribers(s, &mut rng)?;
             access_info(s, &mut rng)?;
+            special_facility_call_forwarding(s, &mut rng)?;
         }
         _ => panic!("workload not recognised"),
     }
@@ -92,23 +102,25 @@ struct AccessInfo {
     data_4: String,
 }
 
-impl AccessInfo {
-    /// Create new `AccessInfo` record.
-    fn new(s_id: String, ai_type: String, rng: &mut StdRng) -> AccessInfo {
-        let data_1 = rng.gen_range(0..=255).to_string();
-        let data_2 = rng.gen_range(0..=255).to_string();
-        let data_3 = helper::get_data_x(3, rng);
-        let data_4 = helper::get_data_x(5, rng);
+/// Represent a record in the CallForwarding table.
+#[derive(Debug, Serialize)]
+struct CallForwarding {
+    s_id: String,
+    sf_type: String,
+    start_time: String,
+    end_time: String,
+    number_x: String,
+}
 
-        AccessInfo {
-            s_id,
-            ai_type,
-            data_1,
-            data_2,
-            data_3,
-            data_4,
-        }
-    }
+/// Represent a record in the SpecialFacility table.
+#[derive(Debug, Serialize)]
+struct SpecialFacility {
+    s_id: String,
+    sf_type: String,
+    is_active: String,
+    error_cntrl: String,
+    data_a: String,
+    data_b: String,
 }
 
 impl Subscriber {
@@ -153,8 +165,64 @@ impl Subscriber {
     }
 }
 
+impl AccessInfo {
+    /// Create new `AccessInfo` record.
+    fn new(s_id: String, ai_type: String, rng: &mut StdRng) -> AccessInfo {
+        let data_1 = rng.gen_range(0..=255).to_string();
+        let data_2 = rng.gen_range(0..=255).to_string();
+        let data_3 = helper::get_data_x(3, rng);
+        let data_4 = helper::get_data_x(5, rng);
+
+        AccessInfo {
+            s_id,
+            ai_type,
+            data_1,
+            data_2,
+            data_3,
+            data_4,
+        }
+    }
+}
+
+impl SpecialFacility {
+    /// Create new `AccessInfo` record.
+    fn new(s_id: String, sf_type: String, rng: &mut StdRng) -> SpecialFacility {
+        let is_active = helper::is_active(rng).to_string();
+        let error_cntrl = rng.gen_range(0..=255).to_string();
+        let data_a = rng.gen_range(0..=255).to_string();
+        let data_b = helper::get_data_x(5, rng);
+        SpecialFacility {
+            s_id,
+            sf_type,
+            is_active,
+            error_cntrl,
+            data_a,
+            data_b,
+        }
+    }
+}
+
+impl CallForwarding {
+    /// Create new `AccessInfo` record.
+    fn new(
+        s_id: String,
+        sf_type: String,
+        start_time: String,
+        end_time: String,
+        number_x: String,
+    ) -> CallForwarding {
+        CallForwarding {
+            s_id,
+            sf_type,
+            start_time,
+            end_time,
+            number_x,
+        }
+    }
+}
+
 fn subscribers(subscribers: u64, rng: &mut StdRng) -> Result<()> {
-    let mut wtr = Writer::from_path("subscribers.csv")?;
+    let mut wtr = Writer::from_path("data/subscribers.csv")?;
 
     for s_id in 1..=subscribers {
         wtr.serialize(Subscriber::new(s_id, rng))?;
@@ -165,7 +233,7 @@ fn subscribers(subscribers: u64, rng: &mut StdRng) -> Result<()> {
 }
 
 fn access_info(subscribers: u64, rng: &mut StdRng) -> Result<()> {
-    let mut wtr = Writer::from_path("access_info.csv")?;
+    let mut wtr = Writer::from_path("data/access_info.csv")?;
 
     // Range of values for ai_type records.
     let ai_type_values = vec![1, 2, 3, 4];
@@ -185,35 +253,54 @@ fn access_info(subscribers: u64, rng: &mut StdRng) -> Result<()> {
     Ok(())
 }
 
-// fn main() {
-//     let header = "s_id,sub_nbr,bit_1,bit_2,bit_3,bit_4,bit_5,bit_6,bit_7,bit_8,bit_9,bit_10,hex_1,hex_2,hex_3,hex_4,hex_5,hex_6,hex_7,hex_8,hex_9,hex_10,byte_2_1,byte_2_2,byte_2_3,byte_2_4,byte_2_5,byte_2_6,byte_2_7,byte_2_8,byte_2_9,byte_2_10,msc_location,vlr_location";
-//     let file = "subscriber.csv";
+fn special_facility_call_forwarding(subscribers: u64, rng: &mut StdRng) -> Result<()> {
+    // Writer to files
+    let mut cfr = Writer::from_path("data/call_forwarding.csv")?;
+    let mut sfr = Writer::from_path("data/special_facility.csv")?;
+    // Range of values for ai_type records.
+    let sf_type_values = vec![1, 2, 3, 4];
 
-//     let subs = 1;
+    // Range of values for start_time.
+    let start_time_values = vec![0, 8, 16];
+    for s_id in 1..=subscribers {
+        // Generate number of records for a given s_id.
+        let n_sf = rng.gen_range(1..=4);
+        // Randomly sample w.o. replacement from range of ai_type values.
+        let sample = sf_type_values.iter().choose_multiple(rng, n_sf);
+        for record in 1..=n_sf {
+            // SPECIALFACILITY
+            let sf_type = sample[record - 1];
+            sfr.serialize(SpecialFacility::new(
+                s_id.to_string(),
+                sf_type.to_string(),
+                rng,
+            ))?;
 
-//     for s_id in 1..=subs {
-//         let mut row = Row::new(Arc::clone(&t), &protocol);
-//         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
-//         row.set_primary_key(pk);
-//         row.init_value("s_id", &s_id.to_string())?;
-//         row.init_value("sub_nbr", &helper::to_sub_nbr(s_id))?;
-//         for i in 1..=10 {
-//             row.init_value(
-//                 format!("bit_{}", i).as_str(),
-//                 &rng.gen_range(0..=1).to_string(),
-//             )?;
-//             row.init_value(
-//                 format!("hex_{}", i).as_str(),
-//                 &rng.gen_range(0..=15).to_string(),
-//             )?;
-//             row.init_value(
-//                 format!("byte_2_{}", i).as_str(),
-//                 &rng.gen_range(0..=255).to_string(),
-//             )?;
-//         }
-//         row.init_value("msc_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
-//         row.init_value("vlr_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
-
-//         i.insert(pk, row)?;
-//     }
-// }
+            // For each row, insert [0,3] into call forwarding table
+            // Generate the number to insert
+            let n_cf = rng.gen_range(0..=3);
+            // Randomly sample w.o. replacement from range of ai_type values.
+            let start_times = start_time_values.iter().choose_multiple(rng, n_cf);
+            if n_cf != 0 {
+                for i in 1..=n_cf {
+                    // s_id from above
+                    // sf_type from above
+                    let st = *start_times[i - 1];
+                    let et = st + rng.gen_range(1..=8);
+                    let nx = helper::get_number_x(rng);
+                    // CALLFORWARDING
+                    cfr.serialize(CallForwarding::new(
+                        s_id.to_string(),
+                        sf_type.to_string(),
+                        st.to_string(),
+                        et.to_string(),
+                        nx,
+                    ))?;
+                }
+            }
+        }
+    }
+    cfr.flush()?;
+    sfr.flush()?;
+    Ok(())
+}
