@@ -9,8 +9,11 @@ use spaghetti::workloads::tatp::helper;
 use spaghetti::Result;
 use std::fs;
 use std::path::Path;
+use std::time::Instant;
 
 fn main() -> Result<()> {
+    let start = Instant::now();
+
     // Initialise configuration.
     let file = "Generator.toml";
     let mut settings = Config::default();
@@ -48,6 +51,10 @@ fn main() -> Result<()> {
         }
         _ => panic!("workload not recognised"),
     }
+
+    let duration = start.elapsed();
+
+    println!("Time taken to generate data is: {:?}", duration);
 
     Ok(())
 }
