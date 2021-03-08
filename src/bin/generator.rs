@@ -4,6 +4,9 @@ use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
+use spaghetti::common::message::Message;
+use spaghetti::common::parameter_generation::Generator;
+use spaghetti::workloads::tatp::generator::TatpGenerator;
 use spaghetti::workloads::tatp::helper;
 use spaghetti::workloads::tatp::records::{
     AccessInfo, CallForwarding, SpecialFacility, Subscriber,
@@ -46,10 +49,15 @@ fn main() -> Result<()> {
     // Generate
     match workload.as_str() {
         "tatp" => {
+            // Data
             let s = settings.get_int("subscribers")? as u64;
             subscribers(s, &mut rng)?;
             access_info(s, &mut rng)?;
             special_facility_call_forwarding(s, &mut rng)?;
+
+            // Params
+            let t = settings.get_int("transactions")? as u64;
+            params(10, t)?;
         }
         _ => panic!("workload not recognised"),
     }
@@ -58,6 +66,25 @@ fn main() -> Result<()> {
 
     println!("Time taken to generate data is: {:?}", duration);
 
+    Ok(())
+}
+
+fn params(transactions: u64, subscribers: u64) -> Result<()> {
+    // Init writer.
+    let mut wtr = Writer::from_path("data/params.csv")?;
+    // Init generator.
+    let mut gen = TatpGenerator::new(subscribers, false);
+
+    for _ in 1..=transactions {
+        let message = gen.generate();
+
+        if let Message::TatpTransaction { params, .. } = message {
+            let s = format!("{}", params);
+            wtr.write_record(&[s])?;
+        }
+    }
+
+    wtr.flush()?;
     Ok(())
 }
 
