@@ -834,11 +834,11 @@ impl TwoPhaseLocking {
             match self.release_lock(*lock, tid, commit) {
                 Ok(ur) => {
                     if let UnlockRequest::Reclaim = ur {
-                        self.lock_table.remove(lock);
+                        // self.lock_table.remove(lock);
                     }
                 }
-                Err(_xb) => {
-                    self.lock_table.remove(lock);
+                Err(_) => {
+                    // self.lock_table.remove(lock);
                 }
             }
         }
