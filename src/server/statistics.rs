@@ -4,6 +4,7 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
+use tracing::info;
 
 #[derive(Debug, Clone)]
 pub struct GlobalStatistics {
@@ -101,6 +102,7 @@ impl GlobalStatistics {
 
     /// Merge local stats into global stats.
     pub fn merge_into(&mut self, local: Statistics) {
+        debug!("Merge local stats into global");
         self.inc_clients();
         self.completed += local.completed;
         self.committed += local.committed;
