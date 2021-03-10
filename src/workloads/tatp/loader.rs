@@ -197,7 +197,6 @@ pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
 /// Schema:
 /// Primary key: s_id
 pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
-    info!("Loading subscriber table");
     let s_name = "subscriber";
     let t = data.get_table(s_name)?;
     let i_name = t.get_primary_index()?;
@@ -205,6 +204,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
     let protocol = data.config.get_str("protocol")?;
 
     let subs = data.config.get_int("subscribers")? as u64;
+    info!("Populating subscriber table: {}", subs);
     for s_id in 1..=subs {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
@@ -240,7 +240,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
 /// Schema: (int,s_id) (int,ai_type) (int,data_1) (int,data_2) (string,data_3) (string,data_4)
 /// Primary key: (s_id, ai_type)
 pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
-    info!("Loading access_info table");
+    info!("Populating access_info table");
     // Get handle to `Table` and `Index`.
     let ai_name = "access_info";
     let t = data.get_table(ai_name)?;
@@ -289,8 +289,8 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
 ///
 /// Primary key:
 pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdRng) -> Result<()> {
-    info!("Loading special_facility table");
-    info!("Loading call_forwarding table");
+    info!("Populating special_facility table");
+    info!("Populating call_forwarding table");
     // Get handle to `Table` and `Index`.
     let sf_name = "special_facility";
     let t = data.get_table(sf_name)?;

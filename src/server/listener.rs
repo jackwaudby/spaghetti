@@ -20,7 +20,7 @@ use core::fmt::Debug;
 use std::sync::Arc;
 use tokio::io;
 use tokio::net::TcpListener;
-use tracing::{debug, error, info};
+use tracing::{error, info};
 
 /// Server listener state.
 #[derive(Debug)]
