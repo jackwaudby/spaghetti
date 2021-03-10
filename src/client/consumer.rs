@@ -37,9 +37,9 @@ impl Drop for Consumer {
 pub async fn run(mut consumer: Consumer) -> Result<()> {
     // Spawn tokio task.
     let handle = tokio::spawn(async move {
-        // Remove file if exists.
-        if Path::new("result.txt").exists() {
-            fs::remove_file("result.txt").unwrap();
+        // Remove directory.
+        if Path::new("./log").exists() {
+            fs::remove_dir_all("./log").unwrap();
         }
 
         // Process messages until the channel is closed.
@@ -49,7 +49,7 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
                 .write(true)
                 .append(true)
                 .create(true)
-                .open("result.txt")
+                .open("./log/result.txt")
                 .expect("cannot open file");
             write!(file, "{}\n", message.to_string()).unwrap();
             if let Message::ConnectionClosed = message {

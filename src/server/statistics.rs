@@ -99,16 +99,19 @@ impl GlobalStatistics {
     }
 
     pub fn write_to_file(&mut self) {
-        // Remove file if exists.
-        if Path::new("stats.txt").exists() {
-            fs::remove_file("stats.txt").unwrap();
+        // Remove directory.
+        if Path::new("./results").exists() {
+            fs::remove_dir_all("./results").unwrap();
         }
+        // Create directory
+        fs::create_dir("./results").unwrap();
+
         // Create file.
         let mut file = OpenOptions::new()
             .write(true)
             .append(true)
             .create(true)
-            .open("stats.txt")
+            .open("./results/stats.txt")
             .expect("cannot open file");
         // Data generation
         match self.data_generation {
