@@ -130,7 +130,7 @@ mod tests {
         h.await.unwrap();
 
         // Create new file.
-        let file = File::open("result.txt").unwrap();
+        let file = File::open("./log/result.txt").unwrap();
         let count: Vec<_> = io::BufReader::new(file)
             .lines()
             .collect::<std::result::Result<_, _>>()
