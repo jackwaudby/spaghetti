@@ -1,6 +1,6 @@
 //! There are two types errors, (i) fatal errors, and (ii) non-fatal errors.
-//! Fatal errors, or `SpaghettiError`s, result in the termination of the database.
-//! Non-fatal errors, or `Aborted`, are returned in response to transaction requests.
+//! Fatal errors, result in the termination of the database.
+//! Non-fatal errors, are reasons for transactions to abort.
 use crate::common::frame::ParseError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
@@ -141,9 +141,7 @@ impl fmt::Display for NonFatalError {
             IndexNotFound(ref name) => write!(f, "not found: index {}", name),
             NoPrimaryIndex(ref name) => write!(f, "not found: no index on table {}", name),
             ColumnNotFound(ref name) => write!(f, "not found: column {}", name),
-            RowNotFound(ref key, ref index) => {
-                write!(f, "not found: row {} in index {}", key, index)
-            }
+            RowNotFound(ref key, ref index) => write!(f, "not found: {} in {}", key, index),
             UnableToInitialiseRow(ref table, ref column, ref value) => write!(
                 f,
                 "unable to initalise: column {} in table {} with value {}",
@@ -152,13 +150,11 @@ impl fmt::Display for NonFatalError {
             TwoPhaseLocking(ref e) => write!(f, "{}", e),
             SerializationGraphTesting(ref e) => write!(f, "{}", e),
             RowAlreadyExists(ref key, ref index) => {
-                write!(f, "already exists: row with {} in index {}", key, index)
+                write!(f, "already exists: {} in {}", key, index)
             }
             InvalidColumnType(ref col_type) => write!(f, "invalid: column type {}", col_type),
-            RowDirty(ref key, ref table) => write!(f, "dirty: row {} in table {}", key, table),
-            RowDeleted(ref key, ref table) => {
-                write!(f, "already deleted: row {} in table {}", key, table)
-            }
+            RowDirty(ref key, ref table) => write!(f, "dirty: {} in table {}", key, table),
+            RowDeleted(ref key, ref table) => write!(f, "deleted: {} in table {}", key, table),
             UnableToConvertToDataType(ref value, ref spaghetti_type) => write!(
                 f,
                 "unable to convert: value {} to type {}",

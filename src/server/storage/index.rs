@@ -294,7 +294,7 @@ mod tests {
                     .insert(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)), row)
                     .unwrap_err()
             ),
-            format!("already exists: row with Subscriber(1) in index sub_idx")
+            format!("already exists: Subscriber(1) in sub_idx")
         );
 
         // 2. Remove entry that is not there.
@@ -308,7 +308,7 @@ mod tests {
                     .remove(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(0)))
                     .unwrap_err()
             ),
-            format!("not found: row Subscriber(0) in index sub_idx")
+            format!("not found: Subscriber(0) in sub_idx")
         );
 
         // 3. Check entry exists.

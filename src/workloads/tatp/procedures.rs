@@ -189,7 +189,6 @@ pub fn get_access_data(
         .scheduler
         .read("access_info", pk, &columns, meta.clone())?;
     // Commit transaction.
-    debug!("HERE");
     protocol.scheduler.commit(meta.clone())?;
     // Convert to result
     let res = datatype::to_result(&columns, &values).unwrap();
@@ -466,7 +465,7 @@ mod tests {
                 get_subscriber_data(GetSubscriberData { s_id: 100 }, Arc::clone(&protocol))
                     .unwrap_err()
             ),
-            format!("not found: row Subscriber(100) in index sub_idx")
+            format!("not found: Subscriber(100) in sub_idx")
         );
 
         ///////////////////////////////////////
@@ -499,7 +498,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("not found: row SpecialFacility(10, 1) in index special_idx")
+            format!("not found: SpecialFacility(10, 1) in special_idx")
         );
 
         //////////////////////////////////
@@ -529,7 +528,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("not found: row AccessInfo(19, 12) in index access_idx")
+            format!("not found: AccessInfo(19, 12) in access_idx")
         );
 
         ////////////////////////////////////////////
@@ -625,7 +624,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("not found: row Subscriber(1345) in index sub_idx")
+            format!("not found: Subscriber(1345) in sub_idx")
         );
 
         ////////////////////////////////
@@ -689,7 +688,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("not found: row Subscriber(1345) in index sub_idx")
+            format!("not found: Subscriber(1345) in sub_idx")
         );
 
         /////////////////////////////////////////
@@ -711,7 +710,7 @@ mod tests {
                     )
                     .unwrap_err()
             ),
-            format!("not found: row CallForwarding(1, 3, 0) in index call_idx")
+            format!("not found: CallForwarding(1, 3, 0) in call_idx")
         );
 
         assert_eq!(
@@ -793,7 +792,7 @@ mod tests {
                     )
                     .unwrap_err()
             ),
-            format!("not found: row CallForwarding(2, 2, 16) in index call_idx")
+            format!("not found: CallForwarding(2, 2, 16) in call_idx")
         );
     }
 }

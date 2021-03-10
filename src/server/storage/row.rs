@@ -702,7 +702,7 @@ mod tests {
                 "{}",
                 row.set_values(&columns, &values, "sgt", "t2").unwrap_err()
             ),
-            "dirty: row None in table cars"
+            "dirty: None in table cars"
         );
 
         // access history error.
@@ -735,7 +735,7 @@ mod tests {
                 "{}",
                 row1.set_values(&columns, &values, "sgt", "t2").unwrap_err()
             ),
-            "dirty: row None in table cars"
+            "dirty: None in table cars"
         );
     }
 }
