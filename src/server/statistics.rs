@@ -4,7 +4,7 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
-use tracing::info;
+use tracing::debug;
 
 #[derive(Debug, Clone)]
 pub struct GlobalStatistics {
