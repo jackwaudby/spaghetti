@@ -51,7 +51,7 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
                 .write(true)
                 .append(true)
                 .create(true)
-                .open("log/result.txt")
+                .open("log/responses.txt")
                 .expect("cannot open file");
             write!(file, "{}\n", message.to_string()).unwrap();
             if let Message::ConnectionClosed = message {
@@ -130,7 +130,7 @@ mod tests {
         h.await.unwrap();
 
         // Create new file.
-        let file = File::open("./log/result.txt").unwrap();
+        let file = File::open("./log/responses.txt").unwrap();
         let count: Vec<_> = io::BufReader::new(file)
             .lines()
             .collect::<std::result::Result<_, _>>()

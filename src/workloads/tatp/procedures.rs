@@ -9,7 +9,6 @@ use crate::workloads::tatp::profiles::{
 use crate::workloads::PrimaryKey;
 
 use std::sync::Arc;
-use tracing::debug;
 
 /// GetSubscriberData transaction.
 pub fn get_subscriber_data(
