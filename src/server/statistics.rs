@@ -154,7 +154,7 @@ impl GlobalStatistics {
                 write!(file, "throughput: {}(txn/s)\n", self.thpt.unwrap()).unwrap();
                 // Calculate latency
                 self.calculate_latency();
-                write!(file, "latency: {}(ms)\n", self.thpt.unwrap()).unwrap();
+                write!(file, "latency: {}(ms)\n", self.av_latency.unwrap()).unwrap();
             }
             None => {
                 write!(file, "No clients\n").unwrap();
