@@ -41,6 +41,8 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
         if Path::new("./log").exists() {
             fs::remove_dir_all("./log").unwrap();
         }
+        // Create directory
+        fs::create_dir("./log").unwrap();
 
         // Process messages until the channel is closed.
         while let Some(message) = consumer.read_task_rx.recv().await {
@@ -49,7 +51,7 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
                 .write(true)
                 .append(true)
                 .create(true)
-                .open("./log/result.txt")
+                .open("log/result.txt")
                 .expect("cannot open file");
             write!(file, "{}\n", message.to_string()).unwrap();
             if let Message::ConnectionClosed = message {

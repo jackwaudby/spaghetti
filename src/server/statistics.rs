@@ -111,7 +111,7 @@ impl GlobalStatistics {
             .write(true)
             .append(true)
             .create(true)
-            .open("./results/stats.txt")
+            .open("results/stats.txt")
             .expect("cannot open file");
         // Data generation
         match self.data_generation {
