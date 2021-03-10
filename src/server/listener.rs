@@ -80,7 +80,6 @@ impl Listener {
             while let Ok(local_stats) = self.listener_shutdown_rx.try_recv() {
                 // Merge stats here.
                 info!("Connection {} was closed", local_stats.get_client_id());
-                debug!("Stats:\n{}", local_stats);
                 self.stats.merge_into(local_stats);
                 self.active_connections -= 1;
             }

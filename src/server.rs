@@ -143,12 +143,12 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
         debug!("{}", err);
     }
 
-    info!("Server shutdown");
     if let TransactionManagerState::ThreadPoolPanicked = tm_state {
         return Err(Box::new(FatalError::ThreadPoolClosed));
     }
+    info!("Gathering statistics");
     stats.end();
     stats.write_to_file();
-    info!("{}", stats);
+    info!("Server shutdown");
     Ok(())
 }
