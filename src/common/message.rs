@@ -36,8 +36,8 @@ impl fmt::Display for Message {
             Response {
                 request_no,
                 ref resp,
-                latency,
-            } => write!(f, "[id=\"{}\",{},{:?}]", request_no, resp, latency),
+                ..
+            } => write!(f, "[id=\"{}\",{}]", request_no, resp),
             _ => write!(f, "{:?}", self),
         }
     }
@@ -65,7 +65,7 @@ impl fmt::Display for Response {
         use Response::*;
         match &*self {
             Committed { value } => write!(f, "val={}", value.as_ref().unwrap()),
-            Aborted { reason } => write!(f, "val={}", reason),
+            Aborted { reason } => write!(f, "val={{{}}}", reason),
         }
     }
 }
