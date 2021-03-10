@@ -7,13 +7,14 @@ load = false
 
 protocol="2pl"
 workers = 4
+
 warmup = 1
 gen_delay = 1000
-
-transactions = 20
+transactions = 10
 workload = "tatp"
+
 schema = "tatp_schema.txt"
 subscribers = 3
 seed = 42
 
-clients = 8
+clients = 4

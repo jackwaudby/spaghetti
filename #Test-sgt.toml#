@@ -5,14 +5,13 @@ timeout = 5
 mpsc_size = 32
 load = false
 
-protocol="hit"
-workers = 4
+protocol="sgt"
 
 warmup = 1
 gen_delay = 1000
 transactions = 10
 workload = "tatp"
-
+    
 
 schema = "tatp_schema.txt"
 subscribers = 3
