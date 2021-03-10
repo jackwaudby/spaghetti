@@ -94,8 +94,8 @@ impl GlobalStatistics {
 
     /// Calculate latency.
     pub fn calculate_latency(&mut self) {
-        let lat = self.cum_latency / 1000 / self.committed as u128;
-        self.av_latency = Some(lat as f64 / 1000.0);
+        // let lat = self.cum_latency / 1000 / self.committed as u128;
+        // self.av_latency = Some(lat as f64 / 1000.0);
         self.av_latency = Some(0.0);
     }
 
