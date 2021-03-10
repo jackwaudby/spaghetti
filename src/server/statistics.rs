@@ -36,11 +36,16 @@ pub struct GlobalStatistics {
 
     /// Time taken to populate tables, measured in seconds.
     data_generation: Option<Duration>,
+
+    row_already_exists: u32,
+    row_dirty: u32,
+    row_deleted: u32,
+    subscribers: u32,
 }
 
 impl GlobalStatistics {
     /// Create global stats tracker.
-    pub fn new() -> GlobalStatistics {
+    pub fn new(subscribers: u32) -> GlobalStatistics {
         GlobalStatistics {
             start: None,
             end: None,
@@ -52,6 +57,10 @@ impl GlobalStatistics {
             thpt: None,
             av_latency: None,
             data_generation: None,
+            row_already_exists: 0,
+            row_dirty: 0,
+            row_deleted: 0,
+            subscribers,
         }
     }
 
@@ -96,6 +105,9 @@ impl GlobalStatistics {
         self.committed += local.committed;
         self.aborted += local.aborted;
         self.cum_latency += local.cum_latency;
+        self.row_already_exists += local.row_already_exists;
+        self.row_deleted += local.row_deleted;
+        self.row_dirty += local.row_dirty;
     }
 
     pub fn write_to_file(&mut self) {
@@ -126,10 +138,14 @@ impl GlobalStatistics {
         match self.clients {
             Some(clients) => {
                 write!(file, "clients: {}\n", clients).unwrap();
+                write!(file, "subscribers: {}\n", self.subscribers).unwrap();
                 // Transaction counts
                 write!(file, "completed transactions: {}\n", self.completed).unwrap();
                 write!(file, "committed transactions: {}\n", self.committed).unwrap();
                 write!(file, "aborted transactions: {}\n", self.aborted).unwrap();
+                write!(file, "row already existed: {}\n", self.row_already_exists).unwrap();
+                write!(file, "row marked for delete: {}\n", self.row_deleted).unwrap();
+                write!(file, "row marked as dirty: {}\n", self.row_dirty).unwrap();
                 // Calculate throughput
                 self.calculate_throughput();
                 write!(file, "throughput: {}(txn/s)\n", self.thpt.unwrap()).unwrap();
@@ -163,7 +179,7 @@ impl fmt::Display for GlobalStatistics {
             }
             None => {
                 write!(  f,
-                         "\nno clients")
+                         "\no clients")
             }
         }
     }
@@ -175,6 +191,9 @@ pub struct Statistics {
     completed: u32,
     committed: u32,
     aborted: u32,
+    row_already_exists: u32,
+    row_dirty: u32,
+    row_deleted: u32,
     cum_latency: u128,
 }
 
@@ -185,6 +204,9 @@ impl Statistics {
             completed: 0,
             committed: 0,
             aborted: 0,
+            row_already_exists: 0,
+            row_dirty: 0,
+            row_deleted: 0,
             cum_latency: 0,
         }
     }
@@ -201,6 +223,18 @@ impl Statistics {
     pub fn inc_aborted(&mut self) {
         self.aborted += 1;
         self.completed += 1;
+    }
+
+    pub fn inc_row_already_exists(&mut self) {
+        self.row_already_exists += 1;
+    }
+
+    pub fn inc_row_dirty(&mut self) {
+        self.row_dirty += 1;
+    }
+
+    pub fn inc_row_deleted(&mut self) {
+        self.row_deleted += 1;
     }
 
     pub fn add_cum_latency(&mut self, latency: u128) {

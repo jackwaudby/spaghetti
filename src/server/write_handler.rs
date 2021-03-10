@@ -97,9 +97,8 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                                                         .unwrap()
                                                         .add_cum_latency(lat);
                                                 }
-                                                Response::Aborted { reason } => {
-                                                    if let NonFatalError::RowNotFound(_, _) = reason
-                                                    {
+                                                Response::Aborted { reason } => match reason {
+                                                    NonFatalError::RowNotFound(_, _) => {
                                                         debug!("Increment committed");
                                                         self.stats
                                                             .as_mut()
@@ -111,10 +110,36 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                                                             .as_mut()
                                                             .unwrap()
                                                             .add_cum_latency(lat);
-                                                    } else {
-                                                        self.stats.as_mut().unwrap().inc_aborted()
                                                     }
-                                                }
+                                                    NonFatalError::RowAlreadyExists(_, _) => {
+                                                        debug!("Increment aborted");
+                                                        self.stats.as_mut().unwrap().inc_aborted();
+                                                        self.stats
+                                                            .as_mut()
+                                                            .unwrap()
+                                                            .inc_row_already_exists();
+                                                    }
+                                                    NonFatalError::RowDeleted(_, _) => {
+                                                        debug!("Increment aborted");
+                                                        self.stats.as_mut().unwrap().inc_aborted();
+                                                        self.stats
+                                                            .as_mut()
+                                                            .unwrap()
+                                                            .inc_row_deleted();
+                                                    }
+                                                    NonFatalError::RowDirty(_, _) => {
+                                                        debug!("Increment aborted");
+                                                        self.stats.as_mut().unwrap().inc_aborted();
+                                                        self.stats
+                                                            .as_mut()
+                                                            .unwrap()
+                                                            .inc_row_dirty();
+                                                    }
+                                                    _ => {
+                                                        debug!("Increment aborted");
+                                                        self.stats.as_mut().unwrap().inc_aborted();
+                                                    }
+                                                },
                                             }
                                         }
                                     }
@@ -163,17 +188,37 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                                             debug!("Increment latency {}", lat);
                                             self.stats.as_mut().unwrap().add_cum_latency(lat);
                                         }
-                                        Response::Aborted { reason } => {
-                                            if let NonFatalError::RowNotFound(_, _) = reason {
+                                        Response::Aborted { reason } => match reason {
+                                            NonFatalError::RowNotFound(_, _) => {
                                                 debug!("Increment committed");
                                                 self.stats.as_mut().unwrap().inc_committed();
                                                 let lat = latency.unwrap().as_nanos();
                                                 debug!("Increment latency {}", lat);
                                                 self.stats.as_mut().unwrap().add_cum_latency(lat);
-                                            } else {
-                                                self.stats.as_mut().unwrap().inc_aborted()
                                             }
-                                        }
+                                            NonFatalError::RowAlreadyExists(_, _) => {
+                                                debug!("Increment aborted");
+                                                self.stats.as_mut().unwrap().inc_aborted();
+                                                self.stats
+                                                    .as_mut()
+                                                    .unwrap()
+                                                    .inc_row_already_exists();
+                                            }
+                                            NonFatalError::RowDeleted(_, _) => {
+                                                debug!("Increment aborted");
+                                                self.stats.as_mut().unwrap().inc_aborted();
+                                                self.stats.as_mut().unwrap().inc_row_deleted();
+                                            }
+                                            NonFatalError::RowDirty(_, _) => {
+                                                debug!("Increment aborted");
+                                                self.stats.as_mut().unwrap().inc_aborted();
+                                                self.stats.as_mut().unwrap().inc_row_dirty();
+                                            }
+                                            _ => {
+                                                debug!("Increment aborted");
+                                                self.stats.as_mut().unwrap().inc_aborted();
+                                            }
+                                        },
                                     }
                                 }
                             }
