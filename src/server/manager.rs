@@ -88,10 +88,11 @@ impl TransactionManager {
             // Start timer
             let start = Instant::now();
             // Execute trasaction.
+            let handle = thread::current();
             let res = match request.transaction {
                 Transaction::Tatp(transaction) => match transaction {
                     TatpTransaction::GetSubscriberData(params) => {
-                        debug!("GetSubscriberData");
+                        debug!("Thread: {:?}, GetSubscriberData", handle.name());
                         tatp::procedures::get_subscriber_data(params, scheduler)
                     }
                     TatpTransaction::GetNewDestination(params) => {
