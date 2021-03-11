@@ -8,7 +8,7 @@ use crate::Result;
 
 use config::Config;
 use std::sync::Arc;
-// use tokio::time::{sleep, Duration};
+use tokio::time::{sleep, Duration};
 use tracing::info;
 
 /// `Producer` generates transactions and sends them to the 'WriteHandler`.
@@ -108,10 +108,10 @@ pub async fn run(mut producer: Producer) -> Result<()> {
             // Send transaction.
             producer.write_task_tx.send(maybe_transaction).await?;
             // Wait until response received
-            producer.received_rx.recv().await.unwrap();
+            // producer.received_rx.recv().await.unwrap();
 
             // Delay
-            // sleep(Duration::from_millis(producer.gen_delay)).await;
+            sleep(Duration::from_millis(producer.gen_delay)).await;
             // Send to write handler, waiting until capacity.
 
             // Increment transactions sent.
