@@ -13,7 +13,7 @@ pub struct LockInfo {
     /// List of transactions that have acquired the lock or are waiting for it.
     pub list: Vec<Entry>,
     /// Latest timestamp of transactions that hold lock, used for deadlock detection.
-    pub timestamp: Option<DateTime<Utc>>,
+    pub timestamp: Option<u64>,
     /// Number of locks concurrently granted for this record.
     pub granted: Option<u32>,
     /// Name of index row resides in
@@ -35,10 +35,8 @@ pub struct Entry {
     pub lock_mode: LockMode,
     /// Waiting for the lock or holding it.
     pub waiting: Option<Arc<(Mutex<bool>, Condvar)>>,
-    // TODO: Pointer to transaction's other `Entry`s for unlocking.
-    // previous_entry: &Entry,
     /// Transaction timestamp.
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: u64,
 }
 
 /// Represents the different lock modes.
@@ -52,7 +50,7 @@ impl LockInfo {
     /// Create new locking information container.
     ///
     /// Takes the initial group mode and initial timestamp.
-    pub fn new(group_mode: LockMode, timestamp: DateTime<Utc>, index: &str) -> LockInfo {
+    pub fn new(group_mode: LockMode, timestamp: u64, index: &str) -> LockInfo {
         LockInfo {
             group_mode: Some(group_mode),
             waiting: false,
@@ -86,7 +84,7 @@ impl Entry {
         name: String,
         lock_mode: LockMode,
         waiting: Option<Arc<(Mutex<bool>, Condvar)>>,
-        timestamp: DateTime<Utc>,
+        timestamp: u64,
     ) -> Entry {
         Entry {
             name,

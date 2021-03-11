@@ -26,7 +26,7 @@ pub struct TransactionInfo {
     // Transaction ID.
     id: Option<String>,
     // Timestamp used in deadlock detection.
-    ts: Option<DateTime<Utc>>,
+    ts: Option<u64>,
 }
 
 impl Protocol {
@@ -57,14 +57,14 @@ impl Protocol {
 }
 
 impl TransactionInfo {
-    pub fn new(id: Option<String>, ts: Option<DateTime<Utc>>) -> TransactionInfo {
+    pub fn new(id: Option<String>, ts: Option<u64>) -> TransactionInfo {
         TransactionInfo { id, ts }
     }
 
     pub fn get_id(&self) -> Option<String> {
         self.id.clone()
     }
-    pub fn get_ts(&self) -> Option<DateTime<Utc>> {
+    pub fn get_ts(&self) -> Option<u64> {
         self.ts.clone()
     }
 }
