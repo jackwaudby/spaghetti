@@ -92,31 +92,31 @@ impl TransactionManager {
             let res = match request.transaction {
                 Transaction::Tatp(transaction) => match transaction {
                     TatpTransaction::GetSubscriberData(params) => {
-                        debug!("Thread: {:?}, GetSubscriberData", handle.name());
+                        debug!("Thread {}: GetSubscriberData", handle.name().unwrap());
                         tatp::procedures::get_subscriber_data(params, scheduler)
                     }
                     TatpTransaction::GetNewDestination(params) => {
-                        debug!("GetNewDestination");
+                        debug!("Thread {}: GetNewDestination", handle.name().unwrap());
                         tatp::procedures::get_new_destination(params, scheduler)
                     }
                     TatpTransaction::GetAccessData(params) => {
-                        debug!("GetAccessData");
+                        debug!("Thread {}: GetAccessData", handle.name().unwrap());
                         tatp::procedures::get_access_data(params, scheduler)
                     }
                     TatpTransaction::UpdateSubscriberData(params) => {
-                        debug!("UpdateSubscriberData");
+                        debug!("Thread {}: UpdateSubscriberData", handle.name().unwrap());
                         tatp::procedures::update_subscriber_data(params, scheduler)
                     }
                     TatpTransaction::UpdateLocationData(params) => {
-                        debug!("UpdateLocationData");
+                        debug!("Thread {}: UpdateLocationData", handle.name().unwrap());
                         tatp::procedures::update_location(params, scheduler)
                     }
                     TatpTransaction::InsertCallForwarding(params) => {
-                        debug!("InsertCallForwarding");
+                        debug!("Thread {}: InsertCallForwarding", handle.name().unwrap());
                         tatp::procedures::insert_call_forwarding(params, scheduler)
                     }
                     TatpTransaction::DeleteCallForwarding(params) => {
-                        debug!("DeleteCallForwarding");
+                        debug!("Thread {}: DeleteCallForwarding", handle.name().unwrap());
                         tatp::procedures::delete_call_forwarding(params, scheduler)
                     }
                 },
