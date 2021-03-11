@@ -12,7 +12,9 @@ use crate::workloads::Workload;
 use chashmap::CHashMap;
 use chrono::{DateTime, NaiveDate, Utc};
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread;
 use std::time::SystemTime;
+
 use tracing::debug;
 
 pub mod error;
@@ -44,12 +46,12 @@ impl Scheduler for TwoPhaseLocking {
     /// A transaction with the same name is already registered.
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
         let handle = thread::current();
-
+        let counter = Arc::clone(&self.id);
         let mut lock = counter.lock().unwrap();
         let id = *lock;
         *lock += 1;
-        debug!("Thread {}: assigned id", handle.name().unwrap(), id);
-        let counter = Arc::clone(&self.id);
+        debug!("Thread {}: assigned id {}", handle.name().unwrap(), id);
+
         let t = TransactionInfo::new(Some(id.to_string()), Some(id));
         // Register with active transactions.
         let at = ActiveTransaction::new(&t.get_id().unwrap());
