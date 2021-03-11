@@ -20,7 +20,7 @@ pub mod active_transaction;
 
 pub struct HitList {
     /// Transaction ID counter.
-    id: Mutex<u64>,
+    id: Arc<Mutex<u64>>,
 
     /// Map of transaction ids to neccessary runtime information.
     active_transactions: Arc<CHashMap<u64, ActiveTransaction>>,
@@ -38,9 +38,10 @@ pub struct HitList {
 impl Scheduler for HitList {
     /// Register a transaction with the hit list.
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
-        // Get transaction ID.
-        let id = self.get_id();
-        debug!("Register transaction {}", id);
+        let counter = Arc::clone(&self.id);
+        let mut lock = counter.lock().unwrap();
+        let id = *lock;
+        *lock += 1;
 
         // Get start epoch and add to epoch tracker.
         debug!("Requesting lock on ASR");
@@ -458,7 +459,7 @@ impl Scheduler for HitList {
 impl HitList {
     /// Creates a new scheduler with an empty hit list.
     pub fn new(workload: Arc<Workload>) -> HitList {
-        let id = Mutex::new(0);
+        let id = Arc::new(Mutex::new(0));
         let active_transactions = Arc::new(CHashMap::<u64, ActiveTransaction>::new());
         let asr = AtomicSharedResources::new();
 

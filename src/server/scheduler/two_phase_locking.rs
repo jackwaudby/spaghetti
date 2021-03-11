@@ -28,7 +28,7 @@ pub struct TwoPhaseLocking {
     /// Transaction ID counter.
     id: Arc<Mutex<u64>>,
 
-    /// Map of database records  to their lock information.
+    /// Map of database records to their lock information.
     lock_table: Arc<CHashMap<PrimaryKey, LockInfo>>,
 
     /// Map of transaction ids to neccessary runtime information.
