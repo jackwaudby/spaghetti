@@ -24,7 +24,7 @@ pub mod active_transaction;
 /// Represents a 2PL scheduler.
 pub struct TwoPhaseLocking {
     /// Transaction ID counter.
-    id: Mutex<u64>,
+    id: Arc<Mutex<u64>>,
 
     /// Map of database records  to their lock information.
     lock_table: Arc<CHashMap<PrimaryKey, LockInfo>>,
@@ -43,13 +43,17 @@ impl Scheduler for TwoPhaseLocking {
     ///
     /// A transaction with the same name is already registered.
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
-        // Get id.
-        let id = self.get_id();
+        let counter = Arc::clone(&self.id);
+        let mut lock = counter.lock().unwrap();
+        let id = *lock;
+        *lock += 1;
+
         let t = TransactionInfo::new(Some(id.to_string()), Some(id));
         // Register with active transactions.
         let at = ActiveTransaction::new(&t.get_id().unwrap());
         if let Some(_) = self.active_transactions.insert(t.get_id().unwrap(), at) {
             let err = TwoPhaseLockingError::AlreadyRegistered(t.get_id().unwrap());
+            drop(lock);
             return Err(err.into());
         }
 
@@ -504,7 +508,7 @@ impl TwoPhaseLocking {
         let active_transactions = Arc::new(CHashMap::<String, ActiveTransaction>::new());
 
         TwoPhaseLocking {
-            id: Mutex::new(1),
+            id: Arc::new(Mutex::new(1)),
             lock_table,
             active_transactions,
             data: workload,
