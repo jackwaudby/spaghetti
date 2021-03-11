@@ -111,7 +111,7 @@ pub async fn run(mut producer: Producer) -> Result<()> {
             // producer.received_rx.recv().await.unwrap();
 
             // Delay
-            sleep(Duration::from_millis(producer.gen_delay)).await;
+            // sleep(Duration::from_millis(producer.gen_delay)).await;
             // Send to write handler, waiting until capacity.
 
             // Increment transactions sent.
