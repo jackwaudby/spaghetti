@@ -76,8 +76,57 @@ impl Scheduler for TwoPhaseLocking {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        // Get table.
         let table = self.get_table(table, meta.clone())?;
+        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+
+        // Attempt to get lock for the new record.
+        let lock_info = self.lock_table.get_mut(&key);
+        let mut lock_info = match lock_info {
+            // Lock exists for new record, hence the record already exists.
+            Some(_) => {
+                self.abort(meta.clone()).unwrap();
+                return Err(NonFatalError::RowAlreadyExists(
+                    format!("{}", key),
+                    table.to_string(),
+                ));
+            }
+            // No lock in the table for this record.
+            None => {
+                let mut lock_info =
+                    LockInfo::new(LockMode::Write, meta.get_ts().unwrap(), &index_name);
+                let entry = Entry::new(
+                    meta.get_id().unwrap().to_string(),
+                    LockMode::Write,
+                    None,
+                    meta.get_ts().unwrap(),
+                );
+                lock_info.add_entry(entry);
+                // Attempt to insert into lock table
+                let res = self.lock_table.insert(key, lock_info);
+                if let Some(existing_lock) = res {
+                    // Lock was concurrently created, back off.
+                    self.lock_table.insert(key, existing_lock);
+                    return Err(NonFatalError::RowAlreadyExists(
+                        format!("{}", key),
+                        table.to_string(),
+                    ));
+                }
+            }
+        };
+        // Register lock.
+        self.active_transactions
+            .get_mut(&meta.get_id().unwrap())
+            .unwrap()
+            .add_lock(key);
+        // Now have the lock, check if record exists in index.
+        if index.key_exists(key) {
+            return Err(NonFatalError::RowAlreadyExists(
+                format!("{}", key),
+                table.to_string(),
+            ));
+        }
+
         // Init row.
         let mut row = Row::new(Arc::clone(&table), "2pl");
         // Set pk.
@@ -96,7 +145,7 @@ impl Scheduler for TwoPhaseLocking {
             self.abort(meta.clone()).unwrap();
             return Err(e);
         }
-        // Register
+        // Add to active transaction, actually inserted at commit time.
         self.active_transactions
             .get_mut(&meta.get_id().unwrap())
             .unwrap()
@@ -126,6 +175,8 @@ impl Scheduler for TwoPhaseLocking {
         let table = self.get_table(table, meta.clone())?;
         // Get primary index name.
         let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
+        // Get index for this key's table.
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
         // Get read lock on row with pk `key`.
         let request = self.request_lock(
             &index_name,
@@ -134,10 +185,6 @@ impl Scheduler for TwoPhaseLocking {
             &meta.get_id().unwrap(),
             meta.get_ts().unwrap(),
         );
-
-        // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
-
         match request {
             LockRequest::Granted => {
                 debug!(
@@ -145,13 +192,13 @@ impl Scheduler for TwoPhaseLocking {
                     key,
                     meta.get_id().unwrap()
                 );
-                // Execute read operation.
-                let result = index.read(key, columns, "2pl", &meta.get_id().unwrap());
                 // Register lock.
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
                     .add_lock(key);
+                // Execute read operation.
+                let result = index.read(key, columns, "2pl", &meta.get_id().unwrap());
                 match result {
                     Ok(res) => {
                         // Get values.
@@ -227,13 +274,9 @@ impl Scheduler for TwoPhaseLocking {
             meta.get_id().unwrap(),
             key
         );
-
-        // Get table.
         let table = self.get_table(table, meta.clone())?;
-
-        // Get primary index name.
         let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
         // Request lock.
         let request = self.request_lock(
             &index_name,
@@ -242,9 +285,6 @@ impl Scheduler for TwoPhaseLocking {
             &meta.get_id().unwrap(),
             meta.get_ts().unwrap(),
         );
-
-        // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         match request {
             LockRequest::Granted => {
@@ -319,13 +359,10 @@ impl Scheduler for TwoPhaseLocking {
         key: PrimaryKey,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        // Get table.
         let table = self.get_table(table, meta.clone())?;
-
-        // Get primary index name.
         let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        // Request lock.
         let request = self.request_lock(
             &index_name,
             key,
@@ -333,9 +370,6 @@ impl Scheduler for TwoPhaseLocking {
             &meta.get_id().unwrap(),
             meta.get_ts().unwrap(),
         );
-
-        // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         match request {
             LockRequest::Granted => {
@@ -402,19 +436,20 @@ impl Scheduler for TwoPhaseLocking {
     /// Commit a transaction.
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         debug!("Commit transaction {:?}", meta.get_id().unwrap());
-        // Get copy of rows to insert
+        // Get rows to insert.
         let rows = self
             .active_transactions
             .get_mut(&meta.get_id().unwrap())
             .unwrap()
             .get_rows_to_insert();
 
+        // TODO: it is possible an insert fails, i.e., the RowAlready exists as we don't take a lock on it.
+        // May need to rollback some inserts.
         match rows {
             Some(rows) => {
                 debug!("Rows to insert for {}", &meta.get_id().unwrap());
                 for row in rows.into_iter() {
                     let (index, row) = row;
-
                     let key = row.get_primary_key().unwrap();
                     debug!("Key: {}", key);
                     // Attempt to insert rows.
