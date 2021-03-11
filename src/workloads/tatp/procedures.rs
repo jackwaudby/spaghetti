@@ -9,6 +9,8 @@ use crate::workloads::tatp::profiles::{
 use crate::workloads::PrimaryKey;
 
 use std::sync::Arc;
+use std::thread;
+use tracing::debug;
 
 /// GetSubscriberData transaction.
 pub fn get_subscriber_data(
@@ -181,12 +183,16 @@ pub fn get_access_data(
         params.ai_type.into(),
     ));
 
+    let handle = thread::current();
+    debug!("Thread {}: register", handle.name().unwrap());
     // Register with scheduler.
     let meta = protocol.scheduler.register().unwrap();
     // Execute read operation.
+    debug!("Thread {}: read", handle.name().unwrap());
     let values = protocol
         .scheduler
         .read("access_info", pk, &columns, meta.clone())?;
+    debug!("Thread {}: commit", handle.name().unwrap());
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
     // Convert to result
