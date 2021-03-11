@@ -443,8 +443,6 @@ impl Scheduler for TwoPhaseLocking {
             .unwrap()
             .get_rows_to_insert();
 
-        // TODO: it is possible an insert fails, i.e., the RowAlready exists as we don't take a lock on it.
-        // May need to rollback some inserts.
         match rows {
             Some(rows) => {
                 debug!("Rows to insert for {}", &meta.get_id().unwrap());
@@ -452,11 +450,8 @@ impl Scheduler for TwoPhaseLocking {
                     let (index, row) = row;
                     let key = row.get_primary_key().unwrap();
                     debug!("Key: {}", key);
-                    // Attempt to insert rows.
-                    if let Err(err) = index.insert(key, row) {
-                        self.abort(meta.clone()).unwrap();
-                        return Err(err);
-                    }
+                    // This insert can never fail.
+                    index.insert(key, row).unwrap();
                 }
             }
             None => debug!("No rows to insert for {}", &meta.get_id().unwrap()),
@@ -699,6 +694,7 @@ impl TwoPhaseLocking {
                 index.commit(key, "2pl", tid).unwrap();
             } else {
                 debug!("revert changes");
+                // TODO: could be reverting a row that does not exist if a create failed.
                 match index.revert(key, "2pl", tid) {
                     Ok(_) => {}
                     Err(_) => {}
