@@ -41,7 +41,10 @@ pub struct GlobalStatistics {
     row_already_exists: u32,
     row_dirty: u32,
     row_deleted: u32,
+    parent_aborted: u32,
     subscribers: u32,
+    read_lock_denied: u32,
+    write_lock_denied: u32,
 }
 
 impl GlobalStatistics {
@@ -60,7 +63,10 @@ impl GlobalStatistics {
             data_generation: None,
             row_already_exists: 0,
             row_dirty: 0,
+            parent_aborted: 0,
             row_deleted: 0,
+            read_lock_denied: 0,
+            write_lock_denied: 0,
             subscribers,
         }
     }
@@ -111,6 +117,9 @@ impl GlobalStatistics {
         self.row_already_exists += local.row_already_exists;
         self.row_deleted += local.row_deleted;
         self.row_dirty += local.row_dirty;
+        self.read_lock_denied += local.read_lock_denied;
+        self.write_lock_denied += local.write_lock_denied;
+        self.parent_aborted += local.parent_aborted;
     }
 
     pub fn write_to_file(&mut self) {
@@ -149,6 +158,9 @@ impl GlobalStatistics {
                 write!(file, "row already existed: {}\n", self.row_already_exists).unwrap();
                 write!(file, "row marked for delete: {}\n", self.row_deleted).unwrap();
                 write!(file, "row marked as dirty: {}\n", self.row_dirty).unwrap();
+                write!(file, "parent aborted: {}\n", self.parent_aborted).unwrap();
+                write!(file, "read lock denied: {}\n", self.read_lock_denied).unwrap();
+                write!(file, "write lock denied: {}\n", self.write_lock_denied).unwrap();
                 // Calculate throughput
                 self.calculate_throughput();
                 write!(file, "throughput: {}(txn/s)\n", self.thpt.unwrap()).unwrap();
@@ -197,6 +209,9 @@ pub struct Statistics {
     row_already_exists: u32,
     row_dirty: u32,
     row_deleted: u32,
+    read_lock_denied: u32,
+    write_lock_denied: u32,
+    parent_aborted: u32,
     cum_latency: u128,
 }
 
@@ -208,9 +223,12 @@ impl Statistics {
             committed: 0,
             aborted: 0,
             row_already_exists: 0,
+            parent_aborted: 0,
             row_dirty: 0,
             row_deleted: 0,
             cum_latency: 0,
+            read_lock_denied: 0,
+            write_lock_denied: 0,
         }
     }
 
@@ -238,6 +256,18 @@ impl Statistics {
 
     pub fn inc_row_deleted(&mut self) {
         self.row_deleted += 1;
+    }
+
+    pub fn inc_parent_aborted(&mut self) {
+        self.parent_aborted += 1;
+    }
+
+    pub fn inc_read_lock_denied(&mut self) {
+        self.read_lock_denied += 1;
+    }
+
+    pub fn inc_write_lock_denied(&mut self) {
+        self.write_lock_denied += 1;
     }
 
     pub fn add_cum_latency(&mut self, latency: u128) {

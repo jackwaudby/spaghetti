@@ -481,7 +481,7 @@ impl Scheduler for TwoPhaseLocking {
 
         Ok(())
     }
-    // TODO
+
     /// Abort a transaction.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
         debug!("Abort transaction {:?}", meta.get_id().unwrap());
