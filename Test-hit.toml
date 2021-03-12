@@ -9,7 +9,8 @@ protocol="hit"
 workers = 4
 
 warmup = 1
-gen_delay = 1000
+generator_mode = "closed"
+think_time = 1000
 transactions = 10
 workload = "tatp"
 

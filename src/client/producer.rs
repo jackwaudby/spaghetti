@@ -22,9 +22,6 @@ pub struct Producer {
     /// Number of transactions to generate.
     pub transactions: u32,
 
-    /// Delay between transactions
-    pub gen_delay: u64,
-
     /// Transactions sent to write handler.
     pub sent: u32,
 
@@ -79,12 +76,10 @@ impl Producer {
         let listen_m_rx = Shutdown::new_mpsc(listen_m_rx);
         // Get transaction to generate.
         let transactions = configuration.get_int("transactions")? as u32;
-        let gen_delay = configuration.get_int("gen_delay")? as u64;
 
         Ok(Producer {
             generator,
             mode: gen_mode,
-            gen_delay,
             sent: 0,
             transactions,
             write_task_tx,
