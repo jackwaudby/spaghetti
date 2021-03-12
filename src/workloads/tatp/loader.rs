@@ -10,7 +10,7 @@ use rand::seq::IteratorRandom;
 use rand::Rng;
 
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::info;
 
 //////////////////////////////
 /// Table Loaders. ///

@@ -10,10 +10,8 @@ use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
 
 use chashmap::CHashMap;
-use chrono::{DateTime, NaiveDate, Utc};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
-use std::time::SystemTime;
 
 use tracing::debug;
 
@@ -90,7 +88,7 @@ impl Scheduler for TwoPhaseLocking {
 
         // Attempt to get lock for the new record.
         let lock_info = self.lock_table.get_mut(&key);
-        let mut lock_info = match lock_info {
+        match lock_info {
             // Lock exists for new record, hence the record already exists.
             Some(_) => {
                 self.abort(meta.clone()).unwrap();
@@ -517,14 +515,6 @@ impl TwoPhaseLocking {
             active_transactions,
             data: workload,
         }
-    }
-
-    /// Get transaction id.
-    fn get_id(&self) -> u64 {
-        let mut id = self.id.lock().unwrap();
-        let new_id = *id;
-        *id += 1;
-        new_id
     }
 
     /// Attempt to acquire lock.

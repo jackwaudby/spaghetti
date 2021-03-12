@@ -8,7 +8,6 @@ use crate::server::storage::table::Table;
 use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
 
-use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
 pub mod hit_list;

@@ -61,7 +61,7 @@ pub enum BenchmarkPhase {
 
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
     /// Update statistics.
-    fn record(&mut self, protocol: &str, response: Response, latency: Option<Duration>) {
+    fn record(&mut self, response: Response, latency: Option<Duration>) {
         match response {
             Response::Committed { .. } => {
                 self.stats.as_mut().unwrap().inc_committed();
@@ -120,7 +120,6 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
         // (b) tm closes channel.
 
         let warmup = config.get_int("warmup")? as u32;
-        let protocol = config.get_str("protocol")?;
         loop {
             match self.listen_rh_requests.try_recv() {
                 // Read handler has terminated and sent message.
@@ -142,7 +141,7 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                                             ref resp, latency, ..
                                         } = response
                                         {
-                                            self.record(&protocol, resp.clone(), latency);
+                                            self.record(resp.clone(), latency);
                                         }
                                     }
                                     // Inc. response sent.
@@ -185,7 +184,7 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                                     ref resp, latency, ..
                                 } = response
                                 {
-                                    self.record(&protocol, resp.clone(), latency)
+                                    self.record(resp.clone(), latency)
                                 }
                             }
                             self.responses_sent = self.responses_sent + 1;

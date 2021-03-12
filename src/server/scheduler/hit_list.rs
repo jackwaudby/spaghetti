@@ -497,11 +497,4 @@ impl HitList {
             data: workload,
         }
     }
-
-    fn get_id(&self) -> u64 {
-        let mut id = self.id.lock().unwrap();
-        let new_id = *id;
-        *id += 1;
-        new_id
-    }
 }
