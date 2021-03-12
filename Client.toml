@@ -1,4 +1,4 @@
-address = "127.0.0.1"
+address = "10.0.0.6"
 port = 6142
 log = "info"
 
@@ -8,9 +8,9 @@ generator_mode = "flood"
 think_time = 1000
 
 workload = "tatp"
-transactions = 10
+transactions = 1000000
 
-subscribers = 1
+subscribers = 100000
 
 warehouses = 5
 districts = 10
