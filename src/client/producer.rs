@@ -134,6 +134,10 @@ pub async fn run(mut producer: Producer) -> Result<()> {
 
             // Increment transactions sent.
             producer.sent += 1;
+
+            if producer.sent % 1000 == 0 {
+                info!("Sent: {}", producer.sent);
+            }
         }
         // Send close connection message.
         producer.terminate().await?;
