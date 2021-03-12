@@ -4,13 +4,13 @@ log = "info"
 
 mpsc_size = 32
 
-generator_mode = "flood"
-think_time = 1000
+generator_mode = "closed"
+think_time = 0
 
 workload = "tatp"
-transactions = 1000000
+transactions = 100000
 
-subscribers = 100000
+subscribers = 10000
 
 warehouses = 5
 districts = 10
