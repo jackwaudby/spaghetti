@@ -16,6 +16,9 @@ pub struct Producer {
     /// Parameter generator.
     pub generator: ParameterGenerator,
 
+    /// Generator mode.
+    pub mode: GeneratorMode,
+
     /// Number of transactions to generate.
     pub transactions: u32,
 
@@ -43,6 +46,15 @@ impl Producer {
         listen_m_rx: tokio::sync::mpsc::Receiver<()>,
         received_rx: tokio::sync::mpsc::Receiver<()>,
     ) -> Result<Producer> {
+        // Get mode.
+        let mode = configuration.get_str("generator_mode")?;
+        let think_time = configuration.get_int("think_time")? as u64;
+        let gen_mode = match mode.as_str() {
+            "closed" => GeneratorMode::Closed { think_time },
+            "open" => GeneratorMode::Open { think_time },
+            "flood" => GeneratorMode::Flood,
+            _ => return Err(FatalError::IncorrectGeneratorMode(mode.to_string()).into()),
+        };
         // Get workload type.
         let workload = configuration.get_str("workload")?;
         // Create generator.
@@ -71,6 +83,7 @@ impl Producer {
 
         Ok(Producer {
             generator,
+            mode: gen_mode,
             gen_delay,
             sent: 0,
             transactions,
@@ -100,19 +113,29 @@ pub async fn run(mut producer: Producer) -> Result<()> {
                 res = producer.generator.get_transaction() => res,
                 _ = producer.listen_m_rx.recv() => {
                     producer.terminate().await?;
-                    //           debug!("Generated {} transactions", producer.sent);
                     return Ok(());
                 }
             };
 
             // Send transaction.
             producer.write_task_tx.send(maybe_transaction).await?;
-            // Wait until response received
-            // producer.received_rx.recv().await.unwrap();
 
-            // Delay
-            // sleep(Duration::from_millis(producer.gen_delay)).await;
-            // Send to write handler, waiting until capacity.
+            match producer.mode {
+                GeneratorMode::Closed { think_time } => {
+                    // Wait until response received
+                    producer.received_rx.recv().await.unwrap();
+                    // Think time
+                    if think_time > 0 {
+                        sleep(Duration::from_millis(think_time)).await;
+                    }
+                }
+                GeneratorMode::Flood => {
+                    // continue.
+                }
+                GeneratorMode::Open { think_time } => {
+                    sleep(Duration::from_millis(think_time)).await;
+                }
+            }
 
             // Increment transactions sent.
             producer.sent += 1;
@@ -124,6 +147,15 @@ pub async fn run(mut producer: Producer) -> Result<()> {
     });
 
     handle.await?
+}
+
+pub enum GeneratorMode {
+    /// New requests triggered by the completions of old requests + optional think time.
+    Closed { think_time: u64 },
+    /// Produce requests following some distribution - set as fixed interval think time for now.
+    Open { think_time: u64 },
+    /// Produce requests as fast as they can, don't wait for completion of old jobs, and there is no think time.
+    Flood,
 }
 
 impl Drop for Producer {

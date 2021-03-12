@@ -4,7 +4,8 @@ log = "info"
 
 mpsc_size = 32
 
-gen_delay = 1000
+generator_mode = "flood"
+think_time = 1000
 
 workload = "tatp"
 transactions = 10

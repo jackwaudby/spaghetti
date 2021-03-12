@@ -1,5 +1,5 @@
 use crate::client::consumer::Consumer;
-use crate::client::producer::Producer;
+use crate::client::producer::{GeneratorMode, Producer};
 use crate::client::read_handler::ReadHandler;
 use crate::client::write_handler::WriteHandler;
 use crate::common::connection::{ReadConnection, WriteConnection};

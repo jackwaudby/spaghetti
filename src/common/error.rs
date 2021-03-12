@@ -56,6 +56,9 @@ pub enum FatalError {
 
     /// Unable to convert values to result string
     UnableToConvertToResultString,
+
+    /// Generator mode recognised
+    IncorrectGeneratorMode(String),
 }
 
 /// Represents a non-fatal error.
@@ -129,6 +132,9 @@ impl fmt::Display for FatalError {
             ThreadPoolClosed => write!(f, "thread pool is closed"),
             UnableToConvertToResultString => write!(f, "unable to convert values to result string"),
             InvalidColumnType(ref col_type) => write!(f, "invalid: column type {}", col_type),
+            IncorrectGeneratorMode(ref mode) => {
+                write!(f, "generator mode not recognised: {}", mode)
+            }
         }
     }
 }
