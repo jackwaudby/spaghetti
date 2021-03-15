@@ -154,7 +154,7 @@ impl GlobalStatistics {
         // Create directory
         fs::create_dir("./results").unwrap();
 
-        let p = format!("./results-{}-{}", self.protocol, self.workload);
+        let p = format!("./results/{}-{}.txt", self.protocol, self.workload);
         // Create file.
         let mut file = OpenOptions::new()
             .write(true)
