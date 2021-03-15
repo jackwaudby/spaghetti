@@ -66,6 +66,9 @@ pub struct GlobalStatistics {
     /// cum_latency / committed
     av_latency: Option<f64>,
 
+    /// Percentage of aborted transactions.
+    abort_rate: Option<f64>,
+
     /// Time taken to populate tables, measured in seconds.
     data_generation: Option<Duration>,
 }
@@ -84,6 +87,7 @@ impl GlobalStatistics {
             throughput: None,
             av_latency: None,
             data_generation: None,
+            abort_rate: None,
             row_already_exists: 0,
             row_dirty: 0,
             parent_aborted: 0,
@@ -122,6 +126,11 @@ impl GlobalStatistics {
     /// Calculate throughput.
     pub fn calculate_throughput(&mut self) {
         self.throughput = Some(self.completed as f64 / self.end.unwrap().as_secs() as f64);
+    }
+
+    /// Calculate abort rate.
+    pub fn calculate_abort_rate(&mut self) {
+        self.abort_rate = Some(self.aborted as f64 / self.completed as f64);
     }
 
     /// Calculate latency.
@@ -195,6 +204,9 @@ impl GlobalStatistics {
                 // Calculate latency
                 self.calculate_latency();
                 write!(file, "latency: {}(ms)\n", self.av_latency.unwrap()).unwrap();
+                // Calculate abort rate
+                self.calculate_abort_rate();
+                write!(file, "abort rate: {}(ms)\n", self.abort_rate.unwrap()).unwrap();
             }
             None => {
                 write!(file, "No clients\n").unwrap();
