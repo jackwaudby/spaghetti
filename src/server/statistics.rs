@@ -175,7 +175,10 @@ impl GlobalStatistics {
         match self.clients {
             Some(clients) => {
                 write!(file, "clients: {}\n", clients).unwrap();
+                write!(file, "protocol: {}\n", self.protocol).unwrap();
+                write!(file, "workload: {}\n", self.workload).unwrap();
                 write!(file, "subscribers: {}\n", self.subscribers).unwrap();
+
                 // Transaction counts
                 write!(file, "completed transactions: {}\n", self.completed).unwrap();
                 write!(file, "committed transactions: {}\n", self.committed).unwrap();
