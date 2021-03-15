@@ -12,6 +12,8 @@ pub struct Consumer {
     read_task_rx: tokio::sync::mpsc::Receiver<Message>,
     // Notify `Producer` of `Consumer`s shutdown.
     _notify_m_tx: tokio::sync::mpsc::Sender<()>,
+    /// Responses received.
+    received: u32,
 }
 
 impl Consumer {
@@ -23,6 +25,7 @@ impl Consumer {
         Consumer {
             read_task_rx,
             _notify_m_tx,
+            received: 0,
         }
     }
 }
@@ -46,6 +49,10 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
 
         // Process messages until the channel is closed.
         while let Some(message) = consumer.read_task_rx.recv().await {
+            if consumer.received % 1000 == 0 {
+                info!("Recevied: {}", consumer.received);
+            }
+
             // Append to file.
             let mut file = OpenOptions::new()
                 .write(true)
@@ -58,6 +65,7 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
                 info!("Connection closed");
                 return Ok(());
             } else {
+                consumer.received += 1;
                 continue;
             }
         }
