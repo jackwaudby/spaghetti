@@ -1,0 +1,7 @@
+yes | sudo apt-get update &&
+yes | sudo apt install build-essential &&
+curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf | sh -s -- -y &&
+source $HOME/.cargo/env &&
+ git clone https://github.com/jackwaudby/spaghetti.git &&
+cd spaghetti/ &&
+cargo build
