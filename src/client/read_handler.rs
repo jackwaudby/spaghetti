@@ -4,7 +4,7 @@ use crate::common::frame::{ParseError, ParseErrorKind};
 use crate::common::message::Message;
 use crate::Result;
 use tokio::io::AsyncRead;
-use tracing::debug;
+use tracing::{debug, info};
 
 /// Manages the read half of the `client` TCP stream.
 pub struct ReadHandler<R: AsyncRead + Unpin> {
@@ -99,9 +99,9 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                         return Err(FatalError::ConnectionUnexpectedlyClosed);
                     }
                 };
-                debug!("Received");
+                info!("Received");
                 rh.read_task_tx.send(response).await.unwrap();
-                debug!("Sent ");
+                info!("Sent ");
             } else {
                 // There has been an encoding error.
                 return Err(FatalError::from(ParseError::new(ParseErrorKind::Invalid)));
