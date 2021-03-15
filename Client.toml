@@ -8,7 +8,7 @@ generator_mode = "closed"
 think_time = 0
 
 workload = "tatp"
-transactions = 100000
+transactions = 1001000
 
 subscribers = 10000
 
