@@ -6,7 +6,7 @@ use crate::server::manager::State as TransactionManagerState;
 use crate::server::read_handler::State as ReadHandlerState;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
-use crate::server::statistics::Statistics;
+use crate::server::statistics::LocalStatistics;
 use crate::Result;
 
 use config::Config;
@@ -24,7 +24,7 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     pub id: u32,
 
     /// Stats
-    pub stats: Option<Statistics>,
+    pub stats: Option<LocalStatistics>,
 
     /// Benchmark state
     pub benchmark_phase: BenchmarkPhase,
@@ -50,7 +50,7 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     // Channel for notify the transaction manager of shutdown.
     // Implicitly dropped when handler is dropped (safely finished).
     // Communication channel between async and sync code.
-    pub notify_listener_tx: tokio::sync::broadcast::Sender<Statistics>,
+    pub notify_listener_tx: tokio::sync::broadcast::Sender<LocalStatistics>,
 }
 
 #[derive(Debug)]

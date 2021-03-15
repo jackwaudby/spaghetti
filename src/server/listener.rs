@@ -8,7 +8,7 @@ use crate::server::manager::State as TransactionManagerState;
 use crate::server::manager::TransactionManager;
 use crate::server::read_handler::{ReadHandler, State};
 use crate::server::statistics::GlobalStatistics;
-use crate::server::statistics::Statistics;
+use crate::server::statistics::LocalStatistics;
 use crate::server::write_handler::{BenchmarkPhase, WriteHandler};
 use crate::Result;
 
@@ -52,11 +52,11 @@ pub struct Listener {
 
     /// Sender of channel between `WriteHandler`s and `Listener`.
     /// Used to indicate shutdown of write handlers when there are no active connections.
-    pub notify_listener_tx: tokio::sync::broadcast::Sender<Statistics>,
+    pub notify_listener_tx: tokio::sync::broadcast::Sender<LocalStatistics>,
 
     /// Receiver of channel between `WriteHandler`s and `Listener`.
     /// Used to indicate `WriteHandler`s have gracefully shutdown.
-    pub listener_shutdown_rx: tokio::sync::broadcast::Receiver<Statistics>,
+    pub listener_shutdown_rx: tokio::sync::broadcast::Receiver<LocalStatistics>,
 }
 
 impl Listener {
@@ -112,7 +112,7 @@ impl Listener {
                     let mut write_handler = WriteHandler {
                         id: self.next_id,
                         benchmark_phase: BenchmarkPhase::Warmup,
-                        stats: Some(Statistics::new(self.next_id)),
+                        stats: Some(LocalStatistics::new(self.next_id)),
                         connection: WriteConnection::new(wr),
                         response_rx,
                         responses_sent: 0,

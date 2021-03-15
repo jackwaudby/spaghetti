@@ -6,6 +6,8 @@ use std::time::Duration;
 use std::time::Instant;
 use tracing::debug;
 
+/// Each write handler track statistics in its own instance of `LocalStatisitics`.
+/// After the benchmark has completed the statisitics are merged into `GlobalStatistics`.
 #[derive(Debug, Clone)]
 pub struct GlobalStatistics {
     /// Time the server began listening for connections.
@@ -17,6 +19,15 @@ pub struct GlobalStatistics {
     /// Number of clients.
     clients: Option<u32>,
 
+    /// Protocol.
+    protocol: String,
+
+    /// Workload.
+    workload: String,
+
+    /// Subscribers - TATP only.
+    subscribers: u32,
+
     /// Number of completed transactions (committed and aborted).
     completed: u32,
 
@@ -26,30 +37,42 @@ pub struct GlobalStatistics {
     /// Number of transactions that aborted.
     aborted: u32,
 
+    /// Row already exisited.
+    row_already_exists: u32,
+
+    /// Row was marked dirty.
+    row_dirty: u32,
+
+    /// Row was marked as deleted.
+    row_deleted: u32,
+
+    /// Predecessor aborted - SGT only.
+    parent_aborted: u32,
+
+    /// Transaction denied a read lock - 2PL only.
+    read_lock_denied: u32,
+
+    /// Transaction denied a write lock - 2PL only.
+    write_lock_denied: u32,
+
     /// Cumulative latency of all committed transactions.
     cum_latency: u128,
 
     /// Throughput of committed transactions.
-    thpt: Option<f64>,
+    /// committed / (end - start)
+    throughput: Option<f64>,
 
     /// Average latency of committed transactions.
+    /// cum_latency / committed
     av_latency: Option<f64>,
 
     /// Time taken to populate tables, measured in seconds.
     data_generation: Option<Duration>,
-
-    row_already_exists: u32,
-    row_dirty: u32,
-    row_deleted: u32,
-    parent_aborted: u32,
-    subscribers: u32,
-    read_lock_denied: u32,
-    write_lock_denied: u32,
 }
 
 impl GlobalStatistics {
     /// Create global stats tracker.
-    pub fn new(subscribers: u32) -> GlobalStatistics {
+    pub fn new(subscribers: u32, workload: &str, protocol: &str) -> GlobalStatistics {
         GlobalStatistics {
             start: None,
             end: None,
@@ -58,7 +81,7 @@ impl GlobalStatistics {
             committed: 0,
             aborted: 0,
             cum_latency: 0,
-            thpt: None,
+            throughput: None,
             av_latency: None,
             data_generation: None,
             row_already_exists: 0,
@@ -68,6 +91,8 @@ impl GlobalStatistics {
             read_lock_denied: 0,
             write_lock_denied: 0,
             subscribers,
+            workload: workload.to_string(),
+            protocol: protocol.to_string(),
         }
     }
 
@@ -96,18 +121,17 @@ impl GlobalStatistics {
 
     /// Calculate throughput.
     pub fn calculate_throughput(&mut self) {
-        self.thpt = Some(self.completed as f64 / self.end.unwrap().as_secs() as f64);
+        self.throughput = Some(self.completed as f64 / self.end.unwrap().as_secs() as f64);
     }
 
     /// Calculate latency.
     pub fn calculate_latency(&mut self) {
-        // let lat = self.cum_latency / 1000 / self.committed as u128;
-        // self.av_latency = Some(lat as f64 / 1000.0);
-        self.av_latency = Some(0.0);
+        let lat = self.cum_latency / 1000 / self.committed as u128;
+        self.av_latency = Some(lat as f64 / 1000.0);
     }
 
     /// Merge local stats into global stats.
-    pub fn merge_into(&mut self, local: Statistics) {
+    pub fn merge_into(&mut self, local: LocalStatistics) {
         debug!("Merge local stats into global");
         self.inc_clients();
         self.completed += local.completed;
@@ -130,12 +154,13 @@ impl GlobalStatistics {
         // Create directory
         fs::create_dir("./results").unwrap();
 
+        let p = format!("./results-{}-{}", self.protocol, self.workload);
         // Create file.
         let mut file = OpenOptions::new()
             .write(true)
             .append(true)
             .create(true)
-            .open("results/statistics.txt")
+            .open(&p)
             .expect("cannot open file");
         // Data generation
         match self.data_generation {
@@ -163,7 +188,7 @@ impl GlobalStatistics {
                 write!(file, "write lock denied: {}\n", self.write_lock_denied).unwrap();
                 // Calculate throughput
                 self.calculate_throughput();
-                write!(file, "throughput: {}(txn/s)\n", self.thpt.unwrap()).unwrap();
+                write!(file, "throughput: {}(txn/s)\n", self.throughput.unwrap()).unwrap();
                 // Calculate latency
                 self.calculate_latency();
                 write!(file, "latency: {}(ms)\n", self.av_latency.unwrap()).unwrap();
@@ -188,7 +213,7 @@ impl fmt::Display for GlobalStatistics {
                     self.completed,
                     self.committed,
                     self.aborted,
-                    self.thpt.unwrap(),
+                    self.throughput.unwrap(),
                     self.av_latency.unwrap(),
                 )
             }
@@ -201,7 +226,7 @@ impl fmt::Display for GlobalStatistics {
 }
 
 #[derive(Debug, Clone)]
-pub struct Statistics {
+pub struct LocalStatistics {
     client_id: u32,
     completed: u32,
     committed: u32,
@@ -215,9 +240,9 @@ pub struct Statistics {
     cum_latency: u128,
 }
 
-impl Statistics {
-    pub fn new(client_id: u32) -> Statistics {
-        Statistics {
+impl LocalStatistics {
+    pub fn new(client_id: u32) -> LocalStatistics {
+        LocalStatistics {
             client_id,
             completed: 0,
             committed: 0,
@@ -275,7 +300,7 @@ impl Statistics {
     }
 }
 
-impl fmt::Display for Statistics {
+impl fmt::Display for LocalStatistics {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
