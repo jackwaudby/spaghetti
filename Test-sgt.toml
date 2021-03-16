@@ -16,7 +16,7 @@ transactions = 20
 workload = "tatp"
 
 schema = "tatp_schema.txt"
-subscribers = 1
+subscribers = 3
 seed = 42
 
 clients = 4
