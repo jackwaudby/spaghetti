@@ -70,12 +70,9 @@ pub fn get_subscriber_data(
     // Construct primary key.
     let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
 
-    let handle = thread::current();
-    debug!("Thread {}: register", handle.name().unwrap());
     // Register with scheduler.
     let meta = protocol.scheduler.register()?;
     // Execute read operation.
-    debug!("Thread {}: read", handle.name().unwrap());
     let values = protocol
         .scheduler
         .read("subscriber", pk, &columns, meta.clone())?;

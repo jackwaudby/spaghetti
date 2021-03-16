@@ -42,7 +42,7 @@ impl Protocol {
             },
             "sgt" => Protocol {
                 scheduler: Box::new(SerializationGraphTesting::new(
-                    cores as i32,
+                    cores as u32,
                     Arc::clone(&workload),
                 )),
             },

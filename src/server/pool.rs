@@ -248,13 +248,13 @@ impl Worker {
                     core_affinity::set_for_current(core_id);
                 }
                 loop {
-                    debug!("Worker {} waiting for job.", id);
+                    // debug!("Worker {} waiting for job.", id);
                     // Get message from job queue.
                     let message = receiver.lock().unwrap().recv().unwrap();
                     // Execute job.
                     match message {
                         Message::NewJob(job) => {
-                            debug!("Worker {} got a job; executing.", id);
+                            // debug!("Worker {} got a job; executing.", id);
                             // If closure causes error then panic.
                             if let Err(e) = job.call_box() {
                                 debug!("Panicked - drops sentinal");

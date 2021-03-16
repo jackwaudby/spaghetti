@@ -1,6 +1,8 @@
 use crate::common::error::NonFatalError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
-use crate::server::scheduler::serialization_graph_testing::node::{EdgeType, Node, State};
+use crate::server::scheduler::serialization_graph_testing::node::{
+    EdgeType, Node, OperationType, State,
+};
 use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{Access, Row};
@@ -37,10 +39,14 @@ impl Scheduler for SerializationGraphTesting {
         // Get thread name.
         let tname = thread::current().name().unwrap().to_string();
         let node_id = tname.parse::<usize>().unwrap();
-        debug!("Registed transaction with node {}", tname);
-        let node = self.get_exculsive_lock(node_id).unwrap();
+        debug!(
+            "Thread {}: Registered transaction with node {}",
+            tname, node_id
+        );
+        // Get exculsive lock.
+        let node = self.get_exculsive_lock(node_id);
         // Set state to active.
-        node.set_state(State::Active).unwrap();
+        node.set_state(State::Active);
         // Set transaction id.
         Ok(TransactionInfo::new(Some(node_id.to_string()), None))
     }
@@ -59,52 +65,53 @@ impl Scheduler for SerializationGraphTesting {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        let handle = thread::current();
+        debug!(
+            "Thread {}: Executing create operation",
+            handle.name().unwrap()
+        );
+
+        // Get table and index.
         let table = self.get_table(table, meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+
+        // Create new row.
         let mut row = Row::new(Arc::clone(&table), "sgt");
+
         row.set_primary_key(key);
         for (i, column) in columns.iter().enumerate() {
-            match row.init_value(column, &values[i].to_string()) {
-                Ok(_) => {}
-                Err(_) => {
-                    self.abort(meta.clone()).unwrap();
-                    return Err(NonFatalError::UnableToInitialiseRow(
-                        table.to_string(),
-                        column.to_string(),
-                        values[i].to_string(),
-                    ));
-                }
+            if let Err(_) = row.init_value(column, &values[i].to_string()) {
+                // ABORT  - UnableToInitialiseRow
+                self.abort(meta.clone()).unwrap();
+                // Return abort reason.
+                return Err(NonFatalError::UnableToInitialiseRow(
+                    table.to_string(),
+                    column.to_string(),
+                    values[i].to_string(),
+                ));
             }
         }
-        let index = self.get_index(table, meta.clone())?;
         // Set values - needed to make the row "dirty"
-        match row.set_values(columns, values, "sgt", &meta.get_id().unwrap()) {
-            Ok(_) => {}
-            Err(e) => {
-                self.abort(meta.clone()).unwrap();
-                return Err(e);
-            }
+        if let Err(e) = row.set_values(columns, values, "sgt", &meta.get_id().unwrap()) {
+            // ABORT - UnableToConvertToDataType
+            self.abort(meta.clone()).unwrap();
+            return Err(e);
         }
 
         // Get position of this transaction in the graph.
-        let tid = meta.get_id().unwrap();
-        let this_node = tid.parse::<usize>().unwrap();
+        let id = meta.get_id().unwrap().parse::<usize>().unwrap();
+
         // Record insert - used to rollback if transaction is aborted.
-        self.get_shared_lock(this_node)
-            .unwrap()
-            .keys_inserted
-            .lock()
-            .unwrap()
-            .push((index.get_name(), key));
+        self.get_shared_lock(id)
+            .add_key(&index.get_name(), key, OperationType::Insert);
 
         // Attempt to insert row.
-        match index.insert(key, row) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                debug!("Abort transaction {:?}: {:?}", tid, e);
-                self.abort(meta.clone()).unwrap();
-                Err(e)
-            }
+        if let Err(e) = index.insert(key, row) {
+            // ABORT - RowAlreadyExists
+            self.abort(meta.clone()).unwrap();
+            return Err(e);
         }
+        Ok(())
     }
 
     /// Execute a read operation.
@@ -117,28 +124,31 @@ impl Scheduler for SerializationGraphTesting {
         columns: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        debug!("Execute read operation");
-        // Get table.
+        let handle = thread::current();
+        debug!(
+            "Thread {}: Executing read operation",
+            handle.name().unwrap()
+        );
+        // Get table and index.
         let table = self.get_table(table, meta.clone())?;
-        // Get index for this key's table.
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        // Get row
-        let read_guard = match index.get_lock_on_row(key) {
+        // Get read guard on the row in the hashmap.
+        let rg = match index.get_lock_on_row(key) {
             Ok(rg) => rg,
             Err(e) => {
+                // ABORT - RowNotFound.
                 self.abort(meta.clone()).unwrap();
                 return Err(e);
             }
         };
 
-        // Deref to row.
-        let mut mg = read_guard.lock().unwrap();
+        // Acquire mutex on the row.
+        let mut mg = rg.lock().unwrap();
+        // Deref to row
         let row = &mut *mg;
+        // Get the calues
         let res = row.get_values(columns, "sgt", &meta.get_id().unwrap());
-
-        // Execute read.
-        // match index.read(key, columns, "sgt", &meta.get_id().unwrap()) {
         match res {
             Ok(res) => {
                 // Get access history.
@@ -153,24 +163,20 @@ impl Scheduler for SerializationGraphTesting {
                         let from_node: usize = tid.parse().unwrap();
                         // Insert edges
                         if let Err(e) = self.add_edge(from_node, this_node, false) {
+                            // ABORT - ParentAborted.
                             self.abort(meta.clone()).unwrap();
                             return Err(e.into());
                         }
                     }
                 }
-                let this_node = self.get_shared_lock(this_node).unwrap();
-                // Record read of this key - used for abort.
-                this_node
-                    .keys_read
-                    .lock()
-                    .unwrap()
-                    .push((index.get_name(), key));
-
+                let this_node = self.get_shared_lock(this_node);
+                this_node.add_key(&index.get_name(), key, OperationType::Read);
                 // Get values
                 let vals = res.get_values().unwrap();
                 Ok(vals)
             }
             Err(e) => {
+                // ABORT - RowDeleted
                 self.abort(meta.clone()).unwrap();
                 return Err(e);
             }
@@ -188,27 +194,32 @@ impl Scheduler for SerializationGraphTesting {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        // Get table.
+        let handle = thread::current();
+        debug!(
+            "Thread {}: Executing update operation",
+            handle.name().unwrap()
+        );
+
+        // Get table and index
         let table = self.get_table(table, meta.clone())?;
-        // Get index for this key's table.
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         // Get row
         let read_guard = match index.get_lock_on_row(key) {
             Ok(rg) => rg,
             Err(e) => {
+                // ABORT - RowNotFound.
                 self.abort(meta.clone()).unwrap();
                 return Err(e);
             }
         };
 
-        // Deref to row.
+        // Get mutex on row.
         let mut mg = read_guard.lock().unwrap();
+        // Deref to row.
         let row = &mut *mg;
+        // Set values.
         let res = row.set_values(columns, values, "sgt", &meta.get_id().unwrap());
-
-        // Execute write operation.
-        // match index.update(key, columns, values, "sgt", &meta.get_id().unwrap()) {
         match res {
             Ok(res) => {
                 // Get access history.
@@ -224,6 +235,7 @@ impl Scheduler for SerializationGraphTesting {
                             let from_node: usize = tid.parse().unwrap();
                             // Insert edges
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
+                                // ABORT - parent aborted.
                                 self.abort(meta.clone()).unwrap();
                                 return Err(e.into());
                             }
@@ -233,22 +245,19 @@ impl Scheduler for SerializationGraphTesting {
                             let from_node: usize = tid.parse().unwrap();
                             // Insert edges
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
+                                // ABORT - parent aborted.
                                 self.abort(meta.clone()).unwrap();
                                 return Err(e.into());
                             }
                         }
                     }
                 }
-                // Record write
-                self.get_shared_lock(this_node)
-                    .unwrap()
-                    .keys_written
-                    .lock()
-                    .unwrap()
-                    .push((index.get_name(), key));
+                let this_node = self.get_shared_lock(this_node);
+                this_node.add_key(&index.get_name(), key, OperationType::Update);
                 Ok(())
             }
             Err(e) => {
+                // ABORT - RowDeleted or RowDirty
                 self.abort(meta).unwrap();
                 return Err(e);
             }
@@ -262,13 +271,30 @@ impl Scheduler for SerializationGraphTesting {
         key: PrimaryKey,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        // Get table.
+        let handle = thread::current();
+        debug!(
+            "Thread {}: Executing delete operation",
+            handle.name().unwrap()
+        );
+        // Get table and indexes.
         let table = self.get_table(table, meta.clone())?;
-        // Get index for this key's table.
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        // Execute remove op.
-        match index.delete(key, "sgt") {
+        // Get read guard on row in hashmap.
+        let read_guard = match index.get_lock_on_row(key) {
+            Ok(rg) => rg,
+            Err(e) => {
+                // ABORT - RowNotFound.
+                self.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
+        // Get mutex on row.
+        let mut mg = read_guard.lock().unwrap();
+        // Deref to row.
+        let row = &mut *mg;
+        let res = row.delete("sgt");
+        match res {
             Ok(res) => {
                 // Get the access history
                 let access_history = res.get_access_history().unwrap();
@@ -298,16 +324,16 @@ impl Scheduler for SerializationGraphTesting {
                         }
                     }
                 }
-                // Record write
-                self.get_shared_lock(this_node)
-                    .unwrap()
-                    .keys_written
-                    .lock()
-                    .unwrap()
-                    .push((index.get_name(), key));
+                // Record delete
+                let this_node = self.get_shared_lock(this_node);
+
+                this_node.add_key(&index.get_name(), key, OperationType::Delete);
+
                 Ok(())
             }
             Err(e) => {
+                // ABORT - RowDeleted or RowDirty
+
                 self.abort(meta).unwrap();
                 Err(e)
             }
@@ -319,76 +345,85 @@ impl Scheduler for SerializationGraphTesting {
     /// # Panics
     /// - RWLock or Mutex error.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
+        let handle = thread::current();
+        debug!(
+            "Thread {}: Starting abort procedure",
+            handle.name().unwrap()
+        );
         let this_node_id = meta.get_id().unwrap().parse::<usize>().unwrap();
-        debug!("Aborting transaction {:?}", meta.get_id().unwrap());
+
         // Set state to abort.
         {
             self.get_exculsive_lock(this_node_id)
-                .unwrap()
-                .set_state(State::Aborted)
-                .unwrap();
+                .set_state(State::Aborted);
+
             // Drop write lock on node.
         }
-        // Revert updates/deletes.
-        let written = self
-            .get_shared_lock(this_node_id)
-            .unwrap()
-            .get_keys_written()
-            .unwrap();
-        for (index, key) in &written {
+        // Revert updates.
+        let sl = self.get_shared_lock(this_node_id);
+        let inserts = sl.get_keys(OperationType::Insert);
+        let reads = sl.get_keys(OperationType::Read);
+        let updates = sl.get_keys(OperationType::Update);
+        let deletes = sl.get_keys(OperationType::Delete);
+        drop(sl);
+
+        for (index, key) in &inserts {
+            let index = self.data.get_internals().get_index(&index).unwrap();
+            index.remove(*key).unwrap();
+        }
+
+        for (index, key) in &reads {
+            let index = self.data.get_internals().get_index(&index).unwrap();
+            index.revert_read(*key, &meta.get_id().unwrap()).unwrap();
+        }
+
+        for (index, key) in &updates {
             let index = self.data.get_internals().get_index(&index).unwrap();
             index.revert(*key, "sgt", &meta.get_id().unwrap()).unwrap();
         }
-        // Remove read accesses from rows read.
-        let read = self
-            .get_shared_lock(this_node_id)
-            .unwrap()
-            .get_keys_read()
-            .unwrap();
-        for (index, key) in read {
+
+        for (index, key) in &deletes {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.revert_read(key, &meta.get_id().unwrap()).unwrap();
-        }
-        // Remove inserted values.
-        let inserted = self
-            .get_shared_lock(this_node_id)
-            .unwrap()
-            .get_rows_inserted()
-            .unwrap();
-        for (index, key) in inserted {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index.remove(key).unwrap();
+            index.revert(*key, "sgt", &meta.get_id().unwrap()).unwrap();
         }
 
         // Abort outgoing nodes.
         self.clean_up_graph(this_node_id);
 
         // Reset node information.
-        self.get_exculsive_lock(this_node_id).unwrap().reset();
-        debug!("Node {} aborted", meta.get_id().unwrap());
+        self.get_exculsive_lock(this_node_id).reset();
+        debug!(
+            "Thread {}: Abort procedure finished",
+            handle.name().unwrap()
+        );
         Ok(())
     }
 
     /// Commit a transaction.
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
+        let handle = thread::current();
+        debug!(
+            "Thread {}: Starting commit procedure",
+            handle.name().unwrap()
+        );
+        // Get node id.
         let id = meta.get_id().unwrap().parse::<usize>().unwrap();
+        // While node is active keep cycle checking.
         loop {
-            let sl = self.get_shared_lock(id).unwrap();
-            let state = sl.get_state().unwrap();
+            // Acquire shared lock on the node.
+            let sl = self.get_shared_lock(id);
+            // Get node state
+            let state = sl.get_state();
+            // Drop lock.
             drop(sl);
             if let State::Active = state {
                 let commit_check = self.commit_check(id);
                 if !commit_check {
-                    debug!("Execute cycle check for node {}", id);
                     let cycle_check = self.reduced_depth_first_search(id);
                     if cycle_check {
-                        debug!("Cycle found for node {}", id);
-                        self.get_shared_lock(id)
-                            .unwrap()
-                            .set_state(State::Aborted)
-                            .unwrap();
-                    } else {
-                        debug!("No cycle found for node {}", id);
+                        let sl = self.get_shared_lock(id);
+                        sl.set_state(State::Aborted);
+                        drop(sl);
                     }
                 }
             } else {
@@ -396,29 +431,51 @@ impl Scheduler for SerializationGraphTesting {
             }
         }
 
-        let sl = self.get_shared_lock(id).unwrap();
-        let state = sl.get_state().unwrap();
+        // get node state.
+        let sl = self.get_shared_lock(id);
+        let state = sl.get_state();
         drop(sl);
 
         match state {
             State::Aborted => {
                 self.abort(meta.clone()).unwrap();
-                let e = SerializationGraphTestingError::SerializableError;
+                let e = SerializationGraphTestingError::NonSerializable;
                 return Err(e.into());
             }
             State::Committed => {
-                // TODO: redunancy here.
-                debug!("Node {} committed", id);
                 self.clean_up_graph(id);
-                debug!("Cleaned up committed node {}", id);
-                self.get_exculsive_lock(id).unwrap().reset();
-                debug!("Reset committed node {}", id);
-            }
-            State::Free => panic!("trying to commit a free sloted"),
+                let sl = self.get_shared_lock(id);
+                let inserts = sl.get_keys(OperationType::Insert);
+                let updates = sl.get_keys(OperationType::Update);
+                let deletes = sl.get_keys(OperationType::Delete);
 
+                for (index, key) in inserts {
+                    let index = self.data.get_internals().get_index(&index).unwrap();
+                    index.commit(key, "sgt", &id.to_string()).unwrap();
+                }
+
+                for (index, key) in updates {
+                    let index = self.data.get_internals().get_index(&index).unwrap();
+                    index.commit(key, "sgt", &id.to_string()).unwrap();
+                }
+
+                for (index, key) in deletes {
+                    let index = self.data.get_internals().get_index(&index).unwrap();
+                    index.remove(key).unwrap();
+                }
+
+                drop(sl);
+                {
+                    self.get_exculsive_lock(id).reset();
+                }
+            }
             State::Active => panic!("node should not be active"),
         }
 
+        debug!(
+            "Thread {}: Commit procedure finished",
+            handle.name().unwrap()
+        );
         Ok(())
     }
 
@@ -430,58 +487,49 @@ impl Scheduler for SerializationGraphTesting {
 impl SerializationGraphTesting {
     /// Initialise serialization graph with `size` nodes.
     ///
-    /// The number nodes is equal to the number of cores.
-    pub fn new(size: i32, workload: Arc<Workload>) -> Self {
+    /// The number of nodes is equal to the number of cores.
+    pub fn new(size: u32, data: Arc<Workload>) -> Self {
         info!("Initialise serialization graph with {} nodes", size);
         let mut nodes = vec![];
         for i in 0..size {
             let node = RwLock::new(Node::new(i as usize));
             nodes.push(node);
         }
-        SerializationGraphTesting {
-            nodes,
-            data: workload,
-        }
+        SerializationGraphTesting { nodes, data }
     }
 
     /// Get shared lock on the node.
     ///
-    /// # Errors
-    /// - RWLock failed
-    fn get_shared_lock(
-        &self,
-        id: usize,
-    ) -> Result<RwLockReadGuard<Node>, SerializationGraphTestingError> {
-        let sh = self.nodes[id]
-            .read()
-            .map_err(|_| SerializationGraphTestingError::RwLockFailed)?;
-        Ok(sh)
+    /// # Panics
+    ///
+    /// Acquiring `RwLock` fails.
+    fn get_shared_lock(&self, id: usize) -> RwLockReadGuard<Node> {
+        let rg = self.nodes[id].read().unwrap();
+        rg
     }
 
     /// Get exculsive lock on the node.
     ///
-    /// # Errors
-    /// - RWLock failed
-    fn get_exculsive_lock(
-        &self,
-        id: usize,
-    ) -> Result<RwLockWriteGuard<Node>, SerializationGraphTestingError> {
-        let ex = self.nodes[id]
-            .write()
-            .map_err(|_| SerializationGraphTestingError::RwLockFailed)?;
-        Ok(ex)
+    /// # Panics
+    ///
+    /// Acquiring `RwLock` fails.
+    fn get_exculsive_lock(&self, id: usize) -> RwLockWriteGuard<Node> {
+        let wg = self.nodes[id].write().unwrap();
+        wg
     }
 
-    /// Insert an edge into the serialization graph `(from)--->(to)`.
+    /// Insert an edge into the serialization graph `(from) --> (to)`.
     ///
-    /// If the edge is a self edge or already exists the function returns early.
+    /// If the edges is (i) a self edge, (ii) already exists, or (iii) from node is
+    /// committed no edge is added.
     ///
     /// # Errors
-    /// - Parent node is aborted
+    ///
+    /// The operation fails if the parent node (from) is already aborted.
     ///
     /// # Panics
-    /// - Mutex lock failed
-    /// - Node unexpectedly free
+    ///
+    /// Unable to acquire shared locks.
     pub fn add_edge(
         &self,
         from: usize,
@@ -492,68 +540,67 @@ impl SerializationGraphTesting {
         if from == to {
             return Ok(());
         }
-        // Acquire read locks on nodes.
-        let from_node = self.get_shared_lock(from).unwrap();
-        let to_node = self.get_shared_lock(to).unwrap();
+        // Acquire shared locks on nodes.
+        let from_node = self.get_shared_lock(from);
+        let to_node = self.get_shared_lock(to);
         // Get from node state.
-        let from_node_state = from_node.get_state().unwrap();
+        let from_node_state = from_node.get_state();
         match from_node_state {
             // Parent is aborted.
             State::Aborted => {
                 // If WW or WR edge.
                 if !rw_edge {
                     return Err(SerializationGraphTestingError::ParentAborted);
+                } else {
+                    return Ok(());
                 }
             }
             // Insert edge.
             State::Active => {
-                from_node.insert_edge(to, EdgeType::Outgoing).unwrap();
-                to_node.insert_edge(from, EdgeType::Incoming).unwrap();
+                // insert_edge handles the case the edge already exists.
+                from_node.insert_edge(to, EdgeType::Outgoing);
+                to_node.insert_edge(from, EdgeType::Incoming);
+                return Ok(());
             }
             // Skip.
-            State::Committed => {}
-            // Not expected
-            State::Free => {
-                // TODO: causing some necessary aborts.
-                panic!(
-                    "Adding edge {} -> {}. Parent node {} state should not be free.",
-                    from, to, from
-                );
+            State::Committed => {
+                return Ok(());
             }
         }
-        Ok(())
     }
 
+    /// Check if node has any incoming edges. If so, set state to
+    /// committed and return true.
+    ///
+    /// # Panics
+    ///
+    /// Unable to acquire exculsive lock.
     pub fn commit_check(&self, id: usize) -> bool {
-        debug!("Commit check for node {}", id);
-        let node = self.get_exculsive_lock(id).unwrap();
-        if !node.has_incoming().unwrap() {
-            debug!("Node {} has no incoming edges", id);
-            node.set_state(State::Committed).unwrap();
+        let node = self.get_exculsive_lock(id);
+        if !node.has_incoming() {
+            node.set_state(State::Committed);
             return true;
-        } else {
-            debug!("Node {} has incoming edges", id);
-            return false;
         }
+        false
     }
 
     /// Perform a reduced depth first search.
     ///
     /// # Panics
-    /// - RwLock failed
-    /// - Mutex failed
+    ///
+    /// Unable to acquire locks on node.
     pub fn reduced_depth_first_search(&self, start: usize) -> bool {
         // Tracking nodes to visit.
         let mut stack = Vec::new();
         // Tracking visited nodes.
         let mut visited = HashSet::new();
         {
-            // Get read lock on start node
-            let start_node = self.get_shared_lock(start).unwrap();
+            // Get shared lock on start node
+            let sl = self.get_shared_lock(start);
             // Push children to stack.
-            stack.append(&mut start_node.get_outgoing().unwrap());
-            // Mark as visited.
-            // visited.insert(start);
+            stack.append(&mut sl.get_outgoing());
+            // Drop shared lock.
+            drop(sl)
         }
         // Pop until no more nodes to visit.
         while let Some(current) = stack.pop() {
@@ -566,22 +613,22 @@ impl SerializationGraphTesting {
             }
             // Mark as visited.
             visited.insert(current);
-            // Get read lock on current_node.
-            let current_node = self.get_shared_lock(current).unwrap();
+            // Get shared lock on current_node.
+            let current_node = self.get_shared_lock(current);
             // If current is active
-            if let State::Active = current_node.get_state().unwrap() {
+            if let State::Active = current_node.get_state() {
                 // For each outgoing node.
-                for child in current_node.get_outgoing().unwrap() {
+                for child in current_node.get_outgoing() {
                     // If has outgoing edge to start node then there is a cycle.
                     if child == start {
                         return true;
                     } else {
                         // Get read lock on child_node.
-                        let c = self.get_shared_lock(child).unwrap();
+                        let c = self.get_shared_lock(child);
                         // Mark as visited.
                         visited.insert(child);
                         // Add outgoing to stack.
-                        stack.append(&mut c.get_outgoing().unwrap());
+                        stack.append(&mut c.get_outgoing());
                     }
                 }
             }
@@ -596,27 +643,28 @@ impl SerializationGraphTesting {
     ///
     /// # Panics
     ///
-    /// - RwLock failed
-    /// - Mutex lock failed
+    /// Unable to acquire locks on node.
     fn clean_up_graph(&self, id: usize) {
         // Take shared lock.
-        let this_node = self.get_shared_lock(id).unwrap();
+        let sl = self.get_shared_lock(id);
         // Get state.
-        let state = this_node.get_state().unwrap();
+        let state = sl.get_state();
         // Get outgoing edges
-        let outgoing_nodes = this_node.get_outgoing().unwrap();
+        let outgoing_nodes = sl.get_outgoing();
         for out in outgoing_nodes {
-            let outgoing_node = self.get_shared_lock(out).unwrap();
+            let outgoing_node = self.get_shared_lock(out);
             // Abort children if this node was aborted
             if let State::Aborted = state {
-                if outgoing_node.get_state().unwrap() == State::Active {
-                    outgoing_node.set_state(State::Aborted).unwrap();
+                if outgoing_node.get_state() == State::Active {
+                    outgoing_node.set_state(State::Aborted);
                 }
             }
             // Remove edges.
-            outgoing_node.delete_edge(id, EdgeType::Incoming).unwrap();
-            this_node.delete_edge(out, EdgeType::Outgoing).unwrap();
+            outgoing_node.delete_edge(id, EdgeType::Incoming);
+            sl.delete_edge(out, EdgeType::Outgoing);
+            drop(out);
         }
+        drop(sl);
     }
 }
 
@@ -672,18 +720,9 @@ mod test {
         logging(false);
 
         let sg = SerializationGraphTesting::new(5, Arc::clone(&WORKLOAD));
-        sg.get_exculsive_lock(0)
-            .unwrap()
-            .set_state(State::Active)
-            .unwrap();
-        sg.get_exculsive_lock(1)
-            .unwrap()
-            .set_state(State::Active)
-            .unwrap();
-        sg.get_exculsive_lock(2)
-            .unwrap()
-            .set_state(State::Active)
-            .unwrap();
+        sg.get_exculsive_lock(0).set_state(State::Active);
+        sg.get_exculsive_lock(1).set_state(State::Active);
+        sg.get_exculsive_lock(2).set_state(State::Active);
 
         assert_eq!(sg.add_edge(0, 1, true).unwrap(), ());
         assert_eq!(sg.add_edge(1, 2, true).unwrap(), ());
@@ -700,18 +739,9 @@ mod test {
 
         let sg = SerializationGraphTesting::new(5, Arc::clone(&WORKLOAD));
 
-        sg.get_exculsive_lock(0)
-            .unwrap()
-            .set_state(State::Active)
-            .unwrap();
-        sg.get_exculsive_lock(1)
-            .unwrap()
-            .set_state(State::Active)
-            .unwrap();
-        sg.get_exculsive_lock(2)
-            .unwrap()
-            .set_state(State::Active)
-            .unwrap();
+        sg.get_exculsive_lock(0).set_state(State::Active);
+        sg.get_exculsive_lock(1).set_state(State::Active);
+        sg.get_exculsive_lock(2).set_state(State::Active);
 
         assert_eq!(sg.add_edge(0, 1, true).unwrap(), ());
         assert_eq!(sg.add_edge(0, 2, true).unwrap(), ());
@@ -754,14 +784,8 @@ mod test {
                 sg.update(table, key, &columns, &values, meta_2).unwrap();
 
                 // Check graph has edge between 0->1
-                assert_eq!(
-                    sg.get_shared_lock(0).unwrap().get_outgoing().unwrap(),
-                    vec![1]
-                );
-                assert_eq!(
-                    sg.get_shared_lock(1).unwrap().get_incoming().unwrap(),
-                    vec![0]
-                );
+                assert_eq!(sg.get_shared_lock(0).get_outgoing(), vec![1]);
+                assert_eq!(sg.get_shared_lock(1).get_incoming(), vec![0]);
 
                 assert_eq!(sg.commit(meta).unwrap(), ());
             })

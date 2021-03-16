@@ -92,59 +92,31 @@ impl TransactionManager {
             let res = match request.transaction {
                 Transaction::Tatp(transaction) => match transaction {
                     TatpTransaction::GetSubscriberData(params) => {
-                        debug!(
-                            "Thread {}: GetSubscriberData: {:?}",
-                            handle.name().unwrap(),
-                            params
-                        );
+                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                         tatp::procedures::get_subscriber_data(params, scheduler)
                     }
                     TatpTransaction::GetNewDestination(params) => {
-                        debug!(
-                            "Thread {}: GetNewDestination: {:?}",
-                            handle.name().unwrap(),
-                            params
-                        );
+                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                         tatp::procedures::get_new_destination(params, scheduler)
                     }
                     TatpTransaction::GetAccessData(params) => {
-                        debug!(
-                            "Thread {}: GetAccessData: {:?}",
-                            handle.name().unwrap(),
-                            params
-                        );
+                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                         tatp::procedures::get_access_data(params, scheduler)
                     }
                     TatpTransaction::UpdateSubscriberData(params) => {
-                        debug!(
-                            "Thread {}: UpdateSubscriberData: {:?}",
-                            handle.name().unwrap(),
-                            params
-                        );
+                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                         tatp::procedures::update_subscriber_data(params, scheduler)
                     }
                     TatpTransaction::UpdateLocationData(params) => {
-                        debug!(
-                            "Thread {}: UpdateLocationData: {:?}",
-                            handle.name().unwrap(),
-                            params
-                        );
+                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                         tatp::procedures::update_location(params, scheduler)
                     }
                     TatpTransaction::InsertCallForwarding(params) => {
-                        debug!(
-                            "Thread {}: InsertCallForwarding: {:?}",
-                            handle.name().unwrap(),
-                            params
-                        );
+                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                         tatp::procedures::insert_call_forwarding(params, scheduler)
                     }
                     TatpTransaction::DeleteCallForwarding(params) => {
-                        debug!(
-                            "Thread {}: DeleteCallForwarding: {:?}",
-                            handle.name().unwrap(),
-                            params
-                        );
+                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                         tatp::procedures::delete_call_forwarding(params, scheduler)
                     }
                 },
@@ -183,7 +155,7 @@ impl TransactionManager {
                     // Send job to thread pool.
                     self.pool
                         .execute(move || execute_request(request, scheduler))?;
-                    debug!("Manager sent request to pool");
+                    // debug!("Manager sent request to pool");
                 }
 
                 assert!(self.work_rx.try_iter().next().is_none());
@@ -199,7 +171,6 @@ impl TransactionManager {
                     // Send job to thread pool.
                     self.pool
                         .execute(move || execute_request(request, scheduler))?;
-                    debug!("Manager sent request to pool");
                 }
             }
         }

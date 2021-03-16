@@ -1,242 +1,46 @@
-use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::workloads::PrimaryKey;
 
+use std::fmt;
 use std::sync::Mutex;
+use std::thread;
+use tracing::debug;
 
 /// A `Node` represents a transaction in the serialization graph.
 ///
+/// At creation each node is assigned to a thread. `Node`s can be
+/// accessed in shared mode or exculsive mode.
+///
 /// # Safety
-/// status, outgoing, and incoming are wrapped in a mutex as multiple threads that hold read locks can concurrently modify these fields.
+///
+/// The fields of a `Node` are each wrapping in a mutexso that multiple
+/// threads holding shared locks can concurrently modify these fields.
 #[derive(Debug)]
 pub struct Node {
     /// Node's position in the graph.
     id: usize,
 
     /// Node status
-    state: Mutex<State>,
+    state: Mutex<Option<State>>,
 
     /// List of outgoing edges.
-    outgoing: Mutex<Vec<usize>>, // (this_node)->(other_node)
+    /// (this_node) --> (other_node)
+    outgoing: Mutex<Option<Vec<usize>>>,
 
     /// List of incoming edges.
-    incoming: Mutex<Vec<usize>>, // (other_node)->(this_node)
-
-    /// List of keys written by transaction.
-    pub keys_written: Mutex<Vec<(String, PrimaryKey)>>,
-
-    /// List of keys read by transaction.
-    pub keys_read: Mutex<Vec<(String, PrimaryKey)>>,
+    /// (other_node) --> (this_node)
+    incoming: Mutex<Option<Vec<usize>>>,
 
     /// Keys inserted
-    pub keys_inserted: Mutex<Vec<(String, PrimaryKey)>>,
-}
+    keys_inserted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
 
-impl Node {
-    /// Create a new `Node`.
-    pub fn new(id: usize) -> Node {
-        Node {
-            id,
-            outgoing: Mutex::new(vec![]),
-            incoming: Mutex::new(vec![]),
-            state: Mutex::new(State::Free),
-            keys_inserted: Mutex::new(vec![]),
-            keys_read: Mutex::new(vec![]),
-            keys_written: Mutex::new(vec![]),
-        }
-    }
+    /// List of keys read by transaction.
+    keys_read: Mutex<Option<Vec<(String, PrimaryKey)>>>,
 
-    /// Reset the fields of a `Node`.
-    pub fn reset(&self) {
-        *self.outgoing.lock().unwrap() = vec![];
-        *self.incoming.lock().unwrap() = vec![];
-        // *self.state.lock().unwrap() = State::Free;
-        *self.keys_written.lock().unwrap() = vec![];
-        *self.keys_read.lock().unwrap() = vec![];
-        *self.keys_inserted.lock().unwrap() = vec![];
-    }
+    /// List of keys updated by transaction.
+    keys_updated: Mutex<Option<Vec<(String, PrimaryKey)>>>,
 
-    /// Insert edge into a `Node`.
-    ///
-    /// Does nothing if edge already exists.
-    ///
-    /// # Errors
-    /// - Mutex lock failed.
-    pub fn insert_edge(
-        &self,
-        id: usize,
-        edge_type: EdgeType,
-    ) -> Result<(), SerializationGraphTestingError> {
-        match edge_type {
-            EdgeType::Incoming => {
-                let mut incoming = self
-                    .incoming
-                    .lock()
-                    .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-                if !incoming.contains(&id) {
-                    incoming.push(id);
-                }
-            }
-            EdgeType::Outgoing => {
-                let mut outgoing = self
-                    .outgoing
-                    .lock()
-                    .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-                if !outgoing.contains(&id) {
-                    outgoing.push(id);
-                }
-            }
-        }
-        Ok(())
-    }
-
-    /// Delete edge from a `Node`.
-    ///
-    /// # Errors
-    /// - Lock error
-    pub fn delete_edge(
-        &self,
-        id: usize,
-        edge_type: EdgeType,
-    ) -> Result<(), SerializationGraphTestingError> {
-        match edge_type {
-            EdgeType::Incoming => {
-                let mut incoming = self
-                    .incoming
-                    .lock()
-                    .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-                incoming.retain(|&x| x != id);
-            }
-            EdgeType::Outgoing => {
-                let mut outgoing = self
-                    .outgoing
-                    .lock()
-                    .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-                outgoing.retain(|&x| x != id);
-            }
-        }
-        Ok(())
-    }
-
-    /// Get the incoming edges from a `Node`.
-    ///
-    /// Clones the list behind the mutex.
-    ///
-    /// # Errors
-    /// - Lock error
-    pub fn get_incoming(&self) -> Result<Vec<usize>, SerializationGraphTestingError> {
-        let incoming = self
-            .incoming
-            .lock()
-            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-        Ok(incoming.clone())
-    }
-
-    /// Get the outgoing edges from a `Node`.
-    ///
-    /// Clones the list behind the mutex.
-    ///
-    /// # Errors
-    /// - Lock error
-    pub fn get_outgoing(&self) -> Result<Vec<usize>, SerializationGraphTestingError> {
-        let outgoing = self
-            .outgoing
-            .lock()
-            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-        Ok(outgoing.clone())
-    }
-
-    /// Get the list of keys written (updated/deleted) by this transaction.
-    ///
-    /// Clones the list behind the mutex.
-    ///
-    /// # Errors
-    /// - Lock error
-    pub fn get_keys_written(
-        &self,
-    ) -> Result<Vec<(String, PrimaryKey)>, SerializationGraphTestingError> {
-        let written = self
-            .keys_written
-            .lock()
-            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-        Ok(written.clone())
-    }
-
-    /// Get the list of keys read by this transaction.
-    ///
-    /// Clones the list behind the mutex.
-    ///
-    /// # Errors
-    /// - Lock error
-    pub fn get_keys_read(
-        &self,
-    ) -> Result<Vec<(String, PrimaryKey)>, SerializationGraphTestingError> {
-        let read = self
-            .keys_read
-            .lock()
-            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-        Ok(read.clone())
-    }
-
-    /// Get the list of keys inserted by this transaction.
-    ///
-    /// Clones the list behind the mutex.
-    ///
-    /// # Errors
-    /// - Lock error
-    pub fn get_rows_inserted(
-        &self,
-    ) -> Result<Vec<(String, PrimaryKey)>, SerializationGraphTestingError> {
-        let inserted = self
-            .keys_inserted
-            .lock()
-            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-        Ok(inserted.clone())
-    }
-
-    /// Get the status of the `Node`.
-    ///
-    /// Currently this just clones the value behind the mutex.
-    ///
-    /// # Errors
-    /// - Lock error
-    pub fn get_state(&self) -> Result<State, SerializationGraphTestingError> {
-        let mg = self
-            .state
-            .lock()
-            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-        Ok(mg.clone())
-    }
-
-    /// Set the status of the `Node`.
-    ///
-    /// # Errors
-    /// - Lock error
-    pub fn set_state(&self, state: State) -> Result<(), SerializationGraphTestingError> {
-        let mut mg = self
-            .state
-            .lock()
-            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?;
-        *mg = state;
-        Ok(())
-    }
-
-    /// Check if `Node` has any incoming edges.
-    ///
-    /// # Errors
-    /// - Lock error
-    pub fn has_incoming(&self) -> Result<bool, SerializationGraphTestingError> {
-        Ok(!self
-            .incoming
-            .lock()
-            .map_err(|_| SerializationGraphTestingError::MutexLockFailed)?
-            .is_empty())
-    }
-}
-
-/// Type of edge.
-pub enum EdgeType {
-    Incoming,
-    Outgoing,
+    /// List of keys deleted by transaction.
+    keys_deleted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
 }
 
 /// Represents states a `Node` can be in.
@@ -248,45 +52,268 @@ pub enum State {
     Aborted,
     /// Transaction in node has committed.
     Committed,
-    /// Node has no transaction.
-    Free,
 }
 
+/// Type of edge.
+pub enum EdgeType {
+    Incoming,
+    Outgoing,
+}
+
+/// Type of operation.
+pub enum OperationType {
+    Insert,
+    Read,
+    Update,
+    Delete,
+}
+
+impl Node {
+    /// Create a new `Node`.
+    pub fn new(id: usize) -> Node {
+        Node {
+            id,
+            outgoing: Mutex::new(Some(vec![])),
+            incoming: Mutex::new(Some(vec![])),
+            state: Mutex::new(None),
+            keys_inserted: Mutex::new(Some(vec![])),
+            keys_read: Mutex::new(Some(vec![])),
+            keys_updated: Mutex::new(Some(vec![])),
+            keys_deleted: Mutex::new(Some(vec![])),
+        }
+    }
+
+    /// Reset the fields of a `Node`.
+    ///
+    /// # Safety
+    ///
+    /// This method is only called by the thread on which the
+    /// node belongs.
+    pub fn reset(&self) {
+        *self.outgoing.lock().unwrap() = Some(vec![]);
+        *self.incoming.lock().unwrap() = Some(vec![]);
+        *self.keys_inserted.lock().unwrap() = Some(vec![]);
+        *self.keys_read.lock().unwrap() = Some(vec![]);
+        *self.keys_updated.lock().unwrap() = Some(vec![]);
+        *self.keys_deleted.lock().unwrap() = Some(vec![]);
+    }
+
+    /// Insert edge into a `Node`.
+    ///
+    /// No duplicate edges are inserted.
+    ///
+    /// # Panics
+    ///
+    /// Fails to acquire mutex.
+    pub fn insert_edge(&self, id: usize, edge_type: EdgeType) {
+        match edge_type {
+            EdgeType::Incoming => {
+                if let Some(incoming) = self.incoming.lock().unwrap().as_mut() {
+                    if !incoming.contains(&id) {
+                        incoming.push(id);
+                    }
+                }
+            }
+            EdgeType::Outgoing => {
+                if let Some(outgoing) = self.outgoing.lock().unwrap().as_mut() {
+                    if !outgoing.contains(&id) {
+                        outgoing.push(id);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Remove edge from `Node`.
+    ///
+    /// # Panics
+    ///
+    /// Fails to acquire mutex.
+    pub fn delete_edge(&self, id: usize, edge_type: EdgeType) {
+        match edge_type {
+            EdgeType::Incoming => {
+                self.incoming
+                    .lock()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .retain(|&x| x != id);
+            }
+            EdgeType::Outgoing => {
+                self.outgoing
+                    .lock()
+                    .unwrap()
+                    .as_mut()
+                    .unwrap()
+                    .retain(|&x| x != id);
+            }
+        }
+    }
+
+    /// Clones the incoming edges from a `Node` leaving a `None`.
+    ///
+    /// # Panics
+    ///
+    /// Fails to acquire mutex.
+    pub fn get_incoming(&self) -> Vec<usize> {
+        self.incoming.lock().unwrap().clone().unwrap()
+    }
+
+    /// Clones the outgoing edges from a `Node` leaving a `None`.
+    ///
+    /// # Panics
+    ///
+    /// Fails to acquire mutex.
+    pub fn get_outgoing(&self) -> Vec<usize> {
+        self.outgoing.lock().unwrap().clone().unwrap()
+    }
+
+    /// Takes the list of keys inserted/read/updated/deleted by the transaction in the node.
+    ///
+    /// # Panics
+    ///
+    /// Fails to acquire mutex.
+    pub fn get_keys(&self, operation_type: OperationType) -> Vec<(String, PrimaryKey)> {
+        use OperationType::*;
+        match operation_type {
+            Insert => self.keys_inserted.lock().unwrap().take().unwrap(),
+            Read => self.keys_read.lock().unwrap().take().unwrap(),
+            Update => self.keys_updated.lock().unwrap().take().unwrap(),
+            Delete => self.keys_deleted.lock().unwrap().take().unwrap(),
+        }
+    }
+
+    /// Add key to the list of keys inserted/read/updated/deleted by the transaction in the node.
+    ///
+    /// # Panics
+    ///
+    /// Fails to acquire mutex.
+    pub fn add_key(&self, index: &str, key: PrimaryKey, operation_type: OperationType) {
+        let handle = thread::current();
+        debug!(
+            "Thread {}: Recorded {} operation",
+            handle.name().unwrap(),
+            operation_type
+        );
+        let pair = (index.to_string(), key);
+        use OperationType::*;
+        match operation_type {
+            Insert => self
+                .keys_inserted
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .push(pair),
+            Read => self.keys_read.lock().unwrap().as_mut().unwrap().push(pair),
+            Update => self
+                .keys_updated
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .push(pair),
+            Delete => self
+                .keys_deleted
+                .lock()
+                .unwrap()
+                .as_mut()
+                .unwrap()
+                .push(pair),
+        }
+    }
+
+    /// Get the status of the `Node`.
+    ///
+    /// Clones the value behind the mutex.
+    ///
+    /// # Panics
+    ///
+    /// Fails to acquire mutex.
+    pub fn get_state(&self) -> State {
+        self.state.lock().unwrap().as_ref().unwrap().clone()
+    }
+
+    /// Set the status of the `Node`.
+    ///
+    /// # Panics
+    ///
+    /// Fails to acquire mutex.
+    pub fn set_state(&self, state: State) {
+        *self.state.lock().unwrap() = Some(state);
+    }
+
+    /// Check if `Node` has any incoming edges.
+    ///
+    /// # Panics
+    ///
+    /// Fails to acquire mutex.
+    pub fn has_incoming(&self) -> bool {
+        !self.incoming.lock().unwrap().as_ref().unwrap().is_empty()
+    }
+}
+
+impl fmt::Display for OperationType {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use OperationType::*;
+        match *self {
+            Insert => write!(f, "insert"),
+            Update => write!(f, "update"),
+            Read => write!(f, "read"),
+            Delete => write!(f, "delete"),
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
 
     use super::*;
+    use crate::workloads::tatp::keys::TatpPrimaryKey;
 
     #[test]
     fn node_test() {
         // Create node.
         let n = Node::new(0);
 
-        // Insert edge.
-        assert_eq!(n.insert_edge(1, EdgeType::Outgoing).unwrap(), ());
-        assert_eq!(n.insert_edge(2, EdgeType::Outgoing).unwrap(), ());
+        // Set state
+        assert_eq!(n.set_state(State::Active), ());
+        assert_eq!(n.get_state(), State::Active);
 
-        // Get outgoing.
-        assert_eq!(n.get_outgoing().unwrap(), vec![1, 2]);
-        assert_eq!(n.has_incoming().unwrap(), false);
+        // Insert outgoing edges.
+        assert_eq!(n.insert_edge(1, EdgeType::Outgoing), ());
+        assert_eq!(n.insert_edge(2, EdgeType::Outgoing), ());
 
-        // Incoming.
-        assert_eq!(n.insert_edge(2, EdgeType::Incoming).unwrap(), ());
+        // Check incoming
+        assert_eq!(n.has_incoming(), false);
+        assert_eq!(n.insert_edge(2, EdgeType::Incoming), ());
+        assert_eq!(n.has_incoming(), true);
+        assert_eq!(n.delete_edge(2, EdgeType::Incoming), ());
+        assert_eq!(n.has_incoming(), false);
 
-        assert_eq!(n.has_incoming().unwrap(), true);
-        assert_eq!(n.delete_edge(2, EdgeType::Incoming).unwrap(), ());
-        assert_eq!(n.has_incoming().unwrap(), false);
+        // Take outgoing.
+        assert_eq!(n.delete_edge(1, EdgeType::Outgoing), ());
+        assert_eq!(n.get_outgoing(), vec![2]);
 
-        // Delete edge.
-        assert_eq!(n.delete_edge(1, EdgeType::Outgoing).unwrap(), ());
+        // Set state
+        n.set_state(State::Committed);
+        assert_eq!(n.get_state(), State::Committed);
+        n.set_state(State::Aborted);
+        assert_eq!(n.get_state(), State::Aborted);
 
-        // Node state.
-        assert_eq!(n.get_state().unwrap(), State::Free);
-        n.set_state(State::Active).unwrap();
-        assert_eq!(n.get_state().unwrap(), State::Active);
-        n.set_state(State::Committed).unwrap();
-        assert_eq!(n.get_state().unwrap(), State::Committed);
-        n.set_state(State::Aborted).unwrap();
-        assert_eq!(n.get_state().unwrap(), State::Aborted);
+        // Add key
+        n.add_key(
+            "test",
+            PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+            OperationType::Read,
+        );
+
+        assert_eq!(
+            n.get_keys(OperationType::Read),
+            vec![(
+                "test".to_string(),
+                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1))
+            )]
+        );
     }
 }

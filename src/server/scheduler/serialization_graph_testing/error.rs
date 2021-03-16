@@ -7,22 +7,25 @@ use std::fmt;
 pub enum SerializationGraphTestingError {
     /// No free nodes in the graph.
     NoSpaceInGraph,
+
     /// Transaction ID field already set on node.
     TransactionIdAlreadySet,
+
     /// Edge already exists between two nodes.
     EdgeAlreadyExists,
+
     /// Self edge
     SelfEdge,
-    /// Locking mutex failed
-    MutexLockFailed,
-    /// Locking rw lock failed
-    RwLockFailed,
+
     /// Serializable error
-    SerializableError,
+    NonSerializable,
+
     /// Transaction ID not set
     TransactionIdNotSet,
+
     /// Node expectedly free
     NodeStateUnexpectedlyFree,
+
     /// Parent node aborted
     ParentAborted,
 }
@@ -37,9 +40,7 @@ impl fmt::Display for SerializationGraphTestingError {
             TransactionIdAlreadySet => "transaction id field already set",
             EdgeAlreadyExists => "edge already exists between two nodes",
             SelfEdge => "attempted to insert self edge",
-            MutexLockFailed => "locking mutex failed",
-            RwLockFailed => "locking rw lock failed",
-            SerializableError => "Serializable error",
+            NonSerializable => "Serializable error",
             TransactionIdNotSet => "transaction id not set",
             NodeStateUnexpectedlyFree => "node state unexpectedly free",
             ParentAborted => "parent node aborted",

@@ -12,11 +12,11 @@ warmup = 1
 generator_mode = "closed"
 think_time = 1000
 
-transactions = 10
+transactions = 20
 workload = "tatp"
 
 schema = "tatp_schema.txt"
-subscribers = 3
+subscribers = 1
 seed = 42
 
 clients = 4
