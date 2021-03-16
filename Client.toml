@@ -8,9 +8,9 @@ generator_mode = "closed"
 think_time = 0
 
 workload = "tatp"
-transactions = 100000
+transactions = 1000000
 
-subscribers = 10000
+subscribers = 100000
 
 warehouses = 5
 districts = 10
