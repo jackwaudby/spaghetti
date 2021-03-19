@@ -68,8 +68,7 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                                 // Response received.
                                 Message::Response {
                                     request_no,
-                                    resp: response,
-                                    latency,
+                                    outcome,
                                 } => {
                                     // Notify producer.
                                     debug!("Notify producer");
@@ -80,8 +79,7 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
 
                                     Message::Response {
                                         request_no,
-                                        resp: response,
-                                        latency,
+                                        outcome,
                                     }
                                 }
                                 // Received unexpected message.

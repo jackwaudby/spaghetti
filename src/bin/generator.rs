@@ -4,7 +4,7 @@ use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
-use spaghetti::common::message::Message;
+use spaghetti::common::message::{Message, Parameters};
 use spaghetti::common::parameter_generation::Generator;
 use spaghetti::workloads::tatp::generator::TatpGenerator;
 use spaghetti::workloads::tatp::helper;
@@ -78,9 +78,11 @@ fn params(transactions: u64, subscribers: u64) -> Result<()> {
     for _ in 1..=transactions {
         let message = gen.generate();
 
-        if let Message::TatpTransaction { params, .. } = message {
-            let s = format!("{}", params);
-            wtr.write_record(&[s])?;
+        if let Message::Request { parameters, .. } = message {
+            if let Parameters::Tatp(params) = parameters {
+                let s = format!("{}", params);
+                wtr.write_record(&[s])?;
+            }
         }
     }
 

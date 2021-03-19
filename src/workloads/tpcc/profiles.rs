@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+
 ///////////////////////////////////////
 /// Transaction Profiles. ///
 //////////////////////////////////////
@@ -17,7 +18,7 @@ pub struct NewOrder {
 pub struct Payment {}
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum TpccTransaction {
+pub enum TpccTransactionProfile {
     NewOrder(NewOrder),
     Payment(Payment),
 }

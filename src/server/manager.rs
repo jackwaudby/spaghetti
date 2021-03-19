@@ -1,8 +1,8 @@
-use crate::common::message::{Message, Request, Response, Transaction};
+use crate::common::message::{InternalRequest, InternalResponse, Outcome, Parameters, Transaction};
 use crate::server::pool::ThreadPool;
 use crate::server::scheduler::Protocol;
 use crate::workloads::tatp;
-use crate::workloads::tatp::profiles::TatpTransaction;
+use crate::workloads::tatp::profiles::TatpTransactionProfile;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -31,7 +31,7 @@ pub struct TransactionManager {
     scheduler: Arc<Protocol>,
 
     /// Channel to receive requests from read handler.
-    work_rx: std::sync::mpsc::Receiver<Request>,
+    work_rx: std::sync::mpsc::Receiver<InternalRequest>,
 
     /// Listen for shutdown.
     pub shutdown_rx: std::sync::mpsc::Receiver<()>,
@@ -51,7 +51,7 @@ impl TransactionManager {
     /// Create a new `TransactionManager`.
     pub fn new(
         workload: Arc<Workload>,
-        work_rx: std::sync::mpsc::Receiver<Request>,
+        work_rx: std::sync::mpsc::Receiver<InternalRequest>,
         shutdown_rx: std::sync::mpsc::Receiver<()>,
         _notify_wh_tx: tokio::sync::broadcast::Sender<State>,
     ) -> TransactionManager {
@@ -82,62 +82,75 @@ impl TransactionManager {
     /// Run transaction manager.
     pub fn run(&mut self) -> Result<()> {
         // Closure passed to thread pool.
-        let execute_request = |request: Request, scheduler| -> Result<()> {
-            // Client's # request.
-            let request_no = request.request_no;
+        let execute_request = |request: InternalRequest, scheduler| -> Result<()> {
+            // Destructure internal request.
+            let InternalRequest {
+                request_no,
+                transaction,
+                parameters,
+                response_sender,
+            } = request;
+
             // Start timer
             let start = Instant::now();
             // Execute trasaction.
             let handle = thread::current();
-            let res = match request.transaction {
-                Transaction::Tatp(transaction) => match transaction {
-                    TatpTransaction::GetSubscriberData(params) => {
-                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
-                        tatp::procedures::get_subscriber_data(params, scheduler)
+            let res = match transaction {
+                Transaction::Tatp(_) => {
+                    if let Parameters::Tatp(params) = parameters {
+                        match params {
+                            TatpTransactionProfile::GetSubscriberData(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                tatp::procedures::get_subscriber_data(params, scheduler)
+                            }
+                            TatpTransactionProfile::GetNewDestination(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                tatp::procedures::get_new_destination(params, scheduler)
+                            }
+                            TatpTransactionProfile::GetAccessData(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                tatp::procedures::get_access_data(params, scheduler)
+                            }
+                            TatpTransactionProfile::UpdateSubscriberData(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                tatp::procedures::update_subscriber_data(params, scheduler)
+                            }
+                            TatpTransactionProfile::UpdateLocationData(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                tatp::procedures::update_location(params, scheduler)
+                            }
+                            TatpTransactionProfile::InsertCallForwarding(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                tatp::procedures::insert_call_forwarding(params, scheduler)
+                            }
+                            TatpTransactionProfile::DeleteCallForwarding(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                tatp::procedures::delete_call_forwarding(params, scheduler)
+                            }
+                        }
+                    } else {
+                        panic!("transaction type and parameters do not match");
                     }
-                    TatpTransaction::GetNewDestination(params) => {
-                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
-                        tatp::procedures::get_new_destination(params, scheduler)
-                    }
-                    TatpTransaction::GetAccessData(params) => {
-                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
-                        tatp::procedures::get_access_data(params, scheduler)
-                    }
-                    TatpTransaction::UpdateSubscriberData(params) => {
-                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
-                        tatp::procedures::update_subscriber_data(params, scheduler)
-                    }
-                    TatpTransaction::UpdateLocationData(params) => {
-                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
-                        tatp::procedures::update_location(params, scheduler)
-                    }
-                    TatpTransaction::InsertCallForwarding(params) => {
-                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
-                        tatp::procedures::insert_call_forwarding(params, scheduler)
-                    }
-                    TatpTransaction::DeleteCallForwarding(params) => {
-                        debug!("Thread {}: {:?}", handle.name().unwrap(), params);
-                        tatp::procedures::delete_call_forwarding(params, scheduler)
-                    }
-                },
-                _ => unimplemented!(),
+                }
+                Transaction::Tpcc(_) => unimplemented!(),
             };
+
+            // Stop timer.
             let latency = Some(start.elapsed());
-            // Package response.
-            let resp = match res {
-                Ok(value) => Response::Committed { value: Some(value) },
-                // TODO: match based on abort type and workload
-                Err(reason) => Response::Aborted { reason },
+            // Create outcome.
+            let outcome = match res {
+                Ok(value) => Outcome::Committed { value: Some(value) },
+                Err(reason) => Outcome::Aborted { reason },
+            };
+            // Create internal response.
+            let response = InternalResponse {
+                request_no,
+                transaction,
+                outcome,
+                latency,
             };
             // Send to corresponding `WriteHandler`.
-            request
-                .response_sender
-                .send(Message::Response {
-                    request_no,
-                    resp,
-                    latency,
-                })
-                .unwrap();
+            response_sender.send(response).unwrap();
             Ok(())
         };
 

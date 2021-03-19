@@ -1,6 +1,6 @@
 use crate::common::connection::ReadConnection;
 use crate::common::error::FatalError;
-use crate::common::message::{Message, Request, Transaction};
+use crate::common::message::{InternalRequest, InternalResponse, Message};
 use crate::common::shutdown::Shutdown;
 use crate::Result;
 
@@ -26,16 +26,16 @@ pub struct ReadHandler<R: AsyncRead + Unpin> {
     /// Listen for server shutdown notifications.
     pub shutdown: Shutdown<tokio::sync::broadcast::Receiver<()>>,
 
-    /// Channel for sending response from the trasaction manager.
+    /// Channel for sending response from the transaction manager.
     /// Each new request gets a clone of it.
-    pub response_tx: tokio::sync::mpsc::UnboundedSender<Message>,
+    pub response_tx: tokio::sync::mpsc::UnboundedSender<InternalResponse>,
 
     /// Channel for notifying the write handler of the state the read handler terminated in.
     pub notify_wh_requests: Option<tokio::sync::oneshot::Sender<State>>,
 
     /// Channel for sending requests to the transaction manager.
     /// Communication channel between async and sync code.
-    pub work_tx: std::sync::mpsc::Sender<Request>,
+    pub work_tx: std::sync::mpsc::Sender<InternalRequest>,
 
     /// Channel for notifying the transaction manager of shutdown.
     /// Implicitly dropped when read handler is dropped.
@@ -104,11 +104,16 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
             // Decode message.
             let decoded: Message = bincode::deserialize(&frame.get_payload())?;
 
-            // Convert to request for transaction manager.
+            // Convert to internal request for transaction manager.
             let request = match decoded {
-                Message::TatpTransaction { request_no, params } => Request {
+                Message::Request {
                     request_no,
-                    transaction: Transaction::Tatp(params),
+                    transaction,
+                    parameters,
+                } => InternalRequest {
+                    request_no,
+                    transaction,
+                    parameters,
                     response_sender: self.response_tx.clone(),
                 },
 

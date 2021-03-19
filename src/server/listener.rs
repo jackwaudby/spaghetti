@@ -1,7 +1,7 @@
 use crate::common::connection::{ReadConnection, WriteConnection};
 use crate::common::error::FatalError;
-use crate::common::message::Message;
-use crate::common::message::Request;
+use crate::common::message::InternalRequest;
+use crate::common::message::InternalResponse;
 use crate::common::shutdown::Shutdown;
 use crate::server::manager;
 use crate::server::manager::State as TransactionManagerState;
@@ -66,7 +66,7 @@ impl Listener {
     /// Listens for inbound connections.
     pub async fn run(
         &mut self,
-        work_tx: std::sync::mpsc::Sender<Request>,
+        work_tx: std::sync::mpsc::Sender<InternalRequest>,
         notify_wh_tx: tokio::sync::broadcast::Sender<TransactionManagerState>,
         config: Arc<Config>,
         tm: TransactionManager,
@@ -75,11 +75,13 @@ impl Listener {
         manager::run(tm);
         // Listen for connections.
         self.stats.start();
+
         info!("Accepting new connections");
         loop {
+            // Listen for read/write handlers finishing and sending local statistics.
             while let Ok(local_stats) = self.listener_shutdown_rx.try_recv() {
-                // Merge stats here.
                 info!("Connection {} was closed", local_stats.get_client_id());
+                // Merge local statistics into global statistics.
                 self.stats.merge_into(local_stats);
                 self.active_connections -= 1;
             }
@@ -93,8 +95,8 @@ impl Listener {
                     info!("New connection accepted");
                     self.active_connections += 1;
                     let (response_tx, response_rx): (
-                        tokio::sync::mpsc::UnboundedSender<Message>,
-                        tokio::sync::mpsc::UnboundedReceiver<Message>,
+                        tokio::sync::mpsc::UnboundedSender<InternalResponse>,
+                        tokio::sync::mpsc::UnboundedReceiver<InternalResponse>,
                     ) = tokio::sync::mpsc::unbounded_channel();
                     let (sender, receiver) = tokio::sync::oneshot::channel::<State>();
                     let (rd, wr) = io::split(socket);
@@ -109,10 +111,14 @@ impl Listener {
                         work_tx: work_tx.clone(),
                         _notify_tm_tx: self.notify_tm_tx.clone(),
                     };
+
+                    let protocol = config.get_str("protocol")?;
+                    let workload = config.get_str("workload")?;
+
                     let mut write_handler = WriteHandler {
                         id: self.next_id,
                         benchmark_phase: BenchmarkPhase::Warmup,
-                        stats: Some(LocalStatistics::new(self.next_id)),
+                        stats: Some(LocalStatistics::new(self.next_id, &workload, &protocol)),
                         connection: WriteConnection::new(wr),
                         response_rx,
                         responses_sent: 0,

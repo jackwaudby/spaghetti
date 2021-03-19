@@ -1,6 +1,7 @@
-use crate::common::message::Message;
+use crate::common::message::{Message, Parameters, Transaction};
 use crate::common::parameter_generation::Generator;
-use crate::workloads::tpcc::profiles::{NewOrder, TpccTransaction};
+use crate::workloads::tpcc::profiles::{NewOrder, TpccTransactionProfile};
+use crate::workloads::tpcc::TpccTransaction;
 
 //////////////////////////////////////////
 /// Parameter Generation. ///
@@ -23,7 +24,14 @@ impl TpccGenerator {
 
 impl Generator for TpccGenerator {
     fn generate(&mut self) -> Message {
-        Message::TpccTransaction(TpccTransaction::NewOrder(NewOrder { w_id: 1 }))
+        let transaction = TpccTransaction::NewOrder;
+        let parameters = TpccTransactionProfile::NewOrder(NewOrder { w_id: 1 });
+
+        Message::Request {
+            request_no: 1,
+            transaction: Transaction::Tpcc(transaction),
+            parameters: Parameters::Tpcc(parameters),
+        }
     }
     fn get_generated(&self) -> u32 {
         1

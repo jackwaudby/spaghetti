@@ -1,5 +1,5 @@
 use crate::common::error::FatalError;
-use crate::common::message::Request;
+use crate::common::message::InternalRequest;
 use crate::server::listener::Listener;
 use crate::server::manager::State as TransactionManagerState;
 use crate::server::manager::TransactionManager;
@@ -41,11 +41,10 @@ pub mod statistics;
 /// Accepts connection on the listener address, spawns handler for each.
 /// ctrl-c triggers the shutdown.
 pub async fn run(config: Arc<Config>) -> Result<()> {
-    let subs = config.get_int("subscribers")? as u32;
     let protocol = config.get_str("protocol")?;
     let workload = config.get_str("workload")?;
 
-    let mut g_stats = GlobalStatistics::new(subs, &workload, &protocol);
+    let mut g_stats = GlobalStatistics::new(&workload, &protocol);
     let dg_start = Instant::now();
     info!("Initialise {:?} workload", config.get_str("workload")?);
 
@@ -71,7 +70,8 @@ pub async fn run(config: Arc<Config>) -> Result<()> {
     let (notify_listener_tx, _) = tokio::sync::broadcast::channel(10);
 
     // Work channels.
-    let (work_tx, work_rx): (Sender<Request>, Receiver<Request>) = std::sync::mpsc::channel();
+    let (work_tx, work_rx): (Sender<InternalRequest>, Receiver<InternalRequest>) =
+        std::sync::mpsc::channel();
 
     let listener_shutdown_rx = notify_listener_tx.subscribe();
 

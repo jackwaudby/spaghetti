@@ -1,10 +1,11 @@
-use crate::common::message::Message;
+use crate::common::message::{Message, Parameters, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::profiles::{
     DeleteCallForwarding, GetAccessData, GetNewDestination, GetSubscriberData,
-    InsertCallForwarding, TatpTransaction, UpdateLocationData, UpdateSubscriberData,
+    InsertCallForwarding, TatpTransactionProfile, UpdateLocationData, UpdateSubscriberData,
 };
+use crate::workloads::tatp::TatpTransaction;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -41,13 +42,15 @@ impl TatpGenerator {
 }
 
 impl Generator for TatpGenerator {
-    /// Generate transaction profile wrapped as `Message`.
+    /// Generate a transaction request.
     fn generate(&mut self) -> Message {
         let n: f32 = self.rng.gen();
-        let params = self.get_params(n);
-        Message::TatpTransaction {
+        let (transaction, parameters) = self.get_params(n);
+
+        Message::Request {
             request_no: self.generated,
-            params,
+            transaction: Transaction::Tatp(transaction),
+            parameters: Parameters::Tatp(parameters),
         }
     }
 
@@ -57,15 +60,18 @@ impl Generator for TatpGenerator {
 }
 
 impl TatpGenerator {
-    /// Get a random transaction profile.
-    fn get_params(&mut self, n: f32) -> TatpTransaction {
+    /// Get a random transaction profile (type, params)
+    fn get_params(&mut self, n: f32) -> (TatpTransaction, TatpTransactionProfile) {
         self.generated += 1;
         match n {
             x if x < 0.35 => {
                 // GET_SUBSCRIBER_DATA
                 let s_id = self.rng.gen_range(1..=self.subscribers);
                 let payload = GetSubscriberData { s_id };
-                TatpTransaction::GetSubscriberData(payload)
+                (
+                    TatpTransaction::GetSubscriberData,
+                    TatpTransactionProfile::GetSubscriberData(payload),
+                )
             }
 
             x if x < 0.45 => {
@@ -80,14 +86,20 @@ impl TatpGenerator {
                     start_time,
                     end_time,
                 };
-                TatpTransaction::GetNewDestination(payload)
+                (
+                    TatpTransaction::GetNewDestination,
+                    TatpTransactionProfile::GetNewDestination(payload),
+                )
             }
             x if x < 0.8 => {
                 // GET_ACCESS_DATA
                 let s_id = self.rng.gen_range(1..=self.subscribers);
                 let ai_type = self.rng.gen_range(1..=4);
                 let payload = GetAccessData { s_id, ai_type };
-                TatpTransaction::GetAccessData(payload)
+                (
+                    TatpTransaction::GetAccessData,
+                    TatpTransactionProfile::GetAccessData(payload),
+                )
             }
             x if x < 0.82 => {
                 // UPDATE_SUBSCRIBER_DATA
@@ -101,14 +113,20 @@ impl TatpGenerator {
                     bit_1,
                     data_a,
                 };
-                TatpTransaction::UpdateSubscriberData(payload)
+                (
+                    TatpTransaction::UpdateSubscriberData,
+                    TatpTransactionProfile::UpdateSubscriberData(payload),
+                )
             }
             x if x < 0.96 => {
                 // UPDATE_LOCATION
                 let s_id = self.rng.gen_range(1..=self.subscribers);
                 let vlr_location = self.rng.gen_range(1..=2 ^ 32 - 1);
                 let payload = UpdateLocationData { s_id, vlr_location };
-                TatpTransaction::UpdateLocationData(payload)
+                (
+                    TatpTransaction::UpdateLocationData,
+                    TatpTransactionProfile::UpdateLocationData(payload),
+                )
             }
             x if x < 0.98 => {
                 // INSERT CALL_FORWARDING
@@ -124,7 +142,10 @@ impl TatpGenerator {
                     end_time,
                     number_x,
                 };
-                TatpTransaction::InsertCallForwarding(payload)
+                (
+                    TatpTransaction::InsertCallForwarding,
+                    TatpTransactionProfile::InsertCallForwarding(payload),
+                )
             }
             _ => {
                 // DELETE_CALL_FORWARDING
@@ -136,7 +157,10 @@ impl TatpGenerator {
                     sf_type,
                     start_time,
                 };
-                TatpTransaction::DeleteCallForwarding(payload)
+                (
+                    TatpTransaction::DeleteCallForwarding,
+                    TatpTransactionProfile::DeleteCallForwarding(payload),
+                )
             }
         }
     }
@@ -168,11 +192,11 @@ mod tests {
         logging(false);
         let mut gen = TatpGenerator::new(10, true);
         assert_eq!(
-            TatpTransaction::GetSubscriberData(GetSubscriberData { s_id: 5 }),
+            TatpTransactionProfile::GetSubscriberData(GetSubscriberData { s_id: 5 }),
             gen.get_params(0.1)
         );
         assert_eq!(
-            TatpTransaction::GetNewDestination(GetNewDestination {
+            TatpTransactionProfile::GetNewDestination(GetNewDestination {
                 s_id: 3,
                 sf_type: 3,
                 start_time: 16,
@@ -181,14 +205,14 @@ mod tests {
             gen.get_params(0.4)
         );
         assert_eq!(
-            TatpTransaction::GetAccessData(GetAccessData {
+            TatpTransactionProfile::GetAccessData(GetAccessData {
                 s_id: 2,
                 ai_type: 3
             }),
             gen.get_params(0.7)
         );
         assert_eq!(
-            TatpTransaction::UpdateSubscriberData(UpdateSubscriberData {
+            TatpTransactionProfile::UpdateSubscriberData(UpdateSubscriberData {
                 s_id: 3,
                 sf_type: 2,
                 bit_1: 0,
@@ -197,14 +221,14 @@ mod tests {
             gen.get_params(0.81)
         );
         assert_eq!(
-            TatpTransaction::UpdateLocationData(UpdateLocationData {
+            TatpTransactionProfile::UpdateLocationData(UpdateLocationData {
                 s_id: 9,
                 vlr_location: 13
             }),
             gen.get_params(0.93)
         );
         assert_eq!(
-            TatpTransaction::InsertCallForwarding(InsertCallForwarding {
+            TatpTransactionProfile::InsertCallForwarding(InsertCallForwarding {
                 s_id: 2,
                 sf_type: 1,
                 start_time: 16,
@@ -214,7 +238,7 @@ mod tests {
             gen.get_params(0.97)
         );
         assert_eq!(
-            TatpTransaction::DeleteCallForwarding(DeleteCallForwarding {
+            TatpTransactionProfile::DeleteCallForwarding(DeleteCallForwarding {
                 s_id: 3,
                 sf_type: 3,
                 start_time: 16
