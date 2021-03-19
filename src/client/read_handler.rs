@@ -119,7 +119,7 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::message::{Message, Response};
+    use crate::common::message::{Message, Outcome};
     use std::sync::Once;
     use tokio::sync::mpsc::{self, Receiver, Sender};
     use tokio_test::io::Builder;
@@ -175,13 +175,12 @@ mod tests {
         let mut builder = Builder::new();
 
         // Schedule response message
-        let r = Response::Committed {
+        let r = Outcome::Committed {
             value: Some(String::from("Test")),
         };
         let response = Message::Response {
             request_no: 1,
-            resp: r,
-            latency: None,
+            outcome: r,
         };
         let response_frame = response.into_frame();
         let r_len = response_frame.payload.len();

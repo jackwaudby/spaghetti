@@ -192,57 +192,78 @@ mod tests {
         logging(false);
         let mut gen = TatpGenerator::new(10, true);
         assert_eq!(
-            TatpTransactionProfile::GetSubscriberData(GetSubscriberData { s_id: 5 }),
+            (
+                TatpTransaction::GetSubscriberData,
+                TatpTransactionProfile::GetSubscriberData(GetSubscriberData { s_id: 5 })
+            ),
             gen.get_params(0.1)
         );
         assert_eq!(
-            TatpTransactionProfile::GetNewDestination(GetNewDestination {
-                s_id: 3,
-                sf_type: 3,
-                start_time: 16,
-                end_time: 23
-            }),
+            (
+                TatpTransaction::GetNewDestination,
+                TatpTransactionProfile::GetNewDestination(GetNewDestination {
+                    s_id: 3,
+                    sf_type: 3,
+                    start_time: 16,
+                    end_time: 23
+                })
+            ),
             gen.get_params(0.4)
         );
         assert_eq!(
-            TatpTransactionProfile::GetAccessData(GetAccessData {
-                s_id: 2,
-                ai_type: 3
-            }),
+            (
+                TatpTransaction::GetAccessData,
+                TatpTransactionProfile::GetAccessData(GetAccessData {
+                    s_id: 2,
+                    ai_type: 3
+                })
+            ),
             gen.get_params(0.7)
         );
         assert_eq!(
-            TatpTransactionProfile::UpdateSubscriberData(UpdateSubscriberData {
-                s_id: 3,
-                sf_type: 2,
-                bit_1: 0,
-                data_a: 241
-            }),
+            (
+                TatpTransaction::UpdateSubscriberData,
+                TatpTransactionProfile::UpdateSubscriberData(UpdateSubscriberData {
+                    s_id: 3,
+                    sf_type: 2,
+                    bit_1: 0,
+                    data_a: 241
+                })
+            ),
             gen.get_params(0.81)
         );
         assert_eq!(
-            TatpTransactionProfile::UpdateLocationData(UpdateLocationData {
-                s_id: 9,
-                vlr_location: 13
-            }),
+            (
+                TatpTransaction::UpdateLocationData,
+                TatpTransactionProfile::UpdateLocationData(UpdateLocationData {
+                    s_id: 9,
+                    vlr_location: 13
+                })
+            ),
             gen.get_params(0.93)
         );
         assert_eq!(
-            TatpTransactionProfile::InsertCallForwarding(InsertCallForwarding {
-                s_id: 2,
-                sf_type: 1,
-                start_time: 16,
-                end_time: 20,
-                number_x: "333269051490038".to_string()
-            }),
+            (
+                TatpTransaction::InsertCallForwarding,
+                TatpTransactionProfile::InsertCallForwarding(InsertCallForwarding {
+                    s_id: 2,
+                    sf_type: 1,
+                    start_time: 16,
+                    end_time: 20,
+                    number_x: "333269051490038".to_string()
+                })
+            ),
             gen.get_params(0.97)
         );
         assert_eq!(
-            TatpTransactionProfile::DeleteCallForwarding(DeleteCallForwarding {
-                s_id: 3,
-                sf_type: 3,
-                start_time: 16
-            }),
+            (
+                TatpTransaction::DeleteCallForwarding,
+                TatpTransactionProfile::DeleteCallForwarding(DeleteCallForwarding {
+                    s_id: 3,
+                    sf_type: 3,
+                    start_time: 16
+                })
+            ),
             gen.get_params(0.99)
         );
     }

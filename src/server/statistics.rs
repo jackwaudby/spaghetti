@@ -4,11 +4,13 @@ use crate::server::scheduler::serialization_graph_testing::error::SerializationG
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 use crate::workloads::tatp::TatpTransaction;
 
-// use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 // use std::fmt;
 // use std::fs::File;
+use statrs::statistics::Median;
 use std::fs::{self, OpenOptions};
+use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
@@ -89,22 +91,6 @@ impl GlobalStatistics {
         self.end = Some(self.start.unwrap().elapsed());
     }
 
-    // /// Calculate throughput.
-    // pub fn calculate_throughput(&mut self) {
-    //     self.throughput = Some(self.completed as f64 / self.end.unwrap().as_secs() as f64);
-    // }
-
-    // /// Calculate abort rate.
-    // pub fn calculate_abort_rate(&mut self) {
-    //     self.abort_rate = Some(self.aborted as f64 / self.completed as f64);
-    // }
-
-    // /// Calculate latency.
-    // pub fn calculate_latency(&mut self) {
-    //     let lat = self.cum_latency / 1000 / self.committed as u128;
-    //     self.av_latency = Some(lat as f64 / 1000.0);
-    // }
-
     /// Merge local stats into global stats.
     pub fn merge_into(&mut self, local: LocalStatistics) {
         // 1. merge workload breakdown.
@@ -123,60 +109,49 @@ impl GlobalStatistics {
         let file = format!("./results/{}-{}.json", self.protocol, self.workload);
 
         // Create file.
-        let file = OpenOptions::new()
+        let mut file = OpenOptions::new()
             .write(true)
             .append(true)
             .create(true)
             .open(&file)
             .expect("cannot open file");
 
-        // The type of `john` is `serde_json::Value`
-        let test = json!({
+        // TODO: Move
+        let mut completed = 0;
+        let mut committed = 0;
+        let mut aborted = 0;
+        let mut raw_latency = vec![];
+        for transaction in &mut self.workload_breakdown.transactions {
+            completed += transaction.completed;
+            committed += transaction.committed;
+            aborted += transaction.aborted;
+            raw_latency.append(&mut transaction.raw_latency);
+        }
+        // TODO: double check.
+        let med = raw_latency.median() * 1000.0;
+
+        let abort_rate = (aborted as f64 / completed as f64) * 100.0;
+        let throughput = completed as f64 / self.end.unwrap().as_secs() as f64;
+
+        let overview = json!({
+            "clients": self.clients,
             "protocol": self.protocol,
+            "workload": self.workload,
+            "completed": completed,
+            "committed": committed,
+            "aborted": aborted,
+            "abort_rate": format!("{:.3}", abort_rate),
+            "throughput": format!("{:.3}", throughput),
+            "median": med,
         });
 
-        serde_json::to_writer_pretty(file, &test).unwrap();
-        // // Data generation
-        // match self.data_generation {
-        //     Some(time) => {
-        //         write!(file, "data generation: {}(secs)\n", time.as_secs()).unwrap();
-        //     }
-        //     None => {
-        //         write!(file, "No data generated").unwrap();
-        //     }
-        // }
+        let agg = serde_json::to_string_pretty(&overview).unwrap();
+        let aborts = serde_json::to_string_pretty(&self.abort_breakdown).unwrap();
+        let workload = serde_json::to_string_pretty(&self.workload_breakdown).unwrap();
 
-        // match self.clients {
-        //     Some(clients) => {
-        //         write!(file, "clients: {}\n", clients).unwrap();
-        //         write!(file, "protocol: {}\n", self.protocol).unwrap();
-        //         write!(file, "workload: {}\n", self.workload).unwrap();
-        //         write!(file, "subscribers: {}\n", self.subscribers).unwrap();
-
-        //         // Transaction counts
-        //         write!(file, "completed transactions: {}\n", self.completed).unwrap();
-        //         write!(file, "committed transactions: {}\n", self.committed).unwrap();
-        //         write!(file, "aborted transactions: {}\n", self.aborted).unwrap();
-        //         write!(file, "row already existed: {}\n", self.row_already_exists).unwrap();
-        //         write!(file, "row marked for delete: {}\n", self.row_deleted).unwrap();
-        //         write!(file, "row marked as dirty: {}\n", self.row_dirty).unwrap();
-        //         write!(file, "parent aborted: {}\n", self.parent_aborted).unwrap();
-        //         write!(file, "read lock denied: {}\n", self.read_lock_denied).unwrap();
-        //         write!(file, "write lock denied: {}\n", self.write_lock_denied).unwrap();
-        //         // Calculate throughput
-        //         self.calculate_throughput();
-        //         write!(file, "throughput: {}(txn/s)\n", self.throughput.unwrap()).unwrap();
-        //         // Calculate latency
-        //         self.calculate_latency();
-        //         write!(file, "latency: {}(ms)\n", self.av_latency.unwrap()).unwrap();
-        //         // Calculate abort rate
-        //         self.calculate_abort_rate();
-        //         write!(file, "abort rate: {}(ms)\n", self.abort_rate.unwrap()).unwrap();
-        //     }
-        //     None => {
-        //         write!(file, "No clients\n").unwrap();
-        //     }
-        // }
+        write!(file, "{}", agg).unwrap();
+        // write!(file, "{}", aborts).unwrap();
+        // write!(file, "{}", workload).unwrap();
     }
 }
 
@@ -267,7 +242,7 @@ impl LocalStatistics {
 //// Workload Breakdown ////
 /////////////////////////////////////////
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct WorkloadBreakdown {
     name: String,
     transactions: Vec<TransactionMetrics>,
@@ -303,7 +278,7 @@ impl WorkloadBreakdown {
             Outcome::Aborted { .. } => self.transactions[ind].inc_aborted(),
         }
 
-        self.transactions[ind].add_latency(latency.unwrap().as_millis());
+        self.transactions[ind].add_latency(latency.unwrap().as_secs_f64());
     }
 
     /// Merge two workload breakdowns
@@ -324,13 +299,13 @@ impl WorkloadBreakdown {
 }
 
 /// Per-transaction metrics holder.
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct TransactionMetrics {
     transaction: Transaction,
     completed: u32,
     committed: u32,
     aborted: u32,
-    raw_latency: Vec<u128>,
+    raw_latency: Vec<f64>,
 }
 
 impl TransactionMetrics {
@@ -358,7 +333,7 @@ impl TransactionMetrics {
     }
 
     /// Add latency measurement
-    fn add_latency(&mut self, latency: u128) {
+    fn add_latency(&mut self, latency: f64) {
         self.raw_latency.push(latency);
     }
 
@@ -379,7 +354,7 @@ impl TransactionMetrics {
 //////////////////////////////////
 
 /// Breakdown of reasons transactions were aborted.
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct AbortBreakdown {
     /// Attempted to insert a row that already existed in the database.
     row_already_exists: u32,
@@ -438,14 +413,14 @@ impl AbortBreakdown {
 }
 
 /// Protocol specific reasons for aborts.
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 enum ProtocolAbortBreakdown {
     TwoPhaseLocking(TwoPhaseLockingReasons),
     SerializationGraph(SerializationGraphReasons),
     HitList(HitListReasons),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct TwoPhaseLockingReasons {
     /// Transaction was denied a read lock and aborted.
     read_lock_denied: u32,
@@ -454,7 +429,7 @@ struct TwoPhaseLockingReasons {
     write_lock_denied: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct SerializationGraphReasons {
     /// Transaction attempted to modify a row already modified.
     row_dirty: u32,
@@ -466,7 +441,7 @@ struct SerializationGraphReasons {
     parent_aborted: u32,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 struct HitListReasons {
     /// Transaction attempted to modify a row already modified.
     row_dirty: u32,

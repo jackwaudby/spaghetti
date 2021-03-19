@@ -56,62 +56,6 @@ pub enum BenchmarkPhase {
 }
 
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
-    // /// Update statistics.
-    // fn record(&mut self, response: Outcome, latency: Option<Duration>) {
-
-    // match response {
-    //     Outcome::Committed { .. } => {
-    //         self.stats.as_mut().unwrap().inc_committed();
-    //         let lat = latency.unwrap().as_nanos();
-    //         self.stats.as_mut().unwrap().add_cum_latency(lat);
-    //     }
-
-    //     Outcome::Aborted { reason } => match reason {
-    //         NonFatalError::RowNotFound(_, _) => {
-    //             self.stats.as_mut().unwrap().inc_committed();
-    //             let lat = latency.unwrap().as_nanos();
-    //             self.stats.as_mut().unwrap().add_cum_latency(lat);
-    //         }
-    //         NonFatalError::RowAlreadyExists(_, _) => {
-    //             self.stats.as_mut().unwrap().inc_aborted();
-    //             self.stats.as_mut().unwrap().inc_row_already_exists();
-    //         }
-    //         NonFatalError::RowDeleted(_, _) => {
-    //             self.stats.as_mut().unwrap().inc_aborted();
-    //             self.stats.as_mut().unwrap().inc_row_deleted();
-    //         }
-    //         NonFatalError::RowDirty(_, _) => {
-    //             self.stats.as_mut().unwrap().inc_aborted();
-    //             self.stats.as_mut().unwrap().inc_row_dirty();
-    //         }
-    //         NonFatalError::TwoPhaseLocking(e) => {
-    //             self.stats.as_mut().unwrap().inc_aborted();
-    //             match e {
-    //                 TwoPhaseLockingError::ReadLockRequestDenied(_) => {
-    //                     self.stats.as_mut().unwrap().inc_read_lock_denied()
-    //                 }
-    //                 TwoPhaseLockingError::WriteLockRequestDenied(_) => {
-    //                     self.stats.as_mut().unwrap().inc_write_lock_denied()
-    //                 }
-    //                 _ => {}
-    //             }
-    //         }
-    //         NonFatalError::SerializationGraphTesting(e) => {
-    //             self.stats.as_mut().unwrap().inc_aborted();
-    //             match e {
-    //                 SerializationGraphTestingError::ParentAborted => {
-    //                     self.stats.as_mut().unwrap().inc_parent_aborted();
-    //                 }
-    //                 _ => {}
-    //             }
-    //         }
-    //         _ => {
-    //             self.stats.as_mut().unwrap().inc_aborted();
-    //         }
-    //     },
-    // }
-    // }
-
     pub async fn run(&mut self, config: Arc<Config>) -> Result<()> {
         // Shutdown avenues:
         // (a) read handler sends requests or internal error

@@ -78,7 +78,7 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::message::{Message, Response};
+    use crate::common::message::{Message, Outcome};
     use std::fs::File;
     use std::io::{self, BufRead};
     use std::sync::Once;
@@ -112,15 +112,14 @@ mod tests {
         let (read_task_tx, read_task_rx): (Sender<Message>, Receiver<Message>) =
             mpsc::channel(32 as usize);
         // Pre-populate response queue.
-        let response = Response::Committed {
+        let response = Outcome::Committed {
             value: Some(String::from("test")),
         };
 
         for i in 0..3 {
             let m = Message::Response {
                 request_no: i,
-                resp: response.clone(),
-                latency: None,
+                outcome: response.clone(),
             };
             read_task_tx.send(m).await.unwrap();
         }
