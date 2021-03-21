@@ -41,10 +41,7 @@ pub mod statistics;
 /// Accepts connection on the listener address, spawns handler for each.
 /// ctrl-c triggers the shutdown.
 pub async fn run(config: Arc<Config>) -> Result<()> {
-    let protocol = config.get_str("protocol")?;
-    let workload = config.get_str("workload")?;
-
-    let mut g_stats = GlobalStatistics::new(&workload, &protocol);
+    let mut g_stats = GlobalStatistics::new(Arc::clone(&config));
     let dg_start = Instant::now();
     info!("Initialise {:?} workload", config.get_str("workload")?);
 

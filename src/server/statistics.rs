@@ -4,21 +4,20 @@ use crate::server::scheduler::serialization_graph_testing::error::SerializationG
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 use crate::workloads::tatp::TatpTransaction;
 
+use config::Config;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-// use std::fmt;
-// use std::fs::File;
-use statrs::statistics::Median;
+use statrs::statistics::OrderStatistics;
+use statrs::statistics::{Max, Mean, Min};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use strum::IntoEnumIterator;
 
 /// Each write handler track statistics in its own instance of `LocalStatisitics`.
 /// After the benchmark has completed the statisitics are merged into `GlobalStatistics`.
-// #[derive(Debug, Clone, Serialize, Deserialize)]
 #[derive(Debug)]
 pub struct GlobalStatistics {
     /// Time taken to generate data and load into tables (secs).
@@ -26,6 +25,9 @@ pub struct GlobalStatistics {
 
     /// Time taken to load data into tables fom files (secs).
     load_time: Option<Duration>,
+
+    /// Number of warmup operaations.
+    warmup: u32,
 
     /// Time the server began listening for connections.
     start: Option<Instant>,
@@ -51,18 +53,23 @@ pub struct GlobalStatistics {
 
 impl GlobalStatistics {
     /// Create global metrics container.
-    pub fn new(workload: &str, protocol: &str) -> GlobalStatistics {
-        let workload_breakdown = WorkloadBreakdown::new(workload);
-        let abort_breakdown = AbortBreakdown::new(protocol);
+    pub fn new(config: Arc<Config>) -> GlobalStatistics {
+        let protocol = config.get_str("protocol").unwrap();
+        let workload = config.get_str("workload").unwrap();
+        let warmup = config.get_int("warmup").unwrap() as u32;
+
+        let workload_breakdown = WorkloadBreakdown::new(&workload);
+        let abort_breakdown = AbortBreakdown::new(&protocol);
 
         GlobalStatistics {
             data_generation: None,
             load_time: None,
+            warmup,
             start: None,
             end: None,
             clients: None,
-            protocol: protocol.to_string(),
-            workload: workload.to_string(),
+            protocol,
+            workload,
             workload_breakdown,
             abort_breakdown,
         }
@@ -108,15 +115,20 @@ impl GlobalStatistics {
 
         let file = format!("./results/{}-{}.json", self.protocol, self.workload);
 
-        // Create file.
-        let mut file = OpenOptions::new()
+        // Remove file if already exists.
+        if Path::new(&file).exists() {
+            fs::remove_file(&file).unwrap();
+        }
+
+        // Create new file.
+        let file = OpenOptions::new()
             .write(true)
             .append(true)
             .create(true)
             .open(&file)
             .expect("cannot open file");
 
-        // TODO: Move
+        // Compute totals.
         let mut completed = 0;
         let mut committed = 0;
         let mut aborted = 0;
@@ -125,33 +137,45 @@ impl GlobalStatistics {
             completed += transaction.completed;
             committed += transaction.committed;
             aborted += transaction.aborted;
-            raw_latency.append(&mut transaction.raw_latency);
+            transaction.calculate_latency_summary();
+            let mut temp = transaction.raw_latency.clone();
+            raw_latency.append(&mut temp);
         }
-        // TODO: double check.
-        let med = raw_latency.median() * 1000.0;
-
         let abort_rate = (aborted as f64 / completed as f64) * 100.0;
         let throughput = completed as f64 / self.end.unwrap().as_secs() as f64;
+        // Compute latency.
+        let min = raw_latency.min() * 1000.0;
+        let max = raw_latency.max() * 1000.0;
+        let mean = raw_latency.mean() * 1000.0;
+        let pc50 = raw_latency.quantile(0.5) * 1000.0;
+        let pc90 = raw_latency.quantile(0.9) * 1000.0;
+        let pc95 = raw_latency.quantile(0.95) * 1000.0;
+        let pc99 = raw_latency.quantile(0.99) * 1000.0;
 
         let overview = json!({
+            "load": self.data_generation.unwrap().as_secs(),
             "clients": self.clients,
             "protocol": self.protocol,
             "workload": self.workload,
+            "total_duration": self.end.unwrap().as_secs(),
+            "warmup": self.warmup,
             "completed": completed,
             "committed": committed,
             "aborted": aborted,
             "abort_rate": format!("{:.3}", abort_rate),
             "throughput": format!("{:.3}", throughput),
-            "median": med,
+            "min": min,
+            "max": max,
+            "mean": mean,
+            "50th_percentile": pc50,
+            "90th_percentile": pc90,
+            "95th_percentile": pc95,
+            "99th_percentile": pc99,
+            "abort_breakdown": self.abort_breakdown,
+            "workload_breakdown": self.workload_breakdown,
         });
 
-        let agg = serde_json::to_string_pretty(&overview).unwrap();
-        let aborts = serde_json::to_string_pretty(&self.abort_breakdown).unwrap();
-        let workload = serde_json::to_string_pretty(&self.workload_breakdown).unwrap();
-
-        write!(file, "{}", agg).unwrap();
-        // write!(file, "{}", aborts).unwrap();
-        // write!(file, "{}", workload).unwrap();
+        serde_json::to_writer_pretty(file, &overview).unwrap();
     }
 }
 
@@ -199,36 +223,43 @@ impl LocalStatistics {
 
         // Protocol
         if let Outcome::Aborted { reason } = outcome {
-            if let NonFatalError::RowAlreadyExists(_, _) = reason {
-                self.abort_breakdown.row_already_exists += 1;
-            } else {
+            match reason {
+                NonFatalError::RowAlreadyExists(_, _) => {
+                    self.abort_breakdown.row_already_exists += 1
+                }
+                NonFatalError::RowNotFound(_, _) => self.abort_breakdown.row_not_found += 1,
+                _ =>
                 // workload dependent
-                match &mut self.abort_breakdown.protocol_specific {
-                    ProtocolAbortBreakdown::HitList(ref mut metric) => match reason {
-                        NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
-                        NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
-                        _ => {}
-                    },
-                    ProtocolAbortBreakdown::SerializationGraph(ref mut metric) => match reason {
-                        NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
-                        NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
-                        NonFatalError::SerializationGraphTesting(e) => {
-                            if let SerializationGraphTestingError::ParentAborted = e {
-                                metric.inc_parent_aborted();
-                            }
-                        }
-                        _ => {}
-                    },
-                    ProtocolAbortBreakdown::TwoPhaseLocking(ref mut metric) => {
-                        if let NonFatalError::TwoPhaseLocking(e) = reason {
-                            match e {
-                                TwoPhaseLockingError::ReadLockRequestDenied(_) => {
-                                    metric.inc_read_lock_denied()
-                                }
-                                TwoPhaseLockingError::WriteLockRequestDenied(_) => {
-                                    metric.inc_write_lock_denied()
+                {
+                    match &mut self.abort_breakdown.protocol_specific {
+                        ProtocolAbortBreakdown::HitList(ref mut metric) => match reason {
+                            NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
+                            NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
+                            _ => {}
+                        },
+                        ProtocolAbortBreakdown::SerializationGraph(ref mut metric) => {
+                            match reason {
+                                NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
+                                NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
+                                NonFatalError::SerializationGraphTesting(e) => {
+                                    if let SerializationGraphTestingError::ParentAborted = e {
+                                        metric.inc_parent_aborted();
+                                    }
                                 }
                                 _ => {}
+                            }
+                        }
+                        ProtocolAbortBreakdown::TwoPhaseLocking(ref mut metric) => {
+                            if let NonFatalError::TwoPhaseLocking(e) = reason {
+                                match e {
+                                    TwoPhaseLockingError::ReadLockRequestDenied(_) => {
+                                        metric.inc_read_lock_denied()
+                                    }
+                                    TwoPhaseLockingError::WriteLockRequestDenied(_) => {
+                                        metric.inc_write_lock_denied()
+                                    }
+                                    _ => {}
+                                }
                             }
                         }
                     }
@@ -305,7 +336,15 @@ struct TransactionMetrics {
     completed: u32,
     committed: u32,
     aborted: u32,
+    #[serde(skip_serializing)]
     raw_latency: Vec<f64>,
+    min: Option<f64>,
+    max: Option<f64>,
+    mean: Option<f64>,
+    pc50: Option<f64>,
+    pc90: Option<f64>,
+    pc95: Option<f64>,
+    pc99: Option<f64>,
 }
 
 impl TransactionMetrics {
@@ -317,6 +356,13 @@ impl TransactionMetrics {
             committed: 0,
             aborted: 0,
             raw_latency: vec![],
+            min: None,
+            max: None,
+            mean: None,
+            pc50: None,
+            pc90: None,
+            pc95: None,
+            pc99: None,
         }
     }
 
@@ -335,6 +381,19 @@ impl TransactionMetrics {
     /// Add latency measurement
     fn add_latency(&mut self, latency: f64) {
         self.raw_latency.push(latency);
+    }
+
+    /// Set median value
+    fn calculate_latency_summary(&mut self) {
+        if !self.raw_latency.is_empty() {
+            self.min = Some(self.raw_latency.min() * 1000.0);
+            self.max = Some(self.raw_latency.max() * 1000.0);
+            self.mean = Some(self.raw_latency.mean() * 1000.0);
+            self.pc50 = Some(self.raw_latency.quantile(0.5) * 1000.0);
+            self.pc90 = Some(self.raw_latency.quantile(0.9) * 1000.0);
+            self.pc95 = Some(self.raw_latency.quantile(0.95) * 1000.0);
+            self.pc99 = Some(self.raw_latency.quantile(0.99) * 1000.0);
+        }
     }
 
     /// Merge transaction metrics.
@@ -359,6 +418,9 @@ struct AbortBreakdown {
     /// Attempted to insert a row that already existed in the database.
     row_already_exists: u32,
 
+    /// Row not found in the database,
+    row_not_found: u32,
+
     /// Protocol specific aborts reasons.
     protocol_specific: ProtocolAbortBreakdown,
 }
@@ -375,12 +437,15 @@ impl AbortBreakdown {
 
         AbortBreakdown {
             row_already_exists: 0,
+            row_not_found: 0,
             protocol_specific,
         }
     }
 
+    /// Merge abort breakdowns.
     fn merge(&mut self, other: AbortBreakdown) {
         self.row_already_exists += other.row_already_exists;
+        self.row_not_found += other.row_not_found;
 
         match self.protocol_specific {
             ProtocolAbortBreakdown::HitList(ref mut reasons) => {

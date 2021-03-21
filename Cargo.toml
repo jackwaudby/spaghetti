@@ -39,7 +39,7 @@ chrono = "0.4"
 lazy_static = "1.4.0"
 core_affinity = "0.5.10"
 csv = "1.1.6"
-serde_json = "1.0.64"
+serde_json = {version = "1.0.64", features = ["preserve_order"]}
 strum = "0.20"
 strum_macros = "0.20"
 statrs = "0.13.0"
