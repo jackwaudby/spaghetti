@@ -54,6 +54,17 @@ pub fn get_name(rng: &mut StdRng, config: Arc<Config>) -> String {
     }
 }
 
+/// Get customer names.
+pub fn get_names(rng: &mut StdRng, config: Arc<Config>) -> (String, String) {
+    let name1 = get_name(rng, Arc::clone(&config));
+    let mut name2 = get_name(rng, Arc::clone(&config));
+
+    while name1 == name2 {
+        name2 = get_name(rng, Arc::clone(&config));
+    }
+    (name1, name2)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

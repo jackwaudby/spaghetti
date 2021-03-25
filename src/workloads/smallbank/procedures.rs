@@ -1,62 +1,62 @@
-use crate::common::error::NonFatalError;
-use crate::server::scheduler::Protocol;
-use crate::server::storage::datatype::{self, Data};
-use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
-use crate::workloads::smallbank::profiles::*;
-use crate::workloads::PrimaryKey;
+// use crate::common::error::NonFatalError;
+// use crate::server::scheduler::Protocol;
+// use crate::server::storage::datatype::{self, Data};
+// use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
+// use crate::workloads::smallbank::profiles::*;
+// use crate::workloads::PrimaryKey;
 
-use std::sync::Arc;
-// use std::thread;
+// use std::sync::Arc;
+// // use std::thread;
 // use tracing::debug;
 
-/// Balance transaction.
-pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    // Columns to read.
-    let columns_acc: Vec<&str> = vec!["customer_id"];
-    let columns_sc: Vec<&str> = vec!["balance"];
+// /// Balance transaction.
+// pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+//     // Columns to read.
+//     let columns_acc: Vec<&str> = vec!["customer_id"];
+//     let columns_sc: Vec<&str> = vec!["balance"];
 
-    // Construct primary key.
-    let pk_acc = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account("todo".to_string()));
-    let pk_sav = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(params.name));
-    let pk_che = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(params.name));
+//     // Construct primary key.
+//     let pk_acc = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account("todo".to_string()));
+//     let pk_sav = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(params.name));
+//     let pk_che = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(params.name));
 
-    // Register with scheduler.
-    let meta = protocol.scheduler.register()?;
+//     // Register with scheduler.
+//     let meta = protocol.scheduler.register()?;
 
-    // Read 1.
-    let x = protocol
-        .scheduler
-        .read("accounts", pk_acc, &columns_acc, meta.clone())?;
-    let a = protocol
-        .scheduler
-        .read("savings", pk_sav, &columns_sc, meta.clone())?;
-    let b = protocol
-        .scheduler
-        .read("checking", pk_che, &columns_sc, meta.clone())?;
+//     // Read 1.
+//     let x = protocol
+//         .scheduler
+//         .read("accounts", pk_acc, &columns_acc, meta.clone())?;
+//     let a = protocol
+//         .scheduler
+//         .read("savings", pk_sav, &columns_sc, meta.clone())?;
+//     let b = protocol
+//         .scheduler
+//         .read("checking", pk_che, &columns_sc, meta.clone())?;
 
-    let a = if let Data::Int(val) = a[0] {
-        val
-    } else {
-        panic!("Unexpected type")
-    };
+//     let a = if let Data::Int(val) = a[0] {
+//         val
+//     } else {
+//         panic!("Unexpected type")
+//     };
 
-    let b = if let Data::Int(val) = b[0] {
-        val
-    } else {
-        panic!("Unexpected type")
-    };
+//     let b = if let Data::Int(val) = b[0] {
+//         val
+//     } else {
+//         panic!("Unexpected type")
+//     };
 
-    let sum = a + b;
+//     let sum = a + b;
 
-    // Commit transaction.
-    protocol.scheduler.commit(meta.clone())?;
-    let columns = vec!["sum"];
-    let values = vec![Data::Int(sum)];
-    // Convert to result
-    let res = datatype::to_result(&columns, &values).unwrap();
+//     // Commit transaction.
+//     protocol.scheduler.commit(meta.clone())?;
+//     let columns = vec!["sum"];
+//     let values = vec![Data::Int(sum)];
+//     // Convert to result
+//     let res = datatype::to_result(&columns, &values).unwrap();
 
-    Ok(res)
-}
+//     Ok(res)
+// }
 
 // /// GetNewDestination transaction.
 // pub fn get_new_destination(

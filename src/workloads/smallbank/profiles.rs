@@ -12,40 +12,40 @@ pub enum SmallBankTransactionProfile {
     SendPayment(SendPayment),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Balance {
-    pub name: u64,
+    pub name: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct DepositChecking {
-    pub name: u64,
-    pub value: u64,
+    pub name: String,
+    pub value: f64,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct TransactSaving {
-    pub name: u64,
-    pub value: u64,
+    pub name: String,
+    pub value: f64,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Amalgamate {
-    pub name_1: u64,
-    pub name_2: u64,
+    pub name1: String,
+    pub name2: String,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct WriteCheck {
-    pub name: u64,
-    pub value: u64,
+    pub name: String,
+    pub value: f64,
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct SendPayment {
-    pub name_1: u64,
-    pub name_2: u64,
-    pub amount: u64,
+    pub name1: String,
+    pub name2: String,
+    pub value: f64,
 }
 
 impl fmt::Display for SmallBankTransactionProfile {
@@ -64,8 +64,8 @@ impl fmt::Display for SmallBankTransactionProfile {
                 write!(f, "2,{},{}", name, value)
             }
             SmallBankTransactionProfile::Amalgamate(params) => {
-                let Amalgamate { name_1, name_2 } = params;
-                write!(f, "3,{},{}", name_1, name_2)
+                let Amalgamate { name1, name2 } = params;
+                write!(f, "3,{},{}", name1, name2)
             }
             SmallBankTransactionProfile::WriteCheck(params) => {
                 let WriteCheck { name, value } = params;
@@ -73,11 +73,11 @@ impl fmt::Display for SmallBankTransactionProfile {
             }
             SmallBankTransactionProfile::SendPayment(params) => {
                 let SendPayment {
-                    name_1,
-                    name_2,
-                    amount,
+                    name1,
+                    name2,
+                    value,
                 } = params;
-                write!(f, "5,{},{},{}", name_1, name_2, amount)
+                write!(f, "5,{},{},{}", name1, name2, value)
             }
         }
     }

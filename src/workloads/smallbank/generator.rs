@@ -1,12 +1,12 @@
-//use crate::common::message::{Message, Parameters, Transaction};
-// use crate::common::parameter_generation::Generator;
-//use crate::workloads::smallbank::profiles::Amalgamate;
-//use crate::workloads::smallbank::SmallBankTransaction;
+use crate::common::message::{Message, Parameters, Transaction};
+use crate::common::parameter_generation::Generator;
+use crate::workloads::smallbank::helper;
+use crate::workloads::smallbank::profiles::*;
+use crate::workloads::smallbank::SmallBankTransaction;
 
 use config::Config;
 use rand::rngs::StdRng;
-//use rand::{Rng, SeedableRng};
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 use std::sync::Arc;
 
 /// SmallBank workload transaction generator.
@@ -40,248 +40,122 @@ impl SmallBankGenerator {
     }
 }
 
-// impl Generator for SmallBankGenerator {
-//     /// Generate a transaction request.
-//     fn generate(&mut self) -> Message {
-//         let n: f32 = self.rng.gen();
-//         let (transaction, parameters) = self.get_params(n);
+impl Generator for SmallBankGenerator {
+    /// Generate a transaction request.
+    fn generate(&mut self) -> Message {
+        let n: f32 = self.rng.gen();
+        let (transaction, parameters) = self.get_params(n);
 
-//         Message::Request {
-//             request_no: self.generated,
-//             transaction: Transaction::SmallBank(transaction),
-//             parameters: Parameters::SmallBank(parameters),
-//         }
-//     }
+        Message::Request {
+            request_no: self.generated,
+            transaction: Transaction::SmallBank(transaction),
+            parameters: Parameters::SmallBank(parameters),
+        }
+    }
 
-//     /// Get number of transactions generated.
-//     fn get_generated(&self) -> u32 {
-//         self.generated
-//     }
-// }
+    /// Get number of transactions generated.
+    fn get_generated(&self) -> u32 {
+        self.generated
+    }
+}
 
-// impl SmallBankGenerator {
-//     fn create_hotspot(&self) {
-//         let hotspot_ids = vec![];
-//         let use_fixed_size = self.config.get_bool("hotspot_use_fixed_size").unwrap();
+impl SmallBankGenerator {
+    /// Get a random transaction profile (type, params)
+    fn get_params(&mut self, n: f32) -> (SmallBankTransaction, SmallBankTransactionProfile) {
+        self.generated += 1;
+        let config = Arc::clone(&self.config);
+        match n {
+            // BALANCE
+            x if x < 0.1667 => {
+                let name = helper::get_name(&mut self.rng, config);
 
-//         if use_fixed_size {
-//             let fixed_size = self.config.get_int("hotspot_fixed_size").unwrap() as u64;
+                let payload = Balance { name };
 
-//         } else {
-//         }
-//     }
+                (
+                    SmallBankTransaction::Balance,
+                    SmallBankTransactionProfile::Balance(payload),
+                )
+            }
+            // DEPOSIT_CHECKING
+            x if x < 0.3333 => {
+                let name = helper::get_name(&mut self.rng, config);
+                let value = self.config.get_float("deposit_checking_amount").unwrap();
 
-//     // Get customer id
-//     // create hotsopt
-//     // if hotspot_use_fixed_size = true
-//     // then select 100 random ids from the num_accounts
-//     // else calculate hotspot size using percentage
-// }
-//     /// Get a random transaction profile (type, params)
-//     fn get_params(&mut self, n: f32) -> (TatpTransaction, TatpTransactionProfile) {
-//         self.generated += 1;
-//         match n {
-//             x if x < 0.35 => {
-//                 // GET_SUBSCRIBER_DATA
-//                 let s_id = self.rng.gen_range(1..=self.subscribers);
-//                 let payload = GetSubscriberData { s_id };
-//                 (
-//                     TatpTransaction::GetSubscriberData,
-//                     TatpTransactionProfile::GetSubscriberData(payload),
-//                 )
-//             }
+                let payload = DepositChecking { name, value };
+                (
+                    SmallBankTransaction::DepositChecking,
+                    SmallBankTransactionProfile::DepositChecking(payload),
+                )
+            }
+            // TRANSACT_SAVING
+            x if x < 0.50 => {
+                let name = helper::get_name(&mut self.rng, config);
+                let value = self.config.get_float("transact_savings_amount").unwrap();
 
-//             x if x < 0.45 => {
-//                 // GET_NEW_DESTINATION
-//                 let s_id = self.rng.gen_range(1..=self.subscribers);
-//                 let sf_type = self.rng.gen_range(1..=4);
-//                 let start_time = helper::get_start_time(&mut self.rng);
-//                 let end_time = start_time + self.rng.gen_range(1..=8);
-//                 let payload = GetNewDestination {
-//                     s_id,
-//                     sf_type,
-//                     start_time,
-//                     end_time,
-//                 };
-//                 (
-//                     TatpTransaction::GetNewDestination,
-//                     TatpTransactionProfile::GetNewDestination(payload),
-//                 )
-//             }
-//             x if x < 0.8 => {
-//                 // GET_ACCESS_DATA
-//                 let s_id = self.rng.gen_range(1..=self.subscribers);
-//                 let ai_type = self.rng.gen_range(1..=4);
-//                 let payload = GetAccessData { s_id, ai_type };
-//                 (
-//                     TatpTransaction::GetAccessData,
-//                     TatpTransactionProfile::GetAccessData(payload),
-//                 )
-//             }
-//             x if x < 0.82 => {
-//                 // UPDATE_SUBSCRIBER_DATA
-//                 let s_id = self.rng.gen_range(1..=self.subscribers);
-//                 let sf_type = self.rng.gen_range(1..=4);
-//                 let bit_1 = self.rng.gen_range(0..=1);
-//                 let data_a = self.rng.gen_range(0..=255);
-//                 let payload = UpdateSubscriberData {
-//                     s_id,
-//                     sf_type,
-//                     bit_1,
-//                     data_a,
-//                 };
-//                 (
-//                     TatpTransaction::UpdateSubscriberData,
-//                     TatpTransactionProfile::UpdateSubscriberData(payload),
-//                 )
-//             }
-//             x if x < 0.96 => {
-//                 // UPDATE_LOCATION
-//                 let s_id = self.rng.gen_range(1..=self.subscribers);
-//                 let vlr_location = self.rng.gen_range(1..=2 ^ 32 - 1);
-//                 let payload = UpdateLocationData { s_id, vlr_location };
-//                 (
-//                     TatpTransaction::UpdateLocationData,
-//                     TatpTransactionProfile::UpdateLocationData(payload),
-//                 )
-//             }
-//             x if x < 0.98 => {
-//                 // INSERT CALL_FORWARDING
-//                 let s_id = self.rng.gen_range(1..=self.subscribers);
-//                 let sf_type = self.rng.gen_range(1..=4);
-//                 let start_time = helper::get_start_time(&mut self.rng);
-//                 let end_time = start_time + self.rng.gen_range(1..=8);
-//                 let number_x = helper::get_number_x(&mut self.rng);
-//                 let payload = InsertCallForwarding {
-//                     s_id,
-//                     sf_type,
-//                     start_time,
-//                     end_time,
-//                     number_x,
-//                 };
-//                 (
-//                     TatpTransaction::InsertCallForwarding,
-//                     TatpTransactionProfile::InsertCallForwarding(payload),
-//                 )
-//             }
-//             _ => {
-//                 // DELETE_CALL_FORWARDING
-//                 let s_id = self.rng.gen_range(1..=self.subscribers);
-//                 let sf_type = self.rng.gen_range(1..=4);
-//                 let start_time = helper::get_start_time(&mut self.rng);
-//                 let payload = DeleteCallForwarding {
-//                     s_id,
-//                     sf_type,
-//                     start_time,
-//                 };
-//                 (
-//                     TatpTransaction::DeleteCallForwarding,
-//                     TatpTransactionProfile::DeleteCallForwarding(payload),
-//                 )
-//             }
-//         }
-//     }
-// }
+                let payload = TransactSaving { name, value };
+                (
+                    SmallBankTransaction::TransactSaving,
+                    SmallBankTransactionProfile::TransactSaving(payload),
+                )
+            }
+            // AMALGAMATE
+            x if x < 0.6667 => {
+                let (name1, name2) = helper::get_names(&mut self.rng, config);
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::sync::Once;
-//     use tracing::Level;
-//     use tracing_subscriber::FmtSubscriber;
+                let payload = Amalgamate { name1, name2 };
+                (
+                    SmallBankTransaction::Amalgamate,
+                    SmallBankTransactionProfile::Amalgamate(payload),
+                )
+            }
+            // WRITE_CHECK
+            x if x < 0.8333 => {
+                let name = helper::get_name(&mut self.rng, config);
+                let value = self.config.get_float("write_check_amount").unwrap();
 
-//     static LOG: Once = Once::new();
+                let payload = WriteCheck { name, value };
+                (
+                    SmallBankTransaction::WriteCheck,
+                    SmallBankTransactionProfile::WriteCheck(payload),
+                )
+            }
+            // SEND_PAYMENT
+            _ => {
+                let (name1, name2) = helper::get_names(&mut self.rng, config);
+                let value = self.config.get_float("send_payment_amount").unwrap();
 
-//     fn logging(on: bool) {
-//         if on {
-//             LOG.call_once(|| {
-//                 let subscriber = FmtSubscriber::builder()
-//                     .with_max_level(Level::DEBUG)
-//                     .finish();
-//                 tracing::subscriber::set_global_default(subscriber)
-//                     .expect("setting default subscriber failed");
-//             });
-//         }
-//     }
+                let payload = SendPayment {
+                    name1,
+                    name2,
+                    value,
+                };
+                (
+                    SmallBankTransaction::SendPayment,
+                    SmallBankTransactionProfile::SendPayment(payload),
+                )
+            }
+        }
+    }
+}
 
-//     #[test]
-//     fn generate_test() {
-//         logging(false);
-//         let mut gen = TatpGenerator::new(10, true);
-//         assert_eq!(
-//             (
-//                 TatpTransaction::GetSubscriberData,
-//                 TatpTransactionProfile::GetSubscriberData(GetSubscriberData { s_id: 5 })
-//             ),
-//             gen.get_params(0.1)
-//         );
-//         assert_eq!(
-//             (
-//                 TatpTransaction::GetNewDestination,
-//                 TatpTransactionProfile::GetNewDestination(GetNewDestination {
-//                     s_id: 3,
-//                     sf_type: 3,
-//                     start_time: 16,
-//                     end_time: 23
-//                 })
-//             ),
-//             gen.get_params(0.4)
-//         );
-//         assert_eq!(
-//             (
-//                 TatpTransaction::GetAccessData,
-//                 TatpTransactionProfile::GetAccessData(GetAccessData {
-//                     s_id: 2,
-//                     ai_type: 3
-//                 })
-//             ),
-//             gen.get_params(0.7)
-//         );
-//         assert_eq!(
-//             (
-//                 TatpTransaction::UpdateSubscriberData,
-//                 TatpTransactionProfile::UpdateSubscriberData(UpdateSubscriberData {
-//                     s_id: 3,
-//                     sf_type: 2,
-//                     bit_1: 0,
-//                     data_a: 241
-//                 })
-//             ),
-//             gen.get_params(0.81)
-//         );
-//         assert_eq!(
-//             (
-//                 TatpTransaction::UpdateLocationData,
-//                 TatpTransactionProfile::UpdateLocationData(UpdateLocationData {
-//                     s_id: 9,
-//                     vlr_location: 13
-//                 })
-//             ),
-//             gen.get_params(0.93)
-//         );
-//         assert_eq!(
-//             (
-//                 TatpTransaction::InsertCallForwarding,
-//                 TatpTransactionProfile::InsertCallForwarding(InsertCallForwarding {
-//                     s_id: 2,
-//                     sf_type: 1,
-//                     start_time: 16,
-//                     end_time: 20,
-//                     number_x: "333269051490038".to_string()
-//                 })
-//             ),
-//             gen.get_params(0.97)
-//         );
-//         assert_eq!(
-//             (
-//                 TatpTransaction::DeleteCallForwarding,
-//                 TatpTransactionProfile::DeleteCallForwarding(DeleteCallForwarding {
-//                     s_id: 3,
-//                     sf_type: 3,
-//                     start_time: 16
-//                 })
-//             ),
-//             gen.get_params(0.99)
-//         );
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generate_test() {
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test-smallbank.toml"))
+            .unwrap();
+        let mut gen = SmallBankGenerator::new(Arc::new(c));
+        assert_eq!(
+            (
+                SmallBankTransaction::Balance,
+                SmallBankTransactionProfile::Balance(Balance {
+                    name: "cust1".to_string()
+                })
+            ),
+            gen.get_params(0.1)
+        );
+    }
+}
