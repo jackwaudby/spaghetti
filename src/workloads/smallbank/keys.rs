@@ -18,8 +18,8 @@ mod tests {
     #[test]
     fn smallbank_key_test() {
         assert!(
-            SmallBankPrimaryKey::Account("name".to_string)
-                == SmallBankPrimaryKey::Account("name".to_string)
+            SmallBankPrimaryKey::Account("name".to_string())
+                == SmallBankPrimaryKey::Account("name".to_string())
         );
         assert!(SmallBankPrimaryKey::Savings(1) != SmallBankPrimaryKey::Checking(1));
     }

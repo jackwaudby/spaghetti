@@ -779,7 +779,7 @@ mod test {
                 assert_eq!(
                     datatype::to_result(
                         &columns,
-                        &sg.read(table, key, &columns, meta.clone()).unwrap()
+                        &sg.read(table, key.clone(), &columns, meta.clone()).unwrap()
                     )
                     .unwrap(),
                     "{data_1=\"57\", data_2=\"200\", data_3=\"IEU\", data_4=\"WIDHY\"}"

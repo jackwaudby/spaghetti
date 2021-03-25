@@ -959,7 +959,7 @@ mod tests {
         assert_eq!(
             tpl.request_lock(
                 index,
-                pk,
+                pk.clone(),
                 LockMode::Read,
                 &ta.get_id().unwrap(),
                 ta.get_ts().unwrap(),
@@ -969,7 +969,7 @@ mod tests {
         assert_eq!(
             tpl.request_lock(
                 index,
-                pk,
+                pk.clone(),
                 LockMode::Read,
                 &tb.get_id().unwrap(),
                 tb.get_ts().unwrap(),
@@ -979,7 +979,7 @@ mod tests {
         assert_eq!(
             tpl.request_lock(
                 index,
-                pk,
+                pk.clone(),
                 LockMode::Read,
                 &tc.get_id().unwrap(),
                 tc.get_ts().unwrap(),
@@ -989,7 +989,7 @@ mod tests {
 
         // Check
         {
-            let lock = tpl.lock_table.get(&pk).unwrap();
+            let lock = tpl.lock_table.get(&pk.clone()).unwrap();
             assert_eq!(
                 lock.group_mode == Some(LockMode::Read)
                     && !lock.waiting
@@ -1004,20 +1004,23 @@ mod tests {
 
         // Release locks.
         assert_eq!(
-            tpl.release_lock(pk, &ta.get_id().unwrap(), true).unwrap(),
+            tpl.release_lock(pk.clone(), &ta.get_id().unwrap(), true)
+                .unwrap(),
             UnlockRequest::Ok
         );
         assert_eq!(
-            tpl.release_lock(pk, &tb.get_id().unwrap(), true).unwrap(),
+            tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
+                .unwrap(),
             UnlockRequest::Ok
         );
         assert_eq!(
-            tpl.release_lock(pk, &tc.get_id().unwrap(), true).unwrap(),
+            tpl.release_lock(pk.clone(), &tc.get_id().unwrap(), true)
+                .unwrap(),
             UnlockRequest::Reclaim
         );
         // Check.
         {
-            let lock = tpl.lock_table.get(&pk).unwrap();
+            let lock = tpl.lock_table.get(&pk.clone()).unwrap();
             assert_eq!(
                 lock.group_mode == None
                     && !lock.waiting
@@ -1059,7 +1062,7 @@ mod tests {
         assert_eq!(
             tpl.request_lock(
                 index,
-                pk,
+                pk.clone(),
                 LockMode::Write,
                 &t.get_id().unwrap(),
                 t.get_ts().unwrap()
@@ -1068,7 +1071,7 @@ mod tests {
         );
         // Check
         {
-            let lock = tpl.lock_table.get(&pk).unwrap();
+            let lock = tpl.lock_table.get(&pk.clone()).unwrap();
             assert_eq!(
                 lock.group_mode == Some(LockMode::Write)
                     && !lock.waiting
@@ -1083,9 +1086,10 @@ mod tests {
         }
 
         // Unlock
-        tpl.release_lock(pk, &t.get_id().unwrap(), true).unwrap();
+        tpl.release_lock(pk.clone(), &t.get_id().unwrap(), true)
+            .unwrap();
         {
-            let lock = tpl.lock_table.get(&pk).unwrap();
+            let lock = tpl.lock_table.get(&pk.clone()).unwrap();
             assert_eq!(
                 lock.group_mode == None
                     && !lock.waiting
@@ -1119,6 +1123,7 @@ mod tests {
 
         let ta_h = ta.clone();
         let tb_h = tb.clone();
+        let pk_h = pk.clone();
 
         // Spawn thread.
         let handle = thread::spawn(move || {
@@ -1126,7 +1131,7 @@ mod tests {
             assert_eq!(
                 tpl_h.request_lock(
                     index,
-                    pk,
+                    pk_h.clone(),
                     LockMode::Read,
                     &tb_h.get_id().unwrap(),
                     tb_h.get_ts().unwrap(),
@@ -1138,7 +1143,7 @@ mod tests {
             debug!("Request Write lock");
             if let LockRequest::Delay(pair) = tpl_h.request_lock(
                 index,
-                pk,
+                pk_h.clone(),
                 LockMode::Write,
                 &ta_h.get_id().unwrap(),
                 ta_h.get_ts().unwrap(),
@@ -1158,11 +1163,12 @@ mod tests {
         // Release read lock
 
         assert_eq!(
-            tpl.release_lock(pk, &tb.get_id().unwrap(), true).unwrap(),
+            tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
+                .unwrap(),
             UnlockRequest::Ok
         );
         // Check ta got the lock.
-        let lock = tpl.lock_table.get(&pk).unwrap();
+        let lock = tpl.lock_table.get(&pk.clone()).unwrap();
         assert_eq!(
             lock.group_mode == Some(LockMode::Write)
                 && !lock.waiting
@@ -1200,12 +1206,13 @@ mod tests {
         let tpl_h = Arc::clone(&TPL);
         let ta_h = ta.clone();
         let tb_h = tb.clone();
+        let pk_h = pk.clone();
 
         let handle = thread::spawn(move || {
             debug!("Request write lock by Tb");
             tpl_h.request_lock(
                 index,
-                pk,
+                pk_h.clone(),
                 LockMode::Write,
                 &tb_h.get_id().unwrap(),
                 tb_h.get_ts().unwrap(),
@@ -1214,7 +1221,7 @@ mod tests {
             debug!("Request read lock by Ta");
             let res = tpl_h.request_lock(
                 index,
-                pk,
+                pk_h.clone(),
                 LockMode::Read,
                 &ta_h.get_id().unwrap(),
                 ta_h.get_ts().unwrap(),
@@ -1239,8 +1246,9 @@ mod tests {
         let ms = std::time::Duration::from_secs(2);
         thread::sleep(ms);
         debug!("Write lock released by Ta");
-        tpl.release_lock(pk, &tb.get_id().unwrap(), true).unwrap();
-        let lock = tpl.lock_table.get(&pk).unwrap();
+        tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
+            .unwrap();
+        let lock = tpl.lock_table.get(&pk.clone()).unwrap();
 
         assert_eq!(
             lock.group_mode == Some(LockMode::Read)
@@ -1276,12 +1284,13 @@ mod tests {
 
         let index = "sub_idx";
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(2));
+        let pk_h = pk.clone();
 
         let handle = thread::spawn(move || {
             // Tb
             tpl_h.request_lock(
                 index,
-                pk,
+                pk_h.clone(),
                 LockMode::Write,
                 &tb_h.get_id().unwrap(),
                 tb_h.get_ts().unwrap(),
@@ -1290,7 +1299,7 @@ mod tests {
             // Ta
             let res = tpl_h.request_lock(
                 index,
-                pk,
+                pk_h.clone(),
                 LockMode::Write,
                 &ta_h.get_id().unwrap(),
                 ta_h.get_ts().unwrap(),
@@ -1314,8 +1323,9 @@ mod tests {
         let ms = std::time::Duration::from_secs(2);
         thread::sleep(ms);
         // Tb
-        tpl.release_lock(pk, &tb.get_id().unwrap(), true).unwrap();
-        let lock = tpl.lock_table.get(&pk).unwrap();
+        tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
+            .unwrap();
+        let lock = tpl.lock_table.get(&pk.clone()).unwrap();
 
         assert_eq!(
             lock.group_mode == Some(LockMode::Write)
@@ -1345,13 +1355,13 @@ mod tests {
         let tb = tpl.register().unwrap();
         let tc = tpl.register().unwrap();
 
-        let pk = PrimaryKey::Tatp(TatpPrimhuaryKey::Subscriber(3));
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3));
         let columns: Vec<&str> = vec!["bit_1"];
         let values_a: Vec<&str> = vec!["0"];
         let values_b: Vec<&str> = vec!["1"];
         // Write by Ta.
         assert_eq!(
-            tpl.update("subscriber", pk, &columns, &values_a, ta.clone())
+            tpl.update("subscriber", pk.clone(), &columns, &values_a, ta.clone())
                 .unwrap(),
             ()
         );
@@ -1360,7 +1370,7 @@ mod tests {
         assert_eq!(
             format!(
                 "{}",
-                tpl.update("subscriber", pk, &columns, &values_b, tb)
+                tpl.update("subscriber", pk.clone(), &columns, &values_b, tb)
                     .unwrap_err()
             ),
             "write lock for Subscriber(3) denied"
@@ -1368,7 +1378,11 @@ mod tests {
 
         // Write by Tc
         assert_eq!(
-            format!("{}", tpl.read("subscriber", pk, &columns, tc).unwrap_err()),
+            format!(
+                "{}",
+                tpl.read("subscriber", pk.clone(), &columns, tc)
+                    .unwrap_err()
+            ),
             "read lock for Subscriber(3) denied"
         );
 

@@ -192,7 +192,7 @@ pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
 /// Populate the `Account` table.
 pub fn populate_account(data: &Internal, rng: &mut StdRng) -> Result<()> {
     // Get table and index.
-    let table_name = "account";
+    let table_name = "accounts";
     let t = data.get_table(table_name)?;
     let index_name = t.get_primary_index()?;
     let i = data.get_index(&index_name)?;
@@ -228,15 +228,15 @@ pub fn populate_savings(data: &Internal, rng: &mut StdRng) -> Result<()> {
 
     let protocol = data.config.get_str("protocol")?;
     let accounts = data.config.get_int("accounts")? as u64;
-    let min_bal = data.config.get_float("accounts")?;
-    let max_bal = data.config.get_float("accounts")?;
+    let min_bal = data.config.get_int("min_balance")?;
+    let max_bal = data.config.get_int("max_balance")?;
 
     for customer_id in 1..=accounts {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(customer_id));
         row.set_primary_key(pk.clone());
         row.init_value("customer_id", &customer_id.to_string())?;
-        let balance = rng.gen_range(min_bal..=max_bal);
+        let balance = rng.gen_range(min_bal..=max_bal) as f64;
         row.init_value("balance", &balance.to_string())?;
         i.insert(pk, row)?;
     }
@@ -256,15 +256,15 @@ pub fn populate_checking(data: &Internal, rng: &mut StdRng) -> Result<()> {
     // Get protocol.
     let protocol = data.config.get_str("protocol")?;
     let accounts = data.config.get_int("accounts")? as u64;
-    let min_bal = data.config.get_float("accounts")?;
-    let max_bal = data.config.get_float("accounts")?;
+    let min_bal = data.config.get_int("min_balance")?;
+    let max_bal = data.config.get_int("max_balance")?;
 
     for customer_id in 1..=accounts {
         let mut row = Row::new(Arc::clone(&t), &protocol);
-        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(customer_id));
+        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(customer_id));
         row.set_primary_key(pk.clone());
         row.init_value("customer_id", &customer_id.to_string())?;
-        let balance = rng.gen_range(min_bal..=max_bal);
+        let balance = rng.gen_range(min_bal..=max_bal) as f64;
         row.init_value("balance", &balance.to_string())?;
         i.insert(pk, row)?;
     }
@@ -272,170 +272,131 @@ pub fn populate_checking(data: &Internal, rng: &mut StdRng) -> Result<()> {
     Ok(())
 }
 
-// #[cfg(test)]
-// mod tests {
+#[cfg(test)]
+mod tests {
 
-//     use super::*;
-//     use crate::server::storage::datatype;
-//     use config::Config;
-//     use rand::SeedableRng;
+    use super::*;
+    use crate::server::storage::datatype;
+    use config::Config;
+    use rand::SeedableRng;
 
-//     #[test]
-//     fn populate_tables_test() {
-//         // Initialise configuration.
-//         let mut c = Config::default();
-//         c.merge(config::File::with_name("Test-tpl.toml")).unwrap();
-//         let config = Arc::new(c);
+    #[test]
+    fn populate_account_test() {
+        // Initialise configuration.
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test-smallbank.toml"))
+            .unwrap();
+        let config = Arc::new(c);
 
-//         let c = Arc::clone(&config);
-//         let internals = Internal::new("tatp_schema.txt", c).unwrap();
-//         let mut rng = StdRng::seed_from_u64(1);
+        // Initialise database.
+        let c = Arc::clone(&config);
+        let internals = Internal::new("smallbank_schema.txt", c).unwrap();
 
-//         // Subscriber.
-//         populate_subscriber_table(&internals, &mut rng).unwrap();
-//         assert_eq!(
-//             internals.get_table("subscriber").unwrap().get_next_row_id(),
-//             3
-//         );
-//         let index = internals.indexes.get("sub_idx").unwrap();
+        let mut rng = StdRng::seed_from_u64(1);
 
-//         let cols_s = vec![
-//             "s_id",
-//             "sub_nbr",
-//             "bit_1",
-//             "bit_2",
-//             "bit_3",
-//             "bit_4",
-//             "bit_5",
-//             "bit_6",
-//             "bit_7",
-//             "bit_8",
-//             "bit_9",
-//             "bit_10",
-//             "hex_1",
-//             "hex_2",
-//             "hex_3",
-//             "hex_4",
-//             "hex_5",
-//             "hex_6",
-//             "hex_7",
-//             "hex_8",
-//             "hex_9",
-//             "hex_10",
-//             "byte_2_1",
-//             "byte_2_2",
-//             "byte_2_3",
-//             "byte_2_4",
-//             "byte_2_5",
-//             "byte_2_6",
-//             "byte_2_7",
-//             "byte_2_8",
-//             "byte_2_9",
-//             "byte_2_10",
-//             "msc_location",
-//             "vlr_location",
-//         ];
+        // Populate Accounts.
+        populate_account(&internals, &mut rng).unwrap();
+        assert_eq!(
+            internals.get_table("accounts").unwrap().get_next_row_id(),
+            10
+        );
 
-//         let res = index
-//             .read(
-//                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
-//                 &cols_s,
-//                 "2pl",
-//                 "t1",
-//             )
-//             .unwrap()
-//             .get_values()
-//             .unwrap();
-//         assert_eq!(
-//             datatype::to_result(&cols_s, &res).unwrap(),
-//           "{s_id=\"1\", sub_nbr=\"000000000000001\", bit_1=\"1\", bit_2=\"0\", bit_3=\"1\", bit_4=\"1\", bit_5=\"0\", bit_6=\"0\", bit_7=\"0\", bit_8=\"1\", bit_9=\"0\", bit_10=\"0\", hex_1=\"3\", hex_2=\"12\", hex_3=\"15\", hex_4=\"8\", hex_5=\"2\", hex_6=\"3\", hex_7=\"5\", hex_8=\"4\", hex_9=\"7\", hex_10=\"0\", byte_2_1=\"55\", byte_2_2=\"65\", byte_2_3=\"99\", byte_2_4=\"138\", byte_2_5=\"93\", byte_2_6=\"228\", byte_2_7=\"150\", byte_2_8=\"132\", byte_2_9=\"121\", byte_2_10=\"203\", msc_location=\"8\", vlr_location=\"9\"}"
-//         );
+        // Get record.
+        let index = internals.indexes.get("account_name").unwrap();
+        let cols = vec!["name", "customer_id"];
+        let res = index
+            .read(
+                PrimaryKey::SmallBank(SmallBankPrimaryKey::Account("cust1".to_string())),
+                &cols,
+                "2pl",
+                "t1",
+            )
+            .unwrap()
+            .get_values()
+            .unwrap();
+        assert_eq!(
+            datatype::to_result(&cols, &res).unwrap(),
+            "{name=\"cust1\", customer_id=\"1\"}"
+        );
+    }
 
-//         // Access info.
-//         populate_access_info(&internals, &mut rng).unwrap();
-//         assert_eq!(
-//             internals
-//                 .get_table("access_info")
-//                 .unwrap()
-//                 .get_next_row_id(),
-//             10
-//         );
+    #[test]
+    fn populate_checking_test() {
+        // Initialise configuration.
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test-smallbank.toml"))
+            .unwrap();
+        let config = Arc::new(c);
 
-//         let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
+        // Initialise database.
+        let c = Arc::clone(&config);
+        let internals = Internal::new("smallbank_schema.txt", c).unwrap();
 
-//         let index = internals.indexes.get("access_idx").unwrap();
-//         assert_eq!(
-//             datatype::to_result(
-//                 &cols_ai,
-//                 &index
-//                     .read(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2)), &cols_ai,"2pl","t1")
-//                       .unwrap().get_values().unwrap()
+        let mut rng = StdRng::seed_from_u64(2);
 
-//             )
-//                 .unwrap(),
-// "{s_id=\"1\", ai_type=\"2\", data_1=\"77\", data_2=\"7\", data_3=\"GZH\", data_4=\"HITFS\"}"
-//         );
+        // Populate Accounts.
+        populate_checking(&internals, &mut rng).unwrap();
+        assert_eq!(
+            internals.get_table("checking").unwrap().get_next_row_id(),
+            10
+        );
 
-//         // Special facillity.
-//         populate_special_facility_call_forwarding(&internals, &mut rng).unwrap();
-//         assert_eq!(
-//             internals
-//                 .get_table("special_facility")
-//                 .unwrap()
-//                 .get_next_row_id(),
-//             10
-//         );
+        // Get record.
+        let index = internals.indexes.get("checking_idx").unwrap();
+        let cols = vec!["customer_id", "balance"];
+        let res = index
+            .read(
+                PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(1)),
+                &cols,
+                "2pl",
+                "t1",
+            )
+            .unwrap()
+            .get_values()
+            .unwrap();
+        assert_eq!(
+            datatype::to_result(&cols, &res).unwrap(),
+            "{customer_id=\"1\", balance=\"21893\"}"
+        );
+    }
 
-//         let cols_sf = vec![
-//             "s_id",
-//             "sf_type",
-//             "is_active",
-//             "error_cntrl",
-//             "data_a",
-//             "data_b",
-//         ];
-//         let index = internals.indexes.get("special_idx").unwrap();
+    #[test]
+    fn populate_savings_test() {
+        // Initialise configuration.
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test-smallbank.toml"))
+            .unwrap();
+        let config = Arc::new(c);
 
-//         assert_eq!(
-//             datatype::to_result(
-//                 &cols_sf,
-//                 &index
-//                     .read(
-//                         PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 2)),
-//                         &cols_sf,
-//                         "2pl",
-//                         "t1",
-//                     )
-//                     .unwrap().get_values().unwrap()
-//             )
-//                 .unwrap(),
-//             "{s_id=\"1\", sf_type=\"4\", is_active=\"1\", error_cntrl=\"90\", data_a=\"95\", data_b=\"RCSAA\"}"
-//         );
+        // Initialise database.
+        let c = Arc::clone(&config);
+        let internals = Internal::new("smallbank_schema.txt", c).unwrap();
 
-//         // Call forwarding.
-//         assert_eq!(
-//             internals
-//                 .get_table("call_forwarding")
-//                 .unwrap()
-//                 .get_next_row_id(),
-//             15
-//         );
-//         let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
-//         let index = internals.indexes.get("call_idx").unwrap();
-//         assert_eq!(
-//             datatype::to_result(
-//                 &cols_cf,
-//                 &index
-//                     .read(
-//                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 2, 16)),
-//                         &cols_cf,
-//                         "2pl",
-//                         "t1",
-//                     )
-//                     .unwrap().get_values().unwrap()
-//             )
-//                 .unwrap(),
-//             "{s_id=\"1\", sf_type=\"4\", start_time=\"16\", end_time=\"17\", number_x=\"365430140201306\"}"
-//         );
-//     }
-// }
+        let mut rng = StdRng::seed_from_u64(3);
+
+        // Populate savings.
+        populate_savings(&internals, &mut rng).unwrap();
+        assert_eq!(
+            internals.get_table("savings").unwrap().get_next_row_id(),
+            10
+        );
+
+        // Get record.
+        let index = internals.indexes.get("savings_idx").unwrap();
+        let cols = vec!["customer_id", "balance"];
+        let res = index
+            .read(
+                PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(1)),
+                &cols,
+                "2pl",
+                "t1",
+            )
+            .unwrap()
+            .get_values()
+            .unwrap();
+        assert_eq!(
+            datatype::to_result(&cols, &res).unwrap(),
+            "{customer_id=\"1\", balance=\"13808\"}"
+        );
+    }
+}
