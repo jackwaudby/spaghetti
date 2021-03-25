@@ -1,86 +1,57 @@
+use config::Config;
 use rand::rngs::StdRng;
 use rand::Rng;
+use std::sync::Arc;
 
-/// Compute the primary key for a `AccessInfo` record.
-pub fn access_info_key(s_id: u64, ai_type: u64) -> u64 {
-    (s_id * 10) + ai_type
-}
+/// Split account range into cold and hot.
+pub fn split_accounts(num_accounts: u32, hotspot_size: usize) -> (Vec<String>, Vec<String>) {
+    let mut hot = vec![];
+    let mut cold = vec![];
 
-/// Compute the primary key for a `SpecialFacility` record.
-pub fn special_facility_key(s_id: u64, sf_type: u64, is_active: u64) -> u64 {
-    (s_id * 10) + sf_type + (is_active * 5)
-}
-
-/// Compute the primary key for a `CallForwarding` record.
-pub fn call_forwarding_key(s_id: u64, sf_type: u64, start_time: u64) -> u64 {
-    let base = (s_id * 10) + sf_type;
-    let x = match start_time {
-        0 => 1,
-        8 => 2,
-        16 => 3,
-        _ => unimplemented!(),
-    };
-    (base * 10) + x
-}
-
-/// Convert subscriber id to `String`.
-pub fn to_sub_nbr(s_id: u64) -> String {
-    let mut num = s_id.to_string();
-    for _i in 0..15 {
-        if num.len() == 15 {
-            break;
-        }
-        num = format!("0{}", num);
+    for account in 1..=hotspot_size {
+        hot.push(format!("cust{}", account));
     }
-    num
-}
 
-/// Generate a start time.
-pub fn get_start_time(rng: &mut StdRng) -> u8 {
-    let n: f32 = rng.gen();
-
-    match n {
-        x if x < 0.3333 => 0,
-        x if x < 0.6666 => 8,
-        _ => 16,
+    for account in hotspot_size + 1..=num_accounts as usize {
+        cold.push(format!("cust{}", account));
     }
+
+    (hot, cold)
 }
 
-/// Generate active status.
-pub fn is_active(rng: &mut StdRng) -> u64 {
-    let f: f32 = rng.gen();
-    if f < 0.15 {
-        0
+/// Calculate size of hotspot.
+pub fn get_hotspot_size(config: Arc<Config>) -> usize {
+    let accounts = config.get_int("accounts").unwrap();
+    let use_fixed_size = config.get_bool("hotspot_use_fixed_size").unwrap();
+
+    if use_fixed_size {
+        config.get_int("hotspot_fixed_size").unwrap() as usize
     } else {
-        1
+        let percent = config.get_float("hotspot_percentage").unwrap();
+        (accounts as f64 * percent) as usize
     }
 }
 
-/// Get a 15 digit number.
-pub fn get_number_x(rng: &mut StdRng) -> String {
-    const CHARSET: &[u8] = b"0123456789";
-    const LEN: usize = 15;
+/// Get customer name.
+pub fn get_name(rng: &mut StdRng, config: Arc<Config>) -> String {
+    let accounts = config.get_int("accounts").unwrap() as u32;
+    let hotspot_size = get_hotspot_size(config);
+    let (hot, cold) = split_accounts(accounts, hotspot_size);
 
-    let numb_x: String = (0..LEN)
-        .map(|_| {
-            let idx = rng.gen_range(0..CHARSET.len());
-            CHARSET[idx] as char
-        })
-        .collect();
-    numb_x
-}
-
-/// Generate random string from upper case A-Z of length `n`.
-pub fn get_data_x(n: usize, rng: &mut StdRng) -> String {
-    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-    let data_x: String = (0..n)
-        .map(|_| {
-            let idx = rng.gen_range(0..CHARSET.len());
-            CHARSET[idx] as char
-        })
-        .collect();
-    data_x
+    let n: f32 = rng.gen();
+    match n {
+        // Choose from hot.
+        x if x < 0.9 => {
+            let ind = rng.gen_range(0..hotspot_size);
+            hot[ind].clone()
+        }
+        // Choose from cold.
+        _ => {
+            let cold_size = cold.len();
+            let ind = rng.gen_range(0..cold_size);
+            cold[ind].clone()
+        }
+    }
 }
 
 #[cfg(test)]
@@ -90,15 +61,25 @@ mod tests {
 
     #[test]
     fn helpers_test() {
-        assert_eq!(access_info_key(3, 2), 32);
-        assert_eq!(special_facility_key(10, 1, 1), 106);
-        assert_eq!(call_forwarding_key(2, 2, 8), 222);
-        assert_eq!(to_sub_nbr(367), String::from("000000000000367"));
-
         let mut rng = StdRng::seed_from_u64(42);
-        assert_eq!(get_data_x(3, &mut rng), String::from("NOQ"));
-        assert_eq!(get_number_x(&mut rng), String::from("404781095152050"));
-        assert_eq!(get_start_time(&mut rng), 8);
-        assert_eq!(is_active(&mut rng), 1);
+        assert_eq!(
+            split_accounts(5, 2),
+            (
+                vec!["cust1".to_string(), "cust2".to_string()],
+                vec![
+                    "cust3".to_string(),
+                    "cust4".to_string(),
+                    "cust5".to_string()
+                ]
+            )
+        );
+
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test-smallbank.toml"))
+            .unwrap();
+        let config = Arc::new(c);
+
+        assert_eq!(get_hotspot_size(config.clone()), 2);
+        assert_eq!(get_name(&mut rng, config), "cust1".to_string());
     }
 }
