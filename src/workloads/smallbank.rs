@@ -1,8 +1,6 @@
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
-pub mod helper;
-
 pub mod loader;
 
 pub mod profiles;

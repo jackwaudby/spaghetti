@@ -19,6 +19,7 @@ workload = "smallbank"
 schema = "smallbank_schema.txt"
 
 set_seed = true
+seed = 1
 balance_mix = false
 accounts = 10
 hotspot_use_fixed_size = false
