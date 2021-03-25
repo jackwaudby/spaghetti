@@ -356,12 +356,3 @@ mod tests {
         );
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::SeedableRng;
-
-    #[test]
-    fn generator_test() {}
-}
