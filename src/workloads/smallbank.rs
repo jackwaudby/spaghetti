@@ -3,9 +3,7 @@ use strum_macros::EnumIter;
 
 pub mod loader;
 
-pub mod profiles;
-
-pub mod generator;
+pub mod paramgen;
 
 pub mod procedures;
 

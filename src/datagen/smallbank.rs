@@ -1,6 +1,6 @@
 use crate::common::message::{Message, Parameters};
 use crate::common::parameter_generation::Generator;
-use crate::workloads::smallbank::generator::SmallBankGenerator;
+use crate::workloads::smallbank::paramgen::SmallBankGenerator;
 use crate::workloads::smallbank::records::*;
 
 use crate::Result;
