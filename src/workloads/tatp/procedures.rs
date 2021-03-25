@@ -2,7 +2,7 @@ use crate::common::error::NonFatalError;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::tatp::keys::TatpPrimaryKey;
-use crate::workloads::tatp::profiles::{
+use crate::workloads::tatp::paramgen::{
     DeleteCallForwarding, GetAccessData, GetNewDestination, GetSubscriberData,
     InsertCallForwarding, UpdateLocationData, UpdateSubscriberData,
 };

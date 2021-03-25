@@ -2,7 +2,7 @@ use crate::common::error::NonFatalError;
 use crate::common::frame::Frame;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::smallbank::SmallBankTransaction;
-use crate::workloads::tatp::profiles::TatpTransactionProfile;
+use crate::workloads::tatp::paramgen::TatpTransactionProfile;
 use crate::workloads::tatp::TatpTransaction;
 use crate::workloads::tpcc::profiles::TpccTransactionProfile;
 use crate::workloads::tpcc::TpccTransaction;

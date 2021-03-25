@@ -2,7 +2,7 @@ use crate::common::error::FatalError;
 use crate::common::message::Message;
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::shutdown::Shutdown;
-use crate::workloads::tatp::generator::TatpGenerator;
+use crate::workloads::tatp::paramgen::TatpGenerator;
 use crate::workloads::tpcc::generator::TpccGenerator;
 use crate::Result;
 

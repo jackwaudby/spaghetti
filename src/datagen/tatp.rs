@@ -1,7 +1,7 @@
 use crate::common::message::{Message, Parameters};
 use crate::common::parameter_generation::Generator;
-use crate::workloads::tatp::generator::TatpGenerator;
 use crate::workloads::tatp::helper;
+use crate::workloads::tatp::paramgen::TatpGenerator;
 use crate::Result;
 
 use csv::Writer;
