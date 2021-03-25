@@ -90,8 +90,23 @@ impl Workload {
                     tatp::loader::populate_tables(i, rng)?;
                 }
             }
-            Tpcc(ref i) => tpcc::loader::populate_tables(i, rng)?,
-            SmallBank(ref i) => {} // TODO
+            Tpcc(ref i) => {
+                if self.get_internals().get_config().get_bool("load")? {
+                    // TODO
+                    tpcc::loader::populate_tables(i, rng)?
+                } else {
+                    tpcc::loader::populate_tables(i, rng)?
+                }
+            }
+            SmallBank(ref i) => {
+                if self.get_internals().get_config().get_bool("load")? {
+                    smallbank::loader::load_account_table(i);
+                    smallbank::loader::load_checking_table(i);
+                    smallbank::loader::load_savings_table(i);
+                } else {
+                    smallbank::loader::populate_tables(i, rng)?
+                }
+            } // TODO
         }
         Ok(())
     }

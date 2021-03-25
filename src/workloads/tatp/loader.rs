@@ -24,7 +24,7 @@ pub fn load_sub_table(data: &Internal) -> Result<()> {
     let i = data.get_index(&i_name)?;
     let protocol = data.config.get_str("protocol")?;
 
-    let mut rdr = csv::Reader::from_path("data/subscribers.csv")?;
+    let mut rdr = csv::Reader::from_path("data/tatp/subscribers.csv")?;
     for result in rdr.deserialize() {
         // Deserialise.
         let s: Subscriber = result?;
@@ -86,7 +86,7 @@ pub fn load_access_info_table(data: &Internal) -> Result<()> {
     let i = data.get_index(&i_name)?;
     let protocol = data.config.get_str("protocol")?;
 
-    let mut rdr = csv::Reader::from_path("data/access_info.csv")?;
+    let mut rdr = csv::Reader::from_path("data/tatp/access_info.csv")?;
     for result in rdr.deserialize() {
         // Deserialise.
         let ai: AccessInfo = result?;
@@ -120,7 +120,7 @@ pub fn load_call_forwarding_table(data: &Internal) -> Result<()> {
     let i = data.get_index(&i_name)?;
     let protocol = data.config.get_str("protocol")?;
 
-    let mut rdr = csv::Reader::from_path("data/call_forwarding.csv")?;
+    let mut rdr = csv::Reader::from_path("data/tatp/call_forwarding.csv")?;
     for result in rdr.deserialize() {
         // Deserialise.
         let cf: CallForwarding = result?;
@@ -154,7 +154,7 @@ pub fn load_special_facility_table(data: &Internal) -> Result<()> {
     let i = data.get_index(&i_name)?;
     let protocol = data.config.get_str("protocol")?;
 
-    let mut rdr = csv::Reader::from_path("data/special_facility.csv")?;
+    let mut rdr = csv::Reader::from_path("data/tatp/special_facility.csv")?;
     for result in rdr.deserialize() {
         // Deserialise.
         let sf: SpecialFacility = result?;
