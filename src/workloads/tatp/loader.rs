@@ -1,7 +1,7 @@
+use crate::datagen::tatp::{AccessInfo, CallForwarding, SpecialFacility, Subscriber};
 use crate::server::storage::row::Row;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
-use crate::workloads::tatp::records::{AccessInfo, CallForwarding, SpecialFacility, Subscriber};
 use crate::workloads::{Internal, PrimaryKey};
 use crate::Result;
 
