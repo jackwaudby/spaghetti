@@ -58,7 +58,7 @@ impl SmallBankGenerator {
         }
         // Params from config.
         let accounts = config.get_int("accounts").unwrap() as u32;
-        let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
+        let use_balance_mix = config.get_bool("balance_mix").unwrap();
         let send_payment_amount = config.get_float("send_payment_amount").unwrap();
         let deposit_checking_amount = config.get_float("deposit_checking_amount").unwrap();
         let transact_savings_amount = config.get_float("transact_savings_amount").unwrap();

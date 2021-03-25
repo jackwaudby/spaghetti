@@ -1,3 +1,4 @@
+use spaghetti::datagen::smallbank;
 use spaghetti::datagen::tatp;
 use spaghetti::Result;
 
@@ -6,6 +7,7 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::fs;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 fn main() -> Result<()> {
@@ -19,16 +21,14 @@ fn main() -> Result<()> {
     // Get workload.
     let workload = settings.get_str("workload")?;
 
-    // Initialise rand.
-    let seed = settings.get_int("seed");
+    // Initialise rng.
+    let set_seed = settings.get_bool("set_seed").unwrap();
+    let seed = settings.get_int("seed").unwrap() as u64;
     let mut rng: StdRng;
-    match seed {
-        Ok(seed) => {
-            rng = SeedableRng::seed_from_u64(seed as u64);
-        }
-        Err(_) => {
-            rng = SeedableRng::from_entropy();
-        }
+    if set_seed {
+        rng = SeedableRng::seed_from_u64(seed);
+    } else {
+        rng = SeedableRng::from_entropy();
     }
 
     // Generate
@@ -49,6 +49,27 @@ fn main() -> Result<()> {
             // Params
             let t = settings.get_int("transactions")? as u64;
             tatp::params(10, t)?;
+        }
+        "smallbank" => {
+            // Remove directory.
+            if Path::new("./data/smallbank").exists() {
+                fs::remove_dir_all("./data/smallbank")?;
+            }
+            // Create directory
+            fs::create_dir("./data/smallbank")?;
+
+            // Data
+            let accounts = settings.get_int("accounts")? as u64;
+            let min = settings.get_int("min_balance")?;
+            let max = settings.get_int("max_balance")?;
+
+            smallbank::accounts(accounts)?;
+            smallbank::savings(accounts, min, max, &mut rng)?;
+            smallbank::checking(accounts, min, max, &mut rng)?;
+
+            // Params
+            let config = Arc::new(settings);
+            smallbank::params(config)?;
         }
         _ => panic!("workload not recognised"),
     }
