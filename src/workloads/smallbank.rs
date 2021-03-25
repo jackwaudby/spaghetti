@@ -9,8 +9,6 @@ pub mod procedures;
 
 pub mod keys;
 
-pub mod records;
-
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum SmallBankTransaction {
     Balance,
