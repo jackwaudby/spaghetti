@@ -4,6 +4,7 @@ log = "debug"
 timeout = 5
 mpsc_size = 32
 load = false
+clients = 4
 
 protocol="2pl"
 workers = 4
@@ -18,5 +19,3 @@ workload = "tatp"
 schema = "tatp_schema.txt"
 subscribers = 3
 seed = 42
-
-clients = 4

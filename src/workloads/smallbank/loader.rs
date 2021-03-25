@@ -212,7 +212,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(1);
 
         // Populate Accounts.
-        populate_account(&internals, &mut rng).unwrap();
+        populate_account(&internals).unwrap();
         assert_eq!(
             internals.get_table("accounts").unwrap().get_next_row_id(),
             10

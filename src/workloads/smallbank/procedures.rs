@@ -1,62 +1,68 @@
-// use crate::common::error::NonFatalError;
-// use crate::server::scheduler::Protocol;
-// use crate::server::storage::datatype::{self, Data};
-// use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
-// use crate::workloads::smallbank::profiles::*;
-// use crate::workloads::PrimaryKey;
+use crate::common::error::NonFatalError;
+use crate::server::scheduler::Protocol;
+use crate::server::storage::datatype::{self, Data};
+use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
+use crate::workloads::smallbank::paramgen::{Balance, DepositChecking};
+use crate::workloads::PrimaryKey;
 
-// use std::sync::Arc;
-// // use std::thread;
-// use tracing::debug;
+use std::sync::Arc;
+// use std::thread;
+use tracing::debug;
 
-// /// Balance transaction.
-// pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-//     // Columns to read.
-//     let columns_acc: Vec<&str> = vec!["customer_id"];
-//     let columns_sc: Vec<&str> = vec!["balance"];
+/// Balance transaction.
+pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    // Columns to get.
+    let accounts_cols: Vec<&str> = vec!["customer_id"];
+    // Construct primary key.
+    let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
+    // Register with scheduler.
+    let meta = protocol.scheduler.register()?;
+    // Get customer id
+    let res1 = protocol
+        .scheduler
+        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?;
 
-//     // Construct primary key.
-//     let pk_acc = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account("todo".to_string()));
-//     let pk_sav = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(params.name));
-//     let pk_che = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(params.name));
+    let cust_id = if let Data::Int(cust_id) = res1[0] {
+        cust_id as u64
+    } else {
+        panic!("unexpected type");
+    };
+    // Columns to get.
+    let other_cols: Vec<&str> = vec!["balance"];
+    let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
+    let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
 
-//     // Register with scheduler.
-//     let meta = protocol.scheduler.register()?;
+    let res2 = protocol
+        .scheduler
+        .read("savings", savings_pk, &other_cols, meta.clone())?;
+    let res3 = protocol
+        .scheduler
+        .read("checking", checking_pk, &other_cols, meta.clone())?;
 
-//     // Read 1.
-//     let x = protocol
-//         .scheduler
-//         .read("accounts", pk_acc, &columns_acc, meta.clone())?;
-//     let a = protocol
-//         .scheduler
-//         .read("savings", pk_sav, &columns_sc, meta.clone())?;
-//     let b = protocol
-//         .scheduler
-//         .read("checking", pk_che, &columns_sc, meta.clone())?;
+    let a = if let Data::Double(balance) = res2[0] {
+        balance
+    } else {
+        panic!("unexpected type");
+    };
 
-//     let a = if let Data::Int(val) = a[0] {
-//         val
-//     } else {
-//         panic!("Unexpected type")
-//     };
+    let b = if let Data::Double(balance) = res3[0] {
+        balance
+    } else {
+        panic!("unexpected type");
+    };
 
-//     let b = if let Data::Int(val) = b[0] {
-//         val
-//     } else {
-//         panic!("Unexpected type")
-//     };
+    let total = a + b;
 
-//     let sum = a + b;
+    // Commit transaction.
+    protocol.scheduler.commit(meta.clone())?;
+    let res_cols = vec!["total_balance"];
+    let res_vals = vec![Data::Double(total)];
 
-//     // Commit transaction.
-//     protocol.scheduler.commit(meta.clone())?;
-//     let columns = vec!["sum"];
-//     let values = vec![Data::Int(sum)];
-//     // Convert to result
-//     let res = datatype::to_result(&columns, &values).unwrap();
+    // Convert to result
+    let res = datatype::to_result(&res_cols, &res_vals).unwrap();
 
-//     Ok(res)
-// }
+    Ok(res)
+}
 
 // /// GetNewDestination transaction.
 // pub fn get_new_destination(
@@ -176,58 +182,57 @@
 //     Ok(res)
 // }
 
-// /// Update subscriber transaction.
-// pub fn update_subscriber_data(
-//     params: UpdateSubscriberData,
-//     protocol: Arc<Protocol>,
-// ) -> Result<String, NonFatalError> {
-//     // debug!(
-//     //     "UPDATE Subscriber
-//     //        SET bit_1 = {:?}
-//     //        WHERE s_id = {:?}
-//     //      UPDATE Special_Facility
-//     //        SET data_a = {:?}
-//     //        WHERE s_id = {:?}
-//     //          AND sf_type = {:?};",
-//     //     params.bit_1, params.s_id, params.data_a, params.s_id, params.sf_type
-//     // );
+/// Deposit checking transaction.
+pub fn deposit_checking(
+    params: DepositChecking,
+    protocol: Arc<Protocol>,
+) -> Result<String, NonFatalError> {
+    //// Get customer id.
+    let accounts_cols: Vec<&str> = vec!["customer_id"];
+    let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
+    let meta = protocol.scheduler.register()?;
+    let res1 = protocol
+        .scheduler
+        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?;
+    let cust_id = if let Data::Int(cust_id) = res1[0] {
+        cust_id as u64
+    } else {
+        panic!("unexpected type");
+    };
 
-//     // Columns to write.
-//     let columns_sb: Vec<&str> = vec!["bit_1"];
-//     let columns_sp = vec!["data_a"];
-//     // Values to write.
-//     let values_sb = vec![params.bit_1.to_string()];
-//     let values_sb: Vec<&str> = values_sb.iter().map(|s| s as &str).collect();
-//     let values_sp = vec![params.data_a.to_string()];
-//     let values_sp: Vec<&str> = values_sp.iter().map(|s| s as &str).collect();
+    //// Get checking balance.
+    let checking_cols: Vec<&str> = vec!["balance"];
+    let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
+    let res2 = protocol.scheduler.read(
+        "checking",
+        checking_pk.clone(),
+        &checking_cols,
+        meta.clone(),
+    )?;
+    let balance = if let Data::Double(bal) = res2[0] {
+        bal
+    } else {
+        panic!("unexpected type");
+    };
 
-//     // Construct primary key.
-//     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
-//     let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
-//         params.s_id,
-//         params.sf_type.into(),
-//     ));
+    /// Update balance.
+    let new_balance = vec![(balance + params.value).to_string()];
+    let values: Vec<&str> = new_balance.iter().map(|s| s as &str).collect();
 
-//     // Register with scheduler.
-//     let meta = protocol.scheduler.register().unwrap();
+    // Execute write operation.
+    protocol.scheduler.update(
+        "checking",
+        checking_pk.clone(),
+        &checking_cols,
+        &values,
+        meta.clone(),
+    )?;
 
-//     // Execute write operation.
-//     protocol
-//         .scheduler
-//         .update("subscriber", pk_sb, &columns_sb, &values_sb, meta.clone())?;
-//     protocol.scheduler.update(
-//         "special_facility",
-//         pk_sp,
-//         &columns_sp,
-//         &values_sp,
-//         meta.clone(),
-//     )?;
+    // Commit transaction.
+    protocol.scheduler.commit(meta.clone())?;
 
-//     // Commit transaction.
-//     protocol.scheduler.commit(meta.clone())?;
-
-//     Ok("{\"updated 2 rows.\"}".to_string())
-// }
+    Ok("{\"updated 1 row.\"}".to_string())
+}
 
 // /// Update location transaction.
 // pub fn update_location(
@@ -383,71 +388,94 @@
 //     Ok("{\"deleted 1 row from call_forwarding.\"}".to_string())
 // }
 
-// #[cfg(test)]
-// mod tests {
+#[cfg(test)]
+mod tests {
 
-//     use super::*;
-//     use crate::workloads::tatp::loader;
-//     use crate::workloads::{Internal, Workload};
-//     use config::Config;
-//     use rand::rngs::StdRng;
-//     use rand::SeedableRng;
-//     use std::convert::TryInto;
-//     use std::sync::Once;
-//     use tracing::Level;
-//     use tracing_subscriber::FmtSubscriber;
+    use super::*;
+    use crate::workloads::smallbank::loader;
+    use crate::workloads::{Internal, Workload};
+    use config::Config;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    use std::convert::TryInto;
+    use std::sync::Once;
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
 
-//     static LOG: Once = Once::new();
+    static LOG: Once = Once::new();
 
-//     fn logging(on: bool) {
-//         if on {
-//             LOG.call_once(|| {
-//                 let subscriber = FmtSubscriber::builder()
-//                     .with_max_level(Level::DEBUG)
-//                     .finish();
-//                 tracing::subscriber::set_global_default(subscriber)
-//                     .expect("setting default subscriber failed");
-//             });
-//         }
-//     }
+    fn logging(on: bool) {
+        if on {
+            LOG.call_once(|| {
+                let subscriber = FmtSubscriber::builder()
+                    .with_max_level(Level::DEBUG)
+                    .finish();
+                tracing::subscriber::set_global_default(subscriber)
+                    .expect("setting default subscriber failed");
+            });
+        }
+    }
 
-//     #[test]
-//     fn transactions_test() {
-//         logging(false);
-//         // Initialise configuration.
-//         let mut c = Config::default();
-//         c.merge(config::File::with_name("Test-tpl.toml")).unwrap();
-//         let config = Arc::new(c);
+    #[test]
+    fn transactions_test() {
+        logging(true);
 
-//         // Workload with fixed seed.
-//         let schema = config.get_str("schema").unwrap();
-//         let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
-//         let seed = config.get_int("seed").unwrap();
-//         let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());
-//         loader::populate_tables(&internals, &mut rng).unwrap();
-//         let workload = Arc::new(Workload::Tatp(internals));
+        // Initialise configuration.
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test-smallbank.toml"))
+            .unwrap();
+        let config = Arc::new(c);
 
-//         // Scheduler.
-//         let workers = config.get_int("workers").unwrap();
-//         let protocol = Arc::new(Protocol::new(Arc::clone(&workload), workers as usize).unwrap());
+        // Workload with fixed seed.
+        let schema = config.get_str("schema").unwrap();
+        let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
+        let seed = config.get_int("seed").unwrap();
+        let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());
+        loader::populate_tables(&internals, &mut rng).unwrap();
+        let workload = Arc::new(Workload::Tatp(internals));
 
-//         ///////////////////////////////////////
-//         //// GetSubscriberData ////
-//         ///////////////////////////////////////
-//         assert_eq!(
-//             get_subscriber_data(GetSubscriberData { s_id: 1 }, Arc::clone(&protocol)).unwrap(),
-//             "{s_id=\"1\", sub_nbr=\"000000000000001\", bit_1=\"0\", bit_2=\"1\", bit_3=\"0\", bit_4=\"1\", bit_5=\"1\", bit_6=\"1\", bit_7=\"0\", bit_8=\"0\", bit_9=\"1\", bit_10=\"0\", hex_1=\"8\", hex_2=\"6\", hex_3=\"10\", hex_4=\"8\", hex_5=\"2\", hex_6=\"13\", hex_7=\"8\", hex_8=\"10\", hex_9=\"1\", hex_10=\"9\", byte_2_1=\"222\", byte_2_2=\"248\", byte_2_3=\"210\", byte_2_4=\"100\", byte_2_5=\"205\", byte_2_6=\"163\", byte_2_7=\"118\", byte_2_8=\"127\", byte_2_9=\"77\", byte_2_10=\"52\", msc_location=\"16\"}"
-//         );
+        // Scheduler.
+        let workers = config.get_int("workers").unwrap();
+        let protocol = Arc::new(Protocol::new(Arc::clone(&workload), workers as usize).unwrap());
 
-//         assert_eq!(
-//             format!(
-//                 "{}",
-//                 get_subscriber_data(GetSubscriberData { s_id: 100 }, Arc::clone(&protocol))
-//                     .unwrap_err()
-//             ),
-//             format!("not found: Subscriber(100) in sub_idx")
-//         );
+        //////////////////////
+        //// Balance ////
+        //////////////////////
+        assert_eq!(
+            balance(
+                Balance {
+                    name: "cust1".to_string()
+                },
+                Arc::clone(&protocol)
+            )
+            .unwrap(),
+            "{total_balance=\"53334\"}"
+        );
 
+        assert_eq!(
+            deposit_checking(
+                DepositChecking {
+                    name: "cust1".to_string(),
+                    value: 10.0
+                },
+                Arc::clone(&protocol)
+            )
+            .unwrap(),
+            "{updated 1 row.\"}"
+        );
+
+        // assert_eq!(
+        //     balance(
+        //         Balance {
+        //             name: "cust1".to_string()
+        //         },
+        //         Arc::clone(&protocol)
+        //     )
+        //     .unwrap(),
+        //     "{total_balance=\"53344\"}"
+        // );
+    }
+}
 //         ///////////////////////////////////////
 //         //// GetNewDestination ////
 //         ///////////////////////////////////////

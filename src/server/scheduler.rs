@@ -64,7 +64,7 @@ impl TransactionInfo {
         self.id.clone()
     }
     pub fn get_ts(&self) -> Option<u64> {
-        self.ts.clone()
+        self.ts.clone()      b
     }
 }
 
