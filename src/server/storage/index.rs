@@ -48,12 +48,12 @@ impl Index {
     ///
     /// - Row already exists with `key`.
     pub fn insert(&self, key: PrimaryKey, row: Row) -> Result<(), NonFatalError> {
-        let res = self.map.insert(key, Mutex::new(row));
+        let res = self.map.insert(key.clone(), Mutex::new(row));
 
         match res {
             Some(existing_row) => {
                 // A row already existed for this key, which has now been overwritten, put back.
-                self.map.insert(key, existing_row);
+                self.map.insert(key.clone(), existing_row);
                 Err(NonFatalError::RowAlreadyExists(
                     format!("{}", key),
                     self.get_name(),

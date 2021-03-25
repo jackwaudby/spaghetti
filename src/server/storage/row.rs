@@ -88,7 +88,7 @@ impl Row {
 
     /// Returns a row's primary key.
     pub fn get_primary_key(&self) -> Option<PrimaryKey> {
-        self.primary_key
+        self.primary_key.clone()
     }
 
     /// Set a row's primary key.

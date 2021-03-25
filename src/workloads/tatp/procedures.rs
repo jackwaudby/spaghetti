@@ -123,9 +123,10 @@ pub fn get_new_destination(
     let meta = protocol.scheduler.register().unwrap();
     // Execute read operations.
     // 1) Attempt to get the special facility record.
-    let sf_res = protocol
-        .scheduler
-        .read("special_facility", sf_pk, &sf_columns, meta.clone())?;
+    let sf_res =
+        protocol
+            .scheduler
+            .read("special_facility", sf_pk.clone(), &sf_columns, meta.clone())?;
     // 2) Check sf.is_active = 1.
     let val = if let Data::Int(val) = sf_res[2] {
         val
@@ -140,9 +141,10 @@ pub fn get_new_destination(
         ));
     }
     // 3) Get call forwarding record.
-    let cf_res = protocol
-        .scheduler
-        .read("call_forwarding", cf_pk, &cf_columns, meta.clone())?;
+    let cf_res =
+        protocol
+            .scheduler
+            .read("call_forwarding", cf_pk.clone(), &cf_columns, meta.clone())?;
     // 4) Check end_time < cf.end_time
     let val = if let Data::Int(val) = cf_res[3] {
         val

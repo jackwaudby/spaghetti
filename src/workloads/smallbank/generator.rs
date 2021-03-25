@@ -1,45 +1,46 @@
-use crate::common::message::{Message, Parameters, Transaction};
-use crate::common::parameter_generation::Generator;
-use crate::workloads::tatp::helper;
-use crate::workloads::tatp::profiles::{
-    DeleteCallForwarding, GetAccessData, GetNewDestination, GetSubscriberData,
-    InsertCallForwarding, TatpTransactionProfile, UpdateLocationData, UpdateSubscriberData,
-};
-use crate::workloads::tatp::TatpTransaction;
+//use crate::common::message::{Message, Parameters, Transaction};
+// use crate::common::parameter_generation::Generator;
+//use crate::workloads::smallbank::profiles::Amalgamate;
+//use crate::workloads::smallbank::SmallBankTransaction;
 
+use config::Config;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
-
-/////////////////////////////////////////
-/// Parameter Generator. ///
-////////////////////////////////////////
+//use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
+use std::sync::Arc;
 
 /// SmallBank workload transaction generator.
 pub struct SmallBankGenerator {
     /// Rng.
     rng: StdRng,
+
     /// Number of transactions generated.
     pub generated: u32,
+
+    /// Configuration.
+    config: Arc<Config>,
 }
 
-// impl SmallBankGenerator {
-//     /// Create new `TatpGenerator`.
-//     pub fn new(subscribers: u64, set_seed: bool) -> SmallBankGenerator {
-//         let rng: StdRng;
-//         if set_seed {
-//             rng = SeedableRng::seed_from_u64(1);
-//         } else {
-//             rng = SeedableRng::from_entropy();
-//         }
-//         SmallBankGenerator {
-//             subscribers,
-//             rng,
-//             generated: 0,
-//         }
-//     }
-// }
+impl SmallBankGenerator {
+    /// Create new `SmallBankGenerator`.
+    pub fn new(config: Arc<Config>) -> SmallBankGenerator {
+        let set_seed = config.get_bool("set_seed").unwrap();
 
-// impl Generator for TatpGenerator {
+        let rng: StdRng;
+        if set_seed {
+            rng = SeedableRng::seed_from_u64(1);
+        } else {
+            rng = SeedableRng::from_entropy();
+        }
+        SmallBankGenerator {
+            rng,
+            generated: 0,
+            config,
+        }
+    }
+}
+
+// impl Generator for SmallBankGenerator {
 //     /// Generate a transaction request.
 //     fn generate(&mut self) -> Message {
 //         let n: f32 = self.rng.gen();
@@ -47,17 +48,35 @@ pub struct SmallBankGenerator {
 
 //         Message::Request {
 //             request_no: self.generated,
-//             transaction: Transaction::Tatp(transaction),
-//             parameters: Parameters::Tatp(parameters),
+//             transaction: Transaction::SmallBank(transaction),
+//             parameters: Parameters::SmallBank(parameters),
 //         }
 //     }
 
+//     /// Get number of transactions generated.
 //     fn get_generated(&self) -> u32 {
 //         self.generated
 //     }
 // }
 
-// impl TatpGenerator {
+// impl SmallBankGenerator {
+//     fn create_hotspot(&self) {
+//         let hotspot_ids = vec![];
+//         let use_fixed_size = self.config.get_bool("hotspot_use_fixed_size").unwrap();
+
+//         if use_fixed_size {
+//             let fixed_size = self.config.get_int("hotspot_fixed_size").unwrap() as u64;
+
+//         } else {
+//         }
+//     }
+
+//     // Get customer id
+//     // create hotsopt
+//     // if hotspot_use_fixed_size = true
+//     // then select 100 random ids from the num_accounts
+//     // else calculate hotspot size using percentage
+// }
 //     /// Get a random transaction profile (type, params)
 //     fn get_params(&mut self, n: f32) -> (TatpTransaction, TatpTransactionProfile) {
 //         self.generated += 1;

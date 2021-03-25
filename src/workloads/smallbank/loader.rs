@@ -1,11 +1,10 @@
 use crate::server::storage::row::Row;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
-use crate::workloads::smallbank::{MAX_BALANCE, MIN_BALANCE, NUM_ACCOUNTS};
 use crate::workloads::{Internal, PrimaryKey};
 use crate::Result;
 
 use rand::rngs::StdRng;
-use rand::seq::IteratorRandom;
+//use rand::seq::IteratorRandom;
 use rand::Rng;
 
 use std::sync::Arc;
@@ -200,14 +199,16 @@ pub fn populate_account(data: &Internal, rng: &mut StdRng) -> Result<()> {
 
     // Get protocol.
     let protocol = data.config.get_str("protocol")?;
+    let accounts = data.config.get_int("accounts")? as u32;
 
-    info!("Populating accounts table: {}", NUM_ACCOUNTS);
+    info!("Populating accounts table: {}", accounts);
 
-    for a_id in 1..=NUM_ACCOUNTS {
+    for a_id in 1..=accounts {
+        let name = format!("cust{}", a_id);
         let mut row = Row::new(Arc::clone(&t), &protocol);
-        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(a_id));
-        row.set_primary_key(pk);
-        row.init_value("name", &format!("customer{}", a_id))?;
+        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(name.clone()));
+        row.set_primary_key(pk.clone());
+        row.init_value("name", &name)?;
         row.init_value("customer_id", &a_id.to_string())?;
         i.insert(pk, row)?;
     }
@@ -225,15 +226,17 @@ pub fn populate_savings(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let index_name = t.get_primary_index()?;
     let i = data.get_index(&index_name)?;
 
-    // Get protocol.
     let protocol = data.config.get_str("protocol")?;
+    let accounts = data.config.get_int("accounts")? as u64;
+    let min_bal = data.config.get_float("accounts")?;
+    let max_bal = data.config.get_float("accounts")?;
 
-    for customer_id in 1..=NUM_ACCOUNTS {
+    for customer_id in 1..=accounts {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(customer_id));
-        row.set_primary_key(pk);
+        row.set_primary_key(pk.clone());
         row.init_value("customer_id", &customer_id.to_string())?;
-        let balance = rng.gen_range(MIN_BALANCE..=MAX_BALANCE);
+        let balance = rng.gen_range(min_bal..=max_bal);
         row.init_value("balance", &balance.to_string())?;
         i.insert(pk, row)?;
     }
@@ -252,13 +255,16 @@ pub fn populate_checking(data: &Internal, rng: &mut StdRng) -> Result<()> {
 
     // Get protocol.
     let protocol = data.config.get_str("protocol")?;
+    let accounts = data.config.get_int("accounts")? as u64;
+    let min_bal = data.config.get_float("accounts")?;
+    let max_bal = data.config.get_float("accounts")?;
 
-    for customer_id in 1..=NUM_ACCOUNTS {
+    for customer_id in 1..=accounts {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(customer_id));
-        row.set_primary_key(pk);
+        row.set_primary_key(pk.clone());
         row.init_value("customer_id", &customer_id.to_string())?;
-        let balance = rng.gen_range(MIN_BALANCE..=MAX_BALANCE);
+        let balance = rng.gen_range(min_bal..=max_bal);
         row.init_value("balance", &balance.to_string())?;
         i.insert(pk, row)?;
     }

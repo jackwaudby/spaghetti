@@ -6,8 +6,8 @@ use crate::workloads::smallbank::profiles::*;
 use crate::workloads::PrimaryKey;
 
 use std::sync::Arc;
-use std::thread;
-use tracing::debug;
+// use std::thread;
+// use tracing::debug;
 
 /// Balance transaction.
 pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
@@ -16,7 +16,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
     let columns_sc: Vec<&str> = vec!["balance"];
 
     // Construct primary key.
-    let pk_acc = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
+    let pk_acc = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account("todo".to_string()));
     let pk_sav = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(params.name));
     let pk_che = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(params.name));
 

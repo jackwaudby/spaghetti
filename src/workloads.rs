@@ -44,7 +44,7 @@ pub struct Internal {
 }
 
 /// Primary keys of workloads.
-#[derive(PartialEq, Debug, Copy, Clone, Eq, Hash)]
+#[derive(PartialEq, Debug, Clone, Eq, Hash)]
 pub enum PrimaryKey {
     Tatp(TatpPrimaryKey),
     Tpcc(TpccPrimaryKey),

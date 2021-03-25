@@ -1,8 +1,8 @@
 /// Primary keys of each table in the SmallBank workload.
-#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Eq, Hash)]
 pub enum SmallBankPrimaryKey {
     /// Account (Name string PK, CustomerID int)
-    Account(u64),
+    Account(String),
 
     /// Savings (CustomerID int PK, Balance int)
     Savings(u64),

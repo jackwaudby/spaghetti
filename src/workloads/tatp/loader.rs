@@ -32,7 +32,7 @@ pub fn load_sub_table(data: &Internal) -> Result<()> {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         // Calculate primary key
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s.s_id.parse::<u64>()?));
-        row.set_primary_key(pk);
+        row.set_primary_key(pk.clone());
         row.init_value("s_id", &s.s_id)?;
 
         row.init_value("bit_1", &s.bit_1)?;
@@ -97,7 +97,7 @@ pub fn load_access_info_table(data: &Internal) -> Result<()> {
             ai.s_id.parse::<u64>()?,
             ai.ai_type.parse::<u64>()?,
         ));
-        row.set_primary_key(pk);
+        row.set_primary_key(pk.clone());
         row.init_value("s_id", &ai.s_id)?;
         row.init_value("ai_type", &ai.ai_type)?;
         row.init_value("data_1", &ai.data_1)?;
@@ -132,7 +132,7 @@ pub fn load_call_forwarding_table(data: &Internal) -> Result<()> {
             cf.sf_type.parse::<u64>()?,
             cf.start_time.parse::<u64>()?,
         ));
-        row.set_primary_key(pk);
+        row.set_primary_key(pk.clone());
         row.init_value("s_id", &cf.s_id)?;
         row.init_value("sf_type", &cf.sf_type)?;
         row.init_value("start_time", &cf.start_time)?;
@@ -165,7 +165,7 @@ pub fn load_special_facility_table(data: &Internal) -> Result<()> {
             sf.s_id.parse::<u64>()?,
             sf.sf_type.parse::<u64>()?,
         ));
-        row.set_primary_key(pk);
+        row.set_primary_key(pk.clone());
         row.init_value("s_id", &sf.s_id)?;
         row.init_value("sf_type", &sf.sf_type)?;
         row.init_value("is_active", &sf.is_active)?;
@@ -207,7 +207,7 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
     for s_id in 1..=subs {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
-        row.set_primary_key(pk);
+        row.set_primary_key(pk.clone());
         row.init_value("s_id", &s_id.to_string())?;
         row.init_value("sub_nbr", &helper::to_sub_nbr(s_id))?;
         for i in 1..=10 {
@@ -260,7 +260,7 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
             let mut row = Row::new(Arc::clone(&t), &protocol);
             // Calculate primary key
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(s_id, record as u64));
-            row.set_primary_key(pk);
+            row.set_primary_key(pk.clone());
             row.init_value("s_id", &s_id.to_string())?;
             row.init_value("ai_type", &sample[record - 1].to_string())?;
             row.init_value("data_1", &rng.gen_range(0..=255).to_string())?;
@@ -322,7 +322,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
             let is_active = helper::is_active(rng);
             // Calculate primary key
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(s_id, record as u64));
-            row.set_primary_key(pk);
+            row.set_primary_key(pk.clone());
             row.init_value("s_id", &s_id.to_string())?;
             row.init_value("sf_type", &sample[record - 1].to_string())?;
             row.init_value("is_active", &is_active.to_string())?;
@@ -349,7 +349,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(s_id, record as u64, st));
                     // Initialise empty row.
                     let mut row = Row::new(Arc::clone(&cf_t), &protocol);
-                    row.set_primary_key(pk);
+                    row.set_primary_key(pk.clone());
                     row.init_value("s_id", &s_id.to_string())?;
                     row.init_value("sf_type", &sample[record - 1].to_string())?;
                     row.init_value("start_time", &st.to_string())?;

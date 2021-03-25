@@ -78,7 +78,7 @@ impl Scheduler for SerializationGraphTesting {
         // Create new row.
         let mut row = Row::new(Arc::clone(&table), "sgt");
 
-        row.set_primary_key(key);
+        row.set_primary_key(key.clone());
         for (i, column) in columns.iter().enumerate() {
             if let Err(_) = row.init_value(column, &values[i].to_string()) {
                 // ABORT  - UnableToInitialiseRow
@@ -103,7 +103,7 @@ impl Scheduler for SerializationGraphTesting {
 
         // Record insert - used to rollback if transaction is aborted.
         self.get_shared_lock(id)
-            .add_key(&index.get_name(), key, OperationType::Insert);
+            .add_key(&index.get_name(), key.clone(), OperationType::Insert);
 
         // Attempt to insert row.
         if let Err(e) = index.insert(key, row) {
@@ -134,7 +134,7 @@ impl Scheduler for SerializationGraphTesting {
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         // Get read guard on the row in the hashmap.
-        let rg = match index.get_lock_on_row(key) {
+        let rg = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
             Err(e) => {
                 // ABORT - RowNotFound.
@@ -205,7 +205,7 @@ impl Scheduler for SerializationGraphTesting {
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         // Get row
-        let read_guard = match index.get_lock_on_row(key) {
+        let read_guard = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
             Err(e) => {
                 // ABORT - RowNotFound.
@@ -281,7 +281,7 @@ impl Scheduler for SerializationGraphTesting {
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         // Get read guard on row in hashmap.
-        let read_guard = match index.get_lock_on_row(key) {
+        let read_guard = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
             Err(e) => {
                 // ABORT - RowNotFound.
@@ -369,22 +369,28 @@ impl Scheduler for SerializationGraphTesting {
 
         for (index, key) in &inserts {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.remove(*key).unwrap();
+            index.remove(key.clone()).unwrap();
         }
 
         for (index, key) in &reads {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.revert_read(*key, &meta.get_id().unwrap()).unwrap();
+            index
+                .revert_read(key.clone(), &meta.get_id().unwrap())
+                .unwrap();
         }
 
         for (index, key) in &updates {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.revert(*key, "sgt", &meta.get_id().unwrap()).unwrap();
+            index
+                .revert(key.clone(), "sgt", &meta.get_id().unwrap())
+                .unwrap();
         }
 
         for (index, key) in &deletes {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.revert(*key, "sgt", &meta.get_id().unwrap()).unwrap();
+            index
+                .revert(key.clone(), "sgt", &meta.get_id().unwrap())
+                .unwrap();
         }
 
         // Abort outgoing nodes.
