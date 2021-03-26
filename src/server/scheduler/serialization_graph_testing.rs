@@ -191,7 +191,7 @@ impl Scheduler for SerializationGraphTesting {
         table: &str,
         key: PrimaryKey,
         get_columns: &Vec<&str>,
-        f: &Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        f: &dyn Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
         values: Vec<Data>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
