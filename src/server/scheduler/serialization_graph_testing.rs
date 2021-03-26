@@ -190,8 +190,9 @@ impl Scheduler for SerializationGraphTesting {
         &self,
         table: &str,
         key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        get_columns: &Vec<&str>,
+        f: &Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        values: Vec<Data>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let handle = thread::current();
@@ -218,8 +219,11 @@ impl Scheduler for SerializationGraphTesting {
         let mut mg = read_guard.lock().unwrap();
         // Deref to row.
         let row = &mut *mg;
+        // TODO
+        let columns = vec!["test"];
+        let values = vec!["test"];
         // Set values.
-        let res = row.set_values(columns, values, "sgt", &meta.get_id().unwrap());
+        let res = row.set_values(&columns, &values, "sgt", &meta.get_id().unwrap());
         match res {
             Ok(res) => {
                 // Get access history.

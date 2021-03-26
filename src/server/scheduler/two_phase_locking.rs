@@ -271,8 +271,9 @@ impl Scheduler for TwoPhaseLocking {
         &self,
         table: &str,
         key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        get_columns: &Vec<&str>,
+        f: &Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        values: Vec<Data>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         debug!(
@@ -306,8 +307,14 @@ impl Scheduler for TwoPhaseLocking {
                     .add_lock(key.clone());
 
                 // Execute update.
-                let result =
-                    index.update(key.clone(), columns, values, "2pl", &meta.get_id().unwrap());
+                let result = index.update(
+                    key.clone(),
+                    get_columns,
+                    f,
+                    values,
+                    "2pl",
+                    &meta.get_id().unwrap(),
+                );
                 match result {
                     Ok(_) => {
                         return Ok(());
@@ -332,8 +339,14 @@ impl Scheduler for TwoPhaseLocking {
                     .unwrap()
                     .add_lock(key.clone());
                 // Execute update.
-                let result =
-                    index.update(key.clone(), columns, values, "2pl", &meta.get_id().unwrap());
+                let result = index.update(
+                    key.clone(),
+                    get_columns,
+                    f,
+                    values,
+                    "2pl",
+                    &meta.get_id().unwrap(),
+                );
                 match result {
                     Ok(_) => {
                         return Ok(());

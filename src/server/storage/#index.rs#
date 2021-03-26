@@ -224,7 +224,7 @@ impl Index {
         }
         Ok(())
     }
-
+    
     /// Revert modifications to a `Row`.
     ///
     /// This is handled at the row level.

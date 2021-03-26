@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::common::message::Parameters;
 use crate::server::scheduler::hit_list::HitList;
 use crate::server::scheduler::serialization_graph_testing::SerializationGraphTesting;
 use crate::server::scheduler::two_phase_locking::TwoPhaseLocking;
@@ -16,9 +17,26 @@ pub mod two_phase_locking;
 
 pub mod serialization_graph_testing;
 
+/// Representing a concurrency control protocol.
+// pub enum Protocol {
+//     HitList(HitList),
+//     SerializationGraphTesting(SerializationGraphTesting),
+//     TwoPhaseLocking(TwoPhaseLocking),
+// }
+
 pub struct Protocol {
     pub scheduler: Box<dyn Scheduler + Send + Sync + 'static>,
 }
+
+// impl Protocol {
+//     pub fn get_scheduler(&self) -> Box<dyn Scheduler> {
+//         match *self {
+//             Protocol::HitList(ref i) => Box::new(i),
+//             Protocol::SerializationGraphTesting(ref mut i) => Box::new(i),
+//             Protocol::TwoPhaseLocking(ref i) => Box::new(i),
+//         }
+//     }
+// }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct TransactionInfo {
@@ -49,6 +67,7 @@ impl Protocol {
             "hit" => Protocol {
                 scheduler: Box::new(HitList::new(Arc::clone(&workload))),
             },
+
             _ => panic!("Incorrect concurrency control protocol"),
         };
         Ok(scheduler)
@@ -64,9 +83,11 @@ impl TransactionInfo {
         self.id.clone()
     }
     pub fn get_ts(&self) -> Option<u64> {
-        self.ts.clone()      b
+        self.ts.clone()
     }
 }
+
+pub trait Dummy {}
 
 pub trait Scheduler {
     /// Register a transaction with the scheduler.
@@ -102,10 +123,13 @@ pub trait Scheduler {
         &self,
         table: &str,
         key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        get_columns: &Vec<&str>,
+        f: &Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        values: Vec<Data>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError>;
+    // where
+    //     F: Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>);
 
     /// Delete a row from a table.
     fn delete(

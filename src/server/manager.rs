@@ -1,6 +1,6 @@
 use crate::common::message::{InternalRequest, InternalResponse, Outcome, Parameters, Transaction};
 use crate::server::pool::ThreadPool;
-use crate::server::scheduler::Protocol;
+use crate::server::scheduler::{Protocol, Scheduler};
 use crate::workloads::tatp;
 use crate::workloads::tatp::paramgen::TatpTransactionProfile;
 use crate::workloads::Workload;
@@ -113,11 +113,13 @@ impl TransactionManager {
                             }
                             TatpTransactionProfile::UpdateSubscriberData(params) => {
                                 debug!("Thread {}: {:?}", handle.name().unwrap(), params);
-                                tatp::procedures::update_subscriber_data(params, scheduler)
+                                //   tatp::procedures::update_subscriber_data(params, scheduler)
+                                Ok("todo".to_string())
                             }
                             TatpTransactionProfile::UpdateLocationData(params) => {
                                 debug!("Thread {}: {:?}", handle.name().unwrap(), params);
-                                tatp::procedures::update_location(params, scheduler)
+                                Ok("todo".to_string())
+                                //    tatp::procedures::update_location(params, scheduler)
                             }
                             TatpTransactionProfile::InsertCallForwarding(params) => {
                                 debug!("Thread {}: {:?}", handle.name().unwrap(), params);

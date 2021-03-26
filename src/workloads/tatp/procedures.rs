@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::server::scheduler::Protocol;
+use crate::server::scheduler::Scheduler;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tatp::paramgen::{
@@ -204,94 +205,94 @@ pub fn get_access_data(
     Ok(res)
 }
 
-/// Update subscriber transaction.
-pub fn update_subscriber_data(
-    params: UpdateSubscriberData,
-    protocol: Arc<Protocol>,
-) -> Result<String, NonFatalError> {
-    // debug!(
-    //     "UPDATE Subscriber
-    //        SET bit_1 = {:?}
-    //        WHERE s_id = {:?}
-    //      UPDATE Special_Facility
-    //        SET data_a = {:?}
-    //        WHERE s_id = {:?}
-    //          AND sf_type = {:?};",
-    //     params.bit_1, params.s_id, params.data_a, params.s_id, params.sf_type
-    // );
+/// // Update subscriber transaction.
+// pub fn update_subscriber_data(
+//     params: UpdateSubscriberData,
+//     protocol: Arc<Protocol>,
+// ) -> Result<String, NonFatalError> {
+//     // debug!(
+//     //     "UPDATE Subscriber
+//     //        SET bit_1 = {:?}
+//     //        WHERE s_id = {:?}
+//     //      UPDATE Special_Facility
+//     //        SET data_a = {:?}
+//     //        WHERE s_id = {:?}
+//     //          AND sf_type = {:?};",
+//     //     params.bit_1, params.s_id, params.data_a, params.s_id, params.sf_type
+//     // );
 
-    // Columns to write.
-    let columns_sb: Vec<&str> = vec!["bit_1"];
-    let columns_sp = vec!["data_a"];
-    // Values to write.
-    let values_sb = vec![params.bit_1.to_string()];
-    let values_sb: Vec<&str> = values_sb.iter().map(|s| s as &str).collect();
-    let values_sp = vec![params.data_a.to_string()];
-    let values_sp: Vec<&str> = values_sp.iter().map(|s| s as &str).collect();
+//     // Columns to write.
+//     let columns_sb: Vec<&str> = vec!["bit_1"];
+//     let columns_sp = vec!["data_a"];
+//     // Values to write.
+//     let values_sb = vec![params.bit_1.to_string()];
+//     let values_sb: Vec<&str> = values_sb.iter().map(|s| s as &str).collect();
+//     let values_sp = vec![params.data_a.to_string()];
+//     let values_sp: Vec<&str> = values_sp.iter().map(|s| s as &str).collect();
 
-    // Construct primary key.
-    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
-    let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
-        params.s_id,
-        params.sf_type.into(),
-    ));
+//     // Construct primary key.
+//     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+//     let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
+//         params.s_id,
+//         params.sf_type.into(),
+//     ));
 
-    // Register with scheduler.
-    let meta = protocol.scheduler.register().unwrap();
+//     // Register with scheduler.
+//     let meta = protocol.scheduler.register().unwrap();
 
-    // Execute write operation.
-    protocol
-        .scheduler
-        .update("subscriber", pk_sb, &columns_sb, &values_sb, meta.clone())?;
-    protocol.scheduler.update(
-        "special_facility",
-        pk_sp,
-        &columns_sp,
-        &values_sp,
-        meta.clone(),
-    )?;
+//     // Execute write operation.
+//     protocol
+//         .scheduler
+//         .update("subscriber", pk_sb, &columns_sb, &values_sb, meta.clone())?;
+//     protocol.scheduler.update(
+//         "special_facility",
+//         pk_sp,
+//         &columns_sp,
+//         &values_sp,
+//         meta.clone(),
+//     )?;
 
-    // Commit transaction.
-    protocol.scheduler.commit(meta.clone())?;
+//     // Commit transaction.
+//     protocol.scheduler.commit(meta.clone())?;
 
-    Ok("{\"updated 2 rows.\"}".to_string())
-}
+//     Ok("{\"updated 2 rows.\"}".to_string())
+// }
 
-/// Update location transaction.
-pub fn update_location(
-    params: UpdateLocationData,
-    protocol: Arc<Protocol>,
-) -> Result<String, NonFatalError> {
-    // debug!(
-    //     "UPDATE Subscriber
-    //          SET vlr_location = {}
-    //          WHERE sub_nbr = {};",
-    //     helper::to_sub_nbr(params.s_id.into()),
-    //     params.vlr_location
-    // );
+// /// Update location transaction.
+// pub fn update_location(
+//     params: UpdateLocationData,
+//     protocol: Arc<Protocol>,
+// ) -> Result<String, NonFatalError> {
+//     // debug!(
+//     //     "UPDATE Subscriber
+//     //          SET vlr_location = {}
+//     //          WHERE sub_nbr = {};",
+//     //     helper::to_sub_nbr(params.s_id.into()),
+//     //     params.vlr_location
+//     // );
 
-    // Columns to write.
-    let columns_sb: Vec<&str> = vec!["vlr_location"];
-    // Values to write.
-    let values_sb = vec![params.vlr_location.to_string()];
-    let values_sb: Vec<&str> = values_sb.iter().map(|s| s as &str).collect();
+//     // Columns to write.
+//     let columns_sb: Vec<&str> = vec!["vlr_location"];
+//     // Values to write.
+//     let values_sb = vec![params.vlr_location.to_string()];
+//     let values_sb: Vec<&str> = values_sb.iter().map(|s| s as &str).collect();
 
-    // Construct primary key.
-    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+//     // Construct primary key.
+//     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
 
-    // Register with scheduler.
-    let meta = protocol.scheduler.register()?;
+//     // Register with scheduler.
+//     let meta = protocol.scheduler.register()?;
 
-    // Execute write operation.
-    protocol
-        .scheduler
-        .update("subscriber", pk_sb, &columns_sb, &values_sb, meta.clone())?;
+//     // Execute write operation.
+//     protocol
+//         .scheduler
+//         .update("subscriber", pk_sb, &columns_sb, &values_sb, meta.clone())?;
 
-    // Commit transaction.
-    protocol.scheduler.commit(meta.clone())?;
+//     // Commit transaction.
+//     protocol.scheduler.commit(meta.clone())?;
 
-    Ok("{\"updated 1 row.\"}".to_string())
-}
+//     Ok("{\"updated 1 row.\"}".to_string())
+// }
 
 /// Insert call forwarding transaction.
 pub fn insert_call_forwarding(

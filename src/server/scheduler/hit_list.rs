@@ -194,8 +194,9 @@ impl Scheduler for HitList {
         &self,
         table: &str,
         key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        get_columns: &Vec<&str>,
+        f: &dyn Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        values: Vec<Data>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         // Transaction id.
@@ -211,7 +212,14 @@ impl Scheduler for HitList {
         debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
-        match index.update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
+        match index.update(
+            key.clone(),
+            get_columns,
+            f,
+            values,
+            "hit",
+            &meta.get_id().unwrap(),
+        ) {
             Ok(res) => {
                 // Get access history.
                 let access_history = res.get_access_history().unwrap();
