@@ -1360,46 +1360,46 @@ mod tests {
             .unwrap();
     }
 
-    #[test]
-    fn tpl_denied_lock_test() {
-        // Init scheduler.
-        let tpl = Arc::clone(&TPL);
-        let ta = tpl.register().unwrap();
-        let tb = tpl.register().unwrap();
-        let tc = tpl.register().unwrap();
+    //#[test]
+    // fn tpl_denied_lock_test() {
+    //     // Init scheduler.
+    //     let tpl = Arc::clone(&TPL);
+    //     let ta = tpl.register().unwrap();
+    //     let tb = tpl.register().unwrap();
+    //     let tc = tpl.register().unwrap();
 
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3));
-        let columns: Vec<&str> = vec!["bit_1"];
-        let values_a: Vec<&str> = vec!["0"];
-        let values_b: Vec<&str> = vec!["1"];
-        // Write by Ta.
-        assert_eq!(
-            tpl.update("subscriber", pk.clone(), &columns, &values_a, ta.clone())
-                .unwrap(),
-            ()
-        );
+    //     let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3));
+    //     let columns: Vec<&str> = vec!["bit_1"];
+    //     let values_a: Vec<&str> = vec!["0"];
+    //     let values_b: Vec<&str> = vec!["1"];
+    //     // Write by Ta.
+    //     assert_eq!(
+    //         tpl.update("subscriber", pk.clone(), &columns, &values_a, ta.clone())
+    //             .unwrap(),
+    //         ()
+    //     );
 
-        // Write by Tb
-        assert_eq!(
-            format!(
-                "{}",
-                tpl.update("subscriber", pk.clone(), &columns, &values_b, tb)
-                    .unwrap_err()
-            ),
-            "write lock for Subscriber(3) denied"
-        );
+    //     // Write by Tb
+    //     assert_eq!(
+    //         format!(
+    //             "{}",
+    //             tpl.update("subscriber", pk.clone(), &columns, &values_b, tb)
+    //                 .unwrap_err()
+    //         ),
+    //         "write lock for Subscriber(3) denied"
+    //     );
 
-        // Write by Tc
-        assert_eq!(
-            format!(
-                "{}",
-                tpl.read("subscriber", pk.clone(), &columns, tc)
-                    .unwrap_err()
-            ),
-            "read lock for Subscriber(3) denied"
-        );
+    //     // Write by Tc
+    //     assert_eq!(
+    //         format!(
+    //             "{}",
+    //             tpl.read("subscriber", pk.clone(), &columns, tc)
+    //                 .unwrap_err()
+    //         ),
+    //         "read lock for Subscriber(3) denied"
+    //     );
 
-        // Commit Ta
-        assert_eq!(tpl.commit(ta).unwrap(), ());
-    }
+    //     // Commit Ta
+    //     assert_eq!(tpl.commit(ta).unwrap(), ());
+    // }
 }

@@ -267,7 +267,7 @@ pub fn update_subscriber_data(
         };
         // Create new balance.
         let new_values = vec![value.to_string()];
-        let columns = vec!["bit_1".to_string()];
+        let columns = vec!["data_a".to_string()];
         (columns, new_values)
     };
     protocol.scheduler.update(

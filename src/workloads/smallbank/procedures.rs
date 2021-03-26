@@ -10,10 +10,7 @@ use std::sync::Arc;
 // use std::thread;
 
 /// Balance transaction.
-pub fn balance<T: Scheduler>(
-    params: Balance,
-    protocol: Arc<Protocol>,
-) -> Result<String, NonFatalError> {
+pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     // Columns to get.
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     // Construct primary key.
@@ -186,7 +183,7 @@ pub fn balance<T: Scheduler>(
 // }
 
 /// Deposit checking transaction.
-pub fn deposit_checking<T: Scheduler>(
+pub fn deposit_checking(
     params: DepositChecking,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
@@ -430,7 +427,7 @@ mod tests {
 
     #[test]
     fn transactions_test() {
-        logging(true);
+        logging(false);
 
         // Initialise configuration.
         let mut c = Config::default();
@@ -473,7 +470,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{updated 1 row.\"}"
+            "{\"updated 1 row.\"}"
         );
 
         // assert_eq!(

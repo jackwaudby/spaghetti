@@ -772,44 +772,44 @@ mod test {
         assert_eq!(sg.reduced_depth_first_search(2), true);
     }
 
-    #[test]
-    fn crud_test() {
-        let sg = SerializationGraphTesting::new(5, Arc::clone(&WORKLOAD));
+    // #[test]
+    // fn crud_test() {
+    //     let sg = SerializationGraphTesting::new(5, Arc::clone(&WORKLOAD));
 
-        let builder = thread::Builder::new().name("0".into());
+    //     let builder = thread::Builder::new().name("0".into());
 
-        let handler = builder
-            .spawn(move || {
-                assert_eq!(thread::current().name(), Some("0"));
-                let meta = sg.register().unwrap();
-                assert_eq!(meta, TransactionInfo::new(Some("0".to_string()), None));
+    //     let handler = builder
+    //         .spawn(move || {
+    //             assert_eq!(thread::current().name(), Some("0"));
+    //             let meta = sg.register().unwrap();
+    //             assert_eq!(meta, TransactionInfo::new(Some("0".to_string()), None));
 
-                let table = "access_info";
-                let columns: Vec<&str> = vec!["data_1", "data_2", "data_3", "data_4"];
+    //             let table = "access_info";
+    //             let columns: Vec<&str> = vec!["data_1", "data_2", "data_3", "data_4"];
 
-                let key = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1));
+    //             let key = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1));
 
-                assert_eq!(
-                    datatype::to_result(
-                        &columns,
-                        &sg.read(table, key.clone(), &columns, meta.clone()).unwrap()
-                    )
-                    .unwrap(),
-                    "{data_1=\"57\", data_2=\"200\", data_3=\"IEU\", data_4=\"WIDHY\"}"
-                );
+    //             assert_eq!(
+    //                 datatype::to_result(
+    //                     &columns,
+    //                     &sg.read(table, key.clone(), &columns, meta.clone()).unwrap()
+    //                 )
+    //                 .unwrap(),
+    //                 "{data_1=\"57\", data_2=\"200\", data_3=\"IEU\", data_4=\"WIDHY\"}"
+    //             );
 
-                let values: Vec<&str> = vec!["12", "678", "POD", "TDHDH"];
-                let meta_2 = TransactionInfo::new(Some("1".to_string()), None);
-                sg.update(table, key, &columns, &values, meta_2).unwrap();
+    //             let values: Vec<&str> = vec!["12", "678", "POD", "TDHDH"];
+    //             let meta_2 = TransactionInfo::new(Some("1".to_string()), None);
+    //             sg.update(table, key, &columns, &values, meta_2).unwrap();
 
-                // Check graph has edge between 0->1
-                assert_eq!(sg.get_shared_lock(0).get_outgoing(), vec![1]);
-                assert_eq!(sg.get_shared_lock(1).get_incoming(), vec![0]);
+    //             // Check graph has edge between 0->1
+    //             assert_eq!(sg.get_shared_lock(0).get_outgoing(), vec![1]);
+    //             assert_eq!(sg.get_shared_lock(1).get_incoming(), vec![0]);
 
-                assert_eq!(sg.commit(meta).unwrap(), ());
-            })
-            .unwrap();
+    //             assert_eq!(sg.commit(meta).unwrap(), ());
+    //         })
+    //         .unwrap();
 
-        handler.join().unwrap();
-    }
+    //     handler.join().unwrap();
+    // }
 }
