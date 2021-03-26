@@ -1,6 +1,6 @@
 use crate::common::message::{InternalRequest, InternalResponse, Outcome, Parameters, Transaction};
 use crate::server::pool::ThreadPool;
-use crate::server::scheduler::{Protocol, Scheduler};
+use crate::server::scheduler::Protocol;
 use crate::workloads::tatp;
 use crate::workloads::tatp::paramgen::TatpTransactionProfile;
 use crate::workloads::Workload;

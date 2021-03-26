@@ -1,5 +1,4 @@
 use crate::common::error::NonFatalError;
-use crate::common::message::Parameters;
 use crate::server::scheduler::Protocol;
 use crate::server::scheduler::Scheduler;
 use crate::server::storage::datatype::{self, Data};
@@ -9,7 +8,6 @@ use crate::workloads::PrimaryKey;
 
 use std::sync::Arc;
 // use std::thread;
-use tracing::debug;
 
 /// Balance transaction.
 pub fn balance<T: Scheduler>(
@@ -192,7 +190,7 @@ pub fn deposit_checking<T: Scheduler>(
     params: DepositChecking,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    //// Get customer id.
+    // 1. Get customer ID from accounts table.
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
     let meta = protocol.scheduler.register()?;
@@ -205,39 +203,39 @@ pub fn deposit_checking<T: Scheduler>(
         panic!("unexpected type");
     };
 
-    /// Update balance.
+    // 2. Update balance in checking table.
+    // 2i. Create search key.
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
-
+    // 2ii. Columns to read and pass to update closure.
     let get_cols: Vec<&str> = vec!["balance"];
-
-    // 1. convert params to spaghetti datatype
+    // 2iii. Convert values to pass to update closure to spaghetti datatype.
     let values = vec![Data::Double(params.value)];
-
-    // 2. closure.
-    let increment = |current: Vec<Data>, params: Vec<Data>| -> (Vec<String>, Vec<String>) {
+    // 2iv. Define update closure.
+    let update = |current: Vec<Data>, params: Vec<Data>| -> (Vec<String>, Vec<String>) {
+        // Get current balance.
         let balance = if let Data::Double(bal) = current[0] {
             bal
         } else {
             panic!("unexpected type");
         };
-
+        // Get deposit.
         let value = if let Data::Double(bal) = params[0] {
             bal
         } else {
             panic!("unexpected type");
         };
-
+        // Create new balance.
         let new_values = vec![(balance + value).to_string()];
         let columns = vec!["balance".to_string()];
         (columns, new_values)
     };
 
-    // Execute write operation.
+    // 2v. Execute write operation.
     protocol.scheduler.update(
         "checking",
         checking_pk,
         &get_cols,
-        &increment,
+        &update,
         values,
         meta.clone(),
     )?;

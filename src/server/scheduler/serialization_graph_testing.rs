@@ -219,11 +219,20 @@ impl Scheduler for SerializationGraphTesting {
         let mut mg = read_guard.lock().unwrap();
         // Deref to row.
         let row = &mut *mg;
-        // TODO
-        let columns = vec!["test"];
-        let values = vec!["test"];
+
+        // 1. Get values
+        let res = row.get_values(get_columns, "sgt", &meta.get_id().unwrap())?;
+        let current = res.get_values().unwrap();
+
+        // 2. Compute new values.
+        let (columns, new_values) = f(current, values);
+
+        // 3. Converson
+        let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
+        let v: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
+
         // Set values.
-        let res = row.set_values(&columns, &values, "sgt", &meta.get_id().unwrap());
+        let res = row.set_values(&c, &v, "sgt", &meta.get_id().unwrap());
         match res {
             Ok(res) => {
                 // Get access history.

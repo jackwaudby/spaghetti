@@ -1,5 +1,4 @@
 use crate::common::error::NonFatalError;
-use crate::common::message::Parameters;
 use crate::server::scheduler::hit_list::HitList;
 use crate::server::scheduler::serialization_graph_testing::SerializationGraphTesting;
 use crate::server::scheduler::two_phase_locking::TwoPhaseLocking;
@@ -17,31 +16,20 @@ pub mod two_phase_locking;
 
 pub mod serialization_graph_testing;
 
-/// Representing a concurrency control protocol.
-// pub enum Protocol {
-//     HitList(HitList),
-//     SerializationGraphTesting(SerializationGraphTesting),
-//     TwoPhaseLocking(TwoPhaseLocking),
-// }
-
+/// A concurrency control protocol.
+///
+/// Uses trait object for dynamic dispatch to switch between protocols.
 pub struct Protocol {
+    /// Trait object pointing to scheduler.
     pub scheduler: Box<dyn Scheduler + Send + Sync + 'static>,
 }
 
-// impl Protocol {
-//     pub fn get_scheduler(&self) -> Box<dyn Scheduler> {
-//         match *self {
-//             Protocol::HitList(ref i) => Box::new(i),
-//             Protocol::SerializationGraphTesting(ref mut i) => Box::new(i),
-//             Protocol::TwoPhaseLocking(ref i) => Box::new(i),
-//         }
-//     }
-// }
-
+/// Information about a transaction.
 #[derive(Debug, PartialEq, Clone)]
 pub struct TransactionInfo {
     // Transaction ID.
     id: Option<String>,
+
     // Timestamp used in deadlock detection.
     ts: Option<u64>,
 }
@@ -75,19 +63,21 @@ impl Protocol {
 }
 
 impl TransactionInfo {
+    /// Create new holder for a transaction's info.
     pub fn new(id: Option<String>, ts: Option<u64>) -> TransactionInfo {
         TransactionInfo { id, ts }
     }
 
+    /// Get the ID of a transaction.
     pub fn get_id(&self) -> Option<String> {
         self.id.clone()
     }
+
+    /// Get the timestamp of a transaction.
     pub fn get_ts(&self) -> Option<u64> {
         self.ts.clone()
     }
 }
-
-pub trait Dummy {}
 
 pub trait Scheduler {
     /// Register a transaction with the scheduler.
@@ -124,12 +114,10 @@ pub trait Scheduler {
         table: &str,
         key: PrimaryKey,
         get_columns: &Vec<&str>,
-        f: &Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        f: &dyn Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
         values: Vec<Data>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError>;
-    // where
-    //     F: Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>);
 
     /// Delete a row from a table.
     fn delete(

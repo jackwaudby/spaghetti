@@ -100,9 +100,9 @@ impl Workload {
             }
             SmallBank(ref i) => {
                 if self.get_internals().get_config().get_bool("load")? {
-                    smallbank::loader::load_account_table(i);
-                    smallbank::loader::load_checking_table(i);
-                    smallbank::loader::load_savings_table(i);
+                    smallbank::loader::load_account_table(i)?;
+                    smallbank::loader::load_checking_table(i)?;
+                    smallbank::loader::load_savings_table(i)?;
                 } else {
                     smallbank::loader::populate_tables(i, rng)?
                 }

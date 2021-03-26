@@ -5,7 +5,7 @@ use crate::Result;
 
 use config::Config;
 use csv::Writer;
-use rand::prelude::IteratorRandom;
+//use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
