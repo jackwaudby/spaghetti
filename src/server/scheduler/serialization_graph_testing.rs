@@ -230,7 +230,14 @@ impl Scheduler for SerializationGraphTesting {
         let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
         let current;
         if read {
-            let res = row.get_values(&c, "sgt", &meta.get_id().unwrap())?;
+            let res = match row.get_values(&c, "sgt", &meta.get_id().unwrap()) {
+                Ok(res) => res,
+                Err(e) => {
+                    // ABORT - RowNotFound.
+                    self.abort(meta.clone()).unwrap();
+                    return Err(e);
+                }
+            };
             current = res.get_values();
         } else {
             current = None;
@@ -238,7 +245,15 @@ impl Scheduler for SerializationGraphTesting {
 
         // Compute new values.
         // Update closure expects vec of strings.
-        let (_, new_values) = f(columns.clone(), current, params)?;
+        let (_, new_values) = match f(columns.clone(), current, params) {
+            Ok(res) => res,
+            Err(e) => {
+                // ABORT - RowNotFound.
+                self.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
+
         let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
 
         let res = row.set_values(&c, &nv, "sgt", &meta.get_id().unwrap());
