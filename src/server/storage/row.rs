@@ -267,6 +267,19 @@ impl Row {
         Ok(res)
     }
 
+    /// Get and set
+    pub fn get_and_set_values(
+        &mut self,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        protocol: &str,
+        tid: &str,
+    ) -> Result<OperationResult, NonFatalError> {
+        let res = self.get_values(columns, protocol, tid);
+        self.set_values(columns, values, protocol, tid);
+        res
+    }
+
     /// Mark row as deleted.
     pub fn delete(&mut self, protocol: &str) -> Result<OperationResult, NonFatalError> {
         // If dirty operation fails.

@@ -286,6 +286,89 @@ impl Scheduler for SerializationGraphTesting {
         }
     }
 
+    /// Execute a write operation.
+    ///
+    /// Adds an edge in the graph for each WW and RW conflict.
+    fn read_and_update(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        meta: TransactionInfo,
+    ) -> Result<Vec<Data>, NonFatalError> {
+        let handle = thread::current();
+        debug!(
+            "Thread {}: Executing update operation",
+            handle.name().unwrap()
+        );
+
+        // Get table and index
+        let table = self.get_table(table, meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+
+        // Get row
+        let read_guard = match index.get_lock_on_row(key.clone()) {
+            Ok(rg) => rg,
+            Err(e) => {
+                // ABORT - RowNotFound.
+                self.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
+
+        // Get mutex on row.
+        let mut mg = read_guard.lock().unwrap();
+        // Deref to row.
+        let row = &mut *mg;
+        // Set values.
+        let res = row.get_and_set_values(columns, values, "sgt", &meta.get_id().unwrap());
+        match res {
+            Ok(res) => {
+                // Get access history.
+                let access_history = res.get_access_history().unwrap();
+                // Get position of this transaction in the graph.
+                let this_node = meta.get_id().unwrap().parse::<usize>().unwrap();
+                // Detect conflicts.
+                for access in access_history {
+                    match access {
+                        // WW conflict
+                        Access::Write(tid) => {
+                            // Get position of conflicting transaction in the graph.
+                            let from_node: usize = tid.parse().unwrap();
+                            // Insert edges
+                            if let Err(e) = self.add_edge(from_node, this_node, false) {
+                                // ABORT - parent aborted.
+                                self.abort(meta.clone()).unwrap();
+                                return Err(e.into());
+                            }
+                        }
+                        // RW conflict
+                        Access::Read(tid) => {
+                            let from_node: usize = tid.parse().unwrap();
+                            // Insert edges
+                            if let Err(e) = self.add_edge(from_node, this_node, true) {
+                                // ABORT - parent aborted.
+                                self.abort(meta.clone()).unwrap();
+                                return Err(e.into());
+                            }
+                        }
+                    }
+                }
+                let this_node = self.get_shared_lock(this_node);
+                this_node.add_key(&index.get_name(), key.clone(), OperationType::Update);
+                // Get values
+                let vals = res.get_values().unwrap();
+                Ok(vals)
+            }
+            Err(e) => {
+                // ABORT - RowDeleted or RowDirty
+                self.abort(meta).unwrap();
+                return Err(e);
+            }
+        }
+    }
+
     /// Delete from row.
     fn delete(
         &self,

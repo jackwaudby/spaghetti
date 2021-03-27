@@ -198,6 +198,33 @@ impl Index {
         Ok(res)
     }
 
+    /// Set `values` in `columns` in a `Row` with the given `key`, returning the old values.
+    ///
+    /// # Errors
+    ///
+    /// - Row does not exist with `key`.
+    /// - The row is already dirty.
+    /// - The row is marked for delete.
+    pub fn read_and_update(
+        &self,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        protocol: &str,
+        tid: &str,
+    ) -> Result<OperationResult, NonFatalError> {
+        // Attempt to get read guard.
+        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+            format!("{}", key),
+            self.get_name(),
+        ))?;
+        // Deref to row.
+        let row = &mut *read_guard.lock().unwrap();
+        // Execute get/set operation.
+        let res = row.get_and_set_values(columns, values, protocol, tid)?;
+        Ok(res)
+    }
+
     /// Commit modifications to a `Row`.
     ///
     /// If the row was marked for deletion it is removed.

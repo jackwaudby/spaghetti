@@ -190,6 +190,68 @@ impl Scheduler for HitList {
     }
 
     /// Execute a write operation.
+    fn read_and_update(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        meta: TransactionInfo,
+    ) -> Result<Vec<Data>, NonFatalError> {
+        // Transaction id.
+        let id = meta.get_id().unwrap().parse::<u64>().unwrap();
+        debug!("Update by transaction {}", id);
+
+        // Get table.
+        let table = self.get_table(table, meta.clone())?;
+        // Get index for this key's table.
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+
+        // Get write guard on active transaction entry.
+        debug!("Request WG on transaction {} in active transactions", id);
+        let mut wg = self.active_transactions.get_mut(&id).unwrap();
+
+        match index.read_and_update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
+            Ok(res) => {
+                // Get access history.
+                let access_history = res.get_access_history().unwrap();
+                // Detect conflicts.
+                for access in access_history {
+                    match access {
+                        // WW conflict
+                        Access::Write(tid) => {
+                            // Insert predecessor
+                            let tid = tid.parse::<u64>().unwrap();
+                            wg.add_predecessor(tid);
+                        }
+                        // RW conflict
+                        Access::Read(tid) => {
+                            let tid = tid.parse::<u64>().unwrap();
+                            wg.add_predecessor(tid);
+                        }
+                    }
+                }
+
+                // Add to keys read.
+                wg.add_key_updated((index.get_name(), key));
+                // Get values
+                let vals = res.get_values().unwrap();
+
+                drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
+                Ok(vals)
+            }
+            Err(e) => {
+                drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
+                debug!("Update by transaction {} failed", id);
+                self.abort(meta).unwrap();
+                return Err(e);
+            }
+        }
+    }
+
+    /// Execute a write operation.
     fn update(
         &self,
         table: &str,

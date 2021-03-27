@@ -375,6 +375,115 @@ impl Scheduler for TwoPhaseLocking {
         }
     }
 
+    /// Attempt to update columns in row.
+    ///
+    /// # Aborts
+    ///
+    /// The table cannot be found.
+    /// There is no primary index on this table.
+    /// The index cannot be found.
+    /// Row cannot be found.
+    /// Column does not exist in the table.
+    /// Lock request denied.
+    fn read_and_update(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        meta: TransactionInfo,
+    ) -> Result<Vec<Data>, NonFatalError> {
+        debug!(
+            "Transaction {:?} requesting write lock on {:?}",
+            meta.get_id().unwrap(),
+            key
+        );
+        let table = self.get_table(table, meta.clone())?;
+        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+        // Request lock.
+        let request = self.request_lock(
+            &index_name,
+            key.clone(),
+            LockMode::Write,
+            &meta.get_id().unwrap(),
+            meta.get_ts().unwrap(),
+        );
+
+        match request {
+            LockRequest::Granted => {
+                debug!(
+                    "Write lock for {:?} granted to transaction {:?}",
+                    key,
+                    meta.get_id().unwrap()
+                );
+                // Register lock.
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key.clone());
+
+                // Execute update.
+                let result = index.read_and_update(
+                    key.clone(),
+                    columns,
+                    values,
+                    "2pl",
+                    &meta.get_id().unwrap(),
+                );
+                match result {
+                    Ok(res) => {
+                        // Get values.
+                        let vals = res.get_values().unwrap();
+                        return Ok(vals);
+                    }
+                    Err(e) => {
+                        self.abort(meta.clone()).unwrap();
+                        return Err(e);
+                    }
+                }
+            }
+            LockRequest::Delay(pair) => {
+                debug!("Waiting for write lock");
+                let (lock, cvar) = &*pair;
+                let mut waiting = lock.lock().unwrap();
+                while !*waiting {
+                    waiting = cvar.wait(waiting).unwrap();
+                }
+                debug!("Write lock granted");
+                // Register lock.
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key.clone());
+                // Execute update.
+                let result = index.read_and_update(
+                    key.clone(),
+                    columns,
+                    values,
+                    "2pl",
+                    &meta.get_id().unwrap(),
+                );
+                match result {
+                    Ok(res) => {
+                        let vals = res.get_values().unwrap();
+                        return Ok(vals);
+                    }
+                    Err(e) => {
+                        self.abort(meta.clone()).unwrap();
+                        return Err(e);
+                    }
+                }
+            }
+            LockRequest::Denied => {
+                debug!("Write lock denied");
+                let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key));
+                self.abort(meta.clone()).unwrap();
+                return Err(err.into());
+            }
+        }
+    }
+
     /// Attempt to delete row.
     ///
     /// # Aborts

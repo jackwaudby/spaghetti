@@ -108,6 +108,16 @@ pub trait Scheduler {
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError>;
 
+    /// Update and return old values. (Get and set equivalent).
+    fn read_and_update(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        meta: TransactionInfo,
+    ) -> Result<Vec<Data>, NonFatalError>;
+
     /// Update columns with values in a row.
     fn update(
         &self,

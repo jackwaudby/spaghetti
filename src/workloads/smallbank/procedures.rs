@@ -162,7 +162,8 @@ pub fn transact_savings(
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let savings_cols: Vec<String> = vec!["balance".to_string()];
     let params = vec![Data::Double(params.value)];
-    // 2iv. Define update closure.
+    //  Define update closure.
+    // TODO: Add constraint.
     let update = |columns: Vec<String>,
                   current: Option<Vec<Data>>,
                   params: Vec<Data>|
@@ -208,20 +209,24 @@ pub fn transact_savings(
 
 // /// Amalgamate transaction.
 // pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-//     // 1. Get customer ID from accounts table.
+//     // Register transaction with scheduler.
+//     let meta = protocol.scheduler.register()?;
+
+//     // Get customer ID from accounts table.
 //     let accounts_cols: Vec<&str> = vec!["customer_id"];
 //     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
-//     let meta = protocol.scheduler.register()?;
 //     let res1 = protocol
 //         .scheduler
 //         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?;
-//     let cust_id = if let Data::Int(cust_id) = res1[0] {
-//         cust_id as u64
-//     } else {
-//         panic!("unexpected type");
+//     let cust_id = match i64::try_from(res1[0].clone()) {
+//         Ok(cust_id) => cust_id as u64,
+//         Err(e) => {
+//             protocol.scheduler.abort(meta.clone()).unwrap();
+//             return Err(e);
+//         }
 //     };
 
-//     // 2. Get balance of accounts.
+//     // Get balance of accounts.
 //     let other_cols: Vec<&str> = vec!["balance"];
 //     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
 //     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
