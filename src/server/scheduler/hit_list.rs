@@ -194,11 +194,15 @@ impl Scheduler for HitList {
         &self,
         table: &str,
         key: PrimaryKey,
-        columns: &Vec<&str>,
+        columns: Vec<String>,
         read: bool,
         params: Vec<Data>,
         // (columns, current_values, parameters) -> (columns,new_values)
-        f: &dyn Fn(Vec<String>, Option<Vec<Data>>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        f: &dyn Fn(
+            Vec<String>,
+            Option<Vec<Data>>,
+            Vec<Data>,
+        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         // Transaction id.

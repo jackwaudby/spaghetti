@@ -156,7 +156,7 @@ impl Index {
     pub fn update<F>(
         &self,
         key: PrimaryKey,
-        columns: &Vec<&str>,
+        columns: Vec<String>,
         read: bool,
         params: Vec<Data>,
         f: F,
@@ -164,7 +164,11 @@ impl Index {
         tid: &str,
     ) -> Result<OperationResult, NonFatalError>
     where
-        F: Fn(Vec<String>, Option<Vec<Data>>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        F: Fn(
+            Vec<String>,
+            Option<Vec<Data>>,
+            Vec<Data>,
+        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
     {
         // Attempt to get read guard.
         let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
@@ -174,26 +178,23 @@ impl Index {
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
 
-        // 1. Get current values of columns.
-        let current_values;
+        // If needed, get current values of columns.
+        let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
+        let current;
         if read {
-            let res = row.get_values(columns, protocol, tid)?;
-            current_values = res.get_values();
+            let res = row.get_values(&c, protocol, tid)?;
+            current = res.get_values();
         } else {
-            current_values = None;
+            current = None;
         }
 
-        // 2. Compute new values.
-        let columns = vec!["todo".to_string()];
-        let (columns, new_values) = f(columns, current_values, params);
-
-        // 3. Converson
-        let v: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
+        // Compute new values.
+        // Update closure expects vec of strings.
+        let (_, new_values) = f(columns.clone(), current, params)?;
+        let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
 
         // Execute write operation.
-        let columns = vec!["todo"];
-
-        let res = row.set_values(&columns, &v, protocol, tid)?;
+        let res = row.set_values(&c, &nv, protocol, tid)?;
         Ok(res)
     }
 

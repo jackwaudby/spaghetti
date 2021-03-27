@@ -190,11 +190,15 @@ impl Scheduler for SerializationGraphTesting {
         &self,
         table: &str,
         key: PrimaryKey,
-        columns: &Vec<&str>,
+        columns: Vec<String>,
         read: bool,
         params: Vec<Data>,
         // (columns, current_values, parameters) -> (columns,new_values)
-        f: &dyn Fn(Vec<String>, Option<Vec<Data>>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        f: &dyn Fn(
+            Vec<String>,
+            Option<Vec<Data>>,
+            Vec<Data>,
+        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let handle = thread::current();
@@ -222,27 +226,22 @@ impl Scheduler for SerializationGraphTesting {
         // Deref to row.
         let row = &mut *mg;
 
-        // 1. Get current values of columns.
-        let current_values;
+        // Get current values of columns.
+        let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
+        let current;
         if read {
-            let res = row.get_values(columns, "sgt", &meta.get_id().unwrap())?;
-            current_values = res.get_values();
+            let res = row.get_values(&c, "sgt", &meta.get_id().unwrap())?;
+            current = res.get_values();
         } else {
-            current_values = None;
+            current = None;
         }
 
-        // 2. Compute new values.
-        let todo = vec!["todo".to_string()];
-        let (columns, new_values) = f(todo, current_values, params);
+        // Compute new values.
+        // Update closure expects vec of strings.
+        let (_, new_values) = f(columns.clone(), current, params)?;
+        let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
 
-        // 3. Converson
-        let v: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
-
-        // Set values.
-
-        let todo = vec!["todo"];
-
-        let res = row.set_values(&todo, &v, "sgt", &meta.get_id().unwrap());
+        let res = row.set_values(&c, &nv, "sgt", &meta.get_id().unwrap());
         match res {
             Ok(res) => {
                 // Get access history.
