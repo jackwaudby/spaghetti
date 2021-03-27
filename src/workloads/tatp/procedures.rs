@@ -8,6 +8,7 @@ use crate::workloads::tatp::paramgen::{
 };
 use crate::workloads::PrimaryKey;
 
+use std::convert::TryFrom;
 use std::sync::Arc;
 use std::thread;
 use tracing::debug;
@@ -204,137 +205,152 @@ pub fn get_access_data(
     Ok(res)
 }
 
-// /// Update subscriber transaction.
-// pub fn update_subscriber_data(
-//     params: UpdateSubscriberData,
-//     protocol: Arc<Protocol>,
-// ) -> Result<String, NonFatalError> {
-//     // debug!(
-//     //     "UPDATE Subscriber
-//     //        SET bit_1 = {:?}
-//     //        WHERE s_id = {:?}
-//     //      UPDATE Special_Facility
-//     //        SET data_a = {:?}
-//     //        WHERE s_id = {:?}
-//     //          AND sf_type = {:?};",
-//     //     params.bit_1, params.s_id, params.data_a, params.s_id, params.sf_type
-//     // );
+/// Update subscriber transaction.
+pub fn update_subscriber_data(
+    params: UpdateSubscriberData,
+    protocol: Arc<Protocol>,
+) -> Result<String, NonFatalError> {
+    // debug!(
+    //     "UPDATE Subscriber
+    //        SET bit_1 = {:?}
+    //        WHERE s_id = {:?}
+    //      UPDATE Special_Facility
+    //        SET data_a = {:?}
+    //        WHERE s_id = {:?}
+    //          AND sf_type = {:?};",
+    //     params.bit_1, params.s_id, params.data_a, params.s_id, params.sf_type
+    // );
 
-//     // i. Create search key.
-//     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
-//     // ii. Columns to read and pass to update closure..
-//     let columns_sb: Vec<&str> = vec!["bit_1"];
-//     // iii. Convert values to pass to update closure to spaghetti datatype.
-//     let values_sb = vec![Data::Int(params.bit_1.into())];
-//     // 2iv. Define update closure.
-//     let update = |_current: Vec<Data>, params: Vec<Data>| -> (Vec<String>, Vec<String>) {
-//         // Get new bit_1.
-//         let value = if let Data::Int(bal) = params[0] {
-//             bal
-//         } else {
-//             panic!("unexpected type");
-//         };
-//         // Create new balance.
-//         let new_values = vec![value.to_string()];
-//         let columns = vec!["bit_1".to_string()];
-//         (columns, new_values)
-//     };
+    // Register with scheduler.
+    let meta = protocol.scheduler.register().unwrap();
 
-//     // Register with scheduler.
-//     let meta = protocol.scheduler.register().unwrap();
+    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    let columns_sb: Vec<String> = vec!["bit_1".to_string()];
+    let values_sb = vec![Data::Int(params.bit_1.into())];
 
-//     protocol.scheduler.update(
-//         "subscriber",
-//         pk_sb,
-//         &columns_sb,
-//         &update,
-//         values_sb,
-//         meta.clone(),
-//     )?;
+    let update = |columns: Vec<String>,
+                  current: Option<Vec<Data>>,
+                  params: Vec<Data>|
+     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+        // Get new bit_1.
+        let value = match i64::try_from(params[0].clone()) {
+            Ok(value) => value,
+            Err(e) => {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
 
-//     let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
-//         params.s_id,
-//         params.sf_type.into(),
-//     ));
-//     let columns_sp = vec!["data_a"];
-//     let values_sp = vec![Data::Int(params.data_a.into())];
-//     let update_sp = |_current: Vec<Data>, params: Vec<Data>| -> (Vec<String>, Vec<String>) {
-//         // Get new bit_1.
-//         let value = if let Data::Int(bal) = params[0] {
-//             bal
-//         } else {
-//             panic!("unexpected type");
-//         };
-//         // Create new balance.
-//         let new_values = vec![value.to_string()];
-//         let columns = vec!["data_a".to_string()];
-//         (columns, new_values)
-//     };
-//     protocol.scheduler.update(
-//         "special_facility",
-//         pk_sp,
-//         &columns_sp,
-//         &update_sp,
-//         values_sp,
-//         meta.clone(),
-//     )?;
+        let new_values = vec![value.to_string()];
+        let columns = vec!["bit_1".to_string()];
+        Ok((columns, new_values))
+    };
 
-//     // Commit transaction.
-//     protocol.scheduler.commit(meta.clone())?;
+    protocol.scheduler.update(
+        "subscriber",
+        pk_sb,
+        columns_sb,
+        false,
+        values_sb,
+        &update,
+        meta.clone(),
+    )?;
 
-//     Ok("{\"updated 2 rows.\"}".to_string())
-// }
+    let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
+        params.s_id,
+        params.sf_type.into(),
+    ));
+    let columns_sp = vec!["data_a".to_string()];
+    let values_sp = vec![Data::Int(params.data_a.into())];
+    let update_sp = |columns: Vec<String>,
+                     current: Option<Vec<Data>>,
+                     params: Vec<Data>|
+     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+        // Get new bit_1.
+        let value = match i64::try_from(params[0].clone()) {
+            Ok(value) => value,
+            Err(e) => {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
 
-// /// Update location transaction.
-// pub fn update_location(
-//     params: UpdateLocationData,
-//     protocol: Arc<Protocol>,
-// ) -> Result<String, NonFatalError> {
-//     // debug!(
-//     //     "UPDATE Subscriber
-//     //          SET vlr_location = {}
-//     //          WHERE sub_nbr = {};",
-//     //     helper::to_sub_nbr(params.s_id.into()),
-//     //     params.vlr_location
-//     // );
+        // Create new balance.
+        let new_values = vec![value.to_string()];
+        let columns = vec!["data_a".to_string()];
+        Ok((columns, new_values))
+    };
+    protocol.scheduler.update(
+        "special_facility",
+        pk_sp,
+        columns_sp,
+        false,
+        values_sp,
+        &update_sp,
+        meta.clone(),
+    )?;
 
-//     // i. Create search key.
-//     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
-//     // ii. Columns to read and pass to update closure..
-//     let columns_sb: Vec<&str> = vec!["vlr_location"];
-//     // iii. Convert values to pass to update closure to spaghetti datatype.
-//     let values_sb = vec![Data::Int(params.vlr_location.into())];
-//     // 2iv. Define update closure.
-//     let update = |_current: Vec<Data>, params: Vec<Data>| -> (Vec<String>, Vec<String>) {
-//         // Get new bit_1.
-//         let value = if let Data::Int(bal) = params[0] {
-//             bal
-//         } else {
-//             panic!("unexpected type");
-//         };
-//         // Create new balance.
-//         let new_values = vec![value.to_string()];
-//         let columns = vec!["vlr_location".to_string()];
-//         (columns, new_values)
-//     };
+    // Commit transaction.
+    protocol.scheduler.commit(meta.clone())?;
 
-//     // Register with scheduler.
-//     let meta = protocol.scheduler.register().unwrap();
+    Ok("{\"updated 2 rows.\"}".to_string())
+}
 
-//     protocol.scheduler.update(
-//         "subscriber",
-//         pk_sb,
-//         &columns_sb,
-//         &update,
-//         values_sb,
-//         meta.clone(),
-//     )?;
+/// Update location transaction.
+pub fn update_location(
+    params: UpdateLocationData,
+    protocol: Arc<Protocol>,
+) -> Result<String, NonFatalError> {
+    // debug!(
+    //     "UPDATE Subscriber
+    //          SET vlr_location = {}
+    //          WHERE sub_nbr = {};",
+    //     helper::to_sub_nbr(params.s_id.into()),
+    //     params.vlr_location
+    // );
 
-//     // Commit transaction.
-//     protocol.scheduler.commit(meta.clone())?;
+    // Register with scheduler.
+    let meta = protocol.scheduler.register().unwrap();
 
-//     Ok("{\"updated 1 row.\"}".to_string())
-// }
+    // i. Create search key.
+    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    // ii. Columns to read and pass to update closure..
+    let columns_sb: Vec<String> = vec!["vlr_location".to_string()];
+    // iii. Convert values to pass to update closure to spaghetti datatype.
+    let values_sb = vec![Data::Int(params.vlr_location.into())];
+    let update = |columns: Vec<String>,
+                  current: Option<Vec<Data>>,
+                  params: Vec<Data>|
+     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+        // Get new bit_1.
+        let value = match i64::try_from(params[0].clone()) {
+            Ok(value) => value,
+            Err(e) => {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
+
+        let new_values = vec![value.to_string()];
+        let columns = vec!["bit_1".to_string()];
+        Ok((columns, new_values))
+    };
+
+    protocol.scheduler.update(
+        "subscriber",
+        pk_sb,
+        columns_sb,
+        false,
+        values_sb,
+        &update,
+        meta.clone(),
+    )?;
+
+    // Commit transaction.
+    protocol.scheduler.commit(meta.clone())?;
+
+    Ok("{\"updated 1 row.\"}".to_string())
+}
 
 /// Insert call forwarding transaction.
 pub fn insert_call_forwarding(
@@ -618,32 +634,32 @@ mod tests {
         assert_eq!(res_sb, "{bit_1=\"0\"}");
         assert_eq!(res_sf, "{data_a=\"60\"}");
 
-        // assert_eq!(a
-        //     update_subscriber_data(
-        //         UpdateSubscriberData {
-        //             s_id: 1,
-        //             sf_type: 1,
-        //             bit_1: 1,
-        //             data_a: 29,
-        //         },
-        //         Arc::clone(&protocol)
-        //     )
-        //     .unwrap(),
-        //     "{\"updated 2 rows.\"}"
-        // );
+        assert_eq!(
+            update_subscriber_data(
+                UpdateSubscriberData {
+                    s_id: 1,
+                    sf_type: 1,
+                    bit_1: 1,
+                    data_a: 29,
+                },
+                Arc::clone(&protocol)
+            )
+            .unwrap(),
+            "{\"updated 2 rows.\"}"
+        );
 
-        // // After
-        // let values_sb = workload
-        //     .get_internals()
-        //     .get_index("sub_idx")
-        //     .unwrap()
-        //     .read(
-        //         PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
-        //         &columns_sb,
-        //         "2pl",
-        //         "t1",
-        //     )
-        //     .unwrap();
+        // After
+        let values_sb = workload
+            .get_internals()
+            .get_index("sub_idx")
+            .unwrap()
+            .read(
+                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                &columns_sb,
+                "2pl",
+                "t1",
+            )
+            .unwrap();
         let values_sf = workload
             .get_internals()
             .get_index("special_idx")
@@ -661,22 +677,22 @@ mod tests {
         assert_eq!(res_sb, "{bit_1=\"1\"}");
         assert_eq!(res_sf, "{data_a=\"29\"}");
 
-        // assert_eq!(
-        //     format!(
-        //         "{}",
-        //         update_subscriber_data(
-        //             UpdateSubscriberData {
-        //                 s_id: 1345,
-        //                 sf_type: 132,
-        //                 bit_1: 0,
-        //                 data_a: 28,
-        //             },
-        //             Arc::clone(&protocol)
-        //         )
-        //         .unwrap_err()
-        //     ),
-        //     format!("not found: Subscriber(1345) in sub_idx")
-        // );
+        assert_eq!(
+            format!(
+                "{}",
+                update_subscriber_data(
+                    UpdateSubscriberData {
+                        s_id: 1345,
+                        sf_type: 132,
+                        bit_1: 0,
+                        data_a: 28,
+                    },
+                    Arc::clone(&protocol)
+                )
+                .unwrap_err()
+            ),
+            format!("not found: Subscriber(1345) in sub_idx")
+        );
 
         ////////////////////////////////
         //// UpdateLocation ////
@@ -699,48 +715,48 @@ mod tests {
         let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
         assert_eq!(res_sb, "{vlr_location=\"12\"}");
 
-        // assert_eq!(
-        //     update_location(
-        //         UpdateLocationData {
-        //             s_id: 1,
-        //             vlr_location: 4
-        //         },
-        //         Arc::clone(&protocol)
-        //     )
-        //     .unwrap(),
-        //     "{\"updated 1 row.\"}"
-        // );
+        assert_eq!(
+            update_location(
+                UpdateLocationData {
+                    s_id: 1,
+                    vlr_location: 4
+                },
+                Arc::clone(&protocol)
+            )
+            .unwrap(),
+            "{\"updated 1 row.\"}"
+        );
 
-        // // After
-        // let values_sb = workload
-        //     .get_internals()
-        //     .get_index("sub_idx")
-        //     .unwrap()
-        //     .read(
-        //         PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
-        //         &columns_sb,
-        //         "2pl",
-        //         "t1",
-        //     )
-        //     .unwrap();
+        // After
+        let values_sb = workload
+            .get_internals()
+            .get_index("sub_idx")
+            .unwrap()
+            .read(
+                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                &columns_sb,
+                "2pl",
+                "t1",
+            )
+            .unwrap();
 
-        // let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
-        // assert_eq!(res_sb, "{vlr_location=\"4\"}");
+        let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
+        assert_eq!(res_sb, "{vlr_location=\"4\"}");
 
-        // assert_eq!(
-        //     format!(
-        //         "{}",
-        //         update_location(
-        //             UpdateLocationData {
-        //                 s_id: 1345,
-        //                 vlr_location: 7,
-        //             },
-        //             Arc::clone(&protocol)
-        //         )
-        //         .unwrap_err()
-        //     ),
-        //     format!("not found: Subscriber(1345) in sub_idx")
-        // );
+        assert_eq!(
+            format!(
+                "{}",
+                update_location(
+                    UpdateLocationData {
+                        s_id: 1345,
+                        vlr_location: 7,
+                    },
+                    Arc::clone(&protocol)
+                )
+                .unwrap_err()
+            ),
+            format!("not found: Subscriber(1345) in sub_idx")
+        );
 
         /////////////////////////////////////////
         //// InsertCallForwarding ////
