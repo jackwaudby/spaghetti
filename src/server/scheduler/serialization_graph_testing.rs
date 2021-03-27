@@ -190,9 +190,11 @@ impl Scheduler for SerializationGraphTesting {
         &self,
         table: &str,
         key: PrimaryKey,
-        get_columns: &Vec<&str>,
-        f: &dyn Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
-        values: Vec<Data>,
+        columns: &Vec<&str>,
+        read: bool,
+        params: Vec<Data>,
+        // (columns, current_values, parameters) -> (columns,new_values)
+        f: &dyn Fn(Vec<String>, Option<Vec<Data>>, Vec<Data>) -> (Vec<String>, Vec<String>),
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let handle = thread::current();
@@ -220,19 +222,27 @@ impl Scheduler for SerializationGraphTesting {
         // Deref to row.
         let row = &mut *mg;
 
-        // 1. Get values
-        let res = row.get_values(get_columns, "sgt", &meta.get_id().unwrap())?;
-        let current = res.get_values().unwrap();
+        // 1. Get current values of columns.
+        let current_values;
+        if read {
+            let res = row.get_values(columns, "sgt", &meta.get_id().unwrap())?;
+            current_values = res.get_values();
+        } else {
+            current_values = None;
+        }
 
         // 2. Compute new values.
-        let (columns, new_values) = f(current, values);
+        let todo = vec!["todo".to_string()];
+        let (columns, new_values) = f(todo, current_values, params);
 
         // 3. Converson
-        let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
         let v: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
 
         // Set values.
-        let res = row.set_values(&c, &v, "sgt", &meta.get_id().unwrap());
+
+        let todo = vec!["todo"];
+
+        let res = row.set_values(&todo, &v, "sgt", &meta.get_id().unwrap());
         match res {
             Ok(res) => {
                 // Get access history.

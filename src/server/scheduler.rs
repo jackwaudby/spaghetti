@@ -113,9 +113,11 @@ pub trait Scheduler {
         &self,
         table: &str,
         key: PrimaryKey,
-        get_columns: &Vec<&str>,
-        f: &dyn Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
-        values: Vec<Data>,
+        columns: &Vec<&str>,
+        read: bool,
+        params: Vec<Data>,
+        // (columns, current_values, parameters) -> (columns,new_values)
+        f: &dyn Fn(Vec<String>, Option<Vec<Data>>, Vec<Data>) -> (Vec<String>, Vec<String>),
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError>;
 

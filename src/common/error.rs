@@ -94,6 +94,9 @@ pub enum NonFatalError {
     /// Unable to convert to spaghetti data type.
     UnableToConvertToDataType(String, String),
 
+    /// Unable to convert from spaghetti data type
+    UnableToConvertFromDataType(String, String),
+
     /// Invalid column type.
     InvalidColumnType(String),
 
@@ -165,6 +168,11 @@ impl fmt::Display for NonFatalError {
                 f,
                 "unable to convert: value {} to type {}",
                 value, spaghetti_type
+            ),
+            UnableToConvertFromDataType(ref spaghetti_type, ref value) => write!(
+                f,
+                "unable to convert: type {} to type {}",
+                spaghetti_type, value
             ),
             NonSerializable => write!(f, "non-serializable behaviour"),
         }

@@ -156,14 +156,15 @@ impl Index {
     pub fn update<F>(
         &self,
         key: PrimaryKey,
-        get_columns: &Vec<&str>,
+        columns: &Vec<&str>,
+        read: bool,
+        params: Vec<Data>,
         f: F,
-        values: Vec<Data>,
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError>
     where
-        F: Fn(Vec<Data>, Vec<Data>) -> (Vec<String>, Vec<String>),
+        F: Fn(Vec<String>, Option<Vec<Data>>, Vec<Data>) -> (Vec<String>, Vec<String>),
     {
         // Attempt to get read guard.
         let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
@@ -173,19 +174,26 @@ impl Index {
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
 
-        // 1. Get values
-        let res = row.get_values(get_columns, protocol, tid)?;
-        let current = res.get_values().unwrap();
+        // 1. Get current values of columns.
+        let current_values;
+        if read {
+            let res = row.get_values(columns, protocol, tid)?;
+            current_values = res.get_values();
+        } else {
+            current_values = None;
+        }
 
         // 2. Compute new values.
-        let (columns, new_values) = f(current, values);
+        let columns = vec!["todo".to_string()];
+        let (columns, new_values) = f(columns, current_values, params);
 
         // 3. Converson
-        let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
         let v: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
 
         // Execute write operation.
-        let res = row.set_values(&c, &v, protocol, tid)?;
+        let columns = vec!["todo"];
+
+        let res = row.set_values(&columns, &v, protocol, tid)?;
         Ok(res)
     }
 
