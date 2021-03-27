@@ -207,94 +207,122 @@ pub fn transact_savings(
     Ok("{\"updated 1 row.\"}".to_string())
 }
 
-// /// Amalgamate transaction.
-// pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-//     // Register transaction with scheduler.
-//     let meta = protocol.scheduler.register()?;
+/// Amalgamate transaction.
+pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    // Register transaction with scheduler.
+    let meta = protocol.scheduler.register()?;
 
-//     // Get customer ID from accounts table.
-//     let accounts_cols: Vec<&str> = vec!["customer_id"];
-//     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
-//     let res1 = protocol
-//         .scheduler
-//         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?;
-//     let cust_id = match i64::try_from(res1[0].clone()) {
-//         Ok(cust_id) => cust_id as u64,
-//         Err(e) => {
-//             protocol.scheduler.abort(meta.clone()).unwrap();
-//             return Err(e);
-//         }
-//     };
+    // Get customer ID from accounts table.
+    let accounts_cols: Vec<&str> = vec!["customer_id"];
+    let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name1));
+    let res1 = protocol
+        .scheduler
+        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?;
+    let cust_id = match i64::try_from(res1[0].clone()) {
+        Ok(cust_id) => cust_id as u64,
+        Err(e) => {
+            protocol.scheduler.abort(meta.clone()).unwrap();
+            return Err(e);
+        }
+    };
 
-//     // Get balance of accounts.
-//     let other_cols: Vec<&str> = vec!["balance"];
-//     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
-//     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
+    // Get balance of accounts and zero them.
+    let other_cols: Vec<&str> = vec!["balance"];
+    let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
+    let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
+    let values = vec!["0".to_string()];
+    let values: Vec<&str> = values.iter().map(|s| s as &str).collect();
+    let res2 = protocol.scheduler.read_and_update(
+        "savings",
+        savings_pk,
+        &other_cols,
+        &values,
+        meta.clone(),
+    )?;
+    let res3 = protocol.scheduler.read_and_update(
+        "checking",
+        checking_pk,
+        &other_cols,
+        &values,
+        meta.clone(),
+    )?;
+    // Get current balance.
+    let a = match f64::try_from(res2[0].clone()) {
+        Ok(balance) => balance,
+        Err(e) => {
+            protocol.scheduler.abort(meta.clone()).unwrap();
+            return Err(e);
+        }
+    };
 
-//     let res2 = protocol
-//         .scheduler
-//         .read("savings", savings_pk, &other_cols, meta.clone())?;
-//     let res3 = protocol
-//         .scheduler
-//         .read("checking", checking_pk, &other_cols, meta.clone())?;
+    let b = match f64::try_from(res3[0].clone()) {
+        Ok(balance) => balance,
+        Err(e) => {
+            protocol.scheduler.abort(meta.clone()).unwrap();
+            return Err(e);
+        }
+    };
 
-//     let a = if let Data::Double(balance) = res2[0] {
-//         balance
-//     } else {
-//         panic!("unexpected type");
-//     };
+    let total = a + b;
 
-//     let b = if let Data::Double(balance) = res3[0] {
-//         balance
-//     } else {
-//         panic!("unexpected type");
-//     };
-//     let total = a + b;
+    // Get customer ID from accounts table.
+    let accounts_cols: Vec<&str> = vec!["customer_id"];
+    let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name2));
+    let res1 = protocol
+        .scheduler
+        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?;
+    let cust_id = match i64::try_from(res1[0].clone()) {
+        Ok(cust_id) => cust_id as u64,
+        Err(e) => {
+            protocol.scheduler.abort(meta.clone()).unwrap();
+            return Err(e);
+        }
+    };
 
-//     // 3. Update balance to zero.
-//     // 3i. Create search key.
-//     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
-//     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
-//     // 2ii. Columns to read and pass to update closure.
-//     let get_cols: Vec<&str> = vec!["balance"];
-//     // 2iii. Convert values to pass to update closure to spaghetti datatype.
-//     let values = vec![Data::Double(0.0)];
-//     // 2iv. Define update closure.
-//     let update = |current: Vec<Data>, params: Vec<Data>| -> (Vec<String>, Vec<String>) {
-//         // Get current balance.
-//         let balance = if let Data::Double(bal) = current[0] {
-//             bal
-//         } else {
-//             panic!("unexpected type");
-//         };
-//         // Get deposit.
-//         let value = if let Data::Double(bal) = params[0] {
-//             bal
-//         } else {
-//             panic!("unexpected type");
-//         };
-//         // Create new balance.
-//         let new_values = vec!["0".to_string()];
+    // Update balance in checking table.
+    let checking_cols: Vec<String> = vec!["balance".to_string()];
+    let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
+    let params: Vec<Data> = vec![Data::Double(total)];
+    let update = |columns: Vec<String>,
+                  current: Option<Vec<Data>>,
+                  params: Vec<Data>|
+     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+        // Get current balance.
+        let balance = match f64::try_from(current.unwrap()[0].clone()) {
+            Ok(balance) => balance,
+            Err(e) => {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
+        // Get value.
+        let value = match f64::try_from(params[0].clone()) {
+            Ok(balance) => balance,
+            Err(e) => {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
 
-//         let columns = vec!["balance".to_string()];
-//         (columns, new_values)
-//     };
+        // Create new balance.
+        let new_balance = vec![(balance + value).to_string()];
+        Ok((columns, new_balance))
+    };
+    protocol.scheduler.update(
+        "checking",
+        checking_pk,
+        checking_cols,
+        true,
+        params,
+        &update,
+        meta.clone(),
+    )?;
 
-//     // 2v. Execute write operation.
-//     protocol.scheduler.update(
-//         "savings",
-//         savings_pk,
-//         &get_cols,
-//         &update,
-//         values,
-//         meta.clone(),
-//     )?;
+    // Commit transaction.
+    protocol.scheduler.commit(meta.clone())?;
 
-//     // Commit transaction.
-//     protocol.scheduler.commit(meta.clone())?;
-
-//     Ok("{\"updated 1 row.\"}".to_string())
-// }
+    Ok("{\"updated 2 rows.\"}".to_string())
+}
 
 #[cfg(test)]
 mod tests {
@@ -360,6 +388,10 @@ mod tests {
             "{total_balance=\"53334\"}"
         );
 
+        ////////////////////////////////////
+        //// Deposit Checking ////
+        ////////////////////////////////////
+
         assert_eq!(
             deposit_checking(
                 DepositChecking {
@@ -383,6 +415,10 @@ mod tests {
             "{total_balance=\"53344\"}"
         );
 
+        ////////////////////////////////////
+        //// Transact Saving ////
+        ////////////////////////////////////
+
         assert_eq!(
             transact_savings(
                 TransactSaving {
@@ -404,6 +440,55 @@ mod tests {
             )
             .unwrap(),
             "{total_balance=\"53300.7\"}"
+        );
+
+        /////////////////////////////
+        //// Amalgamate ////
+        /////////////////////////////
+
+        assert_eq!(
+            balance(
+                Balance {
+                    name: "cust2".to_string()
+                },
+                Arc::clone(&protocol)
+            )
+            .unwrap(),
+            "{total_balance=\"72811\"}"
+        );
+
+        assert_eq!(
+            amalgmate(
+                Amalgamate {
+                    name1: "cust1".to_string(),
+                    name2: "cust2".to_string(),
+                },
+                Arc::clone(&protocol)
+            )
+            .unwrap(),
+            "{\"updated 2 rows.\"}"
+        );
+
+        assert_eq!(
+            balance(
+                Balance {
+                    name: "cust1".to_string()
+                },
+                Arc::clone(&protocol)
+            )
+            .unwrap(),
+            "{total_balance=\"0\"}"
+        );
+
+        assert_eq!(
+            balance(
+                Balance {
+                    name: "cust2".to_string()
+                },
+                Arc::clone(&protocol)
+            )
+            .unwrap(),
+            "{total_balance=\"126111.7\"}"
         );
     }
 }
