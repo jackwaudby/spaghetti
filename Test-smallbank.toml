@@ -1,15 +1,25 @@
-log = "info"
-workload = "smallbank"
-transactions = 10
-seed = 42
-subscribers = 10
+address = "127.0.0.1"
+port = 6142
+log = "debug"
+timeout = 5
+mpsc_size = 32
+load = false
+clients = 4
 
-warehouses = 5
-districts = 10
-customers = 100
-max_items = 100
+protocol="2pl"
+workers = 4
+
+warmup = 1
+generator_mode = "closed"
+think_time = 1000
+
+transactions = 10
+workload = "smallbank"
+
+schema = "smallbank_schema.txt"
 
 set_seed = true
+seed = 1
 balance_mix = false
 accounts = 10
 hotspot_use_fixed_size = false

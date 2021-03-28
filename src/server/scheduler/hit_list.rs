@@ -86,7 +86,7 @@ impl Scheduler for HitList {
         let table = self.get_table(table, meta.clone())?;
         // Init row.
         let mut row = Row::new(Arc::clone(&table), "hit");
-        row.set_primary_key(key);
+        row.set_primary_key(key.clone());
         // Init values.
         for (i, column) in columns.iter().enumerate() {
             match row.init_value(column, &values[i].to_string()) {
@@ -111,7 +111,7 @@ impl Scheduler for HitList {
         // Record insert - used to rollback if transaction is aborted.
         debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
-        wg.add_key_inserted((index.get_name(), key));
+        wg.add_key_inserted((index.get_name(), key.clone()));
 
         // Attempt to insert row.
         match index.insert(key, row) {
@@ -156,7 +156,7 @@ impl Scheduler for HitList {
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
         // Execute read.
-        match index.read(key, columns, "hit", &meta.get_id().unwrap()) {
+        match index.read(key.clone(), columns, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
                 // Get access history.
                 let access_history = res.get_access_history().unwrap();
@@ -190,12 +190,81 @@ impl Scheduler for HitList {
     }
 
     /// Execute a write operation.
-    fn update(
+    fn read_and_update(
         &self,
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
+        meta: TransactionInfo,
+    ) -> Result<Vec<Data>, NonFatalError> {
+        // Transaction id.
+        let id = meta.get_id().unwrap().parse::<u64>().unwrap();
+        debug!("Update by transaction {}", id);
+
+        // Get table.
+        let table = self.get_table(table, meta.clone())?;
+        // Get index for this key's table.
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+
+        // Get write guard on active transaction entry.
+        debug!("Request WG on transaction {} in active transactions", id);
+        let mut wg = self.active_transactions.get_mut(&id).unwrap();
+
+        match index.read_and_update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
+            Ok(res) => {
+                // Get access history.
+                let access_history = res.get_access_history().unwrap();
+                // Detect conflicts.
+                for access in access_history {
+                    match access {
+                        // WW conflict
+                        Access::Write(tid) => {
+                            // Insert predecessor
+                            let tid = tid.parse::<u64>().unwrap();
+                            wg.add_predecessor(tid);
+                        }
+                        // RW conflict
+                        Access::Read(tid) => {
+                            let tid = tid.parse::<u64>().unwrap();
+                            wg.add_predecessor(tid);
+                        }
+                    }
+                }
+
+                // Add to keys read.
+                wg.add_key_updated((index.get_name(), key));
+                // Get values
+                let vals = res.get_values().unwrap();
+
+                drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
+                Ok(vals)
+            }
+            Err(e) => {
+                drop(wg);
+                debug!("Dropped WG on transaction {} in active transactions", id);
+                debug!("Update by transaction {} failed", id);
+                self.abort(meta).unwrap();
+                return Err(e);
+            }
+        }
+    }
+
+    /// Execute a write operation.
+    fn update(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: Vec<String>,
+        read: bool,
+        params: Vec<Data>,
+        // (columns, current_values, parameters) -> (columns,new_values)
+        f: &dyn Fn(
+            Vec<String>,
+            Option<Vec<Data>>,
+            Vec<Data>,
+        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         // Transaction id.
@@ -211,7 +280,15 @@ impl Scheduler for HitList {
         debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
-        match index.update(key, columns, values, "hit", &meta.get_id().unwrap()) {
+        match index.update(
+            key.clone(),
+            columns,
+            read,
+            params,
+            f,
+            "hit",
+            &meta.get_id().unwrap(),
+        ) {
             Ok(res) => {
                 // Get access history.
                 let access_history = res.get_access_history().unwrap();
@@ -269,7 +346,7 @@ impl Scheduler for HitList {
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
         // Execute remove op.
-        match index.delete(key, "hit") {
+        match index.delete(key.clone(), "hit") {
             Ok(res) => {
                 // Get the access history
                 let access_history = res.get_access_history().unwrap();
@@ -341,28 +418,34 @@ impl Scheduler for HitList {
         let deleted = at.get_keys_deleted();
         for (index, key) in &deleted {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.revert(*key, "hit", &meta.get_id().unwrap()).unwrap();
+            index
+                .revert(key.clone(), "hit", &meta.get_id().unwrap())
+                .unwrap();
         }
 
         debug!("Revert updates/deleted for transaction: {}", id);
         let updated = at.get_keys_updated();
         for (index, key) in &updated {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.revert(*key, "hit", &meta.get_id().unwrap()).unwrap();
+            index
+                .revert(key.clone(), "hit", &meta.get_id().unwrap())
+                .unwrap();
         }
         // Remove read accesses from rows read.
         debug!("Revert reads for transaction: {}", id);
         let read = at.get_keys_read();
         for (index, key) in read {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.revert_read(key, &meta.get_id().unwrap()).unwrap();
+            index
+                .revert_read(key.clone(), &meta.get_id().unwrap())
+                .unwrap();
         }
         // Remove inserted values.
         debug!("Revert inserted for transaction: {}", id);
         let inserted = at.get_keys_inserted();
         for (index, key) in inserted {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.remove(key).unwrap();
+            index.remove(key.clone()).unwrap();
         }
         debug!("All changes reverted for transaction: {}", id);
         debug!("Hit list: {:?}", lock.hit_list);

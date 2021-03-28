@@ -16,14 +16,20 @@ pub mod two_phase_locking;
 
 pub mod serialization_graph_testing;
 
+/// A concurrency control protocol.
+///
+/// Uses trait object for dynamic dispatch to switch between protocols.
 pub struct Protocol {
+    /// Trait object pointing to scheduler.
     pub scheduler: Box<dyn Scheduler + Send + Sync + 'static>,
 }
 
+/// Information about a transaction.
 #[derive(Debug, PartialEq, Clone)]
 pub struct TransactionInfo {
     // Transaction ID.
     id: Option<String>,
+
     // Timestamp used in deadlock detection.
     ts: Option<u64>,
 }
@@ -49,6 +55,7 @@ impl Protocol {
             "hit" => Protocol {
                 scheduler: Box::new(HitList::new(Arc::clone(&workload))),
             },
+
             _ => panic!("Incorrect concurrency control protocol"),
         };
         Ok(scheduler)
@@ -56,13 +63,17 @@ impl Protocol {
 }
 
 impl TransactionInfo {
+    /// Create new holder for a transaction's info.
     pub fn new(id: Option<String>, ts: Option<u64>) -> TransactionInfo {
         TransactionInfo { id, ts }
     }
 
+    /// Get the ID of a transaction.
     pub fn get_id(&self) -> Option<String> {
         self.id.clone()
     }
+
+    /// Get the timestamp of a transaction.
     pub fn get_ts(&self) -> Option<u64> {
         self.ts.clone()
     }
@@ -97,13 +108,30 @@ pub trait Scheduler {
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError>;
 
-    /// Update columns with values in a row.
-    fn update(
+    /// Update and return old values. (Get and set equivalent).
+    fn read_and_update(
         &self,
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
+        meta: TransactionInfo,
+    ) -> Result<Vec<Data>, NonFatalError>;
+
+    /// Update columns with values in a row.
+    fn update(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        columns: Vec<String>,
+        read: bool,
+        params: Vec<Data>,
+        // (columns, current_values, parameters) -> (columns,new_values)
+        f: &dyn Fn(
+            Vec<String>,
+            Option<Vec<Data>>,
+            Vec<Data>,
+        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError>;
 

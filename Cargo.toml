@@ -18,7 +18,7 @@ path = "src/bin/server.rs"
 
 [[bin]]
 name = "spag-gen"
-path = "src/bin/generator.rs"
+path = "src/bin/datagen.rs"
 
 [dependencies]
 chashmap = "2.2.2"

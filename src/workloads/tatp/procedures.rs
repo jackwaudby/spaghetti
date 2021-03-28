@@ -2,12 +2,13 @@ use crate::common::error::NonFatalError;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::tatp::keys::TatpPrimaryKey;
-use crate::workloads::tatp::profiles::{
+use crate::workloads::tatp::paramgen::{
     DeleteCallForwarding, GetAccessData, GetNewDestination, GetSubscriberData,
     InsertCallForwarding, UpdateLocationData, UpdateSubscriberData,
 };
 use crate::workloads::PrimaryKey;
 
+use std::convert::TryFrom;
 use std::sync::Arc;
 use std::thread;
 use tracing::debug;
@@ -123,9 +124,10 @@ pub fn get_new_destination(
     let meta = protocol.scheduler.register().unwrap();
     // Execute read operations.
     // 1) Attempt to get the special facility record.
-    let sf_res = protocol
-        .scheduler
-        .read("special_facility", sf_pk, &sf_columns, meta.clone())?;
+    let sf_res =
+        protocol
+            .scheduler
+            .read("special_facility", sf_pk.clone(), &sf_columns, meta.clone())?;
     // 2) Check sf.is_active = 1.
     let val = if let Data::Int(val) = sf_res[2] {
         val
@@ -140,9 +142,10 @@ pub fn get_new_destination(
         ));
     }
     // 3) Get call forwarding record.
-    let cf_res = protocol
-        .scheduler
-        .read("call_forwarding", cf_pk, &cf_columns, meta.clone())?;
+    let cf_res =
+        protocol
+            .scheduler
+            .read("call_forwarding", cf_pk.clone(), &cf_columns, meta.clone())?;
     // 4) Check end_time < cf.end_time
     let val = if let Data::Int(val) = cf_res[3] {
         val
@@ -218,34 +221,72 @@ pub fn update_subscriber_data(
     //     params.bit_1, params.s_id, params.data_a, params.s_id, params.sf_type
     // );
 
-    // Columns to write.
-    let columns_sb: Vec<&str> = vec!["bit_1"];
-    let columns_sp = vec!["data_a"];
-    // Values to write.
-    let values_sb = vec![params.bit_1.to_string()];
-    let values_sb: Vec<&str> = values_sb.iter().map(|s| s as &str).collect();
-    let values_sp = vec![params.data_a.to_string()];
-    let values_sp: Vec<&str> = values_sp.iter().map(|s| s as &str).collect();
+    // Register with scheduler.
+    let meta = protocol.scheduler.register().unwrap();
 
-    // Construct primary key.
     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    let columns_sb: Vec<String> = vec!["bit_1".to_string()];
+    let values_sb = vec![Data::Int(params.bit_1.into())];
+
+    let update = |columns: Vec<String>,
+                  current: Option<Vec<Data>>,
+                  params: Vec<Data>|
+     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+        // Get new bit_1.
+        let value = match i64::try_from(params[0].clone()) {
+            Ok(value) => value,
+            Err(e) => {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
+
+        let new_values = vec![value.to_string()];
+        let columns = vec!["bit_1".to_string()];
+        Ok((columns, new_values))
+    };
+
+    protocol.scheduler.update(
+        "subscriber",
+        pk_sb,
+        columns_sb,
+        false,
+        values_sb,
+        &update,
+        meta.clone(),
+    )?;
+
     let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
         params.s_id,
         params.sf_type.into(),
     ));
+    let columns_sp = vec!["data_a".to_string()];
+    let values_sp = vec![Data::Int(params.data_a.into())];
+    let update_sp = |columns: Vec<String>,
+                     current: Option<Vec<Data>>,
+                     params: Vec<Data>|
+     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+        // Get new bit_1.
+        let value = match i64::try_from(params[0].clone()) {
+            Ok(value) => value,
+            Err(e) => {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
 
-    // Register with scheduler.
-    let meta = protocol.scheduler.register().unwrap();
-
-    // Execute write operation.
-    protocol
-        .scheduler
-        .update("subscriber", pk_sb, &columns_sb, &values_sb, meta.clone())?;
+        // Create new balance.
+        let new_values = vec![value.to_string()];
+        let columns = vec!["data_a".to_string()];
+        Ok((columns, new_values))
+    };
     protocol.scheduler.update(
         "special_facility",
         pk_sp,
-        &columns_sp,
-        &values_sp,
+        columns_sp,
+        false,
+        values_sp,
+        &update_sp,
         meta.clone(),
     )?;
 
@@ -268,22 +309,42 @@ pub fn update_location(
     //     params.vlr_location
     // );
 
-    // Columns to write.
-    let columns_sb: Vec<&str> = vec!["vlr_location"];
-    // Values to write.
-    let values_sb = vec![params.vlr_location.to_string()];
-    let values_sb: Vec<&str> = values_sb.iter().map(|s| s as &str).collect();
-
-    // Construct primary key.
-    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
-
     // Register with scheduler.
-    let meta = protocol.scheduler.register()?;
+    let meta = protocol.scheduler.register().unwrap();
 
-    // Execute write operation.
-    protocol
-        .scheduler
-        .update("subscriber", pk_sb, &columns_sb, &values_sb, meta.clone())?;
+    // i. Create search key.
+    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    // ii. Columns to read and pass to update closure..
+    let columns_sb: Vec<String> = vec!["vlr_location".to_string()];
+    // iii. Convert values to pass to update closure to spaghetti datatype.
+    let values_sb = vec![Data::Int(params.vlr_location.into())];
+    let update = |columns: Vec<String>,
+                  current: Option<Vec<Data>>,
+                  params: Vec<Data>|
+     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+        // Get new bit_1.
+        let value = match i64::try_from(params[0].clone()) {
+            Ok(value) => value,
+            Err(e) => {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        };
+
+        let new_values = vec![value.to_string()];
+        let columns = vec!["bit_1".to_string()];
+        Ok((columns, new_values))
+    };
+
+    protocol.scheduler.update(
+        "subscriber",
+        pk_sb,
+        columns_sb,
+        false,
+        values_sb,
+        &update,
+        meta.clone(),
+    )?;
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;

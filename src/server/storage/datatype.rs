@@ -1,11 +1,21 @@
-use crate::Result;
+use crate::common::error::NonFatalError;
 
+use std::convert::TryFrom;
 use std::fmt::{self, Write};
 
 /// Element of a `Row' that holds `Data`.
 #[derive(Debug, Clone)]
 pub struct Field {
     data: Data,
+}
+
+/// Represents spaghetti's fundamental datatype.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Data {
+    Int(i64),
+    VarChar(String),
+    Double(f64),
+    Null,
 }
 
 impl Field {
@@ -25,6 +35,13 @@ impl Field {
     }
 }
 
+impl fmt::Display for Field {
+    /// Format: value.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.data)
+    }
+}
+
 impl fmt::Display for Data {
     /// Format: value.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -37,24 +54,53 @@ impl fmt::Display for Data {
     }
 }
 
-impl fmt::Display for Field {
-    /// Format: value.
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.data)
+impl TryFrom<Data> for i64 {
+    type Error = NonFatalError;
+
+    fn try_from(value: Data) -> Result<Self, Self::Error> {
+        if let Data::Int(int) = value {
+            Ok(int)
+        } else {
+            Err(NonFatalError::UnableToConvertFromDataType(
+                value.to_string(),
+                "i64".to_string(),
+            ))
+        }
     }
 }
 
-/// Represents fundamental datatype.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Data {
-    Int(i64),
-    VarChar(String),
-    Double(f64),
-    Null,
+impl TryFrom<Data> for f64 {
+    type Error = NonFatalError;
+
+    fn try_from(value: Data) -> Result<Self, Self::Error> {
+        if let Data::Double(int) = value {
+            Ok(int)
+        } else {
+            Err(NonFatalError::UnableToConvertFromDataType(
+                value.to_string(),
+                "f64".to_string(),
+            ))
+        }
+    }
+}
+
+impl TryFrom<Data> for String {
+    type Error = NonFatalError;
+
+    fn try_from(value: Data) -> Result<Self, Self::Error> {
+        if let Data::VarChar(int) = value {
+            Ok(int)
+        } else {
+            Err(NonFatalError::UnableToConvertFromDataType(
+                value.to_string(),
+                "string".to_string(),
+            ))
+        }
+    }
 }
 
 /// Convert columns and values to a result string.
-pub fn to_result(columns: &Vec<&str>, values: &Vec<Data>) -> Result<String> {
+pub fn to_result(columns: &Vec<&str>, values: &Vec<Data>) -> crate::Result<String> {
     let mut res: String;
     res = "{".to_string();
     for (i, column) in columns.iter().enumerate() {
@@ -88,6 +134,37 @@ mod tests {
         f.set(Data::Double(1.7));
         assert_eq!(f.get(), Data::Double(1.7));
         assert_eq!(format!("{}", f), String::from("1.7"));
+
+        // Conversion success
+        assert_eq!(i64::try_from(Data::Int(5)), Ok(5));
+        assert_eq!(f64::try_from(Data::Double(5.5)), Ok(5.5));
+        assert_eq!(
+            String::try_from(Data::VarChar("test".to_string())),
+            Ok("test".to_string())
+        );
+
+        // Conversion failure
+        assert_eq!(
+            i64::try_from(Data::Double(1.6)),
+            Err(NonFatalError::UnableToConvertFromDataType(
+                "1.6".to_string(),
+                "i64".to_string()
+            ))
+        );
+        assert_eq!(
+            f64::try_from(Data::Int(1)),
+            Err(NonFatalError::UnableToConvertFromDataType(
+                "1".to_string(),
+                "f64".to_string()
+            ))
+        );
+        assert_eq!(
+            String::try_from(Data::Int(1)),
+            Err(NonFatalError::UnableToConvertFromDataType(
+                "1".to_string(),
+                "string".to_string()
+            ))
+        );
     }
 
     #[test]

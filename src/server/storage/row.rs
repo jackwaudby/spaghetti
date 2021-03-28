@@ -88,7 +88,7 @@ impl Row {
 
     /// Returns a row's primary key.
     pub fn get_primary_key(&self) -> Option<PrimaryKey> {
-        self.primary_key
+        self.primary_key.clone()
     }
 
     /// Set a row's primary key.
@@ -265,6 +265,19 @@ impl Row {
         let res = OperationResult::new(None, access_history);
 
         Ok(res)
+    }
+
+    /// Get and set
+    pub fn get_and_set_values(
+        &mut self,
+        columns: &Vec<&str>,
+        values: &Vec<&str>,
+        protocol: &str,
+        tid: &str,
+    ) -> Result<OperationResult, NonFatalError> {
+        let res = self.get_values(columns, protocol, tid);
+        self.set_values(columns, values, protocol, tid);
+        res
     }
 
     /// Mark row as deleted.

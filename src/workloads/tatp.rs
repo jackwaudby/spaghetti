@@ -5,15 +5,11 @@ pub mod helper;
 
 pub mod loader;
 
-pub mod profiles;
-
-pub mod generator;
+pub mod paramgen;
 
 pub mod procedures;
 
 pub mod keys;
-
-pub mod records;
 
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum TatpTransaction {

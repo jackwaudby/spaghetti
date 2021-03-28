@@ -2,6 +2,7 @@ use crate::common::error::{FatalError, NonFatalError};
 use crate::server::storage::catalog::Catalog;
 use crate::server::storage::index::Index;
 use crate::server::storage::table::Table;
+use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tpcc::keys::TpccPrimaryKey;
 
@@ -19,27 +20,35 @@ pub mod tpcc;
 
 pub mod tatp;
 
-#[derive(PartialEq, Debug, Copy, Clone, Eq, Hash)]
-pub enum PrimaryKey {
-    Tatp(TatpPrimaryKey),
-    Tpcc(TpccPrimaryKey),
-}
-
-impl fmt::Display for PrimaryKey {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use PrimaryKey::*;
-        match &self {
-            Tatp(pk) => write!(f, "{:?}", pk),
-            Tpcc(pk) => write!(f, "{:?}", pk),
-        }
-    }
-}
+pub mod smallbank;
 
 /// Represent the workload.
 #[derive(Debug)]
 pub enum Workload {
     Tatp(Internal),
     Tpcc(Internal),
+    SmallBank(Internal),
+}
+
+/// Represents the data for a given workload.
+#[derive(Debug)]
+pub struct Internal {
+    /// Hashmap of tables.
+    tables: Arc<HashMap<String, Arc<Table>>>,
+
+    /// Hashmap of indexes; data is owned by the index.
+    indexes: Arc<HashMap<String, Arc<Index>>>,
+
+    /// Reference to configuration.
+    config: Arc<Config>,
+}
+
+/// Primary keys of workloads.
+#[derive(PartialEq, Debug, Clone, Eq, Hash)]
+pub enum PrimaryKey {
+    Tatp(TatpPrimaryKey),
+    Tpcc(TpccPrimaryKey),
+    SmallBank(SmallBankPrimaryKey),
 }
 
 impl Workload {
@@ -56,6 +65,11 @@ impl Workload {
             "tpcc" => {
                 // Create internals from schema file
                 let internals = Internal::new("tpcc_short_schema.txt", config)?;
+                Ok(Workload::Tpcc(internals))
+            }
+            "smallbank" => {
+                // Create internals from schema file
+                let internals = Internal::new("smallbank_schema.txt", config)?;
                 Ok(Workload::Tpcc(internals))
             }
             _ => Err(Box::new(FatalError::IncorrectWorkload(workload))),
@@ -76,7 +90,23 @@ impl Workload {
                     tatp::loader::populate_tables(i, rng)?;
                 }
             }
-            Tpcc(ref i) => tpcc::loader::populate_tables(i, rng)?,
+            Tpcc(ref i) => {
+                if self.get_internals().get_config().get_bool("load")? {
+                    // TODO
+                    tpcc::loader::populate_tables(i, rng)?
+                } else {
+                    tpcc::loader::populate_tables(i, rng)?
+                }
+            }
+            SmallBank(ref i) => {
+                if self.get_internals().get_config().get_bool("load")? {
+                    smallbank::loader::load_account_table(i)?;
+                    smallbank::loader::load_checking_table(i)?;
+                    smallbank::loader::load_savings_table(i)?;
+                } else {
+                    smallbank::loader::populate_tables(i, rng)?
+                }
+            } // TODO
         }
         Ok(())
     }
@@ -87,27 +117,8 @@ impl Workload {
         match *self {
             Tatp(ref i) => &i,
             Tpcc(ref i) => &i,
+            SmallBank(ref i) => &i,
         }
-    }
-}
-
-/// Represents the data for a given workload.
-#[derive(Debug)]
-pub struct Internal {
-    /// Hashmap of tables.
-    tables: Arc<HashMap<String, Arc<Table>>>,
-
-    /// Hashmap of indexes; data is owned by the index.
-    indexes: Arc<HashMap<String, Arc<Index>>>,
-
-    /// Reference to configuration.
-    config: Arc<Config>,
-}
-
-// TODO: improve display.
-impl fmt::Display for Internal {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#?}", self.tables)
     }
 }
 
@@ -206,5 +217,23 @@ impl Internal {
     /// Get atomic shared reference to `Config`.
     pub fn get_config(&self) -> Arc<Config> {
         Arc::clone(&self.config)
+    }
+}
+
+// TODO: improve display.
+impl fmt::Display for Internal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:#?}", self.tables)
+    }
+}
+
+impl fmt::Display for PrimaryKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use PrimaryKey::*;
+        match &self {
+            Tatp(pk) => write!(f, "{:?}", pk),
+            Tpcc(pk) => write!(f, "{:?}", pk),
+            SmallBank(pk) => write!(f, "{:?}", pk),
+        }
     }
 }

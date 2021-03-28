@@ -41,7 +41,7 @@ fn populate_item_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     for i_id in 0..max_items + 1 {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Item(i_id));
-        row.set_primary_key(pk);
+        row.set_primary_key(pk.clone());
         row.init_value("i_id", &i_id.to_string())?;
         row.init_value("i_im_id", &rng.gen_range(1..=10000).to_string())?;
         row.init_value("i_name", &helper::random_string(14, 24, rng))?;
@@ -69,7 +69,7 @@ fn populate_warehouse_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     for w_id in 0..n {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Warehouse(w_id));
-        row.set_primary_key(pk);
+        row.set_primary_key(pk.clone());
         row.init_value("w_id", &w_id.to_string())?;
         row.init_value("w_name", &helper::random_string(6, 10, rng))?;
         row.init_value("w_street_1", &helper::random_string(10, 20, rng))?;
@@ -103,7 +103,7 @@ fn populate_district_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         for d_id in 0..d {
             let mut row = Row::new(Arc::clone(&t), &protocol);
             let pk = PrimaryKey::Tpcc(TpccPrimaryKey::District(w_id, d_id));
-            row.set_primary_key(pk);
+            row.set_primary_key(pk.clone());
             row.init_value("d_id", &d_id.to_string())?;
             row.init_value("d_w_id", &w_id.to_string())?;
             row.init_value("d_name", &helper::random_string(6, 10, rng))?;
@@ -141,7 +141,7 @@ fn populate_stock_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         for s_i_id in 0..mi {
             let mut row = Row::new(Arc::clone(&t), &protocol);
             let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Stock(w_id, s_i_id));
-            row.set_primary_key(pk);
+            row.set_primary_key(pk.clone());
             row.init_value("s_i_id", &s_i_id.to_string())?;
             row.init_value("s_w_id", &w_id.to_string())?;
             row.init_value("s_quantity", &rng.gen_range(10..=100).to_string())?;
@@ -174,7 +174,7 @@ fn populate_customer_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
             for c_id in 0..c {
                 let mut row = Row::new(Arc::clone(&t), &protocol);
                 let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Customer(w_id, d_id, c_id));
-                row.set_primary_key(pk);
+                row.set_primary_key(pk.clone());
                 row.init_value("c_id", &c_id.to_string())?;
                 row.init_value("c_d_id", &d_id.to_string())?;
                 row.init_value("c_w_id", &w_id.to_string())?;

@@ -1,5 +1,7 @@
 pub mod common;
 
+pub mod datagen;
+
 pub mod client;
 
 pub mod server;
