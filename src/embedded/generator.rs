@@ -49,7 +49,7 @@ impl Generator {
         let transactions = 10;
         let mut generator = match config.get_str("workload").unwrap().as_str() {
             "tatp" => {
-                let subscribers = 10;
+                let subscribers = 1;
                 let gen = TatpGenerator::new(subscribers as u64, false);
                 ParameterGenerator::Tatp(gen)
             }

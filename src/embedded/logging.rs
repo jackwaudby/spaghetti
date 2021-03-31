@@ -1,4 +1,5 @@
 use crate::common::message::InternalResponse;
+use crate::server::statistics::LocalStatistics;
 
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::thread;
@@ -10,23 +11,47 @@ pub struct Logger {
     logger_rx: Receiver<InternalResponse>,
 
     /// Channel to  main to the logger.
-    _main_tx: SyncSender<()>,
+    main_tx: SyncSender<LocalStatistics>,
+
+    /// Local stats
+    stats: Option<LocalStatistics>,
 }
 
 impl Logger {
     /// Create a new `Logger`.
-    pub fn new(logger_rx: Receiver<InternalResponse>, main_tx: SyncSender<()>) -> Logger {
+    pub fn new(
+        logger_rx: Receiver<InternalResponse>,
+        main_tx: SyncSender<LocalStatistics>,
+        stats: Option<LocalStatistics>,
+    ) -> Logger {
         Logger {
             logger_rx,
-            _main_tx: main_tx,
+            main_tx,
+            stats,
         }
     }
 
     /// Run logger.
     pub fn run(&mut self) {
-        while let Ok(request) = self.logger_rx.recv() {
-            info!("{:?}", request);
+        while let Ok(response) = self.logger_rx.recv() {
+            info!("{:?}", response);
+
+            let InternalResponse {
+                transaction,
+                outcome,
+                latency,
+                ..
+            } = response;
+
+            // Call record form stats.
+            self.stats
+                .as_mut()
+                .unwrap()
+                .record(transaction, outcome.clone(), latency);
         }
+
+        let stats = self.stats.take().unwrap();
+        self.main_tx.send(stats).unwrap();
     }
 }
 
