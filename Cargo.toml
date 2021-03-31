@@ -20,6 +20,10 @@ path = "src/bin/server.rs"
 name = "spag-gen"
 path = "src/bin/generator.rs"
 
+[[bin]]
+name = "spag-em"
+path = "src/bin/embedded.rs"
+
 [dependencies]
 chashmap = "2.2.2"
 rand = "0.8.0"
