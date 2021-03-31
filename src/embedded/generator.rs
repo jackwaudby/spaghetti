@@ -1,6 +1,6 @@
 use crate::common::message::{InternalResponse, Message, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
-use crate::workloads::tatp::generator::TatpGenerator;
+use crate::workloads::tatp::paramgen::TatpGenerator;
 
 use config::Config;
 use std::sync::mpsc::{Receiver, SyncSender};

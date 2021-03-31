@@ -276,7 +276,7 @@ impl Row {
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
         let res = self.get_values(columns, protocol, tid);
-        self.set_values(columns, values, protocol, tid);
+        self.set_values(columns, values, protocol, tid)?;
         res
     }
 

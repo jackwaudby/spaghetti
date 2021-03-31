@@ -3,7 +3,7 @@ use crate::embedded::generator::InternalRequest;
 use crate::embedded::pool::ThreadPool;
 use crate::server::scheduler::Protocol;
 use crate::workloads::tatp;
-use crate::workloads::tatp::profiles::TatpTransactionProfile;
+use crate::workloads::tatp::paramgen::TatpTransactionProfile;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -104,6 +104,7 @@ impl TransactionManager {
                     }
                 }
                 Transaction::Tpcc(_) => unimplemented!(),
+                Transaction::SmallBank(_) => unimplemented!(),
             };
 
             // Stop timer.

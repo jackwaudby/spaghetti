@@ -8,5 +8,5 @@ warmup = 2
 protocol="sgt"
 workers = 4
 workload = "tatp"
-subscribers = 100000
-transactions = 100000
+subscribers = 1
+transactions = 100

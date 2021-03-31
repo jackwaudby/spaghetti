@@ -228,8 +228,8 @@ pub fn update_subscriber_data(
     let columns_sb: Vec<String> = vec!["bit_1".to_string()];
     let values_sb = vec![Data::Int(params.bit_1.into())];
 
-    let update = |columns: Vec<String>,
-                  current: Option<Vec<Data>>,
+    let update = |_columns: Vec<String>,
+                  _current: Option<Vec<Data>>,
                   params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
         // Get new bit_1.
@@ -262,8 +262,8 @@ pub fn update_subscriber_data(
     ));
     let columns_sp = vec!["data_a".to_string()];
     let values_sp = vec![Data::Int(params.data_a.into())];
-    let update_sp = |columns: Vec<String>,
-                     current: Option<Vec<Data>>,
+    let update_sp = |_columns: Vec<String>,
+                     _current: Option<Vec<Data>>,
                      params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
         // Get new bit_1.
@@ -318,8 +318,8 @@ pub fn update_location(
     let columns_sb: Vec<String> = vec!["vlr_location".to_string()];
     // iii. Convert values to pass to update closure to spaghetti datatype.
     let values_sb = vec![Data::Int(params.vlr_location.into())];
-    let update = |columns: Vec<String>,
-                  current: Option<Vec<Data>>,
+    let update = |_columns: Vec<String>,
+                  _current: Option<Vec<Data>>,
                   params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
         // Get new bit_1.
