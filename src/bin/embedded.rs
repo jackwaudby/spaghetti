@@ -1,21 +1,15 @@
-use spaghetti::common::message::{InternalResponse, Message};
-use spaghetti::common::parameter_generation::ParameterGenerator;
+use spaghetti::common::message::InternalResponse;
 use spaghetti::embedded::generator::{self, Generator, InternalRequest};
 use spaghetti::embedded::logging::{self, Logger};
 use spaghetti::embedded::manager::{self, TransactionManager};
-use spaghetti::workloads::tatp::generator::TatpGenerator;
 use spaghetti::workloads::Workload;
 
 use config::Config;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, SyncSender, TryRecvError};
+use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::Arc;
-use std::thread;
-use std::time::{Duration, Instant};
-use tokio::runtime::Runtime;
-use tracing::{error, info, Level};
+use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
 fn main() {
@@ -50,16 +44,16 @@ fn main() {
     let (main_tx, main_rx): (SyncSender<()>, Receiver<()>) = std::sync::mpsc::sync_channel(32);
 
     // Generator
-    let mut g = Generator::new(req_tx, resp_tx);
+    let g = Generator::new(req_tx, resp_tx);
     generator::run(g, config);
 
     // Logger.
-    let mut logger = Logger::new(resp_rx, main_tx);
+    let logger = Logger::new(resp_rx, main_tx);
     logging::run(logger);
 
     // Manager.
-    let mut tm = TransactionManager::new(Arc::clone(&workload), req_rx);
+    let tm = TransactionManager::new(Arc::clone(&workload), req_rx);
     manager::run(tm);
 
-    main_rx.recv();
+    main_rx.recv().unwrap();
 }

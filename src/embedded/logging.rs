@@ -10,13 +10,16 @@ pub struct Logger {
     logger_rx: Receiver<InternalResponse>,
 
     /// Channel to  main to the logger.
-    main_tx: SyncSender<()>,
+    _main_tx: SyncSender<()>,
 }
 
 impl Logger {
     /// Create a new `Logger`.
     pub fn new(logger_rx: Receiver<InternalResponse>, main_tx: SyncSender<()>) -> Logger {
-        Logger { logger_rx, main_tx }
+        Logger {
+            logger_rx,
+            _main_tx: main_tx,
+        }
     }
 
     /// Run logger.
