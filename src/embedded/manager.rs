@@ -1,88 +1,58 @@
-use crate::common::message::{InternalRequest, InternalResponse, Outcome, Parameters, Transaction};
-use crate::server::pool::ThreadPool;
+use crate::common::message::{InternalResponse, Outcome, Parameters, Transaction};
+use crate::embedded::generator::InternalRequest;
+use crate::embedded::pool::ThreadPool;
 use crate::server::scheduler::Protocol;
 use crate::workloads::tatp;
 use crate::workloads::tatp::profiles::TatpTransactionProfile;
 use crate::workloads::Workload;
 use crate::Result;
 
+use std::sync::mpsc::Receiver;
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 /// Transaction manager owns a thread pool containing workers.
 ///
 /// # Shutdown
 ///
 /// Graceful shutdown:
-/// Occurs when all channels from the listener and read handlers are dropped.
+/// Occurs when the generator finishes.
 ///
 /// Internal errors:
 /// Thread pool may panic and close early.
 pub struct TransactionManager {
-    /// State
-    pub state: State,
-
     /// Thread pool.
-    pub pool: ThreadPool,
+    pool: ThreadPool,
 
     /// Handle to scheduler.
     scheduler: Arc<Protocol>,
 
-    /// Channel to receive requests from read handler.
-    work_rx: std::sync::mpsc::Receiver<InternalRequest>,
-
-    /// Listen for shutdown.
-    pub shutdown_rx: std::sync::mpsc::Receiver<()>,
-
-    /// Channel to notify write handler
-    _notify_wh_tx: tokio::sync::broadcast::Sender<State>,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum State {
-    Active,
-    GracefullyShutdown,
-    ThreadPoolPanicked,
+    /// Channel to receive requests from generator.
+    request_rx: Receiver<InternalRequest>,
 }
 
 impl TransactionManager {
     /// Create a new `TransactionManager`.
     pub fn new(
         workload: Arc<Workload>,
-        work_rx: std::sync::mpsc::Receiver<InternalRequest>,
-        shutdown_rx: std::sync::mpsc::Receiver<()>,
-        _notify_wh_tx: tokio::sync::broadcast::Sender<State>,
+        request_rx: Receiver<InternalRequest>,
     ) -> TransactionManager {
-        // Create thread pool.
         let pool = ThreadPool::new(Arc::clone(&workload));
-        // Create scheduler.
         let scheduler = Arc::new(Protocol::new(Arc::clone(&workload), pool.size()).unwrap());
+
         TransactionManager {
-            state: State::Active,
             pool,
             scheduler,
-            work_rx,
-            shutdown_rx,
-            _notify_wh_tx,
+            request_rx,
         }
     }
 
-    /// Get shared reference to thread pool.
-    pub fn get_pool(&self) -> &ThreadPool {
-        &self.pool
-    }
-
-    /// Get shared reference to scheduler.
-    pub fn get_scheduler(&self) -> Arc<Protocol> {
-        Arc::clone(&self.scheduler)
-    }
-
     /// Run transaction manager.
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) {
         // Closure passed to thread pool.
-        let execute_request = |request: InternalRequest, scheduler| -> Result<()> {
+        let execute_request = |request: InternalRequest, scheduler: Arc<Protocol>| -> Result<()> {
             // Destructure internal request.
             let InternalRequest {
                 request_no,
@@ -149,65 +119,27 @@ impl TransactionManager {
                 outcome,
                 latency,
             };
-            // Send to corresponding `WriteHandler`.
+
+            // Send to logger.
             response_sender.send(response).unwrap();
             Ok(())
         };
 
-        loop {
-            // Check if shutdown initiated.
-            // All `ReadHandler`s must have closed, dropping their `Sender` handles.
-            if let Err(std::sync::mpsc::TryRecvError::Disconnected) = self.shutdown_rx.try_recv() {
-                debug!("Manager received shutdown from all read handlers");
-                // Drain remainder of `Request`s sent from `ReadHandler`s.
-                while let Ok(request) = self.work_rx.recv() {
-                    // Get handle to scheduler.
-                    let scheduler = Arc::clone(&self.scheduler);
-
-                    self.pool.listen_for_panic();
-                    // Send job to thread pool.
-                    self.pool
-                        .execute(move || execute_request(request, scheduler))?;
-                    // debug!("Manager sent request to pool");
-                }
-
-                assert!(self.work_rx.try_iter().next().is_none());
-                debug!("Request queue empty");
-                break;
-            } else {
-                // Normal operation.
-                if let Ok(request) = self.work_rx.try_recv() {
-                    // Get handle to scheduler.
-                    let scheduler = Arc::clone(&self.scheduler);
-
-                    self.pool.listen_for_panic();
-                    // Send job to thread pool.
-                    self.pool
-                        .execute(move || execute_request(request, scheduler))?;
-                }
-            }
+        while let Ok(request) = self.request_rx.recv() {
+            let scheduler = Arc::clone(&self.scheduler);
+            self.pool.listen_for_panic();
+            self.pool
+                .execute(move || execute_request(request, scheduler))
+                .unwrap();
         }
-        Ok(())
     }
 }
 
-/// Start thread to run the transaction manager.
+/// Run transaction manager on a thread.
 pub fn run(mut tm: TransactionManager) {
     thread::spawn(move || {
         info!("Start transaction manager");
-        if let Err(err) = tm.run() {
-            error!("{}", err);
-            if let Err(err) = tm._notify_wh_tx.send(State::ThreadPoolPanicked) {
-                error!("{}", err);
-            }
-        } else {
-            if let Err(err) = tm._notify_wh_tx.send(State::GracefullyShutdown) {
-                error!("{}", err);
-            }
-        }
+        tm.run();
+        info!("Transaction manager closing...");
     });
-
-    // Transaction Manager dropped here.
-    // First threadpool is dropped which cleans itself up after finishing request.
-    // Send message to each Write Handler says no more requests/
 }

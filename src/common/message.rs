@@ -4,6 +4,7 @@ use crate::workloads::tatp::profiles::TatpTransactionProfile;
 use crate::workloads::tatp::TatpTransaction;
 use crate::workloads::tpcc::profiles::TpccTransactionProfile;
 use crate::workloads::tpcc::TpccTransaction;
+
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::fmt;
