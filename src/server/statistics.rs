@@ -141,8 +141,20 @@ impl GlobalStatistics {
             let mut temp = transaction.raw_latency.clone();
             raw_latency.append(&mut temp);
         }
-        let abort_rate = (aborted as f64 / completed as f64) * 100.0;
-        let throughput = completed as f64 / self.end.unwrap().as_secs() as f64;
+
+        let abort_rate;
+        let throughput;
+        if self.workload == "tatp" {
+            // missing data does not contributed to the abort rate.
+            let tatp_aborted = aborted - self.abort_breakdown.row_not_found;
+            let tatp_success = committed + self.abort_breakdown.row_not_found;
+
+            abort_rate = (tatp_aborted as f64 / completed as f64) * 100.0;
+            throughput = tatp_success as f64 / self.end.unwrap().as_secs() as f64;
+        } else {
+            abort_rate = (aborted as f64 / completed as f64) * 100.0;
+            throughput = committed as f64 / self.end.unwrap().as_secs() as f64;
+        }
         // Compute latency.
         let min = raw_latency.min() * 1000.0;
         let max = raw_latency.max() * 1000.0;
