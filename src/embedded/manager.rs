@@ -7,7 +7,7 @@ use crate::workloads::tatp::profiles::TatpTransactionProfile;
 use crate::workloads::Workload;
 use crate::Result;
 
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
@@ -38,8 +38,9 @@ impl TransactionManager {
     pub fn new(
         workload: Arc<Workload>,
         request_rx: Receiver<InternalRequest>,
+        next_tx: SyncSender<()>,
     ) -> TransactionManager {
-        let pool = ThreadPool::new(Arc::clone(&workload));
+        let pool = ThreadPool::new(Arc::clone(&workload), next_tx);
         let scheduler = Arc::new(Protocol::new(Arc::clone(&workload), pool.size()).unwrap());
 
         TransactionManager {

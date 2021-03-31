@@ -2,7 +2,7 @@ use crate::common::error::FatalError;
 use crate::workloads::Workload;
 use crate::Result;
 
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender, SyncSender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tracing::{debug, info};
@@ -55,7 +55,7 @@ impl ThreadPool {
     /// # Panics
     ///
     /// The `new` function will panic if the size is zero.
-    pub fn new(workload: Arc<Workload>) -> ThreadPool {
+    pub fn new(workload: Arc<Workload>, next_tx: SyncSender<()>) -> ThreadPool {
         match workload
             .get_internals()
             .get_config()
@@ -92,6 +92,7 @@ impl ThreadPool {
                         None,
                         Arc::clone(&receiver),
                         panic_sender.clone(),
+                        next_tx.clone(),
                     ));
                 }
                 ThreadPool {
@@ -125,6 +126,7 @@ impl ThreadPool {
                         Some(core_id),
                         Arc::clone(&receiver),
                         panic_sender.clone(),
+                        next_tx.clone(),
                     ));
                 }
                 ThreadPool {
@@ -194,6 +196,7 @@ impl Worker {
         core_id: Option<core_affinity::CoreId>,
         receiver: Arc<Mutex<mpsc::Receiver<Message>>>,
         panic_receiver: mpsc::Sender<()>,
+        next_tx: SyncSender<()>,
     ) -> Worker {
         // Set thread name to id.
         let builder = thread::Builder::new().name(id.to_string().into());
@@ -206,6 +209,9 @@ impl Worker {
                     // Pin this thread to a single CPU core.
                     core_affinity::set_for_current(core_id);
                 }
+
+                next_tx.send(()).unwrap();
+
                 loop {
                     // debug!("Worker {} waiting for job.", id);
                     // Get message from job queue.
@@ -213,11 +219,15 @@ impl Worker {
                     // Execute job.
                     match message {
                         Message::NewJob(job) => {
-                            // debug!("Worker {} got a job; executing.", id);
-                            // If closure causes error then panic.
                             if let Err(e) = job.call_box() {
                                 debug!("Panicked - drops sentinal");
                                 panic!("{}", e);
+                            }
+
+                            // ask for another request.
+                            match next_tx.send(()) {
+                                Ok(_) => {}
+                                Err(e) => debug!("{}", e), // Can happen when all transactions have been sent and the generator thread is dropped.
                             }
                         }
                         Message::Terminate => {

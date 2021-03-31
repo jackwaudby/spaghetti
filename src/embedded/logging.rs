@@ -34,8 +34,6 @@ impl Logger {
     /// Run logger.
     pub fn run(&mut self) {
         while let Ok(response) = self.logger_rx.recv() {
-            info!("{:?}", response);
-
             let InternalResponse {
                 transaction,
                 outcome,

@@ -54,8 +54,10 @@ fn main() {
     let (main_tx, main_rx): (SyncSender<LocalStatistics>, Receiver<LocalStatistics>) =
         std::sync::mpsc::sync_channel(32);
 
+    let (next_tx, next_rx): (SyncSender<()>, Receiver<()>) = std::sync::mpsc::sync_channel(32);
+
     // Generator
-    let g = Generator::new(req_tx, resp_tx);
+    let g = Generator::new(req_tx, resp_tx, next_rx);
     generator::run(g, Arc::clone(&config));
 
     // Logger.
@@ -66,7 +68,7 @@ fn main() {
     logging::run(logger);
 
     // Manager.
-    let tm = TransactionManager::new(Arc::clone(&workload), req_rx);
+    let tm = TransactionManager::new(Arc::clone(&workload), req_rx, next_tx);
     manager::run(tm);
 
     let local_stats = main_rx.recv().unwrap();
