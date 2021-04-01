@@ -83,6 +83,29 @@ pub fn get_data_x(n: usize, rng: &mut StdRng) -> String {
     data_x
 }
 
+/// Get constant A.
+fn get_a(subscribers: u32) -> u32 {
+    match subscribers {
+        x if x <= 1000000 => 65535,
+        x if x <= 10000000 => 1048575,
+        _ => 2097151,
+    }
+}
+
+/// Get subscriber id
+fn nurand_sid(rng: &mut StdRng, subscribers: u32, start_id: u32) -> u32 {
+    let x = start_id;
+    let y = x + subscribers;
+    let a = get_a(subscribers);
+
+    let gr1 = rng.gen_range(0..=a);
+    let gr2 = rng.gen_range(x..=y);
+
+    let p1 = gr1 | gr2;
+    let p2 = y - x + 1;
+    (p1.rem_euclid(p2)) + x
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
