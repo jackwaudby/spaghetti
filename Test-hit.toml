@@ -20,3 +20,4 @@ subscribers = 3
 seed = 42
 
 clients = 4
+nurand = false
