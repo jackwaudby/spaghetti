@@ -59,7 +59,9 @@ impl Producer {
             "tatp" => {
                 // Get necessary initialise parameters.
                 let subscribers = configuration.get_int("subscribers")?;
-                let gen = TatpGenerator::new(subscribers as u64, false);
+                let use_nurand = configuration.get_bool("nurand")?;
+
+                let gen = TatpGenerator::new(subscribers as u64, false, use_nurand);
                 ParameterGenerator::Tatp(gen)
             }
             "tpcc" => {

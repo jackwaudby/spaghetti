@@ -57,7 +57,9 @@ impl Generator {
         let mut generator = match config.get_str("workload").unwrap().as_str() {
             "tatp" => {
                 let subscribers = config.get_int("subscribers").unwrap();
-                let gen = TatpGenerator::new(subscribers as u64, false);
+                let use_nurand = config.get_bool("use_nurand").unwrap();
+
+                let gen = TatpGenerator::new(subscribers as u64, false, use_nurand);
                 ParameterGenerator::Tatp(gen)
             }
             _ => unimplemented!(),

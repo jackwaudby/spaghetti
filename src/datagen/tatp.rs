@@ -10,11 +10,11 @@ use rand::rngs::StdRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-pub fn params(transactions: u64, subscribers: u64) -> Result<()> {
+pub fn params(transactions: u64, subscribers: u64, use_nurand: bool) -> Result<()> {
     // Init writer.
     let mut wtr = Writer::from_path("data/tatp/params.csv")?;
     // Init generator.
-    let mut gen = TatpGenerator::new(subscribers, false);
+    let mut gen = TatpGenerator::new(subscribers, false, use_nurand);
 
     for _ in 1..=transactions {
         let message = gen.generate();

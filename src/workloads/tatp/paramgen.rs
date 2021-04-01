@@ -16,15 +16,20 @@ use std::fmt;
 pub struct TatpGenerator {
     /// Subscribers in the workload.
     subscribers: u64,
+
     /// Rng.
     rng: StdRng,
+
+    /// Use non-uniform distribution.
+    use_nurand: bool,
+
     /// Number of transactions generated.
     pub generated: u32,
 }
 
 impl TatpGenerator {
     /// Create new `TatpGenerator`.
-    pub fn new(subscribers: u64, set_seed: bool) -> TatpGenerator {
+    pub fn new(subscribers: u64, set_seed: bool, use_nurand: bool) -> TatpGenerator {
         let rng: StdRng;
         if set_seed {
             rng = SeedableRng::seed_from_u64(1);
@@ -35,6 +40,7 @@ impl TatpGenerator {
             subscribers,
             rng,
             generated: 0,
+            use_nurand,
         }
     }
 }
@@ -64,7 +70,12 @@ impl TatpGenerator {
         match n {
             x if x < 0.35 => {
                 // GET_SUBSCRIBER_DATA
-                let s_id = self.rng.gen_range(1..=self.subscribers);
+                let s_id;
+                if self.use_nurand {
+                    s_id = helper::nurand_sid(&mut self.rng, self.subscribers, 1);
+                } else {
+                    s_id = self.rng.gen_range(1..=self.subscribers);
+                }
                 let payload = GetSubscriberData { s_id };
                 (
                     TatpTransaction::GetSubscriberData,

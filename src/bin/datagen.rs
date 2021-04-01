@@ -48,7 +48,9 @@ fn main() -> Result<()> {
 
             // Params
             let t = settings.get_int("transactions")? as u64;
-            tatp::params(10, t)?;
+            let use_nurand = settings.get_bool("use_nurand")?;
+
+            tatp::params(10, t, use_nurand)?;
         }
         "smallbank" => {
             // Remove directory.
