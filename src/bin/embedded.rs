@@ -17,7 +17,7 @@ use tracing_subscriber::FmtSubscriber;
 
 fn main() {
     // Config.
-    let file = "Server.toml";
+    let file = "Embedded.toml";
     let mut settings = Config::default();
     settings.merge(config::File::with_name(file)).unwrap();
     let config = Arc::new(settings);

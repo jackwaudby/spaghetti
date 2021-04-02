@@ -355,7 +355,9 @@ impl Row {
             // Retrieve old values.
             let old_fields = self.prev_fields.take();
             // Reset.
-            self.current_fields = old_fields.unwrap();
+            if let Some(_) = old_fields {
+                self.current_fields = old_fields.unwrap();
+            }
             self.set_dirty(false);
             // Trim access history.
             match protocol {

@@ -2,6 +2,8 @@ use crate::common::message::{InternalResponse, Outcome, Parameters, Transaction}
 use crate::embedded::generator::InternalRequest;
 use crate::embedded::pool::ThreadPool;
 use crate::server::scheduler::Protocol;
+use crate::workloads::smallbank;
+use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::tatp;
 use crate::workloads::tatp::paramgen::TatpTransactionProfile;
 use crate::workloads::Workload;
@@ -103,8 +105,39 @@ impl TransactionManager {
                         panic!("transaction type and parameters do not match");
                     }
                 }
+                Transaction::SmallBank(_) => {
+                    if let Parameters::SmallBank(params) = parameters {
+                        match params {
+                            SmallBankTransactionProfile::Amalgamate(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                smallbank::procedures::amalgmate(params, scheduler)
+                            }
+                            SmallBankTransactionProfile::Balance(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                smallbank::procedures::balance(params, scheduler)
+                            }
+                            SmallBankTransactionProfile::DepositChecking(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                smallbank::procedures::deposit_checking(params, scheduler)
+                            }
+                            SmallBankTransactionProfile::SendPayment(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                smallbank::procedures::send_payment(params, scheduler)
+                            }
+                            SmallBankTransactionProfile::TransactSaving(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                smallbank::procedures::transact_savings(params, scheduler)
+                            }
+                            SmallBankTransactionProfile::WriteCheck(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                smallbank::procedures::write_check(params, scheduler)
+                            }
+                        }
+                    } else {
+                        panic!("transaction type and parameters do not match");
+                    }
+                }
                 Transaction::Tpcc(_) => unimplemented!(),
-                Transaction::SmallBank(_) => unimplemented!(),
             };
 
             // Stop timer.

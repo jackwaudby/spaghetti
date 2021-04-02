@@ -1,4 +1,5 @@
 use crate::common::message::Message;
+use crate::workloads::smallbank::paramgen::SmallBankGenerator;
 use crate::workloads::tatp::paramgen::TatpGenerator;
 use crate::workloads::tpcc::generator::TpccGenerator;
 
@@ -6,6 +7,7 @@ use crate::workloads::tpcc::generator::TpccGenerator;
 pub enum ParameterGenerator {
     Tatp(TatpGenerator),
     Tpcc(TpccGenerator),
+    SmallBank(SmallBankGenerator),
 }
 
 impl ParameterGenerator {
@@ -15,6 +17,7 @@ impl ParameterGenerator {
         match self {
             Tatp(ref mut gen) => gen.generate(),
             Tpcc(ref mut gen) => gen.generate(),
+            SmallBank(ref mut gen) => gen.generate(),
         }
     }
 
@@ -24,6 +27,7 @@ impl ParameterGenerator {
         match self {
             Tatp(ref mut gen) => gen.generate(),
             Tpcc(ref mut gen) => gen.generate(),
+            SmallBank(ref mut gen) => gen.generate(),
         }
     }
 
@@ -33,6 +37,7 @@ impl ParameterGenerator {
         match self {
             Tatp(ref mut gen) => gen.get_generated(),
             Tpcc(ref mut gen) => gen.get_generated(),
+            SmallBank(ref mut gen) => gen.get_generated(),
         }
     }
 }

@@ -70,7 +70,7 @@ impl Workload {
             "smallbank" => {
                 // Create internals from schema file
                 let internals = Internal::new("smallbank_schema.txt", config)?;
-                Ok(Workload::Tpcc(internals))
+                Ok(Workload::SmallBank(internals))
             }
             _ => Err(Box::new(FatalError::IncorrectWorkload(workload))),
         }

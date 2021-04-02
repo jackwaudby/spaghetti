@@ -1,0 +1,27 @@
+log = "debug"
+
+set_seed = false
+seed = 1
+
+transactions = 100
+warmup = 10
+protocol="2pl"
+workers = 4
+
+workload = "smallbank"
+schema = "smallbank_schema.txt"
+load = false
+
+subscribers = 1
+
+balance_mix = false
+accounts = 18000
+hotspot_use_fixed_size = true
+hotspot_percentage = 0.25
+hotspot_fixed_size = 100
+min_balance = 10000
+max_balance = 50000
+send_payment_amount = 5.0
+deposit_checking_amount = 1.3
+transact_savings_amount = 20.20
+write_check_amount = 5.0

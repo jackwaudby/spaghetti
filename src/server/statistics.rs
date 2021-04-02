@@ -2,6 +2,7 @@ use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
+use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::TatpTransaction;
 
 use config::Config;
@@ -300,6 +301,15 @@ impl WorkloadBreakdown {
                 let mut transactions = vec![];
                 for transaction in TatpTransaction::iter() {
                     let metrics = TransactionMetrics::new(Transaction::Tatp(transaction));
+                    transactions.push(metrics);
+                }
+                WorkloadBreakdown { name, transactions }
+            }
+            "smallbank" => {
+                let name = workload.to_string();
+                let mut transactions = vec![];
+                for transaction in SmallBankTransaction::iter() {
+                    let metrics = TransactionMetrics::new(Transaction::SmallBank(transaction));
                     transactions.push(metrics);
                 }
                 WorkloadBreakdown { name, transactions }

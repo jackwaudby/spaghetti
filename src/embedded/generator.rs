@@ -1,5 +1,6 @@
 use crate::common::message::{InternalResponse, Message, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
+use crate::workloads::smallbank::paramgen::SmallBankGenerator;
 use crate::workloads::tatp::paramgen::TatpGenerator;
 
 use config::Config;
@@ -61,6 +62,10 @@ impl Generator {
 
                 let gen = TatpGenerator::new(subscribers as u64, false, use_nurand);
                 ParameterGenerator::Tatp(gen)
+            }
+            "smallbank" => {
+                let gen = SmallBankGenerator::new(config);
+                ParameterGenerator::SmallBank(gen)
             }
             _ => unimplemented!(),
         };
