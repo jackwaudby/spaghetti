@@ -1,7 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::server::scheduler::hit_list::active_transaction::ActiveTransaction;
-use crate::server::scheduler::hit_list::epoch::AtomicSharedResources;
 use crate::server::scheduler::hit_list::error::HitListError;
+use crate::server::scheduler::hit_list::shared::{AtomicSharedResources, TransactionOutcome};
 use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{Access, Row};
@@ -12,31 +12,34 @@ use std::sync::{Arc, Mutex};
 use std::{thread, time};
 use tracing::debug;
 
+pub mod shared;
+
 pub mod epoch;
 
 pub mod error;
 
 pub mod active_transaction;
 
+/// HIT Scheduler.
 pub struct HitList {
-    /// Transaction ID counter.
+    /// Transaction id counter.
     id: Arc<Mutex<u64>>,
 
     /// Map of transaction ids to neccessary runtime information.
     active_transactions: Arc<CHashMap<u64, ActiveTransaction>>,
 
-    /// (Hit list, terminated)
+    /// Resources shared between transactions, e.g. hit list, terminated list.
     asr: AtomicSharedResources,
 
     /// Handle to storage layer.
     data: Arc<Workload>,
 
-    /// Garbage collector.
+    /// Epoch based garbage collector.
     _garbage_collector: Option<thread::JoinHandle<()>>,
 }
 
 impl Scheduler for HitList {
-    /// Register a transaction with the hit list.
+    /// Register a transaction.
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
         let counter = Arc::clone(&self.id);
         let mut lock = counter.lock().unwrap();
@@ -44,18 +47,14 @@ impl Scheduler for HitList {
         *lock += 1;
 
         // Get start epoch and add to epoch tracker.
-        debug!("Requesting lock on ASR");
         let mut resources = self.asr.get_lock();
         let start_epoch = resources.get_current_epoch();
         resources.add_started(id);
         drop(resources);
-        debug!("Dropped lock on ASR");
 
         // Register with active transactions.
         let at = ActiveTransaction::new(id, start_epoch);
         self.active_transactions.insert(id, at);
-        debug!("Inserted {} into active transaction", id);
-        // Create transaction infomation.
         let info = TransactionInfo::new(Some(id.to_string()), None);
 
         Ok(info)
@@ -79,15 +78,10 @@ impl Scheduler for HitList {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        // Transaction id.
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
-        debug!("Insert by transaction {}", id);
-        // Get table.
         let table = self.get_table(table, meta.clone())?;
-        // Init row.
         let mut row = Row::new(Arc::clone(&table), "hit");
         row.set_primary_key(key.clone());
-        // Init values.
         for (i, column) in columns.iter().enumerate() {
             match row.init_value(column, &values[i].to_string()) {
                 Ok(_) => {}
@@ -109,7 +103,6 @@ impl Scheduler for HitList {
         }
 
         // Record insert - used to rollback if transaction is aborted.
-        debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
         wg.add_key_inserted((index.get_name(), key.clone()));
 
@@ -117,13 +110,10 @@ impl Scheduler for HitList {
         match index.insert(key, row) {
             Ok(_) => {
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
                 Ok(())
             }
             Err(e) => {
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
-                debug!("Insert by transaction {} failed", id);
                 self.abort(meta.clone()).unwrap();
                 Err(e)
             }
@@ -142,47 +132,30 @@ impl Scheduler for HitList {
         columns: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        // Transaction id.
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
-        debug!("Read by transaction {}", id);
-
-        // Get table.
         let table = self.get_table(table, meta.clone())?;
-        // Get index for this key's table.
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        // Get write guard on active transaction entry.
-        debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
         // Execute read.
         match index.read(key.clone(), columns, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
-                // Get access history.
                 let access_history = res.get_access_history().unwrap();
-                // Detect conflicts and insert to predecessor list.
                 for access in access_history {
                     // WR conflict
                     if let Access::Write(tid) = access {
-                        // Insert predecessor
                         let tid = tid.parse::<u64>().unwrap();
-                        wg.add_predecessor(tid);
+                        wg.add_pur(tid);
                     }
                 }
-                // Add to keys read.
                 wg.add_key_read((index.get_name(), key));
-
-                // Get values
                 let vals = res.get_values().unwrap();
-
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
                 Ok(vals)
             }
             Err(e) => {
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
-                debug!("Read by transaction {} failed", id);
                 self.abort(meta.clone()).unwrap();
                 return Err(e);
             }
@@ -198,53 +171,36 @@ impl Scheduler for HitList {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        // Transaction id.
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
-        debug!("Update by transaction {}", id);
-
-        // Get table.
         let table = self.get_table(table, meta.clone())?;
-        // Get index for this key's table.
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        // Get write guard on active transaction entry.
-        debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
         match index.read_and_update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
-                // Get access history.
                 let access_history = res.get_access_history().unwrap();
-                // Detect conflicts.
                 for access in access_history {
                     match access {
                         // WW conflict
                         Access::Write(tid) => {
-                            // Insert predecessor
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_predecessor(tid);
+                            wg.add_puw(tid);
                         }
                         // RW conflict
                         Access::Read(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_predecessor(tid);
+                            wg.add_puw(tid);
                         }
                     }
                 }
-
-                // Add to keys read.
                 wg.add_key_updated((index.get_name(), key));
-                // Get values
                 let vals = res.get_values().unwrap();
-
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
                 Ok(vals)
             }
             Err(e) => {
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
-                debug!("Update by transaction {} failed", id);
                 self.abort(meta).unwrap();
                 return Err(e);
             }
@@ -267,17 +223,10 @@ impl Scheduler for HitList {
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        // Transaction id.
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
-        debug!("Update by transaction {}", id);
-
-        // Get table.
         let table = self.get_table(table, meta.clone())?;
-        // Get index for this key's table.
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        // Get write guard on active transaction entry.
-        debug!("Request WG on transaction {} in active transactions", id);
         let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
         match index.update(
@@ -290,92 +239,67 @@ impl Scheduler for HitList {
             &meta.get_id().unwrap(),
         ) {
             Ok(res) => {
-                // Get access history.
                 let access_history = res.get_access_history().unwrap();
-                // Detect conflicts.
                 for access in access_history {
                     match access {
                         // WW conflict
                         Access::Write(tid) => {
-                            // Insert predecessor
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_predecessor(tid);
+                            wg.add_puw(tid);
                         }
                         // RW conflict
                         Access::Read(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_predecessor(tid);
+                            wg.add_pur(tid);
                         }
                     }
                 }
-
-                // Add to keys read.
                 wg.add_key_updated((index.get_name(), key));
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
                 Ok(())
             }
             Err(e) => {
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
-                debug!("Update by transaction {} failed", id);
                 self.abort(meta).unwrap();
                 return Err(e);
             }
         }
     }
 
-    /// Delete from row.
+    /// Delete record with `key` from `table`.
     fn delete(
         &self,
         table: &str,
         key: PrimaryKey,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        // Transaction id.
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap();
-        debug!("Delete by transaction {}", id);
-
-        // Get table.
-        let table = self.get_table(table, meta.clone())?;
-        // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
-
-        // Get write guard on active transaction entry.
-        debug!("Request WG on transaction {} in active transactions", id);
-        let mut wg = self.active_transactions.get_mut(&id).unwrap();
-
-        // Execute remove op.
+        let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
+        let table = self.get_table(table, meta.clone())?; // get table
+        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let mut wg = self.active_transactions.get_mut(&id).unwrap(); // get mut ref to active transaction
         match index.delete(key.clone(), "hit") {
             Ok(res) => {
-                // Get the access history
                 let access_history = res.get_access_history().unwrap();
-                // Detect conflicts.
                 for access in access_history {
                     match access {
                         // WW conflict
                         Access::Write(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_predecessor(tid);
+                            wg.add_puw(tid);
                         }
                         // RW conflict
                         Access::Read(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_predecessor(tid);
+                            wg.add_puw(tid);
                         }
                     }
                 }
-
-                // Add to keys read.
-                wg.add_key_deleted((index.get_name(), key));
+                wg.add_key_deleted((index.get_name(), key)); // add to deleted
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
                 Ok(())
             }
             Err(e) => {
                 drop(wg);
-                debug!("Dropped WG on transaction {} in active transactions", id);
-                debug!("Delete by transaction {} failed", id);
                 self.abort(meta).unwrap();
                 Err(e)
             }
@@ -387,142 +311,114 @@ impl Scheduler for HitList {
     /// # Panics
     /// - RWLock or Mutex error.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap();
-        debug!("Aborting transaction {}", id);
+        let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
+        let mut at = self.active_transactions.remove(&id).unwrap(); // remove txn
+        let mut lock = self.asr.get_lock(); // lock shared
+        lock.remove_from_hit_list(id); // remove aborted txn from hit list
+        lock.add_to_terminated_list(id, TransactionOutcome::Aborted); // add txn to terminated list
+        let se = at.get_start_epoch(); // register txn with gc
+        lock.add_terminated(id, se); // add to epoch terminated
 
-        // Remove from active transaction.
-        debug!("Remove transaction {} from active transactions", id);
-        let mut at = self.active_transactions.remove(&id).unwrap();
-
-        // Get exculsive lock on the hit list
-        debug!("Transaction {} requesting lock on ASR", id);
-        let mut lock = self.asr.get_lock();
-        debug!("Transaction {} received lock on ASR", id);
-
-        // Remove from hit list
-        debug!("Remove transaction {} from hit list", id);
-        debug!("Hit list before: {:?}", lock.hit_list);
-        lock.hit_list.remove(&id);
-        debug!("Hit list after: {:?}", lock.hit_list);
-
-        // Add to terminated.
-        debug!("Register transaction {} with terminated list", id);
-        lock.terminated_list.insert(id);
-        debug!("Terminated list: {}", id);
-
-        let se = at.get_start_epoch();
-        lock.add_terminated(id, se);
-
-        // Revert updates/deletes.
-        debug!("Revert updates/deleted for transaction: {}", id);
-        let deleted = at.get_keys_deleted();
-        for (index, key) in &deleted {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index
-                .revert(key.clone(), "hit", &meta.get_id().unwrap())
-                .unwrap();
-        }
-
-        debug!("Revert updates/deleted for transaction: {}", id);
-        let updated = at.get_keys_updated();
-        for (index, key) in &updated {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index
-                .revert(key.clone(), "hit", &meta.get_id().unwrap())
-                .unwrap();
-        }
-        // Remove read accesses from rows read.
-        debug!("Revert reads for transaction: {}", id);
+        // remove inserts/reads/updates/deletes
+        let inserted = at.get_keys_inserted();
         let read = at.get_keys_read();
+        let updated = at.get_keys_updated();
+        let deleted = at.get_keys_deleted();
+
+        for (index, key) in inserted {
+            let index = self.data.get_internals().get_index(&index).unwrap();
+            index.remove(key.clone()).unwrap();
+        }
         for (index, key) in read {
             let index = self.data.get_internals().get_index(&index).unwrap();
             index
                 .revert_read(key.clone(), &meta.get_id().unwrap())
                 .unwrap();
         }
-        // Remove inserted values.
-        debug!("Revert inserted for transaction: {}", id);
-        let inserted = at.get_keys_inserted();
-        for (index, key) in inserted {
+        for (index, key) in &deleted {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index.remove(key.clone()).unwrap();
+            index
+                .revert(key.clone(), "hit", &meta.get_id().unwrap())
+                .unwrap();
         }
-        debug!("All changes reverted for transaction: {}", id);
-        debug!("Hit list: {:?}", lock.hit_list);
-        debug!("Terminated: {:?}", lock.terminated_list);
+        for (index, key) in &updated {
+            let index = self.data.get_internals().get_index(&index).unwrap();
+            index
+                .revert(key.clone(), "hit", &meta.get_id().unwrap())
+                .unwrap();
+        }
         drop(lock);
-        debug!("Dropped lock on ASR");
         Ok(())
     }
 
     /// Commit a transaction.
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
-        // Transaction id.
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap();
-        debug!("Committing transaction {:?}", id);
+        let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
+        let mut lock = self.asr.get_lock(); // get lock on resources
+        let mut at = self.active_transactions.get_mut(&id).unwrap(); // get mut ref on txn
+        let pur = at.get_pur(); // get pred on read
 
-        // Get exculsive lock on the hit list
-        debug!("Transaction {} requesting lock on ASR", id);
-        let mut lock = self.asr.get_lock();
-        debug!("Transaction {} received lock on ASR", id);
+        // while pur is not empty;
+        // for each predecessor upon read;
+        let mut pur: Vec<u64> = pur.iter().cloned().collect();
+        while !pur.is_empty() {
+            let predecessor = pur.pop().unwrap();
+            if lock.has_terminated(predecessor) {
+                // if terminated but aborted; then abort
+                if lock.get_terminated_outcome(predecessor) == TransactionOutcome::Aborted {
+                    drop(at); // need to drop as abort removes from list.
+                    drop(lock);
+                    self.abort(meta).unwrap();
+                    let _err = HitListError::IdInHitList(id);
+                    return Err(NonFatalError::NonSerializable);
+                }
+            } else {
+                // if not terminated and committed; then abort
+                drop(at);
+                drop(lock);
+                self.abort(meta).unwrap();
+                let _err = HitListError::IdInHitList(id);
+                return Err(NonFatalError::NonSerializable);
+            }
+        }
 
-        // Not in hit list.
-        if !lock.hit_list.contains(&id) {
-            debug!("Transaction {} not in hitlist", id);
-            // Remove from active transactions.
-            debug!("Transaction {} removed from active transactions", id);
-            let mut at = self.active_transactions.remove(&id).unwrap();
-
-            debug!("Commit inserted for transaction: {}", id);
-            let inserted = at.get_keys_inserted();
+        // if txn is not in hit list; then commit txn
+        if !lock.is_in_hit_list(id) {
+            let mut at = self.active_transactions.remove(&id).unwrap(); // remove from active
+            let inserted = at.get_keys_inserted(); // get keys touched
+            let read = at.get_keys_read();
+            let updated = at.get_keys_updated();
+            let deleted = at.get_keys_deleted();
+            // commit changes
             for (index, key) in inserted {
                 let index = self.data.get_internals().get_index(&index).unwrap();
                 index.commit(key, "hit", &id.to_string()).unwrap();
             }
-
-            debug!("Commit deleted for transaction: {}", id);
-            let deleted = at.get_keys_deleted();
             for (index, key) in deleted {
                 let index = self.data.get_internals().get_index(&index).unwrap();
                 index.remove(key).unwrap();
             }
-
-            debug!("Commit updated for transaction: {}", id);
-            let updated = at.get_keys_updated();
             for (index, key) in updated {
                 let index = self.data.get_internals().get_index(&index).unwrap();
                 index.commit(key, "hit", &id.to_string()).unwrap();
             }
-
-            debug!("Revert reads for transaction: {}", id);
-            let read = at.get_keys_read();
             for (index, key) in read {
                 let index = self.data.get_internals().get_index(&index).unwrap();
                 index.revert_read(key, &meta.get_id().unwrap()).unwrap();
             }
 
-            // Get predecessors
-            let predecessors = at.get_predecessors();
-            debug!(
-                "Add transaction {}'s predecessors {:?} to hit list",
-                id, predecessors
-            );
-            debug!("Filter already terminated transactions");
-            for predecessor in predecessors {
-                // If predecessor is active add to hit list.
-                if !lock.terminated_list.contains(&predecessor) {
-                    lock.hit_list.insert(predecessor);
+            // merge active transactions in PuW into hit list.
+            let puw = at.get_puw();
+            for predecessor in puw {
+                if !lock.has_terminated(predecessor) {
+                    lock.add_to_hit_list(predecessor);
                 }
             }
 
             let se = at.get_start_epoch();
             lock.add_terminated(id, se);
-            debug!("Add {} to terminated list", id);
-            lock.terminated_list.insert(id);
-            debug!("Hit list: {:?}", lock.hit_list);
-            debug!("Terminated: {:?}", lock.terminated_list);
+            lock.add_to_terminated_list(id, TransactionOutcome::Committed);
             drop(lock);
-            debug!("Dropped lock on ASR");
 
             return Ok(());
         } else {
@@ -534,6 +430,7 @@ impl Scheduler for HitList {
         }
     }
 
+    /// Get handle to storage layer.
     fn get_data(&self) -> Arc<Workload> {
         Arc::clone(&self.data)
     }
@@ -565,9 +462,6 @@ impl HitList {
                     lock.new_epoch();
                     lock.update_alpha();
                     debug!("Updated epoch tracker:\n{}", lock);
-
-                    debug!("Hit list: {:?}", lock.hit_list);
-                    debug!("Terminated: {:?}", lock.terminated_list);
                 }
             })
             .unwrap();

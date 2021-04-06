@@ -1,150 +1,8 @@
 use std::collections::HashSet;
 use std::fmt;
-use std::sync::{Arc, Mutex, MutexGuard};
-use tracing::debug;
 
 #[derive(Debug)]
-pub struct AtomicSharedResources {
-    resources: Arc<Mutex<SharedResources>>,
-}
-
-impl AtomicSharedResources {
-    pub fn new() -> AtomicSharedResources {
-        let resources = Arc::new(Mutex::new(SharedResources::new()));
-        AtomicSharedResources { resources }
-    }
-
-    pub fn get_lock(&self) -> MutexGuard<SharedResources> {
-        self.resources.lock().unwrap()
-    }
-
-    pub fn get_ref(&self) -> Arc<Mutex<SharedResources>> {
-        Arc::clone(&self.resources)
-    }
-}
-
-#[derive(Debug)]
-pub struct SharedResources {
-    pub hit_list: HashSet<u64>,
-    pub terminated_list: HashSet<u64>,
-    current_epoch: u64,
-    epochs: Vec<Epoch>,
-    alpha: Option<u64>,
-}
-
-impl fmt::Display for SharedResources {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let top = "\n|---------|-----------|---------------|---|\n";
-        let head = "|  epoch  |  started  |  terminated  | n |\n";
-        let mut join = format!("{}{}", top, head);
-
-        for epoch in &self.epochs {
-            join = format!("{}{} \n", join, epoch);
-        }
-        join = format!("{}|---------|-----------|---------------|---|", join);
-        write!(f, "{}", join)
-    }
-}
-
-impl SharedResources {
-    /// Create new shared resources.
-    fn new() -> SharedResources {
-        let mut epochs = Vec::new();
-        let epoch = Epoch::new(0);
-        epochs.push(epoch);
-
-        SharedResources {
-            hit_list: HashSet::new(),
-            terminated_list: HashSet::new(),
-            current_epoch: 0,
-            epochs,
-            alpha: None,
-        }
-    }
-
-    pub fn get_current_epoch(&self) -> u64 {
-        self.current_epoch
-    }
-
-    /// Start new epoch
-    pub fn new_epoch(&mut self) {
-        self.current_epoch += 1;
-        debug!("Starting epoch {}", self.current_epoch);
-        let epoch = Epoch::new(self.current_epoch);
-        self.epochs.push(epoch);
-    }
-
-    /// Get position of epoch in the list of epochs
-    fn get_epoch(&self, id: u64) -> usize {
-        self.epochs.iter().position(|epoch| epoch.id == id).unwrap()
-    }
-
-    /// Add started transaction to current epoch.
-    pub fn add_started(&mut self, id: u64) {
-        debug!("Transaction {} started in epoch {}", id, self.current_epoch);
-        let ce = self.current_epoch;
-        let pos = self.get_epoch(ce);
-
-        self.epochs[pos].add_started(id);
-    }
-
-    /// Add terminated transaction to current epoch.
-    pub fn add_terminated(&mut self, id: u64, start_epoch: u64) {
-        debug!(
-            "Add transaction {} to terminated in epoch {}",
-            id, self.current_epoch
-        );
-
-        // Add to current epoch terminated
-        let ce = self.current_epoch;
-        let ce_pos = self.get_epoch(ce);
-        self.epochs[ce_pos].add_terminated(id);
-
-        // Remove from started epoch
-        debug!(
-            "Remove transaction {} from started in in epoch {}",
-            id, start_epoch
-        );
-        let se_pos = self.get_epoch(start_epoch);
-        self.epochs[se_pos].remove_started(id);
-    }
-
-    /// Update alpha
-    pub fn update_alpha(&mut self) {
-        debug!("Update alpha");
-        // Get current epoch.
-        let ce = self.current_epoch;
-
-        // Assuming Vec maintains insertion order, epochs are GC'd in this order.
-        let ep = self
-            .epochs
-            .iter()
-            .find(|&epoch| !epoch.has_active_transactions())
-            .unwrap()
-            .get_epoch_num();
-
-        if ep == ce {
-            return;
-        }
-
-        let pos = self.get_epoch(ep);
-
-        // Remove the epoch.
-        let mut epoch = self.epochs.remove(pos);
-        // Remove from terminated list
-        let to_remove = epoch.get_terminated();
-
-        for id in to_remove {
-            self.terminated_list.remove(&id);
-        }
-
-        // Set alpha
-        self.alpha = Some(epoch.id);
-    }
-}
-
-#[derive(Debug)]
-struct Epoch {
+pub struct Epoch {
     /// ID of this epoch.
     id: u64,
 
@@ -160,7 +18,7 @@ struct Epoch {
 
 impl Epoch {
     /// Create new epoch.
-    fn new(id: u64) -> Epoch {
+    pub fn new(id: u64) -> Epoch {
         Epoch {
             id,
             started: HashSet::new(),
@@ -170,7 +28,7 @@ impl Epoch {
     }
 
     /// Get epoch number.
-    fn get_epoch_num(&self) -> u64 {
+    pub fn get_epoch_num(&self) -> u64 {
         self.id
     }
 
@@ -181,7 +39,7 @@ impl Epoch {
     }
 
     /// Remove a transaction that was started in this epoch.
-    fn remove_started(&mut self, id: u64) {
+    pub fn remove_started(&mut self, id: u64) {
         self.started.remove(&id);
         self.active_counter -= 1;
     }
@@ -192,12 +50,12 @@ impl Epoch {
     }
 
     /// Get terminated transaction in his epoch.
-    fn get_terminated(&mut self) -> HashSet<u64> {
+    pub fn get_terminated(&mut self) -> HashSet<u64> {
         self.terminated.take().unwrap()
     }
 
     /// Epoch has no active transactions.
-    fn has_active_transactions(&self) -> bool {
+    pub fn has_active_transactions(&self) -> bool {
         self.active_counter != 0
     }
 }

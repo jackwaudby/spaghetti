@@ -1,36 +1,42 @@
 use crate::workloads::PrimaryKey;
+
 use std::collections::HashSet;
 
+/// Holds the runtime information of transaction in the HIT protocol.
 pub struct ActiveTransaction {
-    /// Transaction ID.
+    /// Transaction id.
     tid: u64,
 
     /// Start epoch.
     start_epoch: u64,
 
-    /// List of predecessors.
-    predecessors: Option<HashSet<u64>>,
+    /// List of predecessors upon read.
+    pur: Option<HashSet<u64>>,
 
-    /// List of keys updated by transaction.
+    /// List of predecessors upon write.
+    puw: Option<HashSet<u64>>,
+
+    /// List of keys inserted.
+    keys_inserted: Option<Vec<(String, PrimaryKey)>>,
+
+    /// List of keys updated.
     keys_updated: Option<Vec<(String, PrimaryKey)>>,
 
-    /// List of keys deleted by transaction.
+    /// List of keys deleted.
     keys_deleted: Option<Vec<(String, PrimaryKey)>>,
 
-    /// List of keys read by transaction.
+    /// List of keys read.
     keys_read: Option<Vec<(String, PrimaryKey)>>,
-
-    /// Keys inserted
-    keys_inserted: Option<Vec<(String, PrimaryKey)>>,
 }
 
 impl ActiveTransaction {
-    /// Create new runtime information tracker for a transaction.
+    /// Create runtime information for a transaction.
     pub fn new(tid: u64, start_epoch: u64) -> ActiveTransaction {
         ActiveTransaction {
             tid,
             start_epoch,
-            predecessors: Some(HashSet::new()),
+            pur: Some(HashSet::new()),
+            puw: Some(HashSet::new()),
             keys_updated: Some(vec![]),
             keys_deleted: Some(vec![]),
             keys_read: Some(vec![]),
@@ -38,23 +44,34 @@ impl ActiveTransaction {
         }
     }
 
+    /// Get the epoch the transaction started in.
     pub fn get_start_epoch(&self) -> u64 {
         self.start_epoch
     }
 
-    /// Get transaction id.
+    /// Get the transaction's id.
     pub fn get_tid(&self) -> u64 {
         self.tid
     }
 
-    /// Get predecessor list.
-    pub fn get_predecessors(&mut self) -> HashSet<u64> {
-        self.predecessors.take().unwrap()
+    /// Get the transaction's predecessor upon read list.
+    pub fn get_pur(&mut self) -> HashSet<u64> {
+        self.pur.take().unwrap()
     }
 
-    /// Add predecessor
-    pub fn add_predecessor(&mut self, id: u64) {
-        self.predecessors.as_mut().unwrap().insert(id);
+    /// Get the transaction's predecessor upon write list.
+    pub fn get_puw(&mut self) -> HashSet<u64> {
+        self.puw.take().unwrap()
+    }
+
+    /// Register predecessor upon read.
+    pub fn add_pur(&mut self, id: u64) {
+        self.pur.as_mut().unwrap().insert(id);
+    }
+
+    /// Register predecessor upon write.
+    pub fn add_puw(&mut self, id: u64) {
+        self.puw.as_mut().unwrap().insert(id);
     }
 
     /// Get the list of keys updated/deleted by this transaction.
