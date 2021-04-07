@@ -1,15 +1,21 @@
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt;
 
-/// SGT error types.
-#[derive(PartialEq, Debug, Clone)]
+/// Hit list error types.
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum HitListError {
-    /// ID already in use
+    /// id already in use.
     IdAlreadyInUse(u64),
-    /// ID in hit list
+
+    /// Transaction exists in the hit list.
     IdInHitList(u64),
-    /// Locking mutex failed
+
+    /// Locking mutex failed.
     MutexLockFailed,
+
+    /// Transaction aborted in wait-phase due to predecessor already having aborted.
+    PredecessorAborted(u64),
 }
 
 impl Error for HitListError {}
@@ -21,6 +27,9 @@ impl fmt::Display for HitListError {
             MutexLockFailed => write!(f, "locking mutex failed"),
             IdAlreadyInUse(ref tid) => write!(f, "Transaction ID: {} already in use", tid),
             IdInHitList(ref tid) => write!(f, "Transaction ID: {} in hit list", tid),
+            PredecessorAborted(ref tid) => {
+                write!(f, "transaction {} aborted due to predecessor aborting", tid)
+            }
         }
     }
 }

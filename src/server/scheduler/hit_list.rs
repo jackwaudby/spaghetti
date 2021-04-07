@@ -376,34 +376,48 @@ impl Scheduler for HitList {
     }
 
     /// Commit a transaction.
+    ///
+    /// There are two-phases to the commit procedure:
+    /// 1) Wait-phase; for each predecessor upon read; abort if active or aborted.
+    /// 2) Hit-phase; for each predecessor upon write; if in hit list then abort; else hit predecessors if they are active
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         let handle = thread::current();
         let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
-        debug!("Thread {} committing {}", handle.name().unwrap(), id);
+        debug!("Thread {} committing txn {}", handle.name().unwrap(), id);
         debug!("Thread {} requesting lock", handle.name().unwrap());
         let mut lock = self.asr.get_lock(); // get lock on resources
         debug!("Thread {} received lock", handle.name().unwrap());
 
+        debug!(
+            "Thread {} request write guard on entry in active transactions for txn {}",
+            handle.name().unwrap(),
+            id
+        );
         let mut at = self.active_transactions.get_mut(&id).unwrap(); // get mut ref on txn
+        debug!(
+            "Thread {} received write guard on entry in active transactions for txn {}",
+            handle.name().unwrap(),
+            id
+        );
 
         let pur = at.get_pur(); // get pred on read
+        let mut pur: Vec<u64> = pur.iter().cloned().collect(); // convert to vec
         debug!("Thread {} entering wait phase", handle.name().unwrap());
 
         // while pur is not empty;
         // for each predecessor upon read;
-        let mut pur: Vec<u64> = pur.iter().cloned().collect();
         while !pur.is_empty() {
             let predecessor = pur.pop().unwrap(); // take a predecessor
-                                                  // if terminated but aborted; then abort
+
+            // if terminated but aborted; then abort
             if lock.has_terminated(predecessor) {
                 if lock.get_terminated_outcome(predecessor) == TransactionOutcome::Aborted {
                     drop(at); // drop write guard
                     drop(lock); // drop lock on shared resources
                     debug!("Thread {} dropped lock", handle.name().unwrap());
-
-                    self.abort(meta).unwrap();
-                    let _err = HitListError::IdInHitList(id);
-                    return Err(NonFatalError::NonSerializable);
+                    self.abort(meta).unwrap(); // abort txn
+                    let err = HitListError::PredecessorAborted(id);
+                    return Err(err.into());
                 } // else; terminated and committed, continue
             } else {
                 // if not terminated and committed; then abort
@@ -416,6 +430,7 @@ impl Scheduler for HitList {
                 return Err(NonFatalError::NonSerializable);
             }
         }
+        drop(at);
         debug!("Thread {} wait phase complete", handle.name().unwrap());
         debug!("Thread {} entering hit phase", handle.name().unwrap());
 
@@ -424,6 +439,7 @@ impl Scheduler for HitList {
             debug!("Thread {} not in hit list", handle.name().unwrap());
 
             let mut at = self.active_transactions.remove(&id).unwrap(); // remove from active
+            debug!("Thread {} removed txn from active", handle.name().unwrap());
 
             // commit changes
             let inserted = at.get_keys_inserted();
@@ -446,6 +462,7 @@ impl Scheduler for HitList {
                 let index = self.data.get_internals().get_index(&index).unwrap();
                 index.revert_read(key, &meta.get_id().unwrap()).unwrap();
             }
+            debug!("Thread {} committed changes", handle.name().unwrap());
             // merge active transactions in PuW into hit list.
             let puw = at.get_puw();
             for predecessor in puw {
@@ -453,10 +470,16 @@ impl Scheduler for HitList {
                     lock.add_to_hit_list(predecessor);
                 }
             }
+            debug!("Thread {} merged in hit list", handle.name().unwrap());
 
             let se = at.get_start_epoch();
             lock.add_terminated(id, se);
             lock.add_to_terminated_list(id, TransactionOutcome::Committed);
+            debug!(
+                "Thread {} added to terminated  list",
+                handle.name().unwrap()
+            );
+
             drop(lock);
             debug!("Thread {} dropped lock", handle.name().unwrap());
             return Ok(());
@@ -546,5 +569,65 @@ impl Drop for HitList {
                 Err(_) => debug!("Error shutting down garbage collector"),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::workloads::tatp::keys::TatpPrimaryKey;
+    use crate::workloads::tatp::loader;
+    use crate::workloads::Internal;
+
+    use crate::server::storage::datatype;
+    use config::Config;
+    use lazy_static::lazy_static;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+    use std::convert::TryInto;
+    use std::thread;
+    use tracing::Level;
+    use tracing_subscriber::FmtSubscriber;
+
+    // Single transaction that commits.
+    #[test]
+    fn hit_list_commit_test() {
+        let mut c = Config::default();
+        c.merge(config::File::with_name("Test-hit.toml")).unwrap();
+        let config = Arc::new(c);
+
+        let subscriber = FmtSubscriber::builder()
+            .with_max_level(Level::DEBUG)
+            .finish();
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+
+        // workload with fixed seed
+        let schema = config.get_str("schema").unwrap();
+        let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
+        let seed = config.get_int("seed").unwrap();
+        let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());
+        loader::populate_tables(&internals, &mut rng).unwrap();
+        let workload = Arc::new(Workload::Tatp(internals));
+
+        // Initialise scheduler.
+        let scheduler = Arc::new(HitList::new(workload));
+
+        let txn = scheduler.register().unwrap(); // register
+        assert_eq!(txn, TransactionInfo::new(Some("0".to_string()), None));
+
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3)); // pk
+        let columns: Vec<&str> = vec!["bit_1"];
+        let values_a: Vec<&str> = vec!["0"];
+        let values_b: Vec<&str> = vec!["1"];
+
+        let values = scheduler
+            .read("subscriber", pk.clone(), &columns, txn.clone())
+            .unwrap();
+        let res = datatype::to_result(&columns, &values).unwrap();
+
+        scheduler.commit(txn);
+        drop(scheduler);
     }
 }

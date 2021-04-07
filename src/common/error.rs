@@ -2,6 +2,7 @@
 //! Fatal errors, result in the termination of the database.
 //! Non-fatal errors, are reasons for transactions to abort.
 use crate::common::frame::ParseError;
+use crate::server::scheduler::hit_list::error::HitListError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 
@@ -108,6 +109,9 @@ pub enum NonFatalError {
 
     /// SGT error.
     SerializationGraphTesting(SerializationGraphTestingError),
+
+    /// Hit-list error.
+    HitList(HitListError),
 }
 
 impl fmt::Display for FatalError {
@@ -156,6 +160,7 @@ impl fmt::Display for NonFatalError {
                 "unable to initalise: column {} in table {} with value {}",
                 column, table, value
             ),
+            HitList(ref e) => write!(f, "{}", e),
             TwoPhaseLocking(ref e) => write!(f, "{}", e),
             SerializationGraphTesting(ref e) => write!(f, "{}", e),
             RowAlreadyExists(ref key, ref index) => {
@@ -219,6 +224,12 @@ impl From<SerializationGraphTestingError> for FatalError {
 impl From<SerializationGraphTestingError> for NonFatalError {
     fn from(error: SerializationGraphTestingError) -> Self {
         NonFatalError::SerializationGraphTesting(error)
+    }
+}
+
+impl From<HitListError> for NonFatalError {
+    fn from(error: HitListError) -> Self {
+        NonFatalError::HitList(error)
     }
 }
 
