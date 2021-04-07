@@ -6,6 +6,7 @@ mpsc_size = 32
 load = false
 
 protocol="hit"
+hit_gc = 5000
 workers = 4
 
 warmup = 1

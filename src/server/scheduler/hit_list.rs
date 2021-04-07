@@ -1,15 +1,19 @@
 use crate::common::error::NonFatalError;
 use crate::server::scheduler::hit_list::active_transaction::ActiveTransaction;
 use crate::server::scheduler::hit_list::error::HitListError;
-use crate::server::scheduler::hit_list::shared::{AtomicSharedResources, TransactionOutcome};
+use crate::server::scheduler::hit_list::shared::{
+    AtomicSharedResources, SharedResources, TransactionOutcome,
+};
 use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{Access, Row};
 use crate::workloads::{PrimaryKey, Workload};
 
 use chashmap::CHashMap;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::{thread, time};
+use std::thread;
+use std::time::Duration;
 use tracing::debug;
 
 pub mod shared;
@@ -35,7 +39,15 @@ pub struct HitList {
     data: Arc<Workload>,
 
     /// Epoch based garbage collector.
-    _garbage_collector: Option<thread::JoinHandle<()>>,
+    garbage_collector: GarbageCollector,
+
+    /// Channel to shutdown the garbage collector.
+    sender: Mutex<mpsc::Sender<()>>,
+}
+
+/// Garbage Collector.
+struct GarbageCollector {
+    thread: Option<thread::JoinHandle<()>>,
 }
 
 impl Scheduler for HitList {
@@ -437,28 +449,45 @@ impl Scheduler for HitList {
 }
 
 impl HitList {
-    /// Creates a new scheduler with an empty hit list.
-    pub fn new(workload: Arc<Workload>) -> HitList {
-        let id = Arc::new(Mutex::new(0));
-        let active_transactions = Arc::new(CHashMap::<u64, ActiveTransaction>::new());
-        let asr = AtomicSharedResources::new();
+    /// Create a `HitList` scheduler.
+    pub fn new(data: Arc<Workload>) -> HitList {
+        let id = Arc::new(Mutex::new(0)); // id generator
+        let active_transactions = Arc::new(CHashMap::<u64, ActiveTransaction>::new()); // active transactions
+        let asr = AtomicSharedResources::new(); // shared resources
+        let (sender, receiver) = mpsc::channel(); // shutdown channel
+        let sleep = data.get_internals().get_config().get_int("hit_gc").unwrap() as u64;
+        let garbage_collector = GarbageCollector::new(asr.get_ref(), receiver, sleep);
 
-        // Set thread name to id.
-        let builder = thread::Builder::new().name("garbage_collector".to_string().into());
+        HitList {
+            id,
+            active_transactions,
+            asr,
+            data,
+            garbage_collector,
+            sender: Mutex::new(sender),
+        }
+    }
+}
 
-        let asr_h = asr.get_ref();
-
+// channel between hit list scheduler and garbage collection thread
+impl GarbageCollector {
+    fn new(
+        shared: Arc<Mutex<SharedResources>>,
+        receiver: mpsc::Receiver<()>,
+        sleep: u64,
+    ) -> GarbageCollector {
+        let builder = thread::Builder::new().name("garbage_collector".to_string().into()); // thread name
         let thread = builder
             .spawn(move || {
                 debug!("Starting garbage collector");
-
                 loop {
-                    let ten_millis = time::Duration::from_millis(5000);
-                    thread::sleep(ten_millis);
-                    debug!("Collected garbage");
-                    let mut lock = asr_h.lock().unwrap();
+                    // attempt to receive shutdown notification without blocking
+                    if let Ok(()) = receiver.try_recv() {
+                        break; // exit loop
+                    }
+                    thread::sleep(Duration::from_millis(sleep)); // sleep garbage collector
+                    let mut lock = shared.lock().unwrap(); // lock shared resources
                     debug!("Current epoch tracker:\n{}", lock);
-
                     lock.new_epoch();
                     lock.update_alpha();
                     debug!("Updated epoch tracker:\n{}", lock);
@@ -466,12 +495,21 @@ impl HitList {
             })
             .unwrap();
 
-        HitList {
-            id,
-            active_transactions,
-            asr,
-            _garbage_collector: Some(thread),
-            data: workload,
+        GarbageCollector {
+            thread: Some(thread),
+        }
+    }
+}
+
+impl Drop for HitList {
+    fn drop(&mut self) {
+        self.sender.lock().unwrap().send(()).unwrap(); // send shutdown to gc
+
+        if let Some(thread) = self.garbage_collector.thread.take() {
+            match thread.join() {
+                Ok(_) => debug!("Garbage collector shutdown"),
+                Err(_) => debug!("Error shutting down garbage collector"),
+            }
         }
     }
 }
