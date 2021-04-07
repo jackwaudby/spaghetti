@@ -416,18 +416,15 @@ impl Scheduler for HitList {
                     drop(lock); // drop lock on shared resources
                     debug!("Thread {} dropped lock", handle.name().unwrap());
                     self.abort(meta).unwrap(); // abort txn
-                    let err = HitListError::PredecessorAborted(id);
-                    return Err(err.into());
+                    return Err(HitListError::PredecessorAborted(id).into());
                 } // else; terminated and committed, continue
             } else {
                 // if not terminated and committed; then abort
                 drop(at); // drop write guard
                 drop(lock); // drop lock on shared resources
                 debug!("Thread {} dropped lock", handle.name().unwrap());
-
                 self.abort(meta).unwrap();
-                let _err = HitListError::IdInHitList(id);
-                return Err(NonFatalError::NonSerializable);
+                return Err(HitListError::PredecessorActive(id).into());
             }
         }
         drop(at);
@@ -485,14 +482,10 @@ impl Scheduler for HitList {
             return Ok(());
         } else {
             debug!("Thread {} in hit list", handle.name().unwrap());
-
             drop(lock);
             debug!("Thread {} dropped lock", handle.name().unwrap());
-
             self.abort(meta).unwrap();
-            //TODO
-            let _err = HitListError::IdInHitList(id);
-            return Err(NonFatalError::NonSerializable);
+            return Err(HitListError::TransactionInHitList(id).into());
         }
     }
 
