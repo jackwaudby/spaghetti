@@ -616,8 +616,8 @@ mod tests {
         let values = scheduler
             .read("subscriber", pk.clone(), &columns, txn.clone())
             .unwrap();
-        let _res = datatype::to_result(&columns, &values).unwrap();
-
+        let res = datatype::to_result(&columns, &values).unwrap();
+        assert_eq!(res, "{bit_1=\"0\"}");
         scheduler.commit(txn).unwrap();
         drop(scheduler);
     }

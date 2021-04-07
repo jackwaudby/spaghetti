@@ -31,7 +31,6 @@ async fn hit_list_integration_test() {
     setup_logging(Arc::clone(&config));
     // clients
     let n_clients = config.get_int("clients").unwrap();
-
     let c = Arc::clone(&config);
     let server = tokio::spawn(async move {
         assert_eq!((), spaghetti::server::run(c).await.unwrap());
