@@ -797,9 +797,7 @@ impl SerializationGraphTesting {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::server::storage::datatype;
     use crate::workloads::tatp;
-    use crate::workloads::tatp::keys::TatpPrimaryKey;
     use crate::workloads::Internal;
     use config::Config;
     use lazy_static::lazy_static;

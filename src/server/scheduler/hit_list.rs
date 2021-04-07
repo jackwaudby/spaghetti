@@ -575,26 +575,24 @@ mod tests {
 
     use crate::server::storage::datatype;
     use config::Config;
-    use lazy_static::lazy_static;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use std::convert::TryInto;
-    use std::thread;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
+    // use tracing::Level;
+    // use tracing_subscriber::FmtSubscriber;
 
-    // Single transaction that commits.
+    // single transaction that commits.
     #[test]
     fn hit_list_commit_test() {
         let mut c = Config::default();
         c.merge(config::File::with_name("Test-hit.toml")).unwrap();
         let config = Arc::new(c);
 
-        let subscriber = FmtSubscriber::builder()
-            .with_max_level(Level::DEBUG)
-            .finish();
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
+        // let subscriber = FmtSubscriber::builder()
+        //     .with_max_level(Level::DEBUG)
+        //     .finish();
+        // tracing::subscriber::set_global_default(subscriber)
+        //     .expect("setting default subscriber failed");
 
         // workload with fixed seed
         let schema = config.get_str("schema").unwrap();
@@ -612,15 +610,15 @@ mod tests {
 
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3)); // pk
         let columns: Vec<&str> = vec!["bit_1"];
-        let values_a: Vec<&str> = vec!["0"];
-        let values_b: Vec<&str> = vec!["1"];
+        // let values_a: Vec<&str> = vec!["0"];
+        // let values_b: Vec<&str> = vec!["1"];
 
         let values = scheduler
             .read("subscriber", pk.clone(), &columns, txn.clone())
             .unwrap();
-        let res = datatype::to_result(&columns, &values).unwrap();
+        let _res = datatype::to_result(&columns, &values).unwrap();
 
-        scheduler.commit(txn);
+        scheduler.commit(txn).unwrap();
         drop(scheduler);
     }
 }

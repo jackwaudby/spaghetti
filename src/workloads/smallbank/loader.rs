@@ -209,7 +209,7 @@ mod tests {
         let c = Arc::clone(&config);
         let internals = Internal::new("smallbank_schema.txt", c).unwrap();
 
-        let mut rng = StdRng::seed_from_u64(1);
+        // let rng = StdRng::seed_from_u64(1);
 
         // Populate Accounts.
         populate_account(&internals).unwrap();

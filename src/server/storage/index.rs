@@ -404,8 +404,8 @@ mod tests {
         );
 
         // 6. Successful write of entry.
-        let cols = vec!["bit_4", "byte_2_5"];
-        let vals = vec!["0", "69"];
+        // let cols = vec!["bit_4", "byte_2_5"];
+        // let vals = vec!["0", "69"];
         // workload
         //     .get_internals()
         //     .get_index("sub_idx")
