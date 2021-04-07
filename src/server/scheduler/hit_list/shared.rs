@@ -46,6 +46,16 @@ pub struct SharedResources {
 /// Atomic wrapper around shared resources.
 #[derive(Debug)]
 pub struct AtomicSharedResources {
+    /// Transaction id counter.
+    ///
+    /// # Safety
+    ///
+    /// Arc: shared across threads.
+    /// Mutex: single read/writer at-a-time.
+    id: Arc<Mutex<u64>>,
+
+    /// Contains hit and terminated lists.
+    ///
     /// # Safety
     ///
     /// Arc: shared across threads.
@@ -201,8 +211,17 @@ impl SharedResources {
 impl AtomicSharedResources {
     /// Create new atomic shared resources.
     pub fn new() -> AtomicSharedResources {
+        let id = Arc::new(Mutex::new(0)); // id generator
         let resources = Arc::new(Mutex::new(SharedResources::new()));
-        AtomicSharedResources { resources }
+        AtomicSharedResources { id, resources }
+    }
+
+    /// Get next id
+    pub fn get_next_id(&self) -> u64 {
+        let mut lock = self.id.lock().unwrap(); // get mutex lock
+        let id = *lock; // get copy of id
+        *lock += 1; // increment
+        id
     }
 
     /// Get lock on shared resources.

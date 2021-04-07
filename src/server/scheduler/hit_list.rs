@@ -26,9 +26,6 @@ pub mod active_transaction;
 
 /// HIT Scheduler.
 pub struct HitList {
-    /// Transaction id counter.
-    id: Arc<Mutex<u64>>,
-
     /// Map of transaction ids to neccessary runtime information.
     active_transactions: Arc<CHashMap<u64, ActiveTransaction>>,
 
@@ -53,10 +50,7 @@ struct GarbageCollector {
 impl Scheduler for HitList {
     /// Register a transaction.
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
-        let counter = Arc::clone(&self.id);
-        let mut lock = counter.lock().unwrap();
-        let id = *lock;
-        *lock += 1;
+        let id = self.asr.get_next_id(); // get id
 
         // Get start epoch and add to epoch tracker.
         let mut resources = self.asr.get_lock();
@@ -451,7 +445,6 @@ impl Scheduler for HitList {
 impl HitList {
     /// Create a `HitList` scheduler.
     pub fn new(data: Arc<Workload>) -> HitList {
-        let id = Arc::new(Mutex::new(0)); // id generator
         let active_transactions = Arc::new(CHashMap::<u64, ActiveTransaction>::new()); // active transactions
         let asr = AtomicSharedResources::new(); // shared resources
         let (sender, receiver) = mpsc::channel(); // shutdown channel
@@ -459,7 +452,6 @@ impl HitList {
         let garbage_collector = GarbageCollector::new(asr.get_ref(), receiver, sleep);
 
         HitList {
-            id,
             active_transactions,
             asr,
             data,
