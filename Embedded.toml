@@ -3,12 +3,12 @@ log = "info"
 set_seed = false
 seed = 1
 
-transactions = 10000
+transactions = 1000000
 warmup = 1
 protocol="hit"
 workers = 4
 
-hit_gc = 1000
+hit_gc = 5000
 
 workload = "tatp"
 schema = "tatp_schema.txt"

@@ -604,6 +604,7 @@ impl HitList {
             .get_config()
             .get_int("workers")
             .unwrap() as usize;
+        info!("Initialise hit list with {} workers", workers);
 
         let active_transactions = ActiveTransactionTracker::new(workers);
 

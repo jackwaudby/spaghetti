@@ -639,6 +639,13 @@ impl Scheduler for TwoPhaseLocking {
 impl TwoPhaseLocking {
     /// Creates a new scheduler with an empty lock table.
     pub fn new(workload: Arc<Workload>) -> TwoPhaseLocking {
+        let workers = data
+            .get_internals()
+            .get_config()
+            .get_int("workers")
+            .unwrap() as usize;
+        info!("Initialise 2pl with {} workers", workers);
+
         let lock_table = Arc::new(CHashMap::<PrimaryKey, LockInfo>::new());
         let active_transactions = Arc::new(CHashMap::<String, ActiveTransaction>::new());
 
