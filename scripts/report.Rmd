@@ -1,34 +1,102 @@
 ---
-title: "report"
+title: "Benchmark Results"
 author: "Jack Waudby"
 date: "08/04/2021"
 output: pdf_document
-params:
-  workload: "tatp"
-  protocol: "sgt"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library("rjson")
+library("knitr")
 ```
 
-## R Markdown
+```{r load, include=FALSE}
+sgt = fromJSON(file = "../results/sgt-tatp.json")
+hit = fromJSON(file = "../results/hit-tatp.json")
+tpl = fromJSON(file = "../results/2pl-tatp.json")
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+dat = data.frame(
+  protocol = c(sgt$protocol, hit$protocol, tpl$protocol),
+  abort_rate = c(sgt$abort_rate, hit$abort_rate, tpl$abort_rate),
+  throughput = c(sgt$throughput, hit$throughput, tpl$throughput),
+  stringsAsFactors = FALSE
+)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this: ``r params$workload``.
+latency = data.frame(
+  protocol = c(sgt$protocol, hit$protocol, tpl$protocol),
+  min = c(sgt$min, hit$min, tpl$min),
+  pc50 = c(
+    sgt$`50th_percentile`,
+    hit$`50th_percentile`,
+    tpl$`50th_percentile`
+  ),
+  pc75 = c(
+    sgt$`90th_percentile`,
+    hit$`90th_percentile`,
+    tpl$`90th_percentile`
+  ),
+  pc95 = c(
+    sgt$`95th_percentile`,
+    hit$`95th_percentile`,
+    tpl$`95th_percentile`
+  ),
+  pc99 = c(
+    sgt$`99th_percentile`,
+    hit$`99th_percentile`,
+    tpl$`99th_percentile`
+  ),
+  max = c(sgt$max, hit$max, tpl$max),
+  stringsAsFactors = FALSE
+)
 
-```{r cars}
 
-summary(cars)
+sgt_aborts = data.frame(
+  protocol = sgt$protocol,
+  aborts = sgt$aborted, 
+  row_already_exists = sgt$abort_breakdown$row_already_exists,
+  row_not_found = sgt$abort_breakdown$row_not_found,
+  row_dirty = sgt$abort_breakdown$protocol_specific$SerializationGraph$row_dirty,
+  row_deleted = sgt$abort_breakdown$protocol_specific$SerializationGraph$row_deleted,
+   parent_aborted = sgt$abort_breakdown$protocol_specific$SerializationGraph$parent_aborted
+)
+
+hit_aborts = data.frame(
+  protocol = hit$protocol,
+  aborts = hit$aborted,
+  row_already_exists = hit$abort_breakdown$row_already_exists,
+  row_not_found = hit$abort_breakdown$row_not_found,
+  row_dirty = hit$abort_breakdown$protocol_specific$HitList$row_dirty,
+  row_deleted = hit$abort_breakdown$protocol_specific$HitList$row_deleted,
+  hit = hit$abort_breakdown$protocol_specific$HitList$hit,
+  pur_ab = hit$abort_breakdown$protocol_specific$HitList$pur_aborted,
+  pur_ac = hit$abort_breakdown$protocol_specific$HitList$pur_active
+)
+
+tpl_aborts = data.frame(
+  protocol = tpl$protocol,
+  aborts = tpl$aborted, 
+  row_already_exists = tpl$abort_breakdown$row_already_exists,
+  row_not_found = tpl$abort_breakdown$row_not_found,
+  read_lock_denied = tpl$abort_breakdown$protocol_specific$TwoPhaseLocking$read_lock_denied, 
+  write_lock_denied = tpl$abort_breakdown$protocol_specific$TwoPhaseLocking$write_lock_denied
+)
 ```
 
-## Including Plots
 
-You can also embed plots, for example:
+## Results
+
 
 ```{r pressure, echo=FALSE}
-plot(pressure)
-```
+kable(dat, caption = paste0("TATP workload."),col.names = c('Protocol', 'Abort Rate (%)','Throughput (Txn/s)'))
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+kable(sgt_aborts,
+      caption = paste0("SGT abort breakdown for TATP workload."),col.names = c('Protocol', 'Aborts','Row Exists','Row Not Found','Row Dirty','Row Deleted','Parent Aborted'))
+kable(tpl_aborts,
+      caption = paste0("2PL abort breakdown for TATP workload."),col.names = c('Protocol', 'Aborts','Row Exists','Row Not Found','Read Lock Denied','Write Lock Denied'))
+kable(hit_aborts,
+      caption = paste0("HIT abort breakdown for TATP workload."),col.names = c('Protocol', 'Aborts','Row Exists','Row Not Found','Row Dirty','Row Deleted','Hit','Pred Aborted','Pred Active'))
+
+kable(latency,
+      caption = paste0("Latency (ms) for TATP workload."))
+```
