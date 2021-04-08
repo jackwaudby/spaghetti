@@ -1,5 +1,7 @@
 use crate::common::error::NonFatalError;
-use crate::server::scheduler::hit_list::active_transaction::ActiveTransaction;
+use crate::server::scheduler::hit_list::active_transaction::{
+    ActiveTransactionTracker, Operation, Predecessor,
+};
 use crate::server::scheduler::hit_list::error::HitListError;
 use crate::server::scheduler::hit_list::shared::{
     AtomicSharedResources, SharedResources, TransactionOutcome,
@@ -9,7 +11,6 @@ use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{Access, Row};
 use crate::workloads::{PrimaryKey, Workload};
 
-use chashmap::CHashMap;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -26,8 +27,16 @@ pub mod active_transaction;
 
 /// HIT Scheduler.
 pub struct HitList {
-    /// Map of transaction ids to neccessary runtime information.
-    active_transactions: Arc<CHashMap<u64, ActiveTransaction>>,
+    // /// Map of transaction ids to neccessary runtime information.
+    // active_transactions: Arc<CHashMap<u64, ActiveTransaction>>,
+    /// Each worker thread has an id that corresponds to a slot in the vector.
+    /// This slot contains the runtime information for a transaction that thread is executing.
+    ///
+    /// # Safety
+    ///
+    /// Arc to share across worker threads.
+    /// Mutex so threads can mutate state.
+    active_transactions: ActiveTransactionTracker,
 
     /// Resources shared between transactions, e.g. hit list, terminated list.
     asr: AtomicSharedResources,
@@ -50,6 +59,10 @@ struct GarbageCollector {
 impl Scheduler for HitList {
     /// Register a transaction.
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
+        // Get thread name.
+        let tname = thread::current().name().unwrap().to_string();
+        let worker_id = tname.parse::<usize>().unwrap();
+
         let handle = thread::current();
         debug!(
             "Thread {} registering a transaction",
@@ -72,12 +85,12 @@ impl Scheduler for HitList {
         drop(resources); // drop lock
         debug!("Thread {} dropped lock", handle.name().unwrap());
 
-        let at = ActiveTransaction::new(id, start_epoch); // create at
         debug!(
             "Thread {} inserting into active transactions",
             handle.name().unwrap()
         );
-        self.active_transactions.insert(id, at); // register txn with at
+        self.active_transactions
+            .start_tracking(worker_id, id, start_epoch);
 
         let info = TransactionInfo::new(Some(id.to_string()), None);
         debug!("Thread {} registered a transaction", handle.name().unwrap());
@@ -103,10 +116,12 @@ impl Scheduler for HitList {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        let tname = thread::current().name().unwrap().to_string();
+        let worker_id = tname.parse::<usize>().unwrap();
+
         let handle = thread::current();
         debug!("Thread {} executing create", handle.name().unwrap());
 
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get txn id
         let table = self.get_table(table, meta.clone())?; // get table
         let mut row = Row::new(Arc::clone(&table), "hit"); // create new row
         row.set_primary_key(key.clone()); // set pk
@@ -133,10 +148,9 @@ impl Scheduler for HitList {
             }
         }
 
-        // TODO: do we ever contend on the same entry in the at hashmap?
-        let mut wg = self.active_transactions.get_mut(&id).unwrap(); // get write guard
-        wg.add_key_inserted((index.get_name(), key.clone())); // record insert in at
-        drop(wg); // drop write guard
+        let pair = (index.get_name(), key.clone());
+        self.active_transactions
+            .add_key(worker_id, pair, Operation::Create);
 
         // attempt to insert row
         match index.insert(key, row) {
@@ -160,13 +174,14 @@ impl Scheduler for HitList {
         columns: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
+        let tname = thread::current().name().unwrap().to_string();
+        let worker_id = tname.parse::<usize>().unwrap();
+
         let handle = thread::current();
         debug!("Thread {} executing read", handle.name().unwrap());
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
+
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
-
-        let mut wg = self.active_transactions.get_mut(&id).unwrap(); // get write guard in at
 
         // execute read
         match index.read(key.clone(), columns, "hit", &meta.get_id().unwrap()) {
@@ -176,16 +191,20 @@ impl Scheduler for HitList {
                     // WR conflict
                     if let Access::Write(tid) = access {
                         let tid = tid.parse::<u64>().unwrap();
-                        wg.add_pur(tid);
+                        self.active_transactions
+                            .add_predecessor(worker_id, tid, Predecessor::Read);
                     }
                 }
-                wg.add_key_read((index.get_name(), key)); // register read in at
+
+                let pair = (index.get_name(), key.clone());
+                self.active_transactions
+                    .add_key(worker_id, pair, Operation::Read);
+
                 let vals = res.get_values().unwrap(); // get the values
-                drop(wg); // drop write guard
+
                 Ok(vals)
             }
             Err(e) => {
-                drop(wg); // drop write guard
                 self.abort(meta.clone()).unwrap();
                 return Err(e);
             }
@@ -201,15 +220,16 @@ impl Scheduler for HitList {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
+        let tname = thread::current().name().unwrap().to_string();
+        let worker_id = tname.parse::<usize>().unwrap();
+
         let handle = thread::current();
         debug!(
             "Thread {} executing read and update",
             handle.name().unwrap()
         );
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
-        let mut wg = self.active_transactions.get_mut(&id).unwrap(); // get write guard
 
         // execute read and update
         match index.read_and_update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
@@ -220,23 +240,33 @@ impl Scheduler for HitList {
                         // WW conflict
                         Access::Write(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_puw(tid);
+                            self.active_transactions.add_predecessor(
+                                worker_id,
+                                tid,
+                                Predecessor::Write,
+                            );
                         }
                         // RW conflict
                         Access::Read(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_puw(tid);
+                            self.active_transactions.add_predecessor(
+                                worker_id,
+                                tid,
+                                Predecessor::Write,
+                            );
                         }
                     }
                 }
+                let pair = (index.get_name(), key.clone());
+                self.active_transactions
+                    .add_key(worker_id, pair, Operation::Update);
                 // TODO: register as read as well?
-                wg.add_key_updated((index.get_name(), key)); //  register as update.
+
                 let vals = res.get_values().unwrap();
-                drop(wg);
+
                 Ok(vals)
             }
             Err(e) => {
-                drop(wg);
                 self.abort(meta).unwrap();
                 return Err(e);
             }
@@ -259,12 +289,14 @@ impl Scheduler for HitList {
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        let tname = thread::current().name().unwrap().to_string();
+        let worker_id = tname.parse::<usize>().unwrap();
+
         let handle = thread::current();
         debug!("Thread {} executing  update", handle.name().unwrap());
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap();
+
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
-        let mut wg = self.active_transactions.get_mut(&id).unwrap();
 
         match index.update(
             key.clone(),
@@ -282,21 +314,29 @@ impl Scheduler for HitList {
                         // WW conflict
                         Access::Write(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_puw(tid);
+                            self.active_transactions.add_predecessor(
+                                worker_id,
+                                tid,
+                                Predecessor::Write,
+                            );
                         }
                         // RW conflict
                         Access::Read(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_pur(tid);
+                            self.active_transactions.add_predecessor(
+                                worker_id,
+                                tid,
+                                Predecessor::Write,
+                            );
                         }
                     }
                 }
-                wg.add_key_updated((index.get_name(), key));
-                drop(wg);
+                let pair = (index.get_name(), key.clone());
+                self.active_transactions
+                    .add_key(worker_id, pair, Operation::Update);
                 Ok(())
             }
             Err(e) => {
-                drop(wg);
                 self.abort(meta).unwrap();
                 return Err(e);
             }
@@ -310,12 +350,15 @@ impl Scheduler for HitList {
         key: PrimaryKey,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        let tname = thread::current().name().unwrap().to_string();
+        let worker_id = tname.parse::<usize>().unwrap();
+
         let handle = thread::current();
         debug!("Thread {} executing delete", handle.name().unwrap());
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
+
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
-        let mut wg = self.active_transactions.get_mut(&id).unwrap(); // get mut ref to active transaction
+
         match index.delete(key.clone(), "hit") {
             Ok(res) => {
                 let access_history = res.get_access_history().unwrap();
@@ -324,21 +367,30 @@ impl Scheduler for HitList {
                         // WW conflict
                         Access::Write(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_puw(tid);
+                            self.active_transactions.add_predecessor(
+                                worker_id,
+                                tid,
+                                Predecessor::Write,
+                            );
                         }
                         // RW conflict
                         Access::Read(tid) => {
                             let tid = tid.parse::<u64>().unwrap();
-                            wg.add_puw(tid);
+                            self.active_transactions.add_predecessor(
+                                worker_id,
+                                tid,
+                                Predecessor::Write,
+                            );
                         }
                     }
                 }
-                wg.add_key_deleted((index.get_name(), key)); // add to deleted
-                drop(wg);
+                let pair = (index.get_name(), key.clone());
+                self.active_transactions
+                    .add_key(worker_id, pair, Operation::Delete);
+
                 Ok(())
             }
             Err(e) => {
-                drop(wg);
                 self.abort(meta).unwrap();
                 Err(e)
             }
@@ -350,25 +402,36 @@ impl Scheduler for HitList {
     /// # Panics
     /// - RWLock or Mutex error.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
+        let tname = thread::current().name().unwrap().to_string();
+        let worker_id = tname.parse::<usize>().unwrap();
+
         let handle = thread::current();
         let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
         debug!("Thread {} aborting {}", handle.name().unwrap(), id);
 
-        let mut at = self.active_transactions.remove(&id).unwrap(); // remove txn from at
         debug!("Thread {} requesting lock", handle.name().unwrap());
         let mut lock = self.asr.get_lock(); // get lock on resources
         debug!("Thread {} received lock", handle.name().unwrap());
 
         lock.remove_from_hit_list(id); // remove aborted txn from hit list
         lock.add_to_terminated_list(id, TransactionOutcome::Aborted); // add txn to terminated list
-        let se = at.get_start_epoch(); // register txn with gc
+        let se = self.active_transactions.get_start_epoch(worker_id); // register txn with gc
         lock.get_mut_epoch_tracker().add_terminated(id, se); // add to epoch terminated
 
         // remove inserts/reads/updates/deletes
-        let inserted = at.get_keys_inserted();
-        let read = at.get_keys_read();
-        let updated = at.get_keys_updated();
-        let deleted = at.get_keys_deleted();
+        let inserted = self
+            .active_transactions
+            .get_keys(worker_id, Operation::Create);
+        let read = self
+            .active_transactions
+            .get_keys(worker_id, Operation::Read);
+        let updated = self
+            .active_transactions
+            .get_keys(worker_id, Operation::Update);
+        let deleted = self
+            .active_transactions
+            .get_keys(worker_id, Operation::Delete);
+
         for (index, key) in inserted {
             let index = self.data.get_internals().get_index(&index).unwrap();
             index.remove(key.clone()).unwrap();
@@ -394,7 +457,7 @@ impl Scheduler for HitList {
 
         drop(lock); // drop lock on resources
         debug!("Thread {} dropped lock", handle.name().unwrap());
-
+        self.active_transactions.clear(worker_id);
         Ok(())
     }
 
@@ -404,6 +467,9 @@ impl Scheduler for HitList {
     /// 1) Wait-phase; for each predecessor upon read; abort if active or aborted.
     /// 2) Hit-phase; for each predecessor upon write; if in hit list then abort; else hit predecessors if they are active
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
+        let tname = thread::current().name().unwrap().to_string();
+        let worker_id = tname.parse::<usize>().unwrap();
+
         let handle = thread::current();
         let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
         debug!("Thread {} committing txn {}", handle.name().unwrap(), id);
@@ -416,14 +482,16 @@ impl Scheduler for HitList {
             handle.name().unwrap(),
             id
         );
-        let mut at = self.active_transactions.get_mut(&id).unwrap(); // get mut ref on txn
+
         debug!(
             "Thread {} received write guard on entry in active transactions for txn {}",
             handle.name().unwrap(),
             id
         );
 
-        let pur = at.get_pur(); // get pred on read
+        let pur = self
+            .active_transactions
+            .get_predecessors(worker_id, Predecessor::Read);
         let mut pur: Vec<u64> = pur.iter().cloned().collect(); // convert to vec
         debug!("Thread {} entering wait phase", handle.name().unwrap());
 
@@ -435,7 +503,6 @@ impl Scheduler for HitList {
             // if terminated but aborted; then abort
             if lock.has_terminated(predecessor) {
                 if lock.get_terminated_outcome(predecessor) == TransactionOutcome::Aborted {
-                    drop(at); // drop write guard
                     drop(lock); // drop lock on shared resources
                     debug!("Thread {} dropped lock", handle.name().unwrap());
                     self.abort(meta).unwrap(); // abort txn
@@ -443,14 +510,13 @@ impl Scheduler for HitList {
                 } // else; terminated and committed, continue
             } else {
                 // if not terminated and committed; then abort
-                drop(at); // drop write guard
                 drop(lock); // drop lock on shared resources
                 debug!("Thread {} dropped lock", handle.name().unwrap());
                 self.abort(meta).unwrap();
                 return Err(HitListError::PredecessorActive(id).into());
             }
         }
-        drop(at);
+
         debug!("Thread {} wait phase complete", handle.name().unwrap());
         debug!("Thread {} entering hit phase", handle.name().unwrap());
 
@@ -458,14 +524,22 @@ impl Scheduler for HitList {
         if !lock.is_in_hit_list(id) {
             debug!("Thread {} not in hit list", handle.name().unwrap());
 
-            let mut at = self.active_transactions.remove(&id).unwrap(); // remove from active
             debug!("Thread {} removed txn from active", handle.name().unwrap());
 
             // commit changes
-            let inserted = at.get_keys_inserted();
-            let read = at.get_keys_read();
-            let updated = at.get_keys_updated();
-            let deleted = at.get_keys_deleted();
+            let inserted = self
+                .active_transactions
+                .get_keys(worker_id, Operation::Create);
+            let read = self
+                .active_transactions
+                .get_keys(worker_id, Operation::Read);
+            let updated = self
+                .active_transactions
+                .get_keys(worker_id, Operation::Update);
+            let deleted = self
+                .active_transactions
+                .get_keys(worker_id, Operation::Delete);
+
             for (index, key) in inserted {
                 let index = self.data.get_internals().get_index(&index).unwrap();
                 index.commit(key, "hit", &id.to_string()).unwrap();
@@ -484,7 +558,9 @@ impl Scheduler for HitList {
             }
             debug!("Thread {} committed changes", handle.name().unwrap());
             // merge active transactions in PuW into hit list.
-            let puw = at.get_puw();
+            let puw = self
+                .active_transactions
+                .get_predecessors(worker_id, Predecessor::Write);
             for predecessor in puw {
                 if !lock.has_terminated(predecessor) {
                     lock.add_to_hit_list(predecessor);
@@ -492,14 +568,14 @@ impl Scheduler for HitList {
             }
             debug!("Thread {} merged in hit list", handle.name().unwrap());
 
-            let se = at.get_start_epoch();
+            let se = self.active_transactions.get_start_epoch(worker_id);
             lock.get_mut_epoch_tracker().add_terminated(id, se);
             lock.add_to_terminated_list(id, TransactionOutcome::Committed);
             debug!(
                 "Thread {} added to terminated  list",
                 handle.name().unwrap()
             );
-
+            self.active_transactions.clear(worker_id);
             drop(lock);
             debug!("Thread {} dropped lock", handle.name().unwrap());
             return Ok(());
@@ -521,7 +597,16 @@ impl Scheduler for HitList {
 impl HitList {
     /// Create a `HitList` scheduler.
     pub fn new(data: Arc<Workload>) -> HitList {
-        let active_transactions = Arc::new(CHashMap::<u64, ActiveTransaction>::new()); // active transactions
+        // let active_transactions = Arc::new(CHashMap::<u64, ActiveTransaction>::new()); // active transactions
+
+        let workers = data
+            .get_internals()
+            .get_config()
+            .get_int("workers")
+            .unwrap() as usize;
+
+        let active_transactions = ActiveTransactionTracker::new(workers);
+
         let asr = AtomicSharedResources::new(); // shared resources
         let (sender, receiver) = mpsc::channel(); // shutdown channel
         let sleep = data.get_internals().get_config().get_int("hit_gc").unwrap() as u64;

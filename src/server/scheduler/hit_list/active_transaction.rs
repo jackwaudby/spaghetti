@@ -1,6 +1,98 @@
 use crate::workloads::PrimaryKey;
 
 use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
+
+pub struct ActiveTransactionTracker {
+    tracker: Arc<Vec<Mutex<Option<ActiveTransaction>>>>,
+}
+
+impl ActiveTransactionTracker {
+    pub fn new(workers: usize) -> ActiveTransactionTracker {
+        let mut at = Vec::with_capacity(workers);
+        for _ in 0..workers {
+            at.push(Mutex::new(None));
+        }
+
+        let tracker = Arc::new(at);
+
+        ActiveTransactionTracker { tracker }
+    }
+
+    pub fn start_tracking(&self, worker_id: usize, tid: u64, start_epoch: u64) {
+        let at = ActiveTransaction::new(tid, start_epoch);
+        let mut state = self.tracker[worker_id].lock().unwrap();
+        *state = Some(at);
+    }
+
+    pub fn get_start_epoch(&self, worker_id: usize) -> u64 {
+        self.tracker[worker_id]
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .get_start_epoch()
+    }
+
+    pub fn clear(&self, worker_id: usize) {
+        let mut state = self.tracker[worker_id].lock().unwrap();
+        *state = None;
+    }
+
+    pub fn add_key(&self, worker_id: usize, key: (String, PrimaryKey), operation: Operation) {
+        let mut state = self.tracker[worker_id].lock().unwrap();
+
+        use Operation::*;
+        match operation {
+            Create => state.as_mut().unwrap().add_key_inserted(key),
+            Read => state.as_mut().unwrap().add_key_read(key),
+            Update => state.as_mut().unwrap().add_key_updated(key),
+            Delete => state.as_mut().unwrap().add_key_deleted(key),
+        }
+    }
+
+    pub fn get_keys(&self, worker_id: usize, operation: Operation) -> Vec<(String, PrimaryKey)> {
+        let mut state = self.tracker[worker_id].lock().unwrap();
+
+        use Operation::*;
+        match operation {
+            Create => state.as_mut().unwrap().get_keys_inserted(),
+            Read => state.as_mut().unwrap().get_keys_read(),
+            Update => state.as_mut().unwrap().get_keys_updated(),
+            Delete => state.as_mut().unwrap().get_keys_deleted(),
+        }
+    }
+
+    pub fn add_predecessor(&self, worker_id: usize, transaction_id: u64, predecessor: Predecessor) {
+        let mut state = self.tracker[worker_id].lock().unwrap();
+        use Predecessor::*;
+        match predecessor {
+            Read => state.as_mut().unwrap().add_pur(transaction_id),
+            Write => state.as_mut().unwrap().add_puw(transaction_id),
+        }
+    }
+
+    pub fn get_predecessors(&self, worker_id: usize, predecessor: Predecessor) -> HashSet<u64> {
+        let mut state = self.tracker[worker_id].lock().unwrap();
+        use Predecessor::*;
+        match predecessor {
+            Read => state.as_mut().unwrap().get_pur(),
+            Write => state.as_mut().unwrap().get_puw(),
+        }
+    }
+}
+
+pub enum Predecessor {
+    Read,
+    Write,
+}
+
+pub enum Operation {
+    Create,
+    Read,
+    Update,
+    Delete,
+}
 
 /// Holds the runtime information of transaction in the HIT protocol.
 pub struct ActiveTransaction {

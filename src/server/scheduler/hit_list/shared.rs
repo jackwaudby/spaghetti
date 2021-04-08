@@ -1,7 +1,6 @@
 use crate::server::scheduler::hit_list::epoch::EpochTracker;
 
 use std::collections::HashSet;
-use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex, MutexGuard};
 
