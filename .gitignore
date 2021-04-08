@@ -6,3 +6,4 @@ Cargo.lock
 ssh_keys/
 .DS_Store
 *.pdf
+.Rhistory
