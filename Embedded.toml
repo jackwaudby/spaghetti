@@ -1,4 +1,4 @@
-log = "debug"
+log = "info"
 
 set_seed = false
 seed = 1
@@ -6,9 +6,9 @@ seed = 1
 transactions = 10000
 warmup = 1
 protocol="hit"
-workers = 2
+workers = 4
 
-hit_gc = 100000
+hit_gc = 1000
 
 workload = "tatp"
 schema = "tatp_schema.txt"

@@ -719,20 +719,24 @@ mod tests {
         // Initialise scheduler.
         let scheduler = Arc::new(HitList::new(workload));
 
-        let txn = scheduler.register().unwrap(); // register
-        assert_eq!(txn, TransactionInfo::new(Some("0".to_string()), None));
+        let h = thread::Builder::new().name("1".to_string()).spawn(move || {
+            let txn = scheduler.register().unwrap(); // register
+            assert_eq!(txn, TransactionInfo::new(Some("0".to_string()), None));
 
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3)); // pk
-        let columns: Vec<&str> = vec!["bit_1"];
-        // let values_a: Vec<&str> = vec!["0"];
-        // let values_b: Vec<&str> = vec!["1"];
+            let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3)); // pk
+            let columns: Vec<&str> = vec!["bit_1"];
+            // let values_a: Vec<&str> = vec!["0"];
+            // let values_b: Vec<&str> = vec!["1"];
 
-        let values = scheduler
-            .read("subscriber", pk.clone(), &columns, txn.clone())
-            .unwrap();
-        let res = datatype::to_result(&columns, &values).unwrap();
-        assert_eq!(res, "{bit_1=\"0\"}");
-        scheduler.commit(txn).unwrap();
-        drop(scheduler);
+            let values = scheduler
+                .read("subscriber", pk.clone(), &columns, txn.clone())
+                .unwrap();
+            let res = datatype::to_result(&columns, &values).unwrap();
+            assert_eq!(res, "{bit_1=\"0\"}");
+            scheduler.commit(txn).unwrap();
+            drop(scheduler);
+        });
+
+        h.unwrap().join().unwrap();
     }
 }
