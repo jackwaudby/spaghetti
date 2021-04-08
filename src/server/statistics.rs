@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
+use crate::server::scheduler::hit_list::error::HitListError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 use crate::workloads::smallbank::SmallBankTransaction;
@@ -248,6 +249,12 @@ impl LocalStatistics {
                         ProtocolAbortBreakdown::HitList(ref mut metric) => match reason {
                             NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
                             NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
+                            NonFatalError::HitList(e) => match e {
+                                HitListError::TransactionInHitList(_) => metric.inc_hit(),
+                                HitListError::PredecessorAborted(_) => metric.inc_pur_aborted(),
+                                HitListError::PredecessorActive(_) => metric.inc_pur_active(),
+                                _ => {}
+                            },
                             _ => {}
                         },
                         ProtocolAbortBreakdown::SerializationGraph(ref mut metric) => {
@@ -535,6 +542,15 @@ struct HitListReasons {
 
     /// Transaction attempted to read or modify a row already marked for deletion.
     row_deleted: u32,
+
+    /// Transaction was hit.
+    hit: u32,
+
+    /// Predecessor upon read was active.
+    pur_active: u32,
+
+    /// Predecessor upon read was aborted.
+    pur_aborted: u32,
 }
 
 impl TwoPhaseLockingReasons {
@@ -600,6 +616,9 @@ impl HitListReasons {
         HitListReasons {
             row_dirty: 0,
             row_deleted: 0,
+            hit: 0,
+            pur_aborted: 0,
+            pur_active: 0,
         }
     }
 
@@ -613,8 +632,27 @@ impl HitListReasons {
         self.row_deleted += 1;
     }
 
+    /// Increment hit counter.
+    fn inc_hit(&mut self) {
+        self.hit += 1;
+    }
+
+    /// Increment pur active counter.
+    fn inc_pur_active(&mut self) {
+        self.pur_active += 1;
+    }
+
+    /// Increment pur aborted counter.
+    fn inc_pur_aborted(&mut self) {
+        self.pur_aborted += 1;
+    }
+
+    /// Merge hit list reasons.
     fn merge(&mut self, other: HitListReasons) {
         self.row_dirty += other.row_dirty;
         self.row_deleted += other.row_deleted;
+        self.hit += other.hit;
+        self.pur_aborted += other.pur_aborted;
+        self.pur_active += other.pur_active;
     }
 }
