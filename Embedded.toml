@@ -5,7 +5,7 @@ seed = 1
 
 transactions = 1000000
 warmup = 1
-protocol="hit"
+protocol="sgt"
 workers = 4
 
 hit_gc = 5000
