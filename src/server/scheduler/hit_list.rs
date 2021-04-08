@@ -51,27 +51,36 @@ impl Scheduler for HitList {
     /// Register a transaction.
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
         let handle = thread::current();
+        debug!(
+            "Thread {} registering a transaction",
+            handle.name().unwrap()
+        );
         debug!("Thread {} getting id", handle.name().unwrap());
         let id = self.asr.get_next_id(); // get id
         debug!("Thread {} got id: {}", handle.name().unwrap(), id);
         debug!("Thread {} requesting lock", handle.name().unwrap());
         let mut resources = self.asr.get_lock(); // get lock on resources
         debug!("Thread {} received lock", handle.name().unwrap());
-        let start_epoch = resources.get_current_epoch(); // get start epoch
+        let start_epoch = resources.get_mut_epoch_tracker().get_current_id(); // get start epoch
         debug!(
             "Thread {} started in epoch: {}",
             handle.name().unwrap(),
             start_epoch
         );
-        resources.add_started(id); // register txn in this epoch
+        resources.get_mut_epoch_tracker().add_started(id); // register txn in this epoch
         debug!("Thread {} dropping lock", handle.name().unwrap());
         drop(resources); // drop lock
         debug!("Thread {} dropped lock", handle.name().unwrap());
 
         let at = ActiveTransaction::new(id, start_epoch); // create at
+        debug!(
+            "Thread {} inserting into active transactions",
+            handle.name().unwrap()
+        );
         self.active_transactions.insert(id, at); // register txn with at
 
         let info = TransactionInfo::new(Some(id.to_string()), None);
+        debug!("Thread {} registered a transaction", handle.name().unwrap());
 
         Ok(info)
     }
@@ -94,6 +103,9 @@ impl Scheduler for HitList {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        let handle = thread::current();
+        debug!("Thread {} executing create", handle.name().unwrap());
+
         let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get txn id
         let table = self.get_table(table, meta.clone())?; // get table
         let mut row = Row::new(Arc::clone(&table), "hit"); // create new row
@@ -148,6 +160,8 @@ impl Scheduler for HitList {
         columns: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
+        let handle = thread::current();
+        debug!("Thread {} executing read", handle.name().unwrap());
         let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
@@ -187,6 +201,11 @@ impl Scheduler for HitList {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
+        let handle = thread::current();
+        debug!(
+            "Thread {} executing read and update",
+            handle.name().unwrap()
+        );
         let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
@@ -240,6 +259,8 @@ impl Scheduler for HitList {
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        let handle = thread::current();
+        debug!("Thread {} executing  update", handle.name().unwrap());
         let id = meta.get_id().unwrap().parse::<u64>().unwrap();
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
@@ -289,6 +310,8 @@ impl Scheduler for HitList {
         key: PrimaryKey,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        let handle = thread::current();
+        debug!("Thread {} executing delete", handle.name().unwrap());
         let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
@@ -339,7 +362,7 @@ impl Scheduler for HitList {
         lock.remove_from_hit_list(id); // remove aborted txn from hit list
         lock.add_to_terminated_list(id, TransactionOutcome::Aborted); // add txn to terminated list
         let se = at.get_start_epoch(); // register txn with gc
-        lock.add_terminated(id, se); // add to epoch terminated
+        lock.get_mut_epoch_tracker().add_terminated(id, se); // add to epoch terminated
 
         // remove inserts/reads/updates/deletes
         let inserted = at.get_keys_inserted();
@@ -470,7 +493,7 @@ impl Scheduler for HitList {
             debug!("Thread {} merged in hit list", handle.name().unwrap());
 
             let se = at.get_start_epoch();
-            lock.add_terminated(id, se);
+            lock.get_mut_epoch_tracker().add_terminated(id, se);
             lock.add_to_terminated_list(id, TransactionOutcome::Committed);
             debug!(
                 "Thread {} added to terminated  list",
@@ -536,10 +559,16 @@ impl GarbageCollector {
                     debug!("Thread {} requesting lock", handle.name().unwrap());
                     let mut lock = shared.lock().unwrap(); // lock shared resources
                     debug!("Thread {} receieved lock", handle.name().unwrap());
-                    debug!("Current epoch tracker:\n{}", lock);
-                    lock.new_epoch(); // get next epoch
-                    lock.update_alpha(); // update alpha
-                    debug!("Updated epoch tracker:\n{}", lock);
+                    debug!("Current epoch tracker:\n{}", lock.get_mut_epoch_tracker());
+                    lock.get_mut_epoch_tracker().new_epoch(); // get next epoch
+                    lock.get_mut_epoch_tracker().update_alpha(); // update alpha
+                    let to_remove = lock
+                        .get_mut_epoch_tracker()
+                        .get_transactions_to_garbage_collect(); // transaction to remove
+                    for id in to_remove {
+                        lock.remove_from_terminated_list(id);
+                    }
+                    debug!("Updated epoch tracker:\n{}", lock.get_mut_epoch_tracker());
                     drop(lock); // drop lock on shared resources
                     debug!("Thread {} dropped lock", handle.name().unwrap());
                 }
