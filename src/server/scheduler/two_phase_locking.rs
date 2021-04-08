@@ -13,7 +13,7 @@ use chashmap::CHashMap;
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread;
 
-use tracing::debug;
+use tracing::{debug, info};
 
 pub mod error;
 
@@ -639,7 +639,7 @@ impl Scheduler for TwoPhaseLocking {
 impl TwoPhaseLocking {
     /// Creates a new scheduler with an empty lock table.
     pub fn new(workload: Arc<Workload>) -> TwoPhaseLocking {
-        let workers = data
+        let workers = workload
             .get_internals()
             .get_config()
             .get_int("workers")

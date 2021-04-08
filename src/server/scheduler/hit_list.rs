@@ -15,7 +15,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tracing::debug;
+use tracing::{debug, info};
 
 pub mod shared;
 
