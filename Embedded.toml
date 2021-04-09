@@ -2,17 +2,18 @@ log = "info"
 
 transactions = 1000
 warmup = 1
+set_seed = false
 
-protocol="2pl"
+protocol="sgt"
 workers = 6
 hit_gc = 5000
 
 scale_factor = 1
-workload = "tatp"
-schema = "tatp_schema.txt"
+workload = "smallbank"
+schema = "smallbank_schema.txt"
 load = true
 
 use_nurand = true
 
-balance_mix = false
+use_balance_mix = false
 hotspot_use_fixed_size = true

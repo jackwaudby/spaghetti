@@ -22,8 +22,10 @@ pub fn load_account_table(data: &Internal) -> Result<()> {
     let index_name = t.get_primary_index()?;
     let i = data.get_index(&index_name)?;
     let protocol = data.config.get_str("protocol")?;
+    let sf = data.config.get_int("scale_factor")?;
+    let path = format!("./data/smallbank/sf-{}/accounts.csv", sf);
 
-    let mut rdr = csv::Reader::from_path("data/smallbank/accounts.csv")?;
+    let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         // Deserialise.
         let s: Account = result?;
@@ -48,8 +50,10 @@ pub fn load_savings_table(data: &Internal) -> Result<()> {
     let index_name = t.get_primary_index()?;
     let i = data.get_index(&index_name)?;
     let protocol = data.config.get_str("protocol")?;
+    let sf = data.config.get_int("scale_factor")?;
+    let path = format!("./data/smallbank/sf-{}/savings.csv", sf);
 
-    let mut rdr = csv::Reader::from_path("data/smallbank/savings.csv")?;
+    let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         // Deserialise.
         let s: Savings = result?;
@@ -75,8 +79,10 @@ pub fn load_checking_table(data: &Internal) -> Result<()> {
     let index_name = t.get_primary_index()?;
     let i = data.get_index(&index_name)?;
     let protocol = data.config.get_str("protocol")?;
+    let sf = data.config.get_int("scale_factor")?;
+    let path = format!("./data/smallbank/sf-{}/checking.csv", sf);
 
-    let mut rdr = csv::Reader::from_path("data/smallbank/checking.csv")?;
+    let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         // Deserialise.
         let s: Checking = result?;
