@@ -83,8 +83,7 @@ impl Workload {
             Tatp(ref i) => {
                 if self.get_internals().get_config().get_bool("load")? {
                     let sf = self.get_internals().get_config().get_int("scale_factor")?;
-
-                    info!("load sf-{} from files", sf);
+                    info!("Load sf-{} from files", sf);
                     tatp::loader::load_sub_table(i)?;
                     tatp::loader::load_access_info_table(i)?;
                     tatp::loader::load_call_forwarding_table(i)?;

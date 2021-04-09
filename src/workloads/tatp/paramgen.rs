@@ -7,6 +7,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use tracing::info;
 
 /////////////////////////////////////////
 /// Parameter Generator. ///
@@ -36,6 +37,7 @@ impl TatpGenerator {
         } else {
             rng = SeedableRng::from_entropy();
         }
+        info!("Non-uniform parameter generator: {}", use_nurand);
         TatpGenerator {
             subscribers,
             rng,
