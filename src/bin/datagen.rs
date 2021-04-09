@@ -1,5 +1,6 @@
 use spaghetti::datagen::smallbank;
-use spaghetti::datagen::tatp::{self, TATP_SF_MAP};
+use spaghetti::datagen::tatp;
+use spaghetti::workloads::tatp::TATP_SF_MAP;
 use spaghetti::Result;
 
 use config::Config;

@@ -5,25 +5,10 @@ use crate::workloads::tatp::paramgen::TatpGenerator;
 use crate::Result;
 
 use csv::Writer;
-use lazy_static::lazy_static;
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-
-lazy_static! {
-    pub static ref TATP_SF_MAP: HashMap<u64, u64> = {
-        let mut m = HashMap::new();
-        m.insert(1, 100000);
-        m.insert(2, 200000);
-        m.insert(5, 500000);
-        m.insert(10, 1000000);
-        m.insert(20, 2000000);
-        m.insert(50, 5000000);
-        m
-    };
-}
 
 pub fn params(transactions: u64, subscribers: u64, use_nurand: bool) -> Result<()> {
     // Init writer.

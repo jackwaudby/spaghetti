@@ -118,7 +118,7 @@ impl GlobalStatistics {
         let path = format!("./results/{}", self.workload);
 
         if !Path::new(&path).exists() {
-            fs::create_dir(&path).unwrap();
+            fs::create_dir_all(&path).unwrap();
         }
 
         let file = format!(
