@@ -30,19 +30,11 @@ Configuration is set in:
 #build
 cargo build
 
-#run data gen
-./target/debug/spag-gen
-
 #run server
 ./target/debug/spag-server
 
-#run client
+#run client(s)
 ./target/debug/spag-client
-
-#run embedded mode
-./target/debug/spag-em
-
-
 ```
 
 ## Datagen
