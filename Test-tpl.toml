@@ -5,6 +5,7 @@ timeout = 5
 mpsc_size = 32
 load = false
 clients = 4
+scale_factor = 1
 
 protocol="2pl"
 workers = 4
