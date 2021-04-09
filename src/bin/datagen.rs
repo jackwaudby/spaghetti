@@ -41,7 +41,7 @@ fn run() -> Result<()> {
                 fs::remove_dir_all(&dir)?; // remove directory
             }
 
-            fs::create_dir(&dir).unwrap(); // create directory
+            fs::create_dir(&dir)?; // create directory
             let s = *TATP_SF_MAP.get(&sf).unwrap(); // get subscribers
 
             let sub = thread::spawn(move || {
