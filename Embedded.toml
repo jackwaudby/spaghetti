@@ -3,7 +3,7 @@ log = "info"
 transactions = 1000000
 warmup = 1
 
-protocol="sgt"
+protocol="hit"
 workers = 4
 hit_gc = 5000
 

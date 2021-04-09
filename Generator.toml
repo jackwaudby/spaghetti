@@ -2,7 +2,7 @@ log = "info"
 workload = "tatp"
 transactions = 10
 seed = 42
-set_seed = true
+set_seed = false
 
 params = false
 scale_factor = 1

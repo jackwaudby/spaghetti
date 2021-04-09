@@ -58,7 +58,7 @@ pub fn subscribers(subscribers: u64, rng: &mut StdRng, sf: u64) -> Result<()> {
 }
 
 pub fn access_info(subscribers: u64, rng: &mut StdRng, sf: u64) -> Result<()> {
-    let mut wtr = Writer::from_path(format!("data/tatp/sf-{}/access-info.csv", sf))?;
+    let mut wtr = Writer::from_path(format!("data/tatp/sf-{}/access_info.csv", sf))?;
 
     // Range of values for ai_type records.
     let ai_type_values = vec![1, 2, 3, 4];
