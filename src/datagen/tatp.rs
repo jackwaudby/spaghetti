@@ -27,7 +27,7 @@ lazy_static! {
 
 pub fn params(transactions: u64, subscribers: u64, use_nurand: bool) -> Result<()> {
     // Init writer.
-    let mut wtr = Writer::from_path("data/tatp/params.csv")?;
+    let mut wtr = Writer::from_path("./data/tatp/params.csv")?;
     // Init generator.
     let mut gen = TatpGenerator::new(subscribers, false, use_nurand);
 

@@ -47,3 +47,5 @@ serde_json = {version = "1.0.64", features = ["preserve_order"]}
 strum = "0.20"
 strum_macros = "0.20"
 statrs = "0.13.0"
+log = "0.4.14"
+env_logger = "0.8.3"
