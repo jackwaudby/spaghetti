@@ -1,13 +1,13 @@
 use crate::common::message::{Message, Parameters, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::smallbank::SmallBankTransaction;
+use crate::workloads::smallbank::*;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use config::Config;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use std::sync::Arc;
+use tracing::info;
 
 /// SmallBank workload transaction generator.
 pub struct SmallBankGenerator {
@@ -47,26 +47,31 @@ pub struct SmallBankGenerator {
 
 impl SmallBankGenerator {
     /// Create new `SmallBankGenerator`.
-    pub fn new(config: Arc<Config>) -> SmallBankGenerator {
-        // Initialise rng.
-        let set_seed = config.get_bool("set_seed").unwrap();
-        let seed = config.get_int("seed").unwrap() as u64;
+    pub fn new(
+        sf: u64,
+        set_seed: bool,
+        seed: Option<u64>,
+        use_balance_mix: bool,
+        hotspot_use_fixed_size: bool,
+    ) -> SmallBankGenerator {
+        info!("Parameter generator set seed: {}", set_seed);
+        info!("Balance mix: {}", use_balance_mix);
+        info!("Fixed hotspot: {}", hotspot_use_fixed_size);
+
         let rng: StdRng;
         if set_seed {
-            rng = SeedableRng::seed_from_u64(seed);
+            rng = SeedableRng::seed_from_u64(seed.unwrap());
         } else {
             rng = SeedableRng::from_entropy();
         }
-        // Params from config.
-        let accounts = config.get_int("accounts").unwrap() as u32;
-        let use_balance_mix = config.get_bool("balance_mix").unwrap();
-        let send_payment_amount = config.get_float("send_payment_amount").unwrap();
-        let deposit_checking_amount = config.get_float("deposit_checking_amount").unwrap();
-        let transact_savings_amount = config.get_float("transact_savings_amount").unwrap();
-        let write_check_amount = config.get_float("write_check_amount").unwrap();
-        let hotspot_use_fixed_size = config.get_bool("hotspot_use_fixed_size").unwrap();
-        let hotspot_fixed_size = config.get_int("hotspot_fixed_size").unwrap() as usize;
-        let hotspot_percentage = config.get_float("hotspot_percentage").unwrap();
+
+        let accounts = *SB_SF_MAP.get(&sf).unwrap() as u32;
+        let send_payment_amount = SEND_PAYMENT_AMOUNT;
+        let deposit_checking_amount = DEPOSIT_CHECKING_AMOUNT;
+        let transact_savings_amount = TRANSACT_SAVINGS_AMOUNT;
+        let write_check_amount = WRITE_CHECK_AMOUNT;
+        let hotspot_fixed_size = HOTSPOT_FIXED_SIZE as usize;
+        let hotspot_percentage = HOTSPOT_PERCENTAGE;
 
         SmallBankGenerator {
             rng,

@@ -2,7 +2,6 @@ use crate::common::message::{InternalResponse, Message, Parameters, Transaction}
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::workloads::smallbank::paramgen::SmallBankGenerator;
 use crate::workloads::tatp::paramgen::TatpGenerator;
-use crate::workloads::tatp::TATP_SF_MAP;
 
 use config::Config;
 use std::sync::mpsc::{Receiver, SyncSender};
@@ -55,18 +54,31 @@ impl Generator {
     /// Run generator.
     pub fn run(&mut self, config: Arc<Config>) {
         let max_transactions = config.get_int("transactions").unwrap() as u32;
-
+        let sf = config.get_int("scale_factor").unwrap() as u64;
+        let set_seed = config.get_bool("set_seed").unwrap();
+        let seed;
+        if set_seed {
+            let s = config.get_int("seed").unwrap() as u64;
+            seed = Some(s);
+        } else {
+            seed = None;
+        }
         let mut generator = match config.get_str("workload").unwrap().as_str() {
             "tatp" => {
-                let sf = config.get_int("scale_factor").unwrap() as u64;
-                let subscribers = *TATP_SF_MAP.get(&sf).unwrap(); // get subscribers
-                let use_nurand = config.get_bool("use_nurand").unwrap();
-
-                let gen = TatpGenerator::new(subscribers as u64, false, use_nurand);
+                let use_nurand = config.get_bool("nurand").unwrap();
+                let gen = TatpGenerator::new(sf, set_seed, seed, use_nurand);
                 ParameterGenerator::Tatp(gen)
             }
             "smallbank" => {
-                let gen = SmallBankGenerator::new(config);
+                let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
+                let hotspot_use_fixed_size = config.get_bool("hotspot_use_fixed_size").unwrap();
+                let gen = SmallBankGenerator::new(
+                    sf,
+                    set_seed,
+                    seed,
+                    use_balance_mix,
+                    hotspot_use_fixed_size,
+                );
                 ParameterGenerator::SmallBank(gen)
             }
             _ => unimplemented!(),

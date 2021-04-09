@@ -10,11 +10,16 @@ use rand::rngs::StdRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-pub fn params(transactions: u64, subscribers: u64, use_nurand: bool) -> Result<()> {
-    // Init writer.
-    let mut wtr = Writer::from_path("./data/tatp/params.csv")?;
-    // Init generator.
-    let mut gen = TatpGenerator::new(subscribers, false, use_nurand);
+/// Generate parameters for TATP stored procedures.
+pub fn params(
+    sf: u64,
+    set_seed: bool,
+    seed: Option<u64>,
+    use_nurand: bool,
+    transactions: u64,
+) -> Result<()> {
+    let mut wtr = Writer::from_path(format!("data/tatp/sf-{}/params.csv", sf))?;
+    let mut gen = TatpGenerator::new(sf, set_seed, seed, use_nurand);
 
     for _ in 1..=transactions {
         let message = gen.generate();

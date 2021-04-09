@@ -58,10 +58,18 @@ impl Producer {
         let generator = match workload.as_str() {
             "tatp" => {
                 // Get necessary initialise parameters.
-                let subscribers = configuration.get_int("subscribers")?;
+                let sf = configuration.get_int("scale_factor")? as u64;
+                let set_seed = configuration.get_bool("set_seed")?;
+                let seed;
+                if set_seed {
+                    let s = configuration.get_int("seed")? as u64;
+                    seed = Some(s);
+                } else {
+                    seed = None;
+                }
                 let use_nurand = configuration.get_bool("nurand")?;
 
-                let gen = TatpGenerator::new(subscribers as u64, false, use_nurand);
+                let gen = TatpGenerator::new(sf, set_seed, seed, use_nurand);
                 ParameterGenerator::Tatp(gen)
             }
             "tpcc" => {

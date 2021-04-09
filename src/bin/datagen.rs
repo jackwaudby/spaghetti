@@ -1,5 +1,6 @@
 use spaghetti::datagen::smallbank;
 use spaghetti::datagen::tatp;
+use spaghetti::workloads::smallbank::{MAX_BALANCE, MIN_BALANCE, SB_SF_MAP};
 use spaghetti::workloads::tatp::TATP_SF_MAP;
 use spaghetti::Result;
 
@@ -9,7 +10,6 @@ use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::fs;
 use std::path::Path;
-use std::sync::Arc;
 use std::thread;
 use std::time::Instant;
 
@@ -85,42 +85,92 @@ fn run() -> Result<()> {
             ai.join().unwrap();
             sfcf.join().unwrap();
 
-            // generate parameters
             if create_params {
-                let t = settings.get_int("transactions")? as u64;
+                let transactions = settings.get_int("transactions")? as u64;
                 let use_nurand = settings.get_bool("use_nurand")?; // use non-uniform sid distribution
-                log::info!("Generating {} parameters", t);
-                log::info!("Use nurand {}", use_nurand);
-                tatp::params(10, t, use_nurand).unwrap();
-                log::info!("Generated {} parameters", t);
+                log::info!("Generating {} parameters", transactions);
+                let wrapped_seed;
+                if set_seed {
+                    wrapped_seed = Some(seed);
+                } else {
+                    wrapped_seed = None;
+                }
+
+                tatp::params(sf, set_seed, wrapped_seed, use_nurand, transactions).unwrap();
+                log::info!("Generated {} parameters", transactions);
             }
         }
         "smallbank" => {
-            let mut rng: StdRng;
-            if set_seed {
-                rng = SeedableRng::seed_from_u64(seed);
-            } else {
-                rng = SeedableRng::from_entropy();
+            let dir = format!("./data/smallbank/sf-{}", sf);
+
+            if Path::new(&dir).exists() {
+                fs::remove_dir_all(&dir)?;
             }
-            // Remove directory.
-            if Path::new("./data/smallbank").exists() {
-                fs::remove_dir_all("./data/smallbank").unwrap();
+
+            fs::create_dir_all(&dir)?;
+            let accounts = *SB_SF_MAP.get(&sf).unwrap(); // get account
+
+            let a = thread::spawn(move || {
+                log::info!("Generating accounts.csv");
+                smallbank::accounts(accounts, sf).unwrap();
+                log::info!("Generated accounts.csv");
+            });
+
+            let s = thread::spawn(move || {
+                log::info!("Generating savings.csv");
+                let mut rng: StdRng;
+                if set_seed {
+                    rng = SeedableRng::seed_from_u64(seed);
+                } else {
+                    rng = SeedableRng::from_entropy();
+                }
+                let min = MIN_BALANCE;
+                let max = MAX_BALANCE;
+                smallbank::savings(accounts, min, max, &mut rng, sf).unwrap();
+                log::info!("Generated savings.csv");
+            });
+
+            let c = thread::spawn(move || {
+                log::info!("Generating checking.csv");
+                let mut rng: StdRng;
+                if set_seed {
+                    rng = SeedableRng::seed_from_u64(seed);
+                } else {
+                    rng = SeedableRng::from_entropy();
+                }
+                let min = MIN_BALANCE;
+                let max = MAX_BALANCE;
+
+                smallbank::checking(accounts, min, max, &mut rng, sf).unwrap();
+                log::info!("Generated checking.csv");
+            });
+
+            a.join().unwrap();
+            s.join().unwrap();
+            c.join().unwrap();
+
+            if create_params {
+                let transactions = settings.get_int("transactions")? as u64;
+                let wrapped_seed;
+                if set_seed {
+                    wrapped_seed = Some(seed);
+                } else {
+                    wrapped_seed = None;
+                }
+                let use_balance_mix = settings.get_bool("use_balance_mix")?;
+                let hotspot_use_fixed_size = settings.get_bool("hotspot_use_fixed_size")?;
+                log::info!("Generating {} parameters", transactions);
+                smallbank::params(
+                    sf,
+                    set_seed,
+                    wrapped_seed,
+                    use_balance_mix,
+                    hotspot_use_fixed_size,
+                    transactions,
+                )
+                .unwrap();
+                log::info!("Generated {} parameters", transactions);
             }
-            // Create directory
-            fs::create_dir("./data/smallbank").unwrap();
-
-            // Data
-            let accounts = settings.get_int("accounts").unwrap() as u64;
-            let min = settings.get_int("min_balance").unwrap();
-            let max = settings.get_int("max_balance").unwrap();
-
-            smallbank::accounts(accounts).unwrap();
-            smallbank::savings(accounts, min, max, &mut rng).unwrap();
-            smallbank::checking(accounts, min, max, &mut rng).unwrap();
-
-            // Params
-            let config = Arc::new(settings);
-            smallbank::params(config).unwrap();
         }
         _ => panic!("workload not recognised"),
     }

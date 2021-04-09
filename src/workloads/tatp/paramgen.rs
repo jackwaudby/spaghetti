@@ -1,7 +1,7 @@
 use crate::common::message::{Message, Parameters, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::tatp::helper;
-use crate::workloads::tatp::TatpTransaction;
+use crate::workloads::tatp::{TatpTransaction, TATP_SF_MAP};
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -30,14 +30,17 @@ pub struct TatpGenerator {
 
 impl TatpGenerator {
     /// Create new `TatpGenerator`.
-    pub fn new(subscribers: u64, set_seed: bool, use_nurand: bool) -> TatpGenerator {
-        let rng: StdRng;
+    pub fn new(sf: u64, set_seed: bool, seed: Option<u64>, use_nurand: bool) -> TatpGenerator {
+        info!("Parameter generator set seed: {}", set_seed);
+        info!("Non-uniform parameter generator: {}", use_nurand);
+        let subscribers = *TATP_SF_MAP.get(&sf).unwrap(); // get subscribers for sf
+        let rng: StdRng; // rng
         if set_seed {
-            rng = SeedableRng::seed_from_u64(1);
+            rng = SeedableRng::seed_from_u64(seed.unwrap());
         } else {
             rng = SeedableRng::from_entropy();
         }
-        info!("Non-uniform parameter generator: {}", use_nurand);
+
         TatpGenerator {
             subscribers,
             rng,
