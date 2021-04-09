@@ -22,6 +22,8 @@ use strum::IntoEnumIterator;
 /// After the benchmark has completed the statisitics are merged into `GlobalStatistics`.
 #[derive(Debug)]
 pub struct GlobalStatistics {
+    scale_factor: u64,
+
     /// Time taken to generate data and load into tables (secs).
     data_generation: Option<Duration>,
 
@@ -56,6 +58,7 @@ pub struct GlobalStatistics {
 impl GlobalStatistics {
     /// Create global metrics container.
     pub fn new(config: Arc<Config>) -> GlobalStatistics {
+        let scale_factor = config.get_int("scale_factor").unwrap() as u64;
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
         let warmup = config.get_int("warmup").unwrap() as u32;
@@ -64,6 +67,7 @@ impl GlobalStatistics {
         let abort_breakdown = AbortBreakdown::new(&protocol);
 
         GlobalStatistics {
+            scale_factor,
             data_generation: None,
             load_time: None,
             warmup,
@@ -111,11 +115,16 @@ impl GlobalStatistics {
 
     pub fn write_to_file(&mut self) {
         // Create directory if does not exist.
-        if !Path::new("./results").exists() {
-            fs::create_dir("./results").unwrap();
+        let path = format!("./results/{}", self.workload);
+
+        if !Path::new(&path).exists() {
+            fs::create_dir(&path).unwrap();
         }
 
-        let file = format!("./results/{}-{}.json", self.protocol, self.workload);
+        let file = format!(
+            "./results/{}/{}-sf{}.json",
+            self.workload, self.protocol, self.scale_factor
+        );
 
         // Remove file if already exists.
         if Path::new(&file).exists() {
