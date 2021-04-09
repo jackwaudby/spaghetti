@@ -426,18 +426,19 @@ impl fmt::Display for SmallBankTransactionProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use config::Config;
 
     #[test]
     fn generate_test() {
         let mut c = Config::default();
         c.merge(config::File::with_name("Test-smallbank.toml"))
             .unwrap();
-        let mut gen = SmallBankGenerator::new(Arc::new(c));
+        let mut gen = SmallBankGenerator::new(1, true, Some(1), true, false);
         assert_eq!(
             (
                 SmallBankTransaction::Balance,
                 SmallBankTransactionProfile::Balance(Balance {
-                    name: "cust1".to_string()
+                    name: "cust3468".to_string()
                 })
             ),
             gen.get_params(0.1)

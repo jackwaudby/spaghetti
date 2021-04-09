@@ -6,6 +6,7 @@ mpsc_size = 32
 load = false
 clients = 4
 scale_factor = 1
+set_seed = false
 
 protocol="2pl"
 workers = 4

@@ -328,11 +328,11 @@ mod tests {
     #[test]
     fn generate_test() {
         logging(false);
-        let mut gen = TatpGenerator::new(10, true, false);
+        let mut gen = TatpGenerator::new(1, true, Some(42), false);
         assert_eq!(
             (
                 TatpTransaction::GetSubscriberData,
-                TatpTransactionProfile::GetSubscriberData(GetSubscriberData { s_id: 5 })
+                TatpTransactionProfile::GetSubscriberData(GetSubscriberData { s_id: 52656 })
             ),
             gen.get_params(0.1)
         );
@@ -340,10 +340,10 @@ mod tests {
             (
                 TatpTransaction::GetNewDestination,
                 TatpTransactionProfile::GetNewDestination(GetNewDestination {
-                    s_id: 3,
-                    sf_type: 3,
-                    start_time: 16,
-                    end_time: 23
+                    s_id: 54273,
+                    sf_type: 4,
+                    start_time: 8,
+                    end_time: 16
                 })
             ),
             gen.get_params(0.4)
@@ -352,8 +352,8 @@ mod tests {
             (
                 TatpTransaction::GetAccessData,
                 TatpTransactionProfile::GetAccessData(GetAccessData {
-                    s_id: 2,
-                    ai_type: 3
+                    s_id: 61743,
+                    ai_type: 2
                 })
             ),
             gen.get_params(0.7)
@@ -362,10 +362,10 @@ mod tests {
             (
                 TatpTransaction::UpdateSubscriberData,
                 TatpTransactionProfile::UpdateSubscriberData(UpdateSubscriberData {
-                    s_id: 3,
-                    sf_type: 2,
-                    bit_1: 0,
-                    data_a: 241
+                    s_id: 73743,
+                    sf_type: 1,
+                    bit_1: 1,
+                    data_a: 94
                 })
             ),
             gen.get_params(0.81)
@@ -374,8 +374,8 @@ mod tests {
             (
                 TatpTransaction::UpdateLocationData,
                 TatpTransactionProfile::UpdateLocationData(UpdateLocationData {
-                    s_id: 9,
-                    vlr_location: 13
+                    s_id: 47941,
+                    vlr_location: 1
                 })
             ),
             gen.get_params(0.93)
@@ -384,11 +384,11 @@ mod tests {
             (
                 TatpTransaction::InsertCallForwarding,
                 TatpTransactionProfile::InsertCallForwarding(InsertCallForwarding {
-                    s_id: 2,
-                    sf_type: 1,
-                    start_time: 16,
-                    end_time: 20,
-                    number_x: "333269051490038".to_string()
+                    s_id: 93215,
+                    sf_type: 3,
+                    start_time: 8,
+                    end_time: 15,
+                    number_x: "788614624315946".to_string()
                 })
             ),
             gen.get_params(0.97)
@@ -397,9 +397,9 @@ mod tests {
             (
                 TatpTransaction::DeleteCallForwarding,
                 TatpTransactionProfile::DeleteCallForwarding(DeleteCallForwarding {
-                    s_id: 3,
-                    sf_type: 3,
-                    start_time: 16
+                    s_id: 80873,
+                    sf_type: 1,
+                    start_time: 8
                 })
             ),
             gen.get_params(0.99)

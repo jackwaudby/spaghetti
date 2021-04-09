@@ -4,6 +4,7 @@ log = "debug"
 timeout = 5
 mpsc_size = 32
 load = false
+set_seed = false
 
 scale_factor = 1
 protocol="sgt"

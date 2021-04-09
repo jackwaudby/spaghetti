@@ -5,6 +5,7 @@ timeout = 5
 mpsc_size = 32
 load = false
 scale_factor = 1
+set_seed = false
 
 protocol="hit"
 hit_gc = 5000
