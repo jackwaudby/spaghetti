@@ -176,6 +176,7 @@ impl GlobalStatistics {
         let pc99 = raw_latency.quantile(0.99) * 1000.0;
 
         let overview = json!({
+            "sf": self.scale_factor,
             "load": self.data_generation.unwrap().as_secs(),
             "clients": self.clients,
             "protocol": self.protocol,
