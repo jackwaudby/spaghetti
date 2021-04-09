@@ -1,10 +1,10 @@
 log = "info"
 
-transactions = 1000000
+transactions = 1000
 warmup = 1
 
-protocol="hit"
-workers = 4
+protocol="2pl"
+workers = 6
 hit_gc = 5000
 
 scale_factor = 1
