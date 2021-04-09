@@ -1,15 +1,19 @@
 log = "info"
-workload = "smallbank"
+workload = "tatp"
 transactions = 10
 seed = 42
-subscribers = 10
+set_seed = true
+
+params = false
+scale_factor = 1
+
+use_nurand = true
 
 warehouses = 5
 districts = 10
 customers = 100
 max_items = 100
 
-set_seed = true
 balance_mix = false
 accounts = 10
 hotspot_use_fixed_size = false

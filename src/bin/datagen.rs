@@ -1,5 +1,5 @@
 use spaghetti::datagen::smallbank;
-use spaghetti::datagen::tatp;
+use spaghetti::datagen::tatp::{self, TATP_SF_MAP};
 use spaghetti::Result;
 
 use config::Config;
@@ -8,6 +8,7 @@ use rand::SeedableRng;
 use std::fs;
 use std::path::Path;
 use std::sync::Arc;
+use std::thread;
 use std::time::Instant;
 
 fn main() -> Result<()> {
@@ -34,23 +35,62 @@ fn main() -> Result<()> {
     // Generate
     match workload.as_str() {
         "tatp" => {
-            // Remove directory.
-            if Path::new("./data/tatp").exists() {
-                fs::remove_dir_all("./data/tatp")?;
+            let sf = settings.get_int("scale_factor")? as u64; // scale factor
+            let dir = format!("./data/tatp/sf-{}", sf); // dir
+
+            if Path::new(&dir).exists() {
+                fs::remove_dir_all(&dir)?; // remove directory
             }
-            // Create directory
-            fs::create_dir("./data/tatp")?;
-            // Data
-            let s = settings.get_int("subscribers")? as u64;
-            tatp::subscribers(s, &mut rng)?;
-            tatp::access_info(s, &mut rng)?;
-            tatp::special_facility_call_forwarding(s, &mut rng)?;
 
-            // Params
-            let t = settings.get_int("transactions")? as u64;
-            let use_nurand = settings.get_bool("use_nurand")?;
+            fs::create_dir(&dir)?; // create directory
+            let s = *TATP_SF_MAP.get(&sf).unwrap(); // get subscribers
 
-            tatp::params(10, t, use_nurand)?;
+            // generate subscribers
+            let sub = thread::spawn(move || {
+                // Initialise rng.
+                let mut rng: StdRng;
+                if set_seed {
+                    rng = SeedableRng::seed_from_u64(seed);
+                } else {
+                    rng = SeedableRng::from_entropy();
+                }
+                tatp::subscribers(s, &mut rng, sf).unwrap();
+            });
+
+            // generate access info
+            let ai = thread::spawn(move || {
+                // Initialise rng.
+                let mut rng: StdRng;
+                if set_seed {
+                    rng = SeedableRng::seed_from_u64(seed);
+                } else {
+                    rng = SeedableRng::from_entropy();
+                }
+                tatp::access_info(s, &mut rng, sf).unwrap();
+            });
+
+            // generate special facility and call forwarding
+            let sfcf = thread::spawn(move || {
+                // Initialise rng.
+                let mut rng: StdRng;
+                if set_seed {
+                    rng = SeedableRng::seed_from_u64(seed);
+                } else {
+                    rng = SeedableRng::from_entropy();
+                }
+                tatp::special_facility_call_forwarding(s, &mut rng, sf).unwrap();
+            });
+
+            sub.join().unwrap();
+            ai.join().unwrap();
+            sfcf.join().unwrap();
+
+            let create_params = settings.get_bool("params")?;
+            if create_params {
+                let t = settings.get_int("transactions")? as u64; // parameters
+                let use_nurand = settings.get_bool("use_nurand")?; // use non-uniform sid distribution
+                tatp::params(10, t, use_nurand)?; //  generate parameters
+            }
         }
         "smallbank" => {
             // Remove directory.

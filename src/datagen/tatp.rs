@@ -5,10 +5,25 @@ use crate::workloads::tatp::paramgen::TatpGenerator;
 use crate::Result;
 
 use csv::Writer;
+use lazy_static::lazy_static;
 use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+lazy_static! {
+    pub static ref TATP_SF_MAP: HashMap<u64, u64> = {
+        let mut m = HashMap::new();
+        m.insert(1, 100000);
+        m.insert(2, 200000);
+        m.insert(5, 500000);
+        m.insert(10, 1000000);
+        m.insert(20, 2000000);
+        m.insert(50, 5000000);
+        m
+    };
+}
 
 pub fn params(transactions: u64, subscribers: u64, use_nurand: bool) -> Result<()> {
     // Init writer.
@@ -31,8 +46,8 @@ pub fn params(transactions: u64, subscribers: u64, use_nurand: bool) -> Result<(
     Ok(())
 }
 
-pub fn subscribers(subscribers: u64, rng: &mut StdRng) -> Result<()> {
-    let mut wtr = Writer::from_path("data/tatp/subscribers.csv")?;
+pub fn subscribers(subscribers: u64, rng: &mut StdRng, sf: u64) -> Result<()> {
+    let mut wtr = Writer::from_path(format!("data/tatp/sf-{}/subscribers.csv", sf))?;
 
     for s_id in 1..=subscribers {
         wtr.serialize(Subscriber::new(s_id, rng))?;
@@ -42,8 +57,8 @@ pub fn subscribers(subscribers: u64, rng: &mut StdRng) -> Result<()> {
     Ok(())
 }
 
-pub fn access_info(subscribers: u64, rng: &mut StdRng) -> Result<()> {
-    let mut wtr = Writer::from_path("data/tatp/access_info.csv")?;
+pub fn access_info(subscribers: u64, rng: &mut StdRng, sf: u64) -> Result<()> {
+    let mut wtr = Writer::from_path(format!("data/tatp/sf-{}/access-info.csv", sf))?;
 
     // Range of values for ai_type records.
     let ai_type_values = vec![1, 2, 3, 4];
@@ -63,10 +78,10 @@ pub fn access_info(subscribers: u64, rng: &mut StdRng) -> Result<()> {
     Ok(())
 }
 
-pub fn special_facility_call_forwarding(subscribers: u64, rng: &mut StdRng) -> Result<()> {
+pub fn special_facility_call_forwarding(subscribers: u64, rng: &mut StdRng, sf: u64) -> Result<()> {
     // Writer to files
-    let mut cfr = Writer::from_path("data/tatp/call_forwarding.csv")?;
-    let mut sfr = Writer::from_path("data/tatp/special_facility.csv")?;
+    let mut cfr = Writer::from_path(format!("data/tatp/sf-{}/call_forwarding.csv", sf))?;
+    let mut sfr = Writer::from_path(format!("data/tatp/sf-{}/special_facility.csv", sf))?;
     // Range of values for ai_type records.
     let sf_type_values = vec![1, 2, 3, 4];
 
