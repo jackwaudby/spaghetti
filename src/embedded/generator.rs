@@ -2,6 +2,7 @@ use crate::common::message::{InternalResponse, Message, Parameters, Transaction}
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::workloads::smallbank::paramgen::SmallBankGenerator;
 use crate::workloads::tatp::paramgen::TatpGenerator;
+use crate::workloads::tatp::TATP_SF_MAP;
 
 use config::Config;
 use std::sync::mpsc::{Receiver, SyncSender};
@@ -57,7 +58,8 @@ impl Generator {
 
         let mut generator = match config.get_str("workload").unwrap().as_str() {
             "tatp" => {
-                let subscribers = config.get_int("subscribers").unwrap();
+                let sf = config.get_int("scale_factor").unwrap() as u64;
+                let subscribers = *TATP_SF_MAP.get(&sf).unwrap(); // get subscribers
                 let use_nurand = config.get_bool("use_nurand").unwrap();
 
                 let gen = TatpGenerator::new(subscribers as u64, false, use_nurand);
