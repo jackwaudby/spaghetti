@@ -30,7 +30,7 @@ pub struct GlobalStatistics {
     /// Time taken to load data into tables fom files (secs).
     load_time: Option<Duration>,
 
-    /// Number of warmup operaations.
+    /// Number of warmup operations.
     warmup: u32,
 
     /// Time the server began listening for connections.

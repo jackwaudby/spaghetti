@@ -1,4 +1,5 @@
 use crate::common::message::InternalResponse;
+use crate::common::utils::BenchmarkPhase;
 use crate::server::statistics::LocalStatistics;
 
 use std::sync::mpsc::{Receiver, SyncSender};
@@ -15,6 +16,12 @@ pub struct Logger {
 
     /// Local stats
     stats: Option<LocalStatistics>,
+
+    /// Benchmark phase
+    phase: BenchmarkPhase,
+
+    /// Required warmup
+    warmup: u32,
 }
 
 impl Logger {
@@ -23,16 +30,25 @@ impl Logger {
         logger_rx: Receiver<InternalResponse>,
         main_tx: SyncSender<LocalStatistics>,
         stats: Option<LocalStatistics>,
+        warmup: u32,
     ) -> Logger {
         Logger {
             logger_rx,
             main_tx,
             stats,
+            phase: BenchmarkPhase::Warmup,
+            warmup,
         }
+    }
+
+    fn start_execution(&mut self) {
+        self.phase = BenchmarkPhase::Execution;
     }
 
     /// Run logger.
     pub fn run(&mut self) {
+        let mut completed = 0;
+
         while let Ok(response) = self.logger_rx.recv() {
             let InternalResponse {
                 transaction,
@@ -41,11 +57,27 @@ impl Logger {
                 ..
             } = response;
 
+            match self.phase {
+                BenchmarkPhase::Warmup => {
+                    completed += 1;
+
+                    if completed == self.warmup {
+                        self.start_execution();
+                    }
+                }
+                BenchmarkPhase::Execution => {
+                    self.stats
+                        .as_mut()
+                        .unwrap()
+                        .record(transaction, outcome.clone(), latency);
+                }
+            }
+
+            // TODO
+            // Add counter of logged transactions
+            // Add benchmark state enum
+
             // Call record form stats.
-            self.stats
-                .as_mut()
-                .unwrap()
-                .record(transaction, outcome.clone(), latency);
         }
 
         let stats = self.stats.take().unwrap();

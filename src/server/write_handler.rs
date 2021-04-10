@@ -1,6 +1,7 @@
 use crate::common::connection::WriteConnection;
 use crate::common::message::{InternalResponse, Message};
 use crate::common::shutdown::Shutdown;
+use crate::common::utils::BenchmarkPhase;
 use crate::server::manager::State as TransactionManagerState;
 use crate::server::read_handler::State as ReadHandlerState;
 use crate::server::statistics::LocalStatistics;
@@ -47,12 +48,6 @@ pub struct WriteHandler<R: AsyncWrite + Unpin> {
     // Implicitly dropped when handler is dropped (safely finished).
     // Communication channel between async and sync code.
     pub notify_listener_tx: tokio::sync::broadcast::Sender<LocalStatistics>,
-}
-
-#[derive(Debug)]
-pub enum BenchmarkPhase {
-    Warmup,
-    Execution,
 }
 
 impl<R: AsyncWrite + Unpin> WriteHandler<R> {
