@@ -3,13 +3,13 @@ use crate::common::error::FatalError;
 use crate::common::message::InternalRequest;
 use crate::common::message::InternalResponse;
 use crate::common::shutdown::Shutdown;
+use crate::common::statistics::GlobalStatistics;
+use crate::common::statistics::LocalStatistics;
 use crate::common::utils::BenchmarkPhase;
 use crate::server::manager;
 use crate::server::manager::State as TransactionManagerState;
 use crate::server::manager::TransactionManager;
 use crate::server::read_handler::{ReadHandler, State};
-use crate::server::statistics::GlobalStatistics;
-use crate::server::statistics::LocalStatistics;
 use crate::server::write_handler::WriteHandler;
 use crate::Result;
 

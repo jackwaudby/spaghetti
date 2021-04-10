@@ -1,9 +1,9 @@
 use crate::common::error::FatalError;
 use crate::common::message::InternalRequest;
+use crate::common::statistics::GlobalStatistics;
 use crate::server::listener::Listener;
 use crate::server::manager::State as TransactionManagerState;
 use crate::server::manager::TransactionManager;
-use crate::server::statistics::GlobalStatistics;
 use crate::workloads::Workload;
 use crate::Result;
 
@@ -33,8 +33,6 @@ pub mod storage;
 pub mod queue;
 
 pub mod manager;
-
-pub mod statistics;
 
 /// Runs the server.
 ///

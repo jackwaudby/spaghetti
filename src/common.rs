@@ -1,5 +1,7 @@
 pub mod utils;
 
+pub mod statistics;
+
 pub mod message;
 
 pub mod shutdown;

@@ -1,10 +1,10 @@
 use crate::common::connection::WriteConnection;
 use crate::common::message::{InternalResponse, Message};
 use crate::common::shutdown::Shutdown;
+use crate::common::statistics::LocalStatistics;
 use crate::common::utils::BenchmarkPhase;
 use crate::server::manager::State as TransactionManagerState;
 use crate::server::read_handler::State as ReadHandlerState;
-use crate::server::statistics::LocalStatistics;
 use crate::Result;
 
 use config::Config;

@@ -1,14 +1,14 @@
 use spaghetti::common::message::InternalResponse;
+use spaghetti::common::statistics::GlobalStatistics;
+use spaghetti::common::statistics::LocalStatistics;
 use spaghetti::embedded::generator::{self, Generator, InternalRequest};
 use spaghetti::embedded::logging::{self, Logger};
 use spaghetti::embedded::manager::{self, TransactionManager};
-use spaghetti::server::statistics::LocalStatistics;
 use spaghetti::workloads::Workload;
 
 use config::Config;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use spaghetti::server::statistics::GlobalStatistics;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::Arc;
 use std::time::Instant;

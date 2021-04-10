@@ -1,6 +1,6 @@
 use crate::common::message::InternalResponse;
+use crate::common::statistics::LocalStatistics;
 use crate::common::utils::BenchmarkPhase;
-use crate::server::statistics::LocalStatistics;
 
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::thread;
