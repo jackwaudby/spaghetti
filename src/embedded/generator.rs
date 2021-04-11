@@ -7,6 +7,7 @@ use config::Config;
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::Arc;
 use std::thread;
+use std::time::{Duration, Instant};
 use tracing::info;
 
 pub struct Generator {
@@ -54,6 +55,7 @@ impl Generator {
     /// Run generator.
     pub fn run(&mut self, config: Arc<Config>) {
         let max_transactions = config.get_int("transactions").unwrap() as u32;
+        let timeout = config.get_int("timeout").unwrap() as u64;
         let sf = config.get_int("scale_factor").unwrap() as u64;
         let set_seed = config.get_bool("set_seed").unwrap();
         let seed;
@@ -85,9 +87,18 @@ impl Generator {
         };
 
         let mut sent = 0;
+
+        // Set timeout
+        let st = Instant::now();
+        let runtime = Duration::new(timeout * 60, 0);
+        let et = st + runtime;
+
         while let Ok(()) = self.next_rx.recv() {
             if sent == max_transactions {
                 info!("All transactions sent: {} = {}", sent, max_transactions);
+                break;
+            } else if Instant::now() > et {
+                info!("Timeout reached: {} minute(s)", timeout);
                 break;
             } else {
                 let message = generator.get_next();
