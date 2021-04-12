@@ -2,6 +2,7 @@ use crate::datagen::tatp::{AccessInfo, CallForwarding, SpecialFacility, Subscrib
 use crate::server::storage::row::Row;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
+use crate::workloads::tatp::TATP_SF_MAP;
 use crate::workloads::{Internal, PrimaryKey};
 use crate::Result;
 
@@ -209,8 +210,9 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
     let i_name = t.get_primary_index()?;
     let i = data.get_index(&i_name)?;
     let protocol = data.config.get_str("protocol")?;
+    let sf = data.config.get_int("scale_factor")? as u64;
+    let subs = *TATP_SF_MAP.get(&sf).unwrap();
 
-    let subs = data.config.get_int("subscribers")? as u64;
     info!("Populating subscriber table: {}", subs);
     for s_id in 1..=subs {
         let mut row = Row::new(Arc::clone(&t), &protocol);
@@ -254,10 +256,12 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let i_name = t.get_primary_index()?;
     let i = data.get_index(&i_name)?;
     let protocol = data.config.get_str("protocol")?;
+    let sf = data.config.get_int("scale_factor")? as u64;
+    let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
 
     // Range of values for ai_type records.
     let ai_type_values = vec![1, 2, 3, 4];
-    let subscribers = data.config.get_int("subscribers")? as u64;
+
     for s_id in 1..=subscribers {
         // Generate number of records for a given s_id.
         let n_ai = rng.gen_range(1..=4);
@@ -317,7 +321,9 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
     // Range of values for start_time.
     let start_time_values = vec![0, 8, 16];
 
-    let subscribers = data.config.get_int("subscribers")? as u64;
+    let sf = data.config.get_int("scale_factor")? as u64;
+    let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
+
     for s_id in 1..=subscribers {
         // Generate number of records for a given s_id.
         let n_sf = rng.gen_range(1..=4);

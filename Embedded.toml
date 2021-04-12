@@ -1,4 +1,4 @@
-log = "info"
+log = "debug"
 
 transactions = 10000000
 timeout = 1
@@ -9,10 +9,10 @@ protocol="opt-hit"
 workers = 6
 hit_gc = 5000
 
-scale_factor = 1
+scale_factor = 0
 workload = "tatp"
 schema = "tatp_schema.txt"
-load = true
+load = false
 
 nurand = true
 

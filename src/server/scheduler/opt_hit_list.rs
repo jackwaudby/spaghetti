@@ -13,7 +13,7 @@ use crate::workloads::Workload;
 use std::sync::RwLock;
 use std::sync::{Arc, RwLockReadGuard, RwLockWriteGuard};
 use std::thread;
-use tracing::info;
+use tracing::{debug, info};
 
 pub mod error;
 
@@ -44,6 +44,8 @@ impl Scheduler for OptimisedHitList {
             .unwrap(); // get thread id
         let seq_num = self.get_exculsive_lock(thread_id).new_transaction(); // get sequence number
         let transaction_id = format!("{}-{}", thread_id, seq_num); // create transaction id
+
+        debug!("Register: {}", transaction_id);
 
         Ok(TransactionInfo::new(Some(transaction_id), None))
     }
@@ -352,6 +354,7 @@ impl Scheduler for OptimisedHitList {
     /// Commit a transaction.
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         let transaction_id = meta.get_id().unwrap(); // get transaction id
+        debug!("Commit: {}", transaction_id);
         let (thread_id, seq_num) = parse_id(transaction_id); // split into thread id + seq
 
         // CHECK //

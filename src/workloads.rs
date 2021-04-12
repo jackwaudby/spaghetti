@@ -81,15 +81,15 @@ impl Workload {
         use Workload::*;
         match *self {
             Tatp(ref i) => {
+                let sf = self.get_internals().get_config().get_int("scale_factor")?;
                 if self.get_internals().get_config().get_bool("load")? {
-                    let sf = self.get_internals().get_config().get_int("scale_factor")?;
                     info!("Load sf-{} from files", sf);
                     tatp::loader::load_sub_table(i)?;
                     tatp::loader::load_access_info_table(i)?;
                     tatp::loader::load_call_forwarding_table(i)?;
                     tatp::loader::load_special_facility_table(i)?;
                 } else {
-                    info!("generate data");
+                    info!("Generate sf-{}", sf);
                     tatp::loader::populate_tables(i, rng)?;
                 }
             }
@@ -102,13 +102,14 @@ impl Workload {
                 }
             }
             SmallBank(ref i) => {
+                let sf = self.get_internals().get_config().get_int("scale_factor")?;
                 if self.get_internals().get_config().get_bool("load")? {
-                    let sf = self.get_internals().get_config().get_int("scale_factor")?;
                     info!("Load sf-{} from files", sf);
                     smallbank::loader::load_account_table(i)?;
                     smallbank::loader::load_checking_table(i)?;
                     smallbank::loader::load_savings_table(i)?;
                 } else {
+                    info!("Generate sf-{}", sf);
                     smallbank::loader::populate_tables(i, rng)?
                 }
             } // TODO
