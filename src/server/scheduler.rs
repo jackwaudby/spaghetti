@@ -12,6 +12,8 @@ use std::sync::Arc;
 
 pub mod hit_list;
 
+pub mod opt_hit_list;
+
 pub mod two_phase_locking;
 
 pub mod serialization_graph_testing;

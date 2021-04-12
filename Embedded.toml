@@ -5,7 +5,7 @@ timeout = 1
 warmup = 10
 set_seed = false
 
-protocol="sgt"
+protocol="opt-hit"
 workers = 6
 hit_gc = 5000
 

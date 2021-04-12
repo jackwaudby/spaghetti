@@ -1,0 +1,26 @@
+address = "127.0.0.1"
+port = 6142
+log = "debug"
+timeout = 5
+mpsc_size = 32
+load = false
+scale_factor = 1
+set_seed = false
+
+protocol="opt-hit"
+hit_gc = 5000
+workers = 4
+
+warmup = 1
+generator_mode = "closed"
+think_time = 1000
+transactions = 10
+workload = "tatp"
+
+
+schema = "tatp_schema.txt"
+subscribers = 3
+seed = 42
+
+clients = 4
+nurand = false
