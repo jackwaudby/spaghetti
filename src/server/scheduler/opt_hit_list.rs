@@ -81,6 +81,8 @@ impl Scheduler for OptimisedHitList {
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap()); // split
+        debug!("Create: {}-{}", thread_id, seq_num);
+
         let table = self.get_table(table, meta.clone())?; // get table
         let mut row = Row::new(Arc::clone(&table), "hit"); // create new row
         row.set_primary_key(key.clone()); // set pk
@@ -134,6 +136,8 @@ impl Scheduler for OptimisedHitList {
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap()); // split transaction_id
+        debug!("Read: {}-{}", thread_id, seq_num);
+
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
 
@@ -231,6 +235,8 @@ impl Scheduler for OptimisedHitList {
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap());
+        debug!("Update: {}-{}", thread_id, seq_num);
+
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
@@ -285,6 +291,8 @@ impl Scheduler for OptimisedHitList {
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap());
+        debug!("Delete: {}-{}", thread_id, seq_num);
+
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
 
@@ -325,11 +333,34 @@ impl Scheduler for OptimisedHitList {
 
     /// Abort a transaction.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
-        let transaction_id = meta.get_id().unwrap(); // get transaction id
-        let (thread_id, seq_num) = parse_id(transaction_id); // split into thread id + seq
+        let handle = thread::current();
 
+        let transaction_id = meta.get_id().unwrap(); // get transaction id
+        debug!(
+            "Thread {}: abort {}",
+            handle.name().unwrap(),
+            transaction_id.clone()
+        );
+
+        let (thread_id, seq_num) = parse_id(transaction_id.clone()); // split into thread id + seq
+        debug!(
+            "Thread {}: set state to abort {}",
+            handle.name().unwrap(),
+            transaction_id.clone()
+        );
         self.get_shared_lock(thread_id)
             .set_state(seq_num, TransactionState::Aborted); // set state.
+        debug!(
+            "Thread {}: state set to abort {}",
+            handle.name().unwrap(),
+            transaction_id.clone()
+        );
+
+        debug!(
+            "Thread {}: get keys {}",
+            handle.name().unwrap(),
+            transaction_id.clone()
+        );
 
         let rg = self.get_shared_lock(thread_id);
         let inserted = rg.get_keys(seq_num, Operation::Create);
@@ -360,10 +391,24 @@ impl Scheduler for OptimisedHitList {
                 .unwrap();
         }
 
-        let rg = self.get_shared_lock(thread_id);
+        debug!(
+            "Thread {}: got keys {}",
+            handle.name().unwrap(),
+            transaction_id.clone()
+        );
+
+        debug!(
+            "Thread {}: add terminated {}",
+            handle.name().unwrap(),
+            transaction_id.clone()
+        );
         let se = rg.get_start_epoch(seq_num);
         rg.get_epoch_tracker().add_terminated(seq_num, se);
-
+        debug!(
+            "Thread {}:  terminated added{}",
+            handle.name().unwrap(),
+            transaction_id.clone()
+        );
         Ok(())
     }
 
@@ -430,14 +475,18 @@ impl Scheduler for OptimisedHitList {
 
             match self.get_shared_lock(p_thread_id).get_state(p_seq_num) {
                 TransactionState::Active => {
+                    self.abort(meta.clone()).unwrap(); // abort txn
+
                     return Err(
                         OptimisedHitListError::PredecessorActive(meta.get_id().unwrap()).into(),
-                    )
+                    );
                 }
                 TransactionState::Aborted => {
+                    self.abort(meta.clone()).unwrap(); // abort txn
+
                     return Err(
                         OptimisedHitListError::PredecessorAborted(meta.get_id().unwrap()).into(),
-                    )
+                    );
                 }
                 TransactionState::Committed => {}
             }
@@ -452,14 +501,22 @@ impl Scheduler for OptimisedHitList {
 
         // TRY COMMIT //
         debug!("Thread {}: try commit", handle.name().unwrap());
-        match self.get_shared_lock(thread_id).try_commit(seq_num) {
+
+        let outcome = self.get_shared_lock(thread_id).try_commit(seq_num);
+        match outcome {
             Ok(_) => {
+                debug!("Thread {}: committed", handle.name().unwrap());
                 // commit changes
+                debug!("Thread {}: get shared lock on list", handle.name().unwrap());
                 let rg = self.get_shared_lock(thread_id);
+                debug!("Thread {}: got shared lock on list", handle.name().unwrap());
+
                 let inserted = rg.get_keys(seq_num, Operation::Create);
                 let read = rg.get_keys(seq_num, Operation::Read);
                 let updated = rg.get_keys(seq_num, Operation::Update);
                 let deleted = rg.get_keys(seq_num, Operation::Delete);
+
+                debug!("Thread {}: got keys", handle.name().unwrap());
 
                 for (index, key) in inserted {
                     let index = self.data.get_internals().get_index(&index).unwrap();
@@ -481,10 +538,12 @@ impl Scheduler for OptimisedHitList {
                     let index = self.data.get_internals().get_index(&index).unwrap();
                     index.revert_read(key, &meta.get_id().unwrap()).unwrap();
                 }
+                debug!("Thread {}: committed changed", handle.name().unwrap());
 
-                let rg = self.get_shared_lock(thread_id);
+                debug!("Thread {}: add terminated", handle.name().unwrap());
                 let se = rg.get_start_epoch(seq_num);
                 rg.get_epoch_tracker().add_terminated(seq_num, se);
+                debug!("Thread {}: added terminated", handle.name().unwrap());
 
                 Ok(())
                 // TODO: garbage collection

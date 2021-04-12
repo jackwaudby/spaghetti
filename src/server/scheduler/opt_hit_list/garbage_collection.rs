@@ -36,7 +36,11 @@ impl GarbageCollector {
                     if let Ok(()) = receiver.try_recv() {
                         break; // exit loop
                     }
-                    thread::sleep(Duration::from_millis(sleep * 1000)); // sleep garbage collector
+
+                    // thread::sleep(Duration::from_millis(sleep * 1000)); // sleep garbage collector
+
+                    thread::sleep(Duration::from_millis(10)); // sleep garbage collector
+
                     epoch += 1;
                     info!("Incrementing epochs to {}", epoch);
 
@@ -60,15 +64,20 @@ impl GarbageCollector {
                     info!("Alpha: {:?}", alpha);
 
                     for thread in shared.iter() {
-                        let to_remove = thread
+                        let mut to_remove = thread
                             .read()
                             .unwrap()
                             .get_epoch_tracker()
                             .get_transactions_to_garbage_collect(min.unwrap());
+                        to_remove.sort();
+                        info!("To remove: {:?}", to_remove);
 
                         for id in to_remove {
-                            thread.read().unwrap().remove_transaction(id);
+                            info!("Remove: {:?}", id);
+                            thread.write().unwrap().remove_transaction(id);
+                            info!("Remove: {:?}", id);
                         }
+                        info!("All removed");
                     }
                 }
             })

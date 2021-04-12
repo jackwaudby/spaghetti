@@ -170,9 +170,9 @@ impl fmt::Display for Epoch {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "| {:<8}| {:<10}| {:<14}| {} |",
+            "| {:<8}| {:<61}| {:<14}| {} |",
             self.id,
-            self.started.len(),
+            format!("{:?}", self.started),
             self.terminated.as_ref().unwrap().len(),
             self.active,
         )
@@ -181,15 +181,18 @@ impl fmt::Display for Epoch {
 
 impl fmt::Display for EpochTracker {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let top = "|---------|-----------|---------------|---|\n";
-        let head = "|  epoch  |  started  |  terminated   | n |\n";
-        let mid = "|---------|-----------|---------------|---|\n";
+        let top =    "|---------|--------------------------------------------------------------|---------------|---|\n";
+        let head = "|  epoch  |  started                                                     |  terminated   | n |\n";
+        let mid =   "|---------|--------------------------------------------------------------|---------------|---|\n";
         let mut join = format!("{}{}{}", top, head, mid);
 
         for epoch in &self.epochs {
             join = format!("{}{} \n", join, epoch);
         }
-        join = format!("{}|---------|-----------|---------------|---|\n", join);
+        join = format!(
+            "{}|---------|--------------------------------------------------------------|---------------|---|\n",
+            join
+        );
         write!(f, "{}", join)
     }
 }

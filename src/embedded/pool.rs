@@ -105,6 +105,7 @@ impl ThreadPool {
             "sgt" | "opt-hit" => {
                 // Retrieve the IDs of all active CPU cores.
                 let core_ids = core_affinity::get_core_ids().unwrap();
+                // let core_ids = vec![core_ids[0], core_ids[1]];
 
                 info!("Detected {} cores", core_ids.len());
 
