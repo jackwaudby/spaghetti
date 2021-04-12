@@ -72,12 +72,6 @@ impl Logger {
                         .record(transaction, outcome.clone(), latency);
                 }
             }
-
-            // TODO
-            // Add counter of logged transactions
-            // Add benchmark state enum
-
-            // Call record form stats.
         }
 
         let stats = self.stats.take().unwrap();

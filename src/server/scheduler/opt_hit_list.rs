@@ -37,10 +37,10 @@ pub struct OptimisedHitList {
     data: Arc<Workload>,
 
     /// Epoch based garbage collector.
-    garbage_collector: GarbageCollector,
+    garbage_collector: Option<GarbageCollector>,
 
     /// Channel to shutdown the garbage collector.
-    sender: Mutex<mpsc::Sender<()>>,
+    sender: Option<Mutex<mpsc::Sender<()>>>,
 }
 
 impl Scheduler for OptimisedHitList {
@@ -507,20 +507,44 @@ impl OptimisedHitList {
     pub fn new(size: usize, data: Arc<Workload>) -> Self {
         info!("Initialise optimised hit list with {} threads", size);
         let mut terminated_lists = vec![];
+        // terminated list for each thread
         for _ in 0..size {
             let list = Arc::new(RwLock::new(ThreadState::new()));
             terminated_lists.push(list);
         }
         let atomic_tl = Arc::new(terminated_lists);
-        let (sender, receiver) = mpsc::channel(); // shutdown channel
-        let sleep = data.get_internals().get_config().get_int("hit_gc").unwrap() as u64;
-        let garbage_collector = GarbageCollector::new(Arc::clone(&atomic_tl), receiver, sleep);
+
+        let do_gc = data
+            .get_internals()
+            .get_config()
+            .get_bool("garbage_collection")
+            .unwrap();
+        let garbage_collector;
+        let sender;
+        if do_gc {
+            let (tx, rx) = mpsc::channel(); // shutdown channel
+            sender = Some(Mutex::new(tx));
+            let sleep = data
+                .get_internals()
+                .get_config()
+                .get_int("garbage_collection_sleep")
+                .unwrap() as u64; // seconds
+            garbage_collector = Some(GarbageCollector::new(
+                Arc::clone(&atomic_tl),
+                rx,
+                sleep,
+                size,
+            ));
+        } else {
+            garbage_collector = None;
+            sender = None;
+        }
 
         OptimisedHitList {
             terminated_lists: atomic_tl,
             data,
             garbage_collector,
-            sender: Mutex::new(sender),
+            sender,
         }
     }
 
@@ -547,12 +571,20 @@ impl OptimisedHitList {
 
 impl Drop for OptimisedHitList {
     fn drop(&mut self) {
-        self.sender.lock().unwrap().send(()).unwrap(); // send shutdown to gc
+        if let Some(ref mut gc) = self.garbage_collector {
+            self.sender
+                .take()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .send(())
+                .unwrap(); // send shutdown to gc
 
-        if let Some(thread) = self.garbage_collector.thread.take() {
-            match thread.join() {
-                Ok(_) => debug!("Garbage collector shutdown"),
-                Err(_) => debug!("Error shutting down garbage collector"),
+            if let Some(thread) = gc.thread.take() {
+                match thread.join() {
+                    Ok(_) => debug!("Garbage collector shutdown"),
+                    Err(_) => debug!("Error shutting down garbage collector"),
+                }
             }
         }
     }

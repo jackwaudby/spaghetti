@@ -2,6 +2,8 @@ use crate::server::scheduler::opt_hit_list::epoch::EpochTracker;
 use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
 use crate::server::scheduler::NonFatalError;
 use crate::workloads::PrimaryKey;
+
+use std::fmt;
 use std::sync::{Mutex, MutexGuard, RwLock};
 
 /// Represents a transaction's state.
@@ -338,6 +340,19 @@ pub enum Operation {
     Read,
     Update,
     Delete,
+}
+
+impl fmt::Display for ThreadState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ep = self.epoch_tracker.lock().unwrap();
+        let tl = self.terminated_list.read().unwrap().len();
+
+        write!(
+            f,
+            "Thread state\nEpoch tracker:\n{}Terminated list:{}",
+            ep, tl
+        )
+    }
 }
 
 #[cfg(test)]

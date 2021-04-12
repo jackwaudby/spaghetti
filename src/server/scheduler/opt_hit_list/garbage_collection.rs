@@ -17,6 +17,7 @@ impl GarbageCollector {
         shared: Arc<Vec<Arc<RwLock<ThreadState>>>>,
         receiver: mpsc::Receiver<()>,
         sleep: u64,
+        threads: usize,
     ) -> GarbageCollector {
         let builder = thread::Builder::new().name("garbage_collector".to_string().into()); // thread name
         let thread = builder
@@ -25,8 +26,9 @@ impl GarbageCollector {
                 let handle = thread::current();
 
                 let mut alpha = vec![];
-                // TODO
-                for i in 0..10 {
+                let mut epoch = 0;
+
+                for i in 0..threads {
                     alpha.push(None);
                 }
                 loop {
@@ -34,11 +36,18 @@ impl GarbageCollector {
                     if let Ok(()) = receiver.try_recv() {
                         break; // exit loop
                     }
-                    thread::sleep(Duration::from_millis(sleep)); // sleep garbage collector
+                    thread::sleep(Duration::from_millis(sleep * 1000)); // sleep garbage collector
+                    epoch += 1;
+                    info!("Incrementing epochs to {}", epoch);
 
                     // pass 1: increment epochs
-                    for thread in shared.iter() {
+                    for (i, thread) in shared.iter().enumerate() {
                         thread.read().unwrap().get_epoch_tracker().new_epoch();
+                    }
+                    info!("All epochs incremented to {}", epoch);
+
+                    for (i, thread) in shared.iter().enumerate() {
+                        info!("Thread {}: {}", i, thread.read().unwrap());
                     }
 
                     // pass 2: compute alphs
@@ -48,6 +57,7 @@ impl GarbageCollector {
 
                     // pass 3: remove all < min alpha
                     let min = alpha.iter().min().unwrap();
+                    info!("Alpha: {:?}", alpha);
 
                     for thread in shared.iter() {
                         let to_remove = thread

@@ -1,3 +1,5 @@
+use tracing::info;
+
 use std::collections::HashSet;
 use std::fmt;
 
@@ -168,25 +170,26 @@ impl fmt::Display for Epoch {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "| {} | {:?} | {:?} | {} |",
+            "| {:<8}| {:<10}| {:<14}| {} |",
             self.id,
             self.started.len(),
             self.terminated.as_ref().unwrap().len(),
-            self.active
+            self.active,
         )
     }
 }
 
 impl fmt::Display for EpochTracker {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let top = "\n|---------|-----------|---------------|---|\n";
+        let top = "|---------|-----------|---------------|---|\n";
         let head = "|  epoch  |  started  |  terminated   | n |\n";
-        let mut join = format!("{}{}", top, head);
+        let mid = "|---------|-----------|---------------|---|\n";
+        let mut join = format!("{}{}{}", top, head, mid);
 
         for epoch in &self.epochs {
             join = format!("{}{} \n", join, epoch);
         }
-        join = format!("{}|---------|-----------|---------------|---|", join);
+        join = format!("{}|---------|-----------|---------------|---|\n", join);
         write!(f, "{}", join)
     }
 }
