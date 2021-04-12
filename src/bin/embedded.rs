@@ -34,7 +34,6 @@ fn main() {
 
     // Global stats.
     let mut global_stats = GlobalStatistics::new(Arc::clone(&config));
-    global_stats.start();
 
     // Workload
     let dg_start = Instant::now();
@@ -43,6 +42,8 @@ fn main() {
     workload.populate_tables(&mut rng).unwrap();
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
+
+    global_stats.start();
 
     // Pipes
     let (req_tx, req_rx): (SyncSender<InternalRequest>, Receiver<InternalRequest>) =
