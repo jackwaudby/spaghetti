@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::server::scheduler::hit_list::HitList;
+use crate::server::scheduler::opt_hit_list::OptimisedHitList;
 use crate::server::scheduler::serialization_graph_testing::SerializationGraphTesting;
 use crate::server::scheduler::two_phase_locking::TwoPhaseLocking;
 use crate::server::storage::datatype::Data;
@@ -57,7 +58,9 @@ impl Protocol {
             "hit" => Protocol {
                 scheduler: Box::new(HitList::new(Arc::clone(&workload))),
             },
-
+            "opt-hit" => Protocol {
+                scheduler: Box::new(OptimisedHitList::new(cores, Arc::clone(&workload))),
+            },
             _ => panic!("Incorrect concurrency control protocol"),
         };
         Ok(scheduler)
