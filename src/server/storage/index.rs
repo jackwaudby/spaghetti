@@ -377,7 +377,7 @@ mod tests {
         // 4. Test format.
         assert_eq!(
             format!("{}", workload.get_internals().get_index("sub_idx").unwrap()),
-            "[sub_idx,3]"
+            "[sub_idx,10]"
         );
 
         // 5. Successful read of entry.

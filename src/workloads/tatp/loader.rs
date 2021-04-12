@@ -403,7 +403,7 @@ mod tests {
         populate_subscriber_table(&internals, &mut rng).unwrap();
         assert_eq!(
             internals.get_table("subscriber").unwrap().get_next_row_id(),
-            3
+            10
         );
         let index = internals.indexes.get("sub_idx").unwrap();
 
@@ -466,7 +466,7 @@ mod tests {
                 .get_table("access_info")
                 .unwrap()
                 .get_next_row_id(),
-            10
+            24
         );
 
         let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
@@ -481,7 +481,7 @@ mod tests {
 
             )
                 .unwrap(),
-"{s_id=\"1\", ai_type=\"2\", data_1=\"77\", data_2=\"7\", data_3=\"GZH\", data_4=\"HITFS\"}"
+            "{s_id=\"1\", ai_type=\"2\", data_1=\"118\", data_2=\"249\", data_3=\"QYU\", data_4=\"PTUKB\"}"
         );
 
         // Special facillity.
@@ -491,7 +491,7 @@ mod tests {
                 .get_table("special_facility")
                 .unwrap()
                 .get_next_row_id(),
-            10
+            28
         );
 
         let cols_sf = vec![
@@ -517,7 +517,7 @@ mod tests {
                     .unwrap().get_values().unwrap()
             )
                 .unwrap(),
-            "{s_id=\"1\", sf_type=\"4\", is_active=\"1\", error_cntrl=\"90\", data_a=\"95\", data_b=\"RCSAA\"}"
+            "{s_id=\"1\", sf_type=\"3\", is_active=\"1\", error_cntrl=\"30\", data_a=\"217\", data_b=\"IWPXS\"}"
         );
 
         // Call forwarding.
@@ -526,7 +526,7 @@ mod tests {
                 .get_table("call_forwarding")
                 .unwrap()
                 .get_next_row_id(),
-            15
+            48
         );
         let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
         let index = internals.indexes.get("call_idx").unwrap();
@@ -543,7 +543,7 @@ mod tests {
                     .unwrap().get_values().unwrap()
             )
                 .unwrap(),
-            "{s_id=\"1\", sf_type=\"4\", start_time=\"16\", end_time=\"17\", number_x=\"365430140201306\"}"
+            "{s_id=\"1\", sf_type=\"3\", start_time=\"16\", end_time=\"22\", number_x=\"255859837238459\"}"
         );
     }
 }
