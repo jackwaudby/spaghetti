@@ -2,6 +2,7 @@ use crate::datagen::tatp::{AccessInfo, CallForwarding, SpecialFacility, Subscrib
 use crate::server::storage::row::Row;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
+use crate::workloads::tatp::TATP_SF_MAP;
 use crate::workloads::{Internal, PrimaryKey};
 use crate::Result;
 
@@ -209,8 +210,9 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
     let i_name = t.get_primary_index()?;
     let i = data.get_index(&i_name)?;
     let protocol = data.config.get_str("protocol")?;
+    let sf = data.config.get_int("scale_factor")? as u64;
+    let subs = *TATP_SF_MAP.get(&sf).unwrap();
 
-    let subs = data.config.get_int("subscribers")? as u64;
     info!("Populating subscriber table: {}", subs);
     for s_id in 1..=subs {
         let mut row = Row::new(Arc::clone(&t), &protocol);
@@ -254,10 +256,12 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let i_name = t.get_primary_index()?;
     let i = data.get_index(&i_name)?;
     let protocol = data.config.get_str("protocol")?;
+    let sf = data.config.get_int("scale_factor")? as u64;
+    let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
 
     // Range of values for ai_type records.
     let ai_type_values = vec![1, 2, 3, 4];
-    let subscribers = data.config.get_int("subscribers")? as u64;
+
     for s_id in 1..=subscribers {
         // Generate number of records for a given s_id.
         let n_ai = rng.gen_range(1..=4);
@@ -317,7 +321,9 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
     // Range of values for start_time.
     let start_time_values = vec![0, 8, 16];
 
-    let subscribers = data.config.get_int("subscribers")? as u64;
+    let sf = data.config.get_int("scale_factor")? as u64;
+    let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
+
     for s_id in 1..=subscribers {
         // Generate number of records for a given s_id.
         let n_sf = rng.gen_range(1..=4);
@@ -397,7 +403,7 @@ mod tests {
         populate_subscriber_table(&internals, &mut rng).unwrap();
         assert_eq!(
             internals.get_table("subscriber").unwrap().get_next_row_id(),
-            3
+            10
         );
         let index = internals.indexes.get("sub_idx").unwrap();
 
@@ -460,7 +466,7 @@ mod tests {
                 .get_table("access_info")
                 .unwrap()
                 .get_next_row_id(),
-            10
+            24
         );
 
         let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
@@ -475,7 +481,7 @@ mod tests {
 
             )
                 .unwrap(),
-"{s_id=\"1\", ai_type=\"2\", data_1=\"77\", data_2=\"7\", data_3=\"GZH\", data_4=\"HITFS\"}"
+            "{s_id=\"1\", ai_type=\"2\", data_1=\"118\", data_2=\"249\", data_3=\"QYU\", data_4=\"PTUKB\"}"
         );
 
         // Special facillity.
@@ -485,7 +491,7 @@ mod tests {
                 .get_table("special_facility")
                 .unwrap()
                 .get_next_row_id(),
-            10
+            28
         );
 
         let cols_sf = vec![
@@ -511,7 +517,7 @@ mod tests {
                     .unwrap().get_values().unwrap()
             )
                 .unwrap(),
-            "{s_id=\"1\", sf_type=\"4\", is_active=\"1\", error_cntrl=\"90\", data_a=\"95\", data_b=\"RCSAA\"}"
+            "{s_id=\"1\", sf_type=\"3\", is_active=\"1\", error_cntrl=\"30\", data_a=\"217\", data_b=\"IWPXS\"}"
         );
 
         // Call forwarding.
@@ -520,7 +526,7 @@ mod tests {
                 .get_table("call_forwarding")
                 .unwrap()
                 .get_next_row_id(),
-            15
+            48
         );
         let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
         let index = internals.indexes.get("call_idx").unwrap();
@@ -537,7 +543,7 @@ mod tests {
                     .unwrap().get_values().unwrap()
             )
                 .unwrap(),
-            "{s_id=\"1\", sf_type=\"4\", start_time=\"16\", end_time=\"17\", number_x=\"365430140201306\"}"
+            "{s_id=\"1\", sf_type=\"3\", start_time=\"16\", end_time=\"22\", number_x=\"255859837238459\"}"
         );
     }
 }

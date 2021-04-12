@@ -7,8 +7,9 @@ load = false
 scale_factor = 0
 set_seed = false
 
-protocol="hit"
-hit_gc = 5000
+protocol="opt-hit"
+garbage_collection = true
+garbage_collection_sleep = 10
 workers = 4
 
 warmup = 1

@@ -542,21 +542,21 @@ mod tests {
             get_new_destination(
                 GetNewDestination {
                     s_id: 1,
-                    sf_type: 4,
+                    sf_type: 1,
                     start_time: 16,
                     end_time: 12,
                 },
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{number_x=\"655601632274699\"}"
+            "{number_x=\"563603967554067\"}"
         );
         assert_eq!(
             format!(
                 "{}",
                 get_new_destination(
                     GetNewDestination {
-                        s_id: 10,
+                        s_id: 200,
                         sf_type: 1,
                         start_time: 0,
                         end_time: 1,
@@ -565,7 +565,7 @@ mod tests {
                 )
                 .unwrap_err()
             ),
-            format!("not found: SpecialFacility(10, 1) in special_idx")
+            format!("not found: SpecialFacility(200, 1) in special_idx")
         );
 
         //////////////////////////////////
@@ -580,7 +580,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{data_1=\"57\", data_2=\"200\", data_3=\"IEU\", data_4=\"WIDHY\"}"
+            "{data_1=\"150\", data_2=\"113\", data_3=\"VDO\", data_4=\"TQMST\"}"
         );
 
         assert_eq!(
@@ -632,7 +632,7 @@ mod tests {
         let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
         let res_sf = datatype::to_result(&columns_sf, &values_sf.get_values().unwrap()).unwrap();
         assert_eq!(res_sb, "{bit_1=\"0\"}");
-        assert_eq!(res_sf, "{data_a=\"60\"}");
+        assert_eq!(res_sf, "{data_a=\"81\"}");
 
         assert_eq!(
             update_subscriber_data(
@@ -783,8 +783,8 @@ mod tests {
         assert_eq!(
             insert_call_forwarding(
                 InsertCallForwarding {
-                    s_id: 1,
-                    sf_type: 3,
+                    s_id: 2,
+                    sf_type: 2,
                     start_time: 0,
                     end_time: 19,
                     number_x: "551795089196026".to_string()
@@ -800,7 +800,7 @@ mod tests {
             .get_index("call_idx")
             .unwrap()
             .read(
-                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
+                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(2, 2, 0)),
                 &columns_cf,
                 "2pl",
                 "t1",
@@ -821,7 +821,7 @@ mod tests {
             .get_index("call_idx")
             .unwrap()
             .read(
-                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 3, 0)),
+                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(2, 2, 0)),
                 &columns_cf,
                 "2pl",
                 "t1",
@@ -836,7 +836,7 @@ mod tests {
                 DeleteCallForwarding {
                     s_id: 2,
                     sf_type: 2,
-                    start_time: 16,
+                    start_time: 0,
                 },
                 Arc::clone(&protocol)
             )
@@ -852,14 +852,14 @@ mod tests {
                     .get_index("call_idx")
                     .unwrap()
                     .read(
-                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(2, 2, 16)),
+                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(2, 2, 0)),
                         &columns_cf,
                         "2pl",
                         "t1",
                     )
                     .unwrap_err()
             ),
-            format!("not found: CallForwarding(2, 2, 16) in call_idx")
+            format!("not found: CallForwarding(2, 2, 0) in call_idx")
         );
     }
 }

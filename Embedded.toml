@@ -1,13 +1,14 @@
 log = "info"
 
-transactions = 10000000
-timeout = 1
-warmup = 10
+transactions = 10000
+timeout = 10
+warmup = 100
 set_seed = false
 
-protocol="sgt"
+protocol="opt-hit"
 workers = 6
-hit_gc = 5000
+garbage_collection = true
+garbage_collection_sleep = 10
 
 scale_factor = 1
 workload = "tatp"

@@ -3,6 +3,7 @@
 //! Non-fatal errors, are reasons for transactions to abort.
 use crate::common::frame::ParseError;
 use crate::server::scheduler::hit_list::error::HitListError;
+use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 
@@ -112,6 +113,9 @@ pub enum NonFatalError {
 
     /// Hit-list error.
     HitList(HitListError),
+
+    /// Optimised Hit-list error.
+    OptimisedHitListError(OptimisedHitListError),
 }
 
 impl fmt::Display for FatalError {
@@ -161,6 +165,7 @@ impl fmt::Display for NonFatalError {
                 column, table, value
             ),
             HitList(ref e) => write!(f, "{}", e),
+            OptimisedHitListError(ref e) => write!(f, "{}", e),
             TwoPhaseLocking(ref e) => write!(f, "{}", e),
             SerializationGraphTesting(ref e) => write!(f, "{}", e),
             RowAlreadyExists(ref key, ref index) => {
@@ -230,6 +235,12 @@ impl From<SerializationGraphTestingError> for NonFatalError {
 impl From<HitListError> for NonFatalError {
     fn from(error: HitListError) -> Self {
         NonFatalError::HitList(error)
+    }
+}
+
+impl From<OptimisedHitListError> for NonFatalError {
+    fn from(error: OptimisedHitListError) -> Self {
+        NonFatalError::OptimisedHitListError(error)
     }
 }
 
