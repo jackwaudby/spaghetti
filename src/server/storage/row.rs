@@ -70,7 +70,7 @@ impl Row {
         }
         // Optional track access history
         let access_history = match protocol {
-            "sgt" | "hit" => Some(vec![]),
+            "sgt" | "hit" | "opt-hit" => Some(vec![]),
             _ => None,
         };
 
@@ -163,7 +163,7 @@ impl Row {
         }
 
         let access_history = match protocol {
-            "sgt" | "hit" => {
+            "sgt" | "hit" | "opt-hit" => {
                 // Get access history.
                 let ah = self.get_access_history().unwrap();
                 // Append this operation.
@@ -303,7 +303,7 @@ impl Row {
 
         // Get access history.
         let access_history = match protocol {
-            "sgt" | "hit" => {
+            "sgt" | "hit" | "opt-hit" => {
                 // Get access history.
                 let ah = self.get_access_history().unwrap();
                 Some(ah)
@@ -325,7 +325,7 @@ impl Row {
         self.set_prev(None);
         // Trim access history.
         match protocol {
-            "sgt" | "hit" => {
+            "sgt" | "hit" | "opt-hit" => {
                 let mut ah = self.access_history.take().unwrap();
 
                 // Get index of this write.
@@ -361,7 +361,7 @@ impl Row {
             self.set_dirty(false);
             // Trim access history.
             match protocol {
-                "sgt" | "hit" => {
+                "sgt" | "hit" | "opt-hit" => {
                     let mut ah = self.access_history.take().unwrap();
 
                     // Get index of this write.
