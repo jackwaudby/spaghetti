@@ -1,6 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
 use crate::server::scheduler::hit_list::error::HitListError;
+use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 use crate::workloads::smallbank::SmallBankTransaction;
@@ -64,6 +65,7 @@ impl GlobalStatistics {
         let warmup = config.get_int("warmup").unwrap() as u32;
 
         let workload_breakdown = WorkloadBreakdown::new(&workload);
+
         let abort_breakdown = AbortBreakdown::new(&protocol);
 
         GlobalStatistics {
@@ -267,6 +269,21 @@ impl LocalStatistics {
                             },
                             _ => {}
                         },
+                        ProtocolAbortBreakdown::OptimisedHitList(ref mut metric) => match reason {
+                            NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
+                            NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
+                            NonFatalError::OptimisedHitListError(e) => match e {
+                                OptimisedHitListError::Hit(_) => metric.inc_hit(),
+                                OptimisedHitListError::PredecessorAborted(_) => {
+                                    metric.inc_pur_aborted()
+                                }
+                                OptimisedHitListError::PredecessorActive(_) => {
+                                    metric.inc_pur_active()
+                                }
+                            },
+                            _ => {}
+                        },
+
                         ProtocolAbortBreakdown::SerializationGraph(ref mut metric) => {
                             match reason {
                                 NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
@@ -471,6 +488,7 @@ impl AbortBreakdown {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
             "2pl" => ProtocolAbortBreakdown::TwoPhaseLocking(TwoPhaseLockingReasons::new()),
             "hit" => ProtocolAbortBreakdown::HitList(HitListReasons::new()),
+            "opt-hit" => ProtocolAbortBreakdown::OptimisedHitList(HitListReasons::new()),
             _ => unimplemented!(),
         };
 
@@ -489,6 +507,15 @@ impl AbortBreakdown {
         match self.protocol_specific {
             ProtocolAbortBreakdown::HitList(ref mut reasons) => {
                 if let ProtocolAbortBreakdown::HitList(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("abort breakdowns do not match");
+                }
+            }
+            ProtocolAbortBreakdown::OptimisedHitList(ref mut reasons) => {
+                if let ProtocolAbortBreakdown::OptimisedHitList(other_reasons) =
+                    other.protocol_specific
+                {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("abort breakdowns do not match");
@@ -522,6 +549,7 @@ enum ProtocolAbortBreakdown {
     TwoPhaseLocking(TwoPhaseLockingReasons),
     SerializationGraph(SerializationGraphReasons),
     HitList(HitListReasons),
+    OptimisedHitList(HitListReasons),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
