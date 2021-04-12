@@ -353,17 +353,29 @@ impl Scheduler for OptimisedHitList {
 
     /// Commit a transaction.
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
+        let handle = thread::current();
         let transaction_id = meta.get_id().unwrap(); // get transaction id
-        debug!("Commit: {}", transaction_id);
-        let (thread_id, seq_num) = parse_id(transaction_id); // split into thread id + seq
+        debug!(
+            "Thread {}: commit {}",
+            handle.name().unwrap(),
+            transaction_id.clone()
+        );
+
+        let (thread_id, seq_num) = parse_id(transaction_id.clone()); // split into thread id + seq
 
         // CHECK //
+        debug!(
+            "Thread {}: check {}",
+            handle.name().unwrap(),
+            transaction_id.clone()
+        );
         if let TransactionState::Aborted = self.get_shared_lock(thread_id).get_state(seq_num) {
             self.abort(meta.clone()).unwrap(); // abort txn
             return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
         }
 
         // HIT PHASE //
+        debug!("Thread {}: start hit phase", handle.name().unwrap());
         let mut hit_list = self.get_shared_lock(thread_id).get_hit_list(seq_num); // get hit list
 
         while !hit_list.is_empty() {
@@ -377,6 +389,7 @@ impl Scheduler for OptimisedHitList {
                     .set_state(p_seq_num, TransactionState::Aborted);
             }
         }
+        debug!("Thread {}: finish hit phase", handle.name().unwrap());
 
         // CHECK //
         if let TransactionState::Aborted = self.get_shared_lock(thread_id).get_state(seq_num) {
@@ -385,10 +398,18 @@ impl Scheduler for OptimisedHitList {
         }
 
         // WAIT PHASE //
-        let wait_list = self.get_shared_lock(thread_id).get_hit_list(seq_num); // get wait list
+        debug!("Thread {}: start wait phase", handle.name().unwrap());
+
+        let mut wait_list = self.get_shared_lock(thread_id).get_wait_list(seq_num); // get wait list
+
+        debug!(
+            "Thread {}: wait list {:?}",
+            handle.name().unwrap(),
+            wait_list
+        );
 
         while !wait_list.is_empty() {
-            let predecessor = hit_list.pop().unwrap(); // take a predecessor
+            let predecessor = wait_list.pop().unwrap(); // take a predecessor
             let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
 
             match self.get_shared_lock(p_thread_id).get_state(p_seq_num) {
@@ -405,6 +426,7 @@ impl Scheduler for OptimisedHitList {
                 TransactionState::Committed => {}
             }
         }
+        debug!("Thread {}: finish wait phase", handle.name().unwrap());
 
         // CHECK //
         if let TransactionState::Aborted = self.get_shared_lock(thread_id).get_state(seq_num) {
@@ -413,6 +435,7 @@ impl Scheduler for OptimisedHitList {
         }
 
         // TRY COMMIT //
+        debug!("Thread {}: try commit", handle.name().unwrap());
         match self.get_shared_lock(thread_id).try_commit(seq_num) {
             Ok(_) => {
                 // commit changes

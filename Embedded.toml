@@ -1,6 +1,6 @@
 log = "debug"
 
-transactions = 10000000
+transactions = 100
 timeout = 1
 warmup = 10
 set_seed = false
