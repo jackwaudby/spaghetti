@@ -16,4 +16,5 @@ Fix permissions and ssh into machine.
 ```
 sudo chmod 600 ~/.ssh-keys/<key>.pem
 ssh -i ~/.ssh-keys/<key>.pem azureuser@<pubic-ip>
+scp -r -i ./ssh_keys/<key>.pem azureuser@azureuser@<pubic-ip>:~/spaghetti/results ./
 ```
