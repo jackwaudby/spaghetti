@@ -1,19 +1,19 @@
 log = "info"
 
 transactions = 10000
-timeout = 1
-warmup = 10
+timeout = 10
+warmup = 100
 set_seed = false
 
 protocol="opt-hit"
 workers = 6
 garbage_collection = true
-garbage_collection_sleep = 1
+garbage_collection_sleep = 10
 
-scale_factor = 0
+scale_factor = 1
 workload = "tatp"
 schema = "tatp_schema.txt"
-load = false
+load = true
 
 nurand = true
 

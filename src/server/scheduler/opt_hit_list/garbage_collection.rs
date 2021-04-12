@@ -3,7 +3,7 @@ use crate::server::scheduler::opt_hit_list::terminated_list::ThreadState;
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread;
 use std::time::Duration;
-use tracing::{debug, info};
+use tracing::debug;
 
 /// Garbage Collector.
 #[derive(Debug)]
@@ -23,12 +23,10 @@ impl GarbageCollector {
         let thread = builder
             .spawn(move || {
                 debug!("Starting garbage collector");
-                let handle = thread::current();
 
                 let mut alpha = vec![];
-                let mut epoch = 0;
 
-                for i in 0..threads {
+                for _ in 0..threads {
                     alpha.push(None);
                 }
                 loop {
@@ -37,21 +35,15 @@ impl GarbageCollector {
                         break; // exit loop
                     }
 
-                    // thread::sleep(Duration::from_millis(sleep * 1000)); // sleep garbage collector
-
-                    thread::sleep(Duration::from_millis(10)); // sleep garbage collector
-
-                    epoch += 1;
-                    info!("Incrementing epochs to {}", epoch);
+                    thread::sleep(Duration::from_millis(sleep * 1000)); // sleep garbage collector
 
                     // pass 1: increment epochs
-                    for (i, thread) in shared.iter().enumerate() {
+                    for thread in shared.iter() {
                         thread.read().unwrap().get_epoch_tracker().new_epoch();
                     }
-                    info!("All epochs incremented to {}", epoch);
 
                     for (i, thread) in shared.iter().enumerate() {
-                        info!("Thread {}: {}", i, thread.read().unwrap());
+                        debug!("Thread {}: {}", i, thread.read().unwrap());
                     }
 
                     // pass 2: compute alphs
@@ -61,7 +53,7 @@ impl GarbageCollector {
 
                     // pass 3: remove all < min alpha
                     let min = alpha.iter().min().unwrap();
-                    info!("Alpha: {:?}", alpha);
+                    debug!("Alpha: {:?}", alpha);
 
                     for thread in shared.iter() {
                         let mut to_remove = thread
@@ -70,14 +62,14 @@ impl GarbageCollector {
                             .get_epoch_tracker()
                             .get_transactions_to_garbage_collect(min.unwrap());
                         to_remove.sort();
-                        info!("To remove: {:?}", to_remove);
+                        debug!("To remove: {:?}", to_remove);
 
                         for id in to_remove {
-                            info!("Remove: {:?}", id);
+                            debug!("Remove: {:?}", id);
                             thread.write().unwrap().remove_transaction(id);
-                            info!("Remove: {:?}", id);
+                            debug!("Remove: {:?}", id);
                         }
-                        info!("All removed");
+                        debug!("All removed");
                     }
                 }
             })

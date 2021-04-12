@@ -546,7 +546,6 @@ impl Scheduler for OptimisedHitList {
                 debug!("Thread {}: added terminated", handle.name().unwrap());
 
                 Ok(())
-                // TODO: garbage collection
             }
             Err(e) => {
                 self.abort(meta.clone()).unwrap(); // abort txn
