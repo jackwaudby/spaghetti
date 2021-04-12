@@ -1,4 +1,5 @@
 use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
+use crate::server::scheduler::opt_hit_list::garbage_collection::GarbageCollector;
 use crate::server::scheduler::opt_hit_list::terminated_list::{
     Operation, PredecessorUpon, ThreadState, TransactionState,
 };
@@ -10,14 +11,19 @@ use crate::server::storage::row::{Access, Row};
 use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
 
+use std::sync::mpsc;
 use std::sync::RwLock;
-use std::sync::{Arc, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, RwLockReadGuard, RwLockWriteGuard};
 use std::thread;
 use tracing::{debug, info};
+
+pub mod epoch;
 
 pub mod error;
 
 pub mod terminated_list;
+
+pub mod garbage_collection;
 
 /// Optimised Hit List Protocol.
 ///
@@ -25,10 +31,16 @@ pub mod terminated_list;
 #[derive(Debug)]
 pub struct OptimisedHitList {
     /// Terminated lists.
-    terminated_lists: Vec<Arc<RwLock<ThreadState>>>,
+    terminated_lists: Arc<Vec<Arc<RwLock<ThreadState>>>>,
 
     /// Handle to storage layer.
     data: Arc<Workload>,
+
+    /// Epoch based garbage collector.
+    garbage_collector: GarbageCollector,
+
+    /// Channel to shutdown the garbage collector.
+    sender: Mutex<mpsc::Sender<()>>,
 }
 
 impl Scheduler for OptimisedHitList {
@@ -348,6 +360,10 @@ impl Scheduler for OptimisedHitList {
                 .unwrap();
         }
 
+        let rg = self.get_shared_lock(thread_id);
+        let se = rg.get_start_epoch(seq_num);
+        rg.get_epoch_tracker().add_terminated(seq_num, se);
+
         Ok(())
     }
 
@@ -465,6 +481,11 @@ impl Scheduler for OptimisedHitList {
                     let index = self.data.get_internals().get_index(&index).unwrap();
                     index.revert_read(key, &meta.get_id().unwrap()).unwrap();
                 }
+
+                let rg = self.get_shared_lock(thread_id);
+                let se = rg.get_start_epoch(seq_num);
+                rg.get_epoch_tracker().add_terminated(seq_num, se);
+
                 Ok(())
                 // TODO: garbage collection
             }
@@ -490,9 +511,16 @@ impl OptimisedHitList {
             let list = Arc::new(RwLock::new(ThreadState::new()));
             terminated_lists.push(list);
         }
+        let atomic_tl = Arc::new(terminated_lists);
+        let (sender, receiver) = mpsc::channel(); // shutdown channel
+        let sleep = data.get_internals().get_config().get_int("hit_gc").unwrap() as u64;
+        let garbage_collector = GarbageCollector::new(Arc::clone(&atomic_tl), receiver, sleep);
+
         OptimisedHitList {
-            terminated_lists: terminated_lists,
+            terminated_lists: atomic_tl,
             data,
+            garbage_collector,
+            sender: Mutex::new(sender),
         }
     }
 
@@ -514,6 +542,19 @@ impl OptimisedHitList {
     fn get_exculsive_lock(&self, thread_id: usize) -> RwLockWriteGuard<ThreadState> {
         let wg = self.terminated_lists[thread_id].write().unwrap();
         wg
+    }
+}
+
+impl Drop for OptimisedHitList {
+    fn drop(&mut self) {
+        self.sender.lock().unwrap().send(()).unwrap(); // send shutdown to gc
+
+        if let Some(thread) = self.garbage_collector.thread.take() {
+            match thread.join() {
+                Ok(_) => debug!("Garbage collector shutdown"),
+                Err(_) => debug!("Error shutting down garbage collector"),
+            }
+        }
     }
 }
 
