@@ -102,7 +102,7 @@ impl ThreadPool {
                     panic_receiver,
                 }
             }
-            "sgt" => {
+            "sgt" | "opt-hit" => {
                 // Retrieve the IDs of all active CPU cores.
                 let core_ids = core_affinity::get_core_ids().unwrap();
 
