@@ -218,7 +218,7 @@ impl Row {
         }
 
         let access_history = match protocol {
-            "sgt" | "hit" => {
+            "sgt" | "hit" | "opt-hit" => {
                 // Get access history.
                 let ah = self.get_access_history().unwrap();
                 // Append this operation.
