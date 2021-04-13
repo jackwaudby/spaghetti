@@ -1,6 +1,9 @@
 use crate::workloads::PrimaryKey;
 
+use std::cell::UnsafeCell;
 use std::sync::Mutex;
+
+unsafe impl Sync for Transaction {}
 
 /// Represents a transaction's state.
 #[derive(Debug, Clone, PartialEq)]
@@ -29,10 +32,10 @@ pub struct Transaction {
     state: Mutex<TransactionState>,
 
     /// Predecessors upon read.
-    wait_list: Mutex<Option<Vec<String>>>,
+    wait_list: UnsafeCell<Option<Vec<String>>>,
 
     /// Predecessors upon write.
-    hit_list: Mutex<Option<Vec<String>>>,
+    hit_list: UnsafeCell<Option<Vec<String>>>,
 
     /// List of keys inserted.
     keys_inserted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
@@ -54,8 +57,8 @@ impl Transaction {
             id,
             start_epoch,
             state: Mutex::new(TransactionState::Active),
-            wait_list: Mutex::new(Some(vec![])),
-            hit_list: Mutex::new(Some(vec![])),
+            wait_list: UnsafeCell::new(Some(vec![])),
+            hit_list: UnsafeCell::new(Some(vec![])),
             keys_updated: Mutex::new(Some(vec![])),
             keys_deleted: Mutex::new(Some(vec![])),
             keys_read: Mutex::new(Some(vec![])),
@@ -86,18 +89,34 @@ impl Transaction {
     /// Add predecessor.
     pub fn add_predecessor(&self, pid: String, predecessor_upon: PredecessorUpon) {
         use PredecessorUpon::*;
-        match predecessor_upon {
-            Read => self.wait_list.lock().unwrap().as_mut().unwrap().push(pid),
-            Write => self.hit_list.lock().unwrap().as_mut().unwrap().push(pid),
+        unsafe {
+            match predecessor_upon {
+                Read => {
+                    let v = &mut *self.wait_list.get(); // raw mutable pointer
+                    v.as_mut().unwrap().push(pid)
+                }
+                Write => {
+                    let v = &mut *self.hit_list.get(); // raw mutable pointer
+                    v.as_mut().unwrap().push(pid)
+                }
+            }
         }
     }
 
     /// Get predecessors.
     pub fn get_predecessors(&self, predecessor_upon: PredecessorUpon) -> Vec<String> {
         use PredecessorUpon::*;
-        match predecessor_upon {
-            Read => self.wait_list.lock().unwrap().take().unwrap(),
-            Write => self.hit_list.lock().unwrap().take().unwrap(),
+        unsafe {
+            match predecessor_upon {
+                Read => {
+                    let v = &mut *self.wait_list.get();
+                    v.take().unwrap()
+                }
+                Write => {
+                    let v = &mut *self.hit_list.get();
+                    v.take().unwrap()
+                }
+            }
         }
     }
 
