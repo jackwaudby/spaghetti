@@ -555,20 +555,20 @@ impl Scheduler for OptimisedHitList {
 impl OptimisedHitList {
     /// Create new optimised hit list.
     pub fn new(size: usize, data: Arc<Workload>) -> Self {
-        info!("Initialise optimised hit list with {} threads", size);
-        let mut terminated_lists = vec![];
-        // terminated list for each thread
-        for _ in 0..size {
-            let list = Arc::new(ThreadState::new());
-            terminated_lists.push(list);
-        }
-        let atomic_tl = Arc::new(terminated_lists);
-
         let do_gc = data
             .get_internals()
             .get_config()
             .get_bool("garbage_collection")
             .unwrap();
+        info!("Initialise optimised hit list with {} threads", size);
+        let mut terminated_lists = vec![];
+        // terminated list for each thread
+        for _ in 0..size {
+            let list = Arc::new(ThreadState::new(do_gc));
+            terminated_lists.push(list);
+        }
+        let atomic_tl = Arc::new(terminated_lists);
+
         let garbage_collector;
         let sender;
         if do_gc {

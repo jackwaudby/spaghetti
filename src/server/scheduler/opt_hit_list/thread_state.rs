@@ -22,26 +22,34 @@ pub struct ThreadState {
 
     /// Termination list.
     terminated_list: RwLock<Vec<Arc<Transaction>>>,
+
+    /// Garbage collection.
+    gc: bool,
 }
 
 impl ThreadState {
     /// Create new thread state.
-    pub fn new() -> ThreadState {
+    pub fn new(gc: bool) -> ThreadState {
         ThreadState {
             epoch_tracker: Mutex::new(EpochTracker::new()),
             seq_num: UnsafeCell::new(0),
             terminated_list: RwLock::new(vec![]),
+            gc,
         }
     }
 
     /// Get index in list of transaction with `id`.
     pub fn get_index(&self, id: u64) -> usize {
-        self.terminated_list
-            .read()
-            .unwrap()
-            .iter()
-            .position(|x| x.get_id() == id)
-            .unwrap()
+        if self.gc {
+            self.terminated_list
+                .read()
+                .unwrap()
+                .iter()
+                .position(|x| x.get_id() == id)
+                .unwrap()
+        } else {
+            id as usize
+        }
     }
 
     /// Increment epoch.
