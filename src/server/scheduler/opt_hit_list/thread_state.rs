@@ -5,8 +5,11 @@ use crate::server::scheduler::opt_hit_list::transaction::{
 use crate::server::scheduler::NonFatalError;
 use crate::workloads::PrimaryKey;
 
+use std::cell::UnsafeCell;
 use std::fmt;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
+
+unsafe impl Sync for ThreadState {}
 
 /// Per-thread state.
 #[derive(Debug)]
@@ -15,7 +18,7 @@ pub struct ThreadState {
     epoch_tracker: Mutex<EpochTracker>,
 
     /// Transaction id generator.
-    seq_num: u64,
+    seq_num: UnsafeCell<u64>,
 
     /// Termination list.
     terminated_list: RwLock<Vec<Arc<Transaction>>>,
@@ -26,7 +29,7 @@ impl ThreadState {
     pub fn new() -> ThreadState {
         ThreadState {
             epoch_tracker: Mutex::new(EpochTracker::new()),
-            seq_num: 0,
+            seq_num: UnsafeCell::new(0),
             terminated_list: RwLock::new(vec![]),
         }
     }
@@ -52,17 +55,20 @@ impl ThreadState {
         self.terminated_list.read().unwrap()[index].get_start_epoch()
     }
 
+    // TODO: unsafe increment.
     /// Get transaction id.
-    fn get_id(&mut self) -> u64 {
-        let id = self.seq_num;
-        self.seq_num += 1;
-        id
+    fn get_id(&self) -> u64 {
+        unsafe {
+            let id = *self.seq_num.get(); // cast raw pointer to mutable reference
+            *self.seq_num.get() = id + 1; // increment
+            id
+        }
     }
 
     /// Register new transaction with thread.
-    pub fn new_transaction(&mut self) -> u64 {
+    pub fn new_transaction(&self) -> u64 {
         let id = self.get_id(); // get id
-        let mut wg = self.get_epoch_tracker();
+        let mut wg = self.get_epoch_tracker(); // lock epoch tracker
         let se = wg.get_current_id(); // start epoch
         wg.add_started(id); // add to gc
 

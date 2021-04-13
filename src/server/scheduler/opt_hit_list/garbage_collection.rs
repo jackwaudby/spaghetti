@@ -1,6 +1,6 @@
 use crate::server::scheduler::opt_hit_list::thread_state::ThreadState;
 
-use std::sync::{mpsc, Arc, RwLock};
+use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::Duration;
 use tracing::debug;
@@ -14,7 +14,7 @@ pub struct GarbageCollector {
 // channel between hit list scheduler and garbage collection thread
 impl GarbageCollector {
     pub fn new(
-        shared: Arc<Vec<Arc<RwLock<ThreadState>>>>,
+        shared: Arc<Vec<Arc<ThreadState>>>,
         receiver: mpsc::Receiver<()>,
         sleep: u64,
         threads: usize,
@@ -39,16 +39,16 @@ impl GarbageCollector {
 
                     // pass 1: increment epochs
                     for thread in shared.iter() {
-                        thread.read().unwrap().get_epoch_tracker().new_epoch();
+                        thread.get_epoch_tracker().new_epoch();
                     }
 
                     for (i, thread) in shared.iter().enumerate() {
-                        debug!("Thread {}: {}", i, thread.read().unwrap());
+                        debug!("Thread {}: {}", i, thread);
                     }
 
                     // pass 2: compute alphs
                     for (i, thread) in shared.iter().enumerate() {
-                        alpha[i] = Some(thread.read().unwrap().get_epoch_tracker().update_alpha());
+                        alpha[i] = Some(thread.get_epoch_tracker().update_alpha());
                     }
 
                     // pass 3: remove all < min alpha
@@ -57,8 +57,6 @@ impl GarbageCollector {
 
                     for thread in shared.iter() {
                         let mut to_remove = thread
-                            .read()
-                            .unwrap()
                             .get_epoch_tracker()
                             .get_transactions_to_garbage_collect(min.unwrap());
                         to_remove.sort();
@@ -66,7 +64,7 @@ impl GarbageCollector {
 
                         for id in to_remove {
                             debug!("Remove: {:?}", id);
-                            thread.write().unwrap().remove_transaction(id);
+                            thread.remove_transaction(id);
                             debug!("Remove: {:?}", id);
                         }
                         debug!("All removed");

@@ -11,8 +11,7 @@ use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
 
 use std::sync::mpsc;
-use std::sync::RwLock;
-use std::sync::{Arc, Mutex, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use tracing::{debug, info};
 
@@ -32,7 +31,7 @@ pub mod garbage_collection;
 #[derive(Debug)]
 pub struct OptimisedHitList {
     /// Terminated lists.
-    terminated_lists: Arc<Vec<Arc<RwLock<ThreadState>>>>,
+    thread_states: Arc<Vec<Arc<ThreadState>>>,
 
     /// Handle to storage layer.
     data: Arc<Workload>,
@@ -55,7 +54,7 @@ impl Scheduler for OptimisedHitList {
             .to_string()
             .parse::<usize>()
             .unwrap(); // get thread id
-        let seq_num = self.get_exculsive_lock(thread_id).new_transaction(); // get sequence number
+        let seq_num = self.thread_states[thread_id].new_transaction(); // get sequence number
         let transaction_id = format!("{}-{}", thread_id, seq_num); // create transaction id
 
         debug!("Register: {}", transaction_id);
@@ -111,8 +110,7 @@ impl Scheduler for OptimisedHitList {
         }
 
         let pair = (index.get_name(), key.clone());
-        self.get_shared_lock(thread_id)
-            .add_key(seq_num, pair, Operation::Create);
+        self.thread_states[thread_id].add_key(seq_num, pair, Operation::Create);
 
         // attempt to insert row
         match index.insert(key, row) {
@@ -148,7 +146,7 @@ impl Scheduler for OptimisedHitList {
                 for access in access_history {
                     // WR conflict
                     if let Access::Write(predecessor_id) = access {
-                        self.get_shared_lock(thread_id).add_predecessor(
+                        self.thread_states[thread_id].add_predecessor(
                             seq_num,
                             predecessor_id,
                             PredecessorUpon::Read,
@@ -156,8 +154,7 @@ impl Scheduler for OptimisedHitList {
                     }
                 }
                 let pair = (index.get_name(), key.clone());
-                self.get_shared_lock(thread_id)
-                    .add_key(seq_num, pair, Operation::Read); // register operation; used to clean up.
+                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Read); // register operation; used to clean up.
                 let vals = res.get_values().unwrap(); // get the values
                 Ok(vals)
             }
@@ -188,7 +185,7 @@ impl Scheduler for OptimisedHitList {
                     match access {
                         // WW conflict
                         Access::Write(predecessor_id) => {
-                            self.get_shared_lock(thread_id).add_predecessor(
+                            self.thread_states[thread_id].add_predecessor(
                                 seq_num,
                                 predecessor_id,
                                 PredecessorUpon::Write,
@@ -196,7 +193,7 @@ impl Scheduler for OptimisedHitList {
                         }
                         // RW conflict
                         Access::Read(predecessor_id) => {
-                            self.get_shared_lock(thread_id).add_predecessor(
+                            self.thread_states[thread_id].add_predecessor(
                                 seq_num,
                                 predecessor_id,
                                 PredecessorUpon::Write,
@@ -207,8 +204,7 @@ impl Scheduler for OptimisedHitList {
 
                 // TODO: register read operation as well
                 let pair = (index.get_name(), key.clone());
-                self.get_shared_lock(thread_id)
-                    .add_key(seq_num, pair, Operation::Update); // register operation; used to clean up.
+                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Update); // register operation; used to clean up.
                 let vals = res.get_values().unwrap(); // get vals
                 Ok(vals)
             }
@@ -256,7 +252,7 @@ impl Scheduler for OptimisedHitList {
                     match access {
                         // WW conflict
                         Access::Write(predecessor_id) => {
-                            self.get_shared_lock(thread_id).add_predecessor(
+                            self.thread_states[thread_id].add_predecessor(
                                 seq_num,
                                 predecessor_id,
                                 PredecessorUpon::Write,
@@ -264,7 +260,7 @@ impl Scheduler for OptimisedHitList {
                         }
                         // RW conflict
                         Access::Read(predecessor_id) => {
-                            self.get_shared_lock(thread_id).add_predecessor(
+                            self.thread_states[thread_id].add_predecessor(
                                 seq_num,
                                 predecessor_id,
                                 PredecessorUpon::Write,
@@ -273,8 +269,7 @@ impl Scheduler for OptimisedHitList {
                     }
                 }
                 let pair = (index.get_name(), key.clone());
-                self.get_shared_lock(thread_id)
-                    .add_key(seq_num, pair, Operation::Update);
+                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Update);
                 Ok(())
             }
             Err(e) => {
@@ -304,7 +299,7 @@ impl Scheduler for OptimisedHitList {
                     match access {
                         // WW conflict
                         Access::Write(predecessor_id) => {
-                            self.get_shared_lock(thread_id).add_predecessor(
+                            self.thread_states[thread_id].add_predecessor(
                                 seq_num,
                                 predecessor_id,
                                 PredecessorUpon::Write,
@@ -312,7 +307,7 @@ impl Scheduler for OptimisedHitList {
                         }
                         // RW conflict
                         Access::Read(predecessor_id) => {
-                            self.get_shared_lock(thread_id).add_predecessor(
+                            self.thread_states[thread_id].add_predecessor(
                                 seq_num,
                                 predecessor_id,
                                 PredecessorUpon::Write,
@@ -321,8 +316,7 @@ impl Scheduler for OptimisedHitList {
                     }
                 }
                 let pair = (index.get_name(), key.clone());
-                self.get_shared_lock(thread_id)
-                    .add_key(seq_num, pair, Operation::Delete);
+                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Delete);
                 Ok(())
             }
             Err(e) => {
@@ -349,8 +343,7 @@ impl Scheduler for OptimisedHitList {
             handle.name().unwrap(),
             transaction_id.clone()
         );
-        self.get_shared_lock(thread_id)
-            .set_state(seq_num, TransactionState::Aborted); // set state.
+        self.thread_states[thread_id].set_state(seq_num, TransactionState::Aborted); // set state.
         debug!(
             "Thread {}: state set to abort {}",
             handle.name().unwrap(),
@@ -363,7 +356,7 @@ impl Scheduler for OptimisedHitList {
             transaction_id.clone()
         );
 
-        let rg = self.get_shared_lock(thread_id);
+        let rg = &self.thread_states[thread_id];
         let inserted = rg.get_keys(seq_num, Operation::Create);
         let read = rg.get_keys(seq_num, Operation::Read);
         let updated = rg.get_keys(seq_num, Operation::Update);
@@ -431,30 +424,28 @@ impl Scheduler for OptimisedHitList {
             handle.name().unwrap(),
             transaction_id.clone()
         );
-        if let TransactionState::Aborted = self.get_shared_lock(thread_id).get_state(seq_num) {
+        if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
             self.abort(meta.clone()).unwrap(); // abort txn
             return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
         }
 
         // HIT PHASE //
         debug!("Thread {}: start hit phase", handle.name().unwrap());
-        let mut hit_list = self.get_shared_lock(thread_id).get_hit_list(seq_num); // get hit list
+        let mut hit_list = self.thread_states[thread_id].get_hit_list(seq_num); // get hit list
 
         while !hit_list.is_empty() {
             let predecessor = hit_list.pop().unwrap(); // take a predecessor
             let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
 
             // if active then hit
-            if let TransactionState::Active = self.get_shared_lock(p_thread_id).get_state(p_seq_num)
-            {
-                self.get_shared_lock(p_thread_id)
-                    .set_state(p_seq_num, TransactionState::Aborted);
+            if let TransactionState::Active = self.thread_states[p_thread_id].get_state(p_seq_num) {
+                self.thread_states[p_thread_id].set_state(p_seq_num, TransactionState::Aborted);
             }
         }
         debug!("Thread {}: finish hit phase", handle.name().unwrap());
 
         // CHECK //
-        if let TransactionState::Aborted = self.get_shared_lock(thread_id).get_state(seq_num) {
+        if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
             self.abort(meta.clone()).unwrap(); // abort txn
             return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
         }
@@ -462,7 +453,7 @@ impl Scheduler for OptimisedHitList {
         // WAIT PHASE //
         debug!("Thread {}: start wait phase", handle.name().unwrap());
 
-        let mut wait_list = self.get_shared_lock(thread_id).get_wait_list(seq_num); // get wait list
+        let mut wait_list = self.thread_states[thread_id].get_wait_list(seq_num); // get wait list
 
         debug!(
             "Thread {}: wait list {:?}",
@@ -474,7 +465,7 @@ impl Scheduler for OptimisedHitList {
             let predecessor = wait_list.pop().unwrap(); // take a predecessor
             let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
 
-            match self.get_shared_lock(p_thread_id).get_state(p_seq_num) {
+            match self.thread_states[p_thread_id].get_state(p_seq_num) {
                 TransactionState::Active => {
                     self.abort(meta.clone()).unwrap(); // abort txn
 
@@ -495,7 +486,7 @@ impl Scheduler for OptimisedHitList {
         debug!("Thread {}: finish wait phase", handle.name().unwrap());
 
         // CHECK //
-        if let TransactionState::Aborted = self.get_shared_lock(thread_id).get_state(seq_num) {
+        if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
             self.abort(meta.clone()).unwrap(); // abort txn
             return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
         }
@@ -503,13 +494,13 @@ impl Scheduler for OptimisedHitList {
         // TRY COMMIT //
         debug!("Thread {}: try commit", handle.name().unwrap());
 
-        let outcome = self.get_shared_lock(thread_id).try_commit(seq_num);
+        let outcome = self.thread_states[thread_id].try_commit(seq_num);
         match outcome {
             Ok(_) => {
                 debug!("Thread {}: committed", handle.name().unwrap());
                 // commit changes
                 debug!("Thread {}: get shared lock on list", handle.name().unwrap());
-                let rg = self.get_shared_lock(thread_id);
+                let rg = &self.thread_states[thread_id];
                 debug!("Thread {}: got shared lock on list", handle.name().unwrap());
 
                 let inserted = rg.get_keys(seq_num, Operation::Create);
@@ -568,7 +559,7 @@ impl OptimisedHitList {
         let mut terminated_lists = vec![];
         // terminated list for each thread
         for _ in 0..size {
-            let list = Arc::new(RwLock::new(ThreadState::new()));
+            let list = Arc::new(ThreadState::new());
             terminated_lists.push(list);
         }
         let atomic_tl = Arc::new(terminated_lists);
@@ -600,31 +591,11 @@ impl OptimisedHitList {
         }
 
         OptimisedHitList {
-            terminated_lists: atomic_tl,
+            thread_states: atomic_tl,
             data,
             garbage_collector,
             sender,
         }
-    }
-
-    /// Get shared lock on a thread's terminated list.
-    ///
-    /// # Panics
-    ///
-    /// Acquiring `RwLock` fails.
-    fn get_shared_lock(&self, thread_id: usize) -> RwLockReadGuard<ThreadState> {
-        let rg = self.terminated_lists[thread_id].read().unwrap();
-        rg
-    }
-
-    /// Get shared lock on a thread's terminated list.
-    ///
-    /// # Panics
-    ///
-    /// Acquiring `RwLock` fails.
-    fn get_exculsive_lock(&self, thread_id: usize) -> RwLockWriteGuard<ThreadState> {
-        let wg = self.terminated_lists[thread_id].write().unwrap();
-        wg
     }
 }
 
