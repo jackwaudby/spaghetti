@@ -38,16 +38,16 @@ pub struct Transaction {
     hit_list: UnsafeCell<Option<Vec<String>>>,
 
     /// List of keys inserted.
-    keys_inserted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_inserted: UnsafeCell<Option<Vec<(String, PrimaryKey)>>>,
 
     /// List of keys updated.
-    keys_updated: Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_updated: UnsafeCell<Option<Vec<(String, PrimaryKey)>>>,
 
     /// List of keys deleted.
-    keys_deleted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_deleted: UnsafeCell<Option<Vec<(String, PrimaryKey)>>>,
 
     /// List of keys read.
-    keys_read: Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_read: UnsafeCell<Option<Vec<(String, PrimaryKey)>>>,
 }
 
 impl Transaction {
@@ -59,10 +59,10 @@ impl Transaction {
             state: Mutex::new(TransactionState::Active),
             wait_list: UnsafeCell::new(Some(vec![])),
             hit_list: UnsafeCell::new(Some(vec![])),
-            keys_updated: Mutex::new(Some(vec![])),
-            keys_deleted: Mutex::new(Some(vec![])),
-            keys_read: Mutex::new(Some(vec![])),
-            keys_inserted: Mutex::new(Some(vec![])),
+            keys_updated: UnsafeCell::new(Some(vec![])),
+            keys_deleted: UnsafeCell::new(Some(vec![])),
+            keys_read: UnsafeCell::new(Some(vec![])),
+            keys_inserted: UnsafeCell::new(Some(vec![])),
         }
     }
 
@@ -122,56 +122,65 @@ impl Transaction {
 
     /// Get the list of keys updated/deleted by this transaction.
     pub fn get_keys_updated(&self) -> Vec<(String, PrimaryKey)> {
-        self.keys_updated.lock().unwrap().take().unwrap()
+        unsafe {
+            let v = &mut *self.keys_updated.get();
+            v.take().unwrap()
+        }
     }
 
     /// Add key to list of those updated/deleted by this transaction.
     pub fn add_key_updated(&self, key: (String, PrimaryKey)) {
-        self.keys_updated
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .push(key);
+        unsafe {
+            let v = &mut *self.keys_updated.get(); // raw mutable pointer
+            v.as_mut().unwrap().push(key);
+        }
     }
 
     /// Get the list of keys updated/deleted by this transaction.
     pub fn get_keys_deleted(&self) -> Vec<(String, PrimaryKey)> {
-        self.keys_deleted.lock().unwrap().take().unwrap()
+        unsafe {
+            let v = &mut *self.keys_deleted.get();
+            v.take().unwrap()
+        }
     }
 
     /// Add key to list of those updated/deleted by this transaction.
     pub fn add_key_deleted(&self, key: (String, PrimaryKey)) {
-        self.keys_deleted
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .push(key);
+        unsafe {
+            let v = &mut *self.keys_deleted.get(); // raw mutable pointer
+            v.as_mut().unwrap().push(key);
+        }
     }
 
     /// Get the list of keys read by this transaction.
     pub fn get_keys_read(&self) -> Vec<(String, PrimaryKey)> {
-        self.keys_read.lock().unwrap().take().unwrap()
+        unsafe {
+            let v = &mut *self.keys_read.get();
+            v.take().unwrap()
+        }
     }
 
     /// Add key to list of those read by this transaction.
     pub fn add_key_read(&self, key: (String, PrimaryKey)) {
-        self.keys_read.lock().unwrap().as_mut().unwrap().push(key);
+        unsafe {
+            let v = &mut *self.keys_read.get(); // raw mutable pointer
+            v.as_mut().unwrap().push(key);
+        }
     }
 
     /// Get the list of keys inserted by this transaction.
     pub fn get_keys_inserted(&self) -> Vec<(String, PrimaryKey)> {
-        self.keys_inserted.lock().unwrap().take().unwrap()
+        unsafe {
+            let v = &mut *self.keys_inserted.get();
+            v.take().unwrap()
+        }
     }
 
     /// Add key to list of those read by this transaction.
     pub fn add_key_inserted(&self, key: (String, PrimaryKey)) {
-        self.keys_inserted
-            .lock()
-            .unwrap()
-            .as_mut()
-            .unwrap()
-            .push(key);
+        unsafe {
+            let v = &mut *self.keys_inserted.get(); // raw mutable pointer
+            v.as_mut().unwrap().push(key);
+        }
     }
 }
