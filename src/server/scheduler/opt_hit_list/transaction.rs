@@ -1,3 +1,5 @@
+use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
+use crate::server::scheduler::NonFatalError;
 use crate::workloads::PrimaryKey;
 
 use std::cell::UnsafeCell;
@@ -82,8 +84,19 @@ impl Transaction {
     }
 
     /// Set transaction state.
-    pub fn set_state(&mut self, new: TransactionState) {
+    pub fn set_state(&self, new: TransactionState) {
         *self.state.lock().unwrap() = new;
+    }
+
+    pub fn try_commit(&self) -> Result<(), NonFatalError> {
+        let mut guard = self.state.lock().unwrap();
+        let state = guard.clone();
+        if state == TransactionState::Aborted {
+            return Err(OptimisedHitListError::Hit(self.id.to_string()).into());
+        } else {
+            *guard = TransactionState::Committed;
+        }
+        Ok(())
     }
 
     /// Add predecessor.
