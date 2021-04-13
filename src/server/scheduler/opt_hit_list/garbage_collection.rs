@@ -1,4 +1,4 @@
-use crate::server::scheduler::opt_hit_list::terminated_list::ThreadState;
+use crate::server::scheduler::opt_hit_list::thread_state::ThreadState;
 
 use std::sync::{mpsc, Arc, RwLock};
 use std::thread;

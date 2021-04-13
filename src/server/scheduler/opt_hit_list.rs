@@ -1,8 +1,7 @@
 use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
 use crate::server::scheduler::opt_hit_list::garbage_collection::GarbageCollector;
-use crate::server::scheduler::opt_hit_list::terminated_list::{
-    Operation, PredecessorUpon, ThreadState, TransactionState,
-};
+use crate::server::scheduler::opt_hit_list::thread_state::{Operation, ThreadState};
+use crate::server::scheduler::opt_hit_list::transaction::{PredecessorUpon, TransactionState};
 use crate::server::scheduler::NonFatalError;
 use crate::server::scheduler::Scheduler;
 use crate::server::scheduler::TransactionInfo;
@@ -21,7 +20,9 @@ pub mod epoch;
 
 pub mod error;
 
-pub mod terminated_list;
+pub mod transaction;
+
+pub mod thread_state;
 
 pub mod garbage_collection;
 
