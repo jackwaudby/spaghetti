@@ -207,7 +207,7 @@ mod tests {
     fn populate_account_test() {
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test-smallbank.toml"))
+        c.merge(config::File::with_name("./tests/Test-smallbank.toml"))
             .unwrap();
         let config = Arc::new(c);
 
@@ -247,7 +247,7 @@ mod tests {
     fn populate_checking_test() {
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test-smallbank.toml"))
+        c.merge(config::File::with_name("./tests/Test-smallbank.toml"))
             .unwrap();
         let config = Arc::new(c);
 
@@ -287,7 +287,7 @@ mod tests {
     fn populate_savings_test() {
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test-smallbank.toml"))
+        c.merge(config::File::with_name("./tests/Test-smallbank.toml"))
             .unwrap();
         let config = Arc::new(c);
 

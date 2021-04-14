@@ -558,7 +558,7 @@ mod tests {
     fn transactions_test() {
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test-smallbank.toml"))
+        c.merge(config::File::with_name("./tests/Test-smallbank.toml"))
             .unwrap();
         let config = Arc::new(c);
 

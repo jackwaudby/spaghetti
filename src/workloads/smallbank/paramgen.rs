@@ -431,7 +431,7 @@ mod tests {
     #[test]
     fn generate_test() {
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test-smallbank.toml"))
+        c.merge(config::File::with_name("./tests/Test-smallbank.toml"))
             .unwrap();
         let mut gen = SmallBankGenerator::new(1, true, Some(1), true, false);
         assert_eq!(
