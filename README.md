@@ -61,6 +61,10 @@ cd scripts/
 ```
 
 ## Misc
+To run tests with log info use:
+```
+RUST_LOG=debug cargo test -- --test-threads=1 --nocapture
+```
 
 Test coverage can be ran locally using:
 ```
