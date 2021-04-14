@@ -697,31 +697,24 @@ impl Drop for HitList {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::server::storage::datatype;
     use crate::workloads::tatp::keys::TatpPrimaryKey;
     use crate::workloads::tatp::loader;
     use crate::workloads::Internal;
 
-    use crate::server::storage::datatype;
     use config::Config;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use std::convert::TryInto;
-    // use tracing::Level;
-    // use tracing_subscriber::FmtSubscriber;
+    use test_env_log::test;
 
     // single transaction that commits.
     #[test]
     fn hit_list_commit_test() {
         let mut c = Config::default();
-        c.merge(config::File::with_name("./Test-hit.toml")).unwrap();
+        c.merge(config::File::with_name("./tests/Test-hit.toml"))
+            .unwrap();
         let config = Arc::new(c);
-
-        // let subscriber = FmtSubscriber::builder()
-        //     .with_max_level(Level::DEBUG)
-        //     .finish();
-        // tracing::subscriber::set_global_default(subscriber)
-        //     .expect("setting default subscriber failed");
 
         // workload with fixed seed
         let schema = "./schema/tatp_schema.txt".to_string();
@@ -740,8 +733,6 @@ mod tests {
 
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3)); // pk
             let columns: Vec<&str> = vec!["bit_1"];
-            // let values_a: Vec<&str> = vec!["0"];
-            // let values_b: Vec<&str> = vec!["1"];
 
             let values = scheduler
                 .read("subscriber", pk.clone(), &columns, txn.clone())

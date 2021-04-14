@@ -120,31 +120,14 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
 mod tests {
     use super::*;
     use crate::common::message::{Message, Outcome};
-    use std::sync::Once;
+
+    use test_env_log::test;
     use tokio::sync::mpsc::{self, Receiver, Sender};
     use tokio_test::io::Builder;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
 
     /// Unable to parse frame from underlying connection.
     #[test]
     fn read_handler_encoding_error_test() {
-        // Initialise logging.
-        logging(false);
         // Initialise script builder.
         let mut builder = Builder::new();
         // Schedule read of incorrect encoding.
@@ -169,8 +152,6 @@ mod tests {
     /// Receive a response and then a closed connection message.
     #[test]
     fn read_handler_happy_path_test() {
-        // Initialise logging.
-        logging(true);
         // Initialise script builder.
         let mut builder = Builder::new();
 
@@ -229,8 +210,6 @@ mod tests {
     /// Receive an unexpected message type
     #[test]
     fn read_handler_unexpected_message_test() {
-        // Initialise logging.
-        logging(false);
         // Initialise script builder.
         let mut builder = Builder::new();
         // Schedule close connection message; read handler should never receive this.
@@ -263,12 +242,5 @@ mod tests {
             *res.unwrap_err().downcast::<FatalError>().unwrap(),
             FatalError::UnexpectedMessage
         );
-    }
-
-    /// Connection with server unexpectedly dropped.
-    #[test]
-    fn read_handler_tcp_connection_unexpectedly_dropped() {
-        // TODO
-        assert!(true);
     }
 }

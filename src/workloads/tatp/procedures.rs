@@ -480,28 +480,10 @@ mod tests {
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use std::convert::TryInto;
-    use std::sync::Once;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
+    use test_env_log::test;
 
     #[test]
     fn transactions_test() {
-        logging(false);
-        // Initialise configuration.
         let mut c = Config::default();
         c.merge(config::File::with_name("Test-tpl.toml")).unwrap();
         let config = Arc::new(c);

@@ -307,27 +307,11 @@ impl fmt::Display for TatpTransactionProfile {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Once;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
 
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
+    use test_env_log::test;
 
     #[test]
     fn generate_test() {
-        logging(false);
         let mut gen = TatpGenerator::new(1, true, Some(42), false);
         assert_eq!(
             (

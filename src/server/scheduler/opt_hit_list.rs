@@ -631,37 +631,20 @@ mod test {
     use super::*;
     use crate::workloads::tatp;
     use crate::workloads::Internal;
+
     use config::Config;
     use lazy_static::lazy_static;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use std::sync::Once;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
+    use test_env_log::test;
 
     lazy_static! {
         static ref WORKLOAD: Arc<Workload> = {
-            // Initialise configuration.
-           let mut c = Config::default();
-            // Load from test file.
-            c.merge(config::File::with_name("Test-opt-hit.toml")).unwrap();
-           let config = Arc::new(c);
+            let mut c = Config::default();
+            c.merge(config::File::with_name("./tests/Test-opt-hit.toml"))
+                .unwrap();
+            let config = Arc::new(c);
 
-            // Workload with fixed seed.
             let schema = "./schema/tatp_schema.txt".to_string();
             let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
             let seed = config.get_int("seed").unwrap() as u64;
@@ -673,8 +656,6 @@ mod test {
 
     #[test]
     fn test_optimised_hit_list() {
-        logging(false);
-
         let _ohl = OptimisedHitList::new(5, Arc::clone(&WORKLOAD));
     }
 }

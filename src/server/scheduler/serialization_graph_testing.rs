@@ -803,30 +803,14 @@ mod test {
     use lazy_static::lazy_static;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use std::sync::Once;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
+    use test_env_log::test;
 
     lazy_static! {
         static ref WORKLOAD: Arc<Workload> = {
             // Initialise configuration.
            let mut c = Config::default();
             // Load from test file.
-            c.merge(config::File::with_name("Test-sgt.toml")).unwrap();
+            c.merge(config::File::with_name("./tests/Test-sgt.toml")).unwrap();
            let config = Arc::new(c);
 
             // Workload with fixed seed.
@@ -841,8 +825,6 @@ mod test {
 
     #[test]
     fn dfs_1_test() {
-        logging(false);
-
         let sg = SerializationGraphTesting::new(5, Arc::clone(&WORKLOAD));
         sg.get_exculsive_lock(0).set_state(State::Active);
         sg.get_exculsive_lock(1).set_state(State::Active);
@@ -859,8 +841,6 @@ mod test {
 
     #[test]
     fn dfs_2_test() {
-        logging(false);
-
         let sg = SerializationGraphTesting::new(5, Arc::clone(&WORKLOAD));
 
         sg.get_exculsive_lock(0).set_state(State::Active);

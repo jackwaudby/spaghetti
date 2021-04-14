@@ -81,31 +81,12 @@ mod tests {
     use crate::common::message::{Message, Outcome};
     use std::fs::File;
     use std::io::{self, BufRead};
-    use std::sync::Once;
+    use test_env_log::test;
     use tokio::sync::mpsc::{self, Receiver, Sender};
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
 
     /// Unable to parse frame from underlying connection.
-    #[tokio::test]
+    #[test(tokio::test)]
     async fn run_drain_test() {
-        // Init logging.
-        logging(false);
-
         // `Consumer` to `Main`
         let (notify_m_tx, _) = tokio::sync::mpsc::channel(1);
         // `ReadHandler` to `Consumer`.
