@@ -1,24 +1,16 @@
 address = "127.0.0.1"
 port = 6142
-log = "debug"
 timeout = 5
+clients = 4
 mpsc_size = 32
 load = false
 set_seed = false
-
-scale_factor = 0
+seed = 42
 protocol="sgt"
-
-
 warmup = 1
 generator_mode = "closed"
-think_time = 1000
-
-transactions = 20
+think_time = 0
+transactions = 10
+scale_factor = 0
 workload = "tatp"
-
-subscribers = 3
-seed = 42
-
-clients = 4
 nurand = false
