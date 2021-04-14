@@ -1,5 +1,14 @@
 ## Utilities
 
+### Report Generation 
+Reports are produced per workload using:
+```
+./generate-report.sh <workload>
+```
+
+
+### VM Setup
+
 Grab a fresh Ubuntu Server 18.04 image on Azure.
 Install Rust, get the spaghetti repo, and build for release.
 ```
@@ -16,5 +25,9 @@ Fix permissions and ssh into machine.
 ```
 sudo chmod 600 ~/.ssh-keys/<key>.pem
 ssh -i ~/.ssh-keys/<key>.pem azureuser@<pubic-ip>
+```
+
+Copy results from VM to local machine.
+```
 scp -r -i ./ssh_keys/<key>.pem azureuser@azureuser@<pubic-ip>:~/spaghetti/results ./
 ```

@@ -1,3 +1,3 @@
 #!/bin/bash
 
-Rscript report.R
+Rscript report.R $1
