@@ -8,7 +8,9 @@ scale_factor = 0
 set_seed = false
 
 protocol="hit"
-hit_gc = 5000
+garbage_collection = false
+garbage_collection_sleep = 10
+
 workers = 4
 
 warmup = 1

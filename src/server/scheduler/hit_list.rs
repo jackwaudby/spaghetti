@@ -45,10 +45,10 @@ pub struct HitList {
     data: Arc<Workload>,
 
     /// Epoch based garbage collector.
-    garbage_collector: GarbageCollector,
+    garbage_collector: Option<GarbageCollector>,
 
     /// Channel to shutdown the garbage collector.
-    sender: Mutex<mpsc::Sender<()>>,
+    sender: Option<Mutex<mpsc::Sender<()>>>,
 }
 
 /// Garbage Collector.
@@ -597,28 +597,34 @@ impl Scheduler for HitList {
 impl HitList {
     /// Create a `HitList` scheduler.
     pub fn new(data: Arc<Workload>) -> HitList {
-        // let active_transactions = Arc::new(CHashMap::<u64, ActiveTransaction>::new()); // active transactions
+        let config = data.get_internals().get_config();
+        let workers = config.get_int("workers").unwrap() as usize;
+        let gc = config.get_bool("garbage_collection").unwrap();
 
-        let workers = data
-            .get_internals()
-            .get_config()
-            .get_int("workers")
-            .unwrap() as usize;
         info!("Initialise hit list with {} workers", workers);
+        info!("Garbage collection: {}", gc);
 
-        let active_transactions = ActiveTransactionTracker::new(workers);
-
+        let active_transactions = ActiveTransactionTracker::new(workers); // active transactions
         let asr = AtomicSharedResources::new(); // shared resources
-        let (sender, receiver) = mpsc::channel(); // shutdown channel
-        let sleep = data.get_internals().get_config().get_int("hit_gc").unwrap() as u64;
-        let garbage_collector = GarbageCollector::new(asr.get_ref(), receiver, sleep);
+
+        let garbage_collector;
+        let sender;
+        if gc {
+            let (tx, rx) = mpsc::channel(); // shutdown channel
+            sender = Some(Mutex::new(tx));
+            let sleep = config.get_int("garbage_collection_sleep").unwrap() as u64;
+            garbage_collector = Some(GarbageCollector::new(asr.get_ref(), rx, sleep));
+        } else {
+            garbage_collector = None;
+            sender = None;
+        }
 
         HitList {
             active_transactions,
             asr,
             data,
             garbage_collector,
-            sender: Mutex::new(sender),
+            sender,
         }
     }
 }
@@ -641,7 +647,7 @@ impl GarbageCollector {
                     if let Ok(()) = receiver.try_recv() {
                         break; // exit loop
                     }
-                    thread::sleep(Duration::from_millis(sleep)); // sleep garbage collector
+                    thread::sleep(Duration::from_millis(sleep * 1000)); // sleep garbage collector
                     debug!("Thread {} requesting lock", handle.name().unwrap());
                     let mut lock = shared.lock().unwrap(); // lock shared resources
                     debug!("Thread {} receieved lock", handle.name().unwrap());
@@ -669,12 +675,20 @@ impl GarbageCollector {
 
 impl Drop for HitList {
     fn drop(&mut self) {
-        self.sender.lock().unwrap().send(()).unwrap(); // send shutdown to gc
+        if let Some(ref mut gc) = self.garbage_collector {
+            self.sender
+                .take()
+                .unwrap()
+                .lock()
+                .unwrap()
+                .send(())
+                .unwrap(); // send shutdown to gc
 
-        if let Some(thread) = self.garbage_collector.thread.take() {
-            match thread.join() {
-                Ok(_) => debug!("Garbage collector shutdown"),
-                Err(_) => debug!("Error shutting down garbage collector"),
+            if let Some(thread) = gc.thread.take() {
+                match thread.join() {
+                    Ok(_) => debug!("Garbage collector shutdown"),
+                    Err(_) => debug!("Error shutting down garbage collector"),
+                }
             }
         }
     }
