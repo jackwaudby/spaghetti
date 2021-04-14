@@ -17,10 +17,10 @@ options(scipen=999)
 ```
 
 ```{r load, include=FALSE}
-sgt = fromJSON(file = "../results/tatp/sgt-sf1.json")
-hit = fromJSON(file = "../results/tatp/hit-sf1.json")
-tpl = fromJSON(file = "../results/tatp/2pl-sf1.json")
-opt_hit = fromJSON(file = "../results/tatp/opt-hit-sf1.json")
+sgt = fromJSON(file = paste0("../results/",params$workload,"/sgt-sf1.json"))
+hit = fromJSON(file = paste0("../results/",params$workload,"/hit-sf1.json"))
+tpl = fromJSON(file = paste0("../results/",params$workload,"/2pl-sf1.json"))
+opt_hit = fromJSON(file = paste0("../results/",params$workload,"/opt-hit-sf1.json"))
 
 
 dat = data.frame(
