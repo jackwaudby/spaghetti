@@ -12,7 +12,6 @@ garbage_collection_sleep = 10
 
 scale_factor = 0
 workload = "tatp"
-schema = "tatp_schema.txt"
 load = false
 
 nurand = true

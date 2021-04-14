@@ -1052,7 +1052,7 @@ mod tests {
             let config = Arc::new(c);
 
             // Workload with fixed seed.
-            let schema = config.get_str("schema").unwrap();
+            let schema = "./schema/tatp_schema.txt".to_string();
             let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
             let seed = config.get_int("seed").unwrap();
             let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());

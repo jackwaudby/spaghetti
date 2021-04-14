@@ -59,17 +59,17 @@ impl Workload {
         match workload.as_str() {
             "tatp" => {
                 // Create internals from schema file
-                let internals = Internal::new("tatp_schema.txt", config)?;
+                let internals = Internal::new("./schema/tatp_schema.txt", config)?;
                 Ok(Workload::Tatp(internals))
             }
             "tpcc" => {
                 // Create internals from schema file
-                let internals = Internal::new("tpcc_short_schema.txt", config)?;
+                let internals = Internal::new("./schema/tpcc_short_schema.txt", config)?;
                 Ok(Workload::Tpcc(internals))
             }
             "smallbank" => {
                 // Create internals from schema file
-                let internals = Internal::new("smallbank_schema.txt", config)?;
+                let internals = Internal::new("./schema/smallbank_schema.txt", config)?;
                 Ok(Workload::SmallBank(internals))
             }
             _ => Err(Box::new(FatalError::IncorrectWorkload(workload))),

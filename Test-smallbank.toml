@@ -16,8 +16,6 @@ think_time = 1000
 transactions = 10
 workload = "smallbank"
 
-schema = "smallbank_schema.txt"
-
 set_seed = true
 seed = 1
 balance_mix = false

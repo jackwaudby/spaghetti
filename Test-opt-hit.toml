@@ -18,8 +18,6 @@ think_time = 1000
 transactions = 10
 workload = "tatp"
 
-
-schema = "tatp_schema.txt"
 subscribers = 3
 seed = 42
 

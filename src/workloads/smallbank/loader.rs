@@ -213,7 +213,7 @@ mod tests {
 
         // Initialise database.
         let c = Arc::clone(&config);
-        let internals = Internal::new("smallbank_schema.txt", c).unwrap();
+        let internals = Internal::new("./schema/smallbank_schema.txt", c).unwrap();
 
         // let rng = StdRng::seed_from_u64(1);
 
@@ -253,7 +253,7 @@ mod tests {
 
         // Initialise database.
         let c = Arc::clone(&config);
-        let internals = Internal::new("smallbank_schema.txt", c).unwrap();
+        let internals = Internal::new("./schema/smallbank_schema.txt", c).unwrap();
 
         let mut rng = StdRng::seed_from_u64(2);
 
@@ -293,7 +293,7 @@ mod tests {
 
         // Initialise database.
         let c = Arc::clone(&config);
-        let internals = Internal::new("smallbank_schema.txt", c).unwrap();
+        let internals = Internal::new("./schema/smallbank_schema.txt", c).unwrap();
 
         let mut rng = StdRng::seed_from_u64(3);
 

@@ -396,7 +396,7 @@ mod tests {
         let config = Arc::new(c);
 
         let c = Arc::clone(&config);
-        let internals = Internal::new("tatp_schema.txt", c).unwrap();
+        let internals = Internal::new("./schema/tatp_schema.txt", c).unwrap();
         let mut rng = StdRng::seed_from_u64(1);
 
         // Subscriber.
