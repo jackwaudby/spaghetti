@@ -2,9 +2,9 @@ use crate::common::error::FatalError;
 use crate::workloads::Workload;
 use crate::Result;
 
+use log::{debug, info};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use tracing::{debug, info};
 
 /// A thread pool used to execute transactions in parallel.
 ///
@@ -292,38 +292,27 @@ impl<F: FnOnce() -> Result<()>> FnBox for F {
 /// Type alias for a trait object that holds the type of closure that `execute' receives.
 type Job = Box<dyn FnBox + Send + 'static>;
 
+pub fn foo() -> bool {
+    info!("hello world");
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::workloads::tatp::loader;
     use crate::workloads::Internal;
     use crate::workloads::Workload;
+
     use config::Config;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
     use std::convert::TryInto;
     use std::sync::Arc;
-    use std::sync::Once;
-    use tracing::Level;
-    use tracing_subscriber::FmtSubscriber;
-
-    static LOG: Once = Once::new();
-
-    fn logging(on: bool) {
-        if on {
-            LOG.call_once(|| {
-                let subscriber = FmtSubscriber::builder()
-                    .with_max_level(Level::DEBUG)
-                    .finish();
-                tracing::subscriber::set_global_default(subscriber)
-                    .expect("setting default subscriber failed");
-            });
-        }
-    }
+    use test_env_log::test;
 
     #[test]
-    fn pool() {
-        logging(false);
+    fn test_server_pool() {
         // Initialise configuration.
         let mut c = Config::default();
         c.merge(config::File::with_name("./Test-tpl.toml")).unwrap();
