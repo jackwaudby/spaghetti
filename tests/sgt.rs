@@ -6,18 +6,17 @@ use tracing::info;
 
 fn setup_config() -> Arc<Config> {
     let mut c = Config::default();
-    c.merge(config::File::with_name("Test-sgt.toml")).unwrap();
+    c.merge(config::File::with_name("./tests/Test-sgt.toml"))
+        .unwrap();
     Arc::new(c)
 }
 
 #[test(tokio::test)]
 async fn sgt_integration_test() {
-    info!("Starting SGT integration test...");
-    // Configuration.
+    info!("Starting sgt integration test...");
     let config = setup_config();
     let n_clients = config.get_int("clients").unwrap();
     let c = Arc::clone(&config);
-
     let server = tokio::spawn(async move {
         assert_eq!((), spaghetti::server::run(c).await.unwrap());
     });
@@ -38,5 +37,5 @@ async fn sgt_integration_test() {
     }
 
     assert_eq!(server.await.unwrap(), ());
-    info!("Finished SGT integration test...");
+    info!("Finished sgt integration test");
 }

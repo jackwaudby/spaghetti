@@ -1,35 +1,20 @@
 use config::Config;
 use std::sync::Arc;
+use test_env_log::test;
 use tokio::time::{sleep, Duration};
-use tracing::Level;
-use tracing_subscriber::FmtSubscriber;
-
-fn setup_logging(settings: Arc<Config>) {
-    let level = match settings.get_str("log").unwrap().as_str() {
-        "info" => Level::INFO,
-        "debug" => Level::DEBUG,
-        "trace" => Level::TRACE,
-        _ => Level::WARN,
-    };
-    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
-}
+use tracing::info;
 
 fn setup_config() -> Arc<Config> {
-    // Initialise configuration.
     let mut c = Config::default();
-    // Load from test file.
-    c.merge(config::File::with_name("Test-hit.toml")).unwrap();
+    c.merge(config::File::with_name("./tests/Test-hit.toml"))
+        .unwrap();
     Arc::new(c)
 }
 
-#[tokio::test]
+#[test(tokio::test)]
 async fn hit_list_integration_test() {
-    // Configuration.
+    info!("Starting hit-list integration test...");
     let config = setup_config();
-    // Logging.
-    setup_logging(Arc::clone(&config));
-    // clients
     let n_clients = config.get_int("clients").unwrap();
     let c = Arc::clone(&config);
     let server = tokio::spawn(async move {
@@ -52,4 +37,5 @@ async fn hit_list_integration_test() {
     }
 
     assert_eq!(server.await.unwrap(), ());
+    info!("Finished hit-list integration test");
 }
