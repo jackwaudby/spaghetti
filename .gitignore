@@ -7,3 +7,4 @@ ssh_keys/
 .DS_Store
 *.pdf
 .Rhistory
+reports/

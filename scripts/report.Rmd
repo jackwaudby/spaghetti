@@ -1,7 +1,7 @@
 ---
 title: "TATP Benchmark Results"
 author: "Jack Waudby"
-date: "12/04/2021"
+date: "`r Sys.Date()`"
 output: pdf_document
 ---
 
@@ -59,14 +59,14 @@ latency = data.frame(
 
 # sgt_aborts = data.frame(
 #   protocol = sgt$protocol,
-#   aborts = sgt$aborted, 
+#   aborts = sgt$aborted,
 #   row_already_exists = sgt$abort_breakdown$row_already_exists,
 #   row_not_found = sgt$abort_breakdown$row_not_found,
 #   row_dirty = sgt$abort_breakdown$protocol_specific$SerializationGraph$row_dirty,
 #   row_deleted = sgt$abort_breakdown$protocol_specific$SerializationGraph$row_deleted,
 #    parent_aborted = sgt$abort_breakdown$protocol_specific$SerializationGraph$parent_aborted
 # )
-# 
+#
 # hit_aborts = data.frame(
 #   protocol = hit$protocol,
 #   aborts = hit$aborted,
@@ -78,13 +78,13 @@ latency = data.frame(
 #   pur_ab = hit$abort_breakdown$protocol_specific$HitList$pur_aborted,
 #   pur_ac = hit$abort_breakdown$protocol_specific$HitList$pur_active
 # )
-# 
+#
 # tpl_aborts = data.frame(
 #   protocol = tpl$protocol,
-#   aborts = tpl$aborted, 
+#   aborts = tpl$aborted,
 #   row_already_exists = tpl$abort_breakdown$row_already_exists,
 #   row_not_found = tpl$abort_breakdown$row_not_found,
-#   read_lock_denied = tpl$abort_breakdown$protocol_specific$TwoPhaseLocking$read_lock_denied, 
+#   read_lock_denied = tpl$abort_breakdown$protocol_specific$TwoPhaseLocking$read_lock_denied,
 #   write_lock_denied = tpl$abort_breakdown$protocol_specific$TwoPhaseLocking$write_lock_denied
 # )
 ```
