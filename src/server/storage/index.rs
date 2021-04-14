@@ -326,7 +326,8 @@ mod tests {
     fn index_test() {
         // Initialise configuration.
         let mut c = Config::default();
-        c.merge(config::File::with_name("Test-tpl.toml")).unwrap();
+        c.merge(config::File::with_name("./tests/Test-tpl.toml"))
+            .unwrap();
         let config = Arc::new(c);
         // Initalise workload.
         let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());

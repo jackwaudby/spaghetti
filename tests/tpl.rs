@@ -5,7 +5,8 @@ use tokio::time::{sleep, Duration};
 
 fn setup_config() -> Arc<Config> {
     let mut c = Config::default();
-    c.merge(config::File::with_name("Test-tpl.toml")).unwrap();
+    c.merge(config::File::with_name("./tests/Test-tpl.toml"))
+        .unwrap();
     Arc::new(c)
 }
 
