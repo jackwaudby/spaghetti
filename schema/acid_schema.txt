@@ -1,0 +1,7 @@
+//size,type,name
+TABLE=PERSON
+    8,int,S_ID
+    1,int,VERSION
+
+INDEX=PERSON_IDX
+    PERSON,0
