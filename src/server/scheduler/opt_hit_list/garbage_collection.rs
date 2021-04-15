@@ -37,37 +37,18 @@ impl GarbageCollector {
 
                     thread::sleep(Duration::from_millis(sleep * 1000)); // sleep garbage collector
 
-                    // pass 1: increment epochs
-                    for thread in shared.iter() {
-                        thread.get_epoch_tracker().new_epoch();
-                    }
-
                     for (i, thread) in shared.iter().enumerate() {
-                        debug!("Thread {}: {}", i, thread);
-                    }
-
-                    // pass 2: compute alphs
-                    for (i, thread) in shared.iter().enumerate() {
+                        thread.get_epoch_tracker().new_epoch(); // increment epoch per thread
                         alpha[i] = Some(thread.get_epoch_tracker().update_alpha());
                     }
 
-                    // pass 3: remove all < min alpha
                     let min = alpha.iter().min().unwrap();
-                    debug!("Alpha: {:?}", alpha);
 
                     for thread in shared.iter() {
-                        let mut to_remove = thread
+                        let to_remove = thread
                             .get_epoch_tracker()
                             .get_transactions_to_garbage_collect(min.unwrap());
-                        to_remove.sort();
-                        debug!("To remove: {:?}", to_remove);
-
-                        for id in to_remove {
-                            debug!("Remove: {:?}", id);
-                            thread.remove_transaction(id);
-                            debug!("Remove: {:?}", id);
-                        }
-                        debug!("All removed");
+                        thread.remove_transactions(to_remove);
                     }
                 }
             })

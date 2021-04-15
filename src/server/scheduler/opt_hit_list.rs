@@ -21,6 +21,8 @@ pub mod error;
 
 pub mod transaction;
 
+pub mod terminated_list;
+
 pub mod thread_state;
 
 pub mod garbage_collection;
@@ -109,12 +111,14 @@ impl Scheduler for OptimisedHitList {
             }
         }
 
-        let pair = (index.get_name(), key.clone());
-        self.thread_states[thread_id].add_key(seq_num, pair, Operation::Create);
-
         // attempt to insert row
-        match index.insert(key, row) {
-            Ok(_) => Ok(()),
+        match index.insert(key.clone(), row) {
+            Ok(_) => {
+                let pair = (index.get_name(), key.clone());
+                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Create); // register
+
+                Ok(())
+            }
             Err(e) => {
                 self.abort(meta.clone()).unwrap();
                 Err(e)
@@ -357,6 +361,10 @@ impl Scheduler for OptimisedHitList {
         );
 
         let rg = &self.thread_states[thread_id];
+        let x = rg.get_transaction_id(seq_num);
+
+        assert_eq!(x, seq_num, "{} != {}", x, seq_num);
+
         let inserted = rg.get_keys(seq_num, Operation::Create);
         let read = rg.get_keys(seq_num, Operation::Read);
         let updated = rg.get_keys(seq_num, Operation::Update);
@@ -366,12 +374,16 @@ impl Scheduler for OptimisedHitList {
             let index = self.data.get_internals().get_index(&index).unwrap();
             index.remove(key.clone()).unwrap();
         }
+
+        // This operation can fail of the transaction you read from has already aborted and removed the record.
         for (index, key) in read {
             let index = self.data.get_internals().get_index(&index).unwrap();
-            index
-                .revert_read(key.clone(), &meta.get_id().unwrap())
-                .unwrap();
+            match index.revert_read(key.clone(), &meta.get_id().unwrap()) {
+                Ok(()) => {} // record was there
+                Err(_) => {} // record already removed
+            }
         }
+
         for (index, key) in &deleted {
             let index = self.data.get_internals().get_index(&index).unwrap();
             index
@@ -502,7 +514,8 @@ impl Scheduler for OptimisedHitList {
                 debug!("Thread {}: get shared lock on list", handle.name().unwrap());
                 let rg = &self.thread_states[thread_id];
                 debug!("Thread {}: got shared lock on list", handle.name().unwrap());
-
+                let x = rg.get_transaction_id(seq_num);
+                assert_eq!(x, seq_num, "{} != {}", x, seq_num);
                 let inserted = rg.get_keys(seq_num, Operation::Create);
                 let read = rg.get_keys(seq_num, Operation::Read);
                 let updated = rg.get_keys(seq_num, Operation::Update);
@@ -526,6 +539,8 @@ impl Scheduler for OptimisedHitList {
                         .commit(key, "hit", &meta.get_id().unwrap().to_string())
                         .unwrap();
                 }
+                // TODO: bug here
+                // would imply I have read from uncommitted data but if so should have not got to this point.
                 for (index, key) in read {
                     let index = self.data.get_internals().get_index(&index).unwrap();
                     index.revert_read(key, &meta.get_id().unwrap()).unwrap();
@@ -555,11 +570,8 @@ impl Scheduler for OptimisedHitList {
 impl OptimisedHitList {
     /// Create new optimised hit list.
     pub fn new(size: usize, data: Arc<Workload>) -> Self {
-        let do_gc = data
-            .get_internals()
-            .get_config()
-            .get_bool("garbage_collection")
-            .unwrap();
+        let config = data.get_internals().get_config();
+        let do_gc = config.get_bool("garbage_collection").unwrap();
         info!("Initialise optimised hit list with {} threads", size);
         let mut terminated_lists = vec![];
         // terminated list for each thread
@@ -574,11 +586,7 @@ impl OptimisedHitList {
         if do_gc {
             let (tx, rx) = mpsc::channel(); // shutdown channel
             sender = Some(Mutex::new(tx));
-            let sleep = data
-                .get_internals()
-                .get_config()
-                .get_int("garbage_collection_sleep")
-                .unwrap() as u64; // seconds
+            let sleep = config.get_int("garbage_collection_sleep").unwrap() as u64; // seconds
             garbage_collector = Some(GarbageCollector::new(
                 Arc::clone(&atomic_tl),
                 rx,

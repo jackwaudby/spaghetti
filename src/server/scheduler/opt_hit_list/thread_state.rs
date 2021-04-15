@@ -1,4 +1,5 @@
 use crate::server::scheduler::opt_hit_list::epoch::EpochTracker;
+use crate::server::scheduler::opt_hit_list::terminated_list::TerminatedList;
 use crate::server::scheduler::opt_hit_list::transaction::{
     PredecessorUpon, Transaction, TransactionState,
 };
@@ -21,7 +22,7 @@ pub struct ThreadState {
     seq_num: UnsafeCell<u64>,
 
     /// Termination list.
-    terminated_list: RwLock<Vec<Arc<Transaction>>>,
+    terminated_list: RwLock<TerminatedList>,
 
     /// Garbage collection.
     gc: bool,
@@ -33,39 +34,19 @@ impl ThreadState {
         ThreadState {
             epoch_tracker: Mutex::new(EpochTracker::new()),
             seq_num: UnsafeCell::new(0),
-            terminated_list: RwLock::new(vec![]),
+            terminated_list: RwLock::new(TerminatedList::new()),
             gc,
         }
     }
 
-    /// Get index in list of transaction with `id`.
-    pub fn get_index(&self, id: u64) -> usize {
-        if self.gc {
-            self.terminated_list
-                .read()
-                .unwrap()
-                .iter()
-                .position(|x| x.get_id() == id)
-                .unwrap()
-        } else {
-            id as usize
-        }
-    }
-
-    /// Increment epoch.
+    /// Returns the mutexguard around the epoch tracker.
     pub fn get_epoch_tracker(&self) -> MutexGuard<EpochTracker> {
         self.epoch_tracker.lock().unwrap()
     }
 
-    /// Get start epoch of transaction.
-    pub fn get_start_epoch(&self, id: u64) -> u64 {
-        let index = self.get_index(id);
-        self.terminated_list.read().unwrap()[index].get_start_epoch()
-    }
-
-    // TODO: unsafe increment.
-    /// Get transaction id.
+    /// Get a new transaction id.
     fn get_id(&self) -> u64 {
+        // Safety: this method is only called by the same thread, from a single place in the code.
         unsafe {
             let id = *self.seq_num.get(); // cast raw pointer to mutable reference
             *self.seq_num.get() = id + 1; // increment
@@ -77,13 +58,24 @@ impl ThreadState {
     pub fn new_transaction(&self) -> u64 {
         let id = self.get_id(); // get id
         let mut wg = self.get_epoch_tracker(); // lock epoch tracker
-        let se = wg.get_current_id(); // start epoch
-        wg.add_started(id); // add to gc
-
-        let transaction = Arc::new(Transaction::new(id, se)); // entry in TL
-        self.terminated_list.write().unwrap().push(transaction);
-
+        let se = wg.get_current_id(); // get start epoch for transaction
+        wg.add_started(id); // register as started in this epoch
+        let transaction = Arc::new(Transaction::new(id, se)); // create new list entry
+        self.terminated_list.write().unwrap().list.push(transaction);
         id
+    }
+
+    /// Get start epoch of transaction.
+    pub fn get_start_epoch(&self, id: u64) -> u64 {
+        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let index = rlock.get_index(id); // calculate offset in list
+        rlock.list[index].get_start_epoch() // get start epoch
+    }
+
+    pub fn get_transaction_id(&self, id: u64) -> u64 {
+        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let index = rlock.get_index(id); // calculate offset in list
+        rlock.list[index].get_id()
     }
 
     /// Add predecessor for transaction with `id`.
@@ -93,58 +85,53 @@ impl ThreadState {
         predecessor_id: String,
         predecessor_upon: PredecessorUpon,
     ) {
-        let index = self.get_index(id);
-        self.terminated_list.read().unwrap()[index]
-            .add_predecessor(predecessor_id, predecessor_upon);
+        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let index = rlock.get_index(id); // calculate offset in list
+        rlock.list[index].add_predecessor(predecessor_id, predecessor_upon);
     }
 
     /// Get wait list for transaction `id`.
     pub fn get_wait_list(&self, id: u64) -> Vec<String> {
-        let index = self.get_index(id);
-        self.terminated_list.read().unwrap()[index].get_predecessors(PredecessorUpon::Read)
+        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let index = rlock.get_index(id); // calculate offset in list
+        rlock.list[index].get_predecessors(PredecessorUpon::Read)
     }
 
     /// Get hit list for transaction `id`.
     pub fn get_hit_list(&self, id: u64) -> Vec<String> {
-        let index = self.get_index(id);
-        self.terminated_list.read().unwrap()[index].get_predecessors(PredecessorUpon::Write)
+        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let index = rlock.get_index(id); // calculate offset in list
+        rlock.list[index].get_predecessors(PredecessorUpon::Write)
     }
 
     /// Set state for transaction `id`.
     pub fn set_state(&self, id: u64, state: TransactionState) {
-        let index = self.get_index(id);
-        self.terminated_list.read().unwrap()[index].set_state(state);
+        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let index = rlock.get_index(id); // calculate offset in list
+        rlock.list[index].set_state(state);
     }
 
     /// Set state for transaction `id`.
     pub fn try_commit(&self, id: u64) -> Result<(), NonFatalError> {
-        let index = self.get_index(id);
-        let tl: &Vec<Arc<Transaction>> = &*self.terminated_list.read().unwrap();
-        let transaction = &*tl[index];
-
-        transaction.try_commit()?;
-
+        let rlock: &TerminatedList = &*self.terminated_list.read().unwrap(); // get read lock
+        let index = rlock.get_index(id); // calculate offset in list
+        let entry = &*rlock.list[index]; // get entry
+        entry.try_commit()?;
         Ok(())
     }
 
     /// Get state for transaction `id`.
     pub fn get_state(&self, id: u64) -> TransactionState {
-        let index = self.get_index(id);
-        self.terminated_list.read().unwrap()[index].get_state()
-    }
-
-    /// Remove transaction with `id`.
-    pub fn remove_transaction(&self, id: u64) {
-        let index = self.get_index(id);
-        self.terminated_list.write().unwrap().remove(index);
+        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let index = rlock.get_index(id); // calculate offset in list
+        rlock.list[index].get_state()
     }
 
     /// Add key to transaction.
-    pub fn add_key(&self, tid: u64, key: (String, PrimaryKey), operation: Operation) {
-        let index = self.get_index(tid);
-
-        let tl: &Vec<Arc<Transaction>> = &*self.terminated_list.read().unwrap();
-        let entry = &*tl[index];
+    pub fn add_key(&self, id: u64, key: (String, PrimaryKey), operation: Operation) {
+        let rlock: &TerminatedList = &*self.terminated_list.read().unwrap(); // get read lock
+        let index = rlock.get_index(id); // calculate offset in list
+        let entry = &*rlock.list[index]; // get entry
 
         use Operation::*;
         match operation {
@@ -156,10 +143,10 @@ impl ThreadState {
     }
 
     /// Get key to transaction.
-    pub fn get_keys(&self, tid: u64, operation: Operation) -> Vec<(String, PrimaryKey)> {
-        let index = self.get_index(tid);
-        let tl: &Vec<Arc<Transaction>> = &*self.terminated_list.read().unwrap();
-        let entry = &*tl[index];
+    pub fn get_keys(&self, id: u64, operation: Operation) -> Vec<(String, PrimaryKey)> {
+        let rlock: &TerminatedList = &*self.terminated_list.read().unwrap(); // get read lock
+        let index = rlock.get_index(id); // calculate offset in list
+        let entry = &*rlock.list[index]; // get entry
 
         use Operation::*;
         match operation {
@@ -167,6 +154,32 @@ impl ThreadState {
             Read => entry.get_keys_read(),
             Update => entry.get_keys_updated(),
             Delete => entry.get_keys_deleted(),
+        }
+    }
+
+    /// Remove transaction with `id`.
+    pub fn remove_transactions(&self, transactions: Vec<u64>) {
+        if transactions.len() > 0 {
+            let mut wlock = self.terminated_list.write().unwrap(); // take write lock on terminated list
+
+            let num_to_remove = transactions.len() as u64;
+            let max_id = *transactions.iter().max().unwrap();
+
+            let min_id = *transactions.iter().min().unwrap();
+            assert!(
+                (max_id + 1 - num_to_remove) == min_id,
+                "max_id {}, min_id {}, num_to_remove {}",
+                max_id,
+                min_id,
+                num_to_remove
+            );
+
+            let removed = wlock.removed;
+            let max_offset = (max_id - removed) as usize;
+            let min_offset = (min_id - removed) as usize;
+
+            wlock.list.drain(min_offset..=max_offset);
+            wlock.removed += num_to_remove;
         }
     }
 }
@@ -181,7 +194,7 @@ pub enum Operation {
 impl fmt::Display for ThreadState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let ep = self.epoch_tracker.lock().unwrap();
-        let tl = self.terminated_list.read().unwrap().len();
+        let tl = self.terminated_list.read().unwrap().list.len();
 
         write!(
             f,
