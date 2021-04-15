@@ -1,5 +1,6 @@
 use crate::common::message::{InternalResponse, Message, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
+use crate::workloads::acid::paramgen::AcidGenerator;
 use crate::workloads::smallbank::paramgen::SmallBankGenerator;
 use crate::workloads::tatp::paramgen::TatpGenerator;
 
@@ -66,6 +67,10 @@ impl Generator {
             seed = None;
         }
         let mut generator = match config.get_str("workload").unwrap().as_str() {
+            "acid" => {
+                let gen = AcidGenerator::new(sf, set_seed, seed);
+                ParameterGenerator::Acid(gen)
+            }
             "tatp" => {
                 let use_nurand = config.get_bool("nurand").unwrap();
                 let gen = TatpGenerator::new(sf, set_seed, seed, use_nurand);

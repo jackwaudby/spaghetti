@@ -56,7 +56,7 @@ impl Logger {
                 latency,
                 ..
             } = response;
-
+            info!("{}", outcome);
             match self.phase {
                 BenchmarkPhase::Warmup => {
                     completed += 1;

@@ -2,6 +2,7 @@ use crate::common::error::{FatalError, NonFatalError};
 use crate::server::storage::catalog::Catalog;
 use crate::server::storage::index::Index;
 use crate::server::storage::table::Table;
+use crate::workloads::acid::keys::AcidPrimaryKey;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tpcc::keys::TpccPrimaryKey;
@@ -16,6 +17,8 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::info;
 
+pub mod acid;
+
 pub mod tpcc;
 
 pub mod tatp;
@@ -25,6 +28,7 @@ pub mod smallbank;
 /// Represent the workload.
 #[derive(Debug)]
 pub enum Workload {
+    Acid(Internal),
     Tatp(Internal),
     Tpcc(Internal),
     SmallBank(Internal),
@@ -46,6 +50,7 @@ pub struct Internal {
 /// Primary keys of workloads.
 #[derive(PartialEq, Debug, Clone, Eq, Hash)]
 pub enum PrimaryKey {
+    Acid(AcidPrimaryKey),
     Tatp(TatpPrimaryKey),
     Tpcc(TpccPrimaryKey),
     SmallBank(SmallBankPrimaryKey),
@@ -57,6 +62,11 @@ impl Workload {
         // Determine workload type.
         let workload = config.get_str("workload")?;
         match workload.as_str() {
+            "acid" => {
+                // Create internals from schema file
+                let internals = Internal::new("./schema/acid_schema.txt", config)?;
+                Ok(Workload::Acid(internals))
+            }
             "tatp" => {
                 // Create internals from schema file
                 let internals = Internal::new("./schema/tatp_schema.txt", config)?;
@@ -80,6 +90,16 @@ impl Workload {
     pub fn populate_tables(&self, rng: &mut StdRng) -> crate::Result<()> {
         use Workload::*;
         match *self {
+            Acid(ref i) => {
+                let sf = self.get_internals().get_config().get_int("scale_factor")?;
+                if self.get_internals().get_config().get_bool("load")? {
+                    info!("Load sf-{} from files", sf);
+                    acid::loader::load_person_table(i)?;
+                } else {
+                    info!("Generate sf-{}", sf);
+                    acid::loader::populate_person_table(i, rng)?;
+                }
+            }
             Tatp(ref i) => {
                 let sf = self.get_internals().get_config().get_int("scale_factor")?;
                 if self.get_internals().get_config().get_bool("load")? {
@@ -121,6 +141,7 @@ impl Workload {
     pub fn get_internals(&self) -> &Internal {
         use Workload::*;
         match *self {
+            Acid(ref i) => &i,
             Tatp(ref i) => &i,
             Tpcc(ref i) => &i,
             SmallBank(ref i) => &i,
@@ -237,6 +258,7 @@ impl fmt::Display for PrimaryKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use PrimaryKey::*;
         match &self {
+            Acid(pk) => write!(f, "{:?}", pk),
             Tatp(pk) => write!(f, "{:?}", pk),
             Tpcc(pk) => write!(f, "{:?}", pk),
             SmallBank(pk) => write!(f, "{:?}", pk),

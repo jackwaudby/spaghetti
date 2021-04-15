@@ -1,7 +1,10 @@
+use spaghetti::datagen::acid;
 use spaghetti::datagen::smallbank;
 use spaghetti::datagen::tatp;
+use spaghetti::workloads::acid::ACID_SF_MAP;
 use spaghetti::workloads::smallbank::{MAX_BALANCE, MIN_BALANCE, SB_SF_MAP};
 use spaghetti::workloads::tatp::TATP_SF_MAP;
+
 use spaghetti::Result;
 
 use config::Config;
@@ -172,6 +175,48 @@ fn run() -> Result<()> {
                 log::info!("Generated {} parameters", transactions);
             }
         }
+        "acid" => {
+            let dir = format!("./data/acid/sf-{}", sf);
+
+            if Path::new(&dir).exists() {
+                fs::remove_dir_all(&dir)?;
+            }
+
+            fs::create_dir_all(&dir)?;
+            let persons = *ACID_SF_MAP.get(&sf).unwrap(); // get account
+
+            let pjh = thread::spawn(move || {
+                log::info!("Generating persons.csv");
+                acid::persons(persons, sf).unwrap();
+                log::info!("Generated persons.csv");
+            });
+
+            pjh.join().unwrap();
+
+            //            if create_params {
+            //     let transactions = settings.get_int("transactions")? as u64;
+            //     let wrapped_seed;
+            //     if set_seed {
+            //         wrapped_seed = Some(seed);
+            //     } else {
+            //         wrapped_seed = None;
+            //     }
+            //     let use_balance_mix = settings.get_bool("use_balance_mix")?;
+            //     let hotspot_use_fixed_size = settings.get_bool("hotspot_use_fixed_size")?;
+            //     log::info!("Generating {} parameters", transactions);
+            //     smallbank::params(
+            //         sf,
+            //         set_seed,
+            //         wrapped_seed,
+            //         use_balance_mix,
+            //         hotspot_use_fixed_size,
+            //         transactions,
+            //     )
+            //     .unwrap();
+            //     log::info!("Generated {} parameters", transactions);
+            // }
+        }
+
         _ => panic!("workload not recognised"),
     }
 

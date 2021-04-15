@@ -136,6 +136,7 @@ impl TransactionManager {
                 }
                 Transaction::Tpcc(_) => unimplemented!(),
                 Transaction::SmallBank(_) => unimplemented!(),
+                Transaction::Acid(_) => unimplemented!(),
             };
 
             // Stop timer.
