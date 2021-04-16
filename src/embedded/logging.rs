@@ -1,6 +1,7 @@
-use crate::common::message::InternalResponse;
+use crate::common::message::{InternalResponse, Outcome};
 use crate::common::statistics::LocalStatistics;
 use crate::common::utils::BenchmarkPhase;
+use crate::server::storage::datatype::Response;
 
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::thread;
@@ -56,7 +57,7 @@ impl Logger {
                 latency,
                 ..
             } = response;
-            info!("{}", outcome);
+
             match self.phase {
                 BenchmarkPhase::Warmup => {
                     completed += 1;
@@ -66,6 +67,14 @@ impl Logger {
                     }
                 }
                 BenchmarkPhase::Execution => {
+                    let acid = true;
+                    if acid {
+                        if let Outcome::Committed { value } = outcome.clone() {
+                            let resp: Response = serde_json::from_str(&value.unwrap()).unwrap();
+                            assert_eq!(resp.val.get("version").unwrap(), "1");
+                        }
+                    }
+
                     self.stats
                         .as_mut()
                         .unwrap()

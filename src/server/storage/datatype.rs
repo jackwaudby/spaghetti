@@ -1,5 +1,7 @@
 use crate::common::error::NonFatalError;
 
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt::{self, Write};
 
@@ -101,14 +103,38 @@ impl TryFrom<Data> for String {
 
 /// Convert columns and values to a result string.
 pub fn to_result(columns: &Vec<&str>, values: &Vec<Data>) -> crate::Result<String> {
-    let mut res: String;
-    res = "{".to_string();
+    // let mut res: String;
+    // res = "{".to_string();
+    // for (i, column) in columns.iter().enumerate() {
+    //     write!(res, "{}=\"{ }\", ", column, values[i])?;
+    // }
+    // res.truncate(res.len() - 2);
+    // write!(res, "}}")?;
+
+    let mut resp = Response::new();
+
     for (i, column) in columns.iter().enumerate() {
-        write!(res, "{}=\"{ }\", ", column, values[i])?;
+        let key = format!("{}", column);
+        let value = format!("{}", values[i]);
+        resp.val.insert(key, value);
     }
-    res.truncate(res.len() - 2);
-    write!(res, "}}")?;
+
+    let res = serde_json::to_string(&resp).unwrap();
+
     Ok(res)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Response {
+    pub val: HashMap<String, String>,
+}
+
+impl Response {
+    fn new() -> Self {
+        Response {
+            val: HashMap::new(),
+        }
+    }
 }
 
 #[cfg(test)]

@@ -143,7 +143,7 @@ impl fmt::Display for Outcome {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Outcome::*;
         match &*self {
-            Committed { value } => write!(f, "val={}", value.as_ref().unwrap()),
+            Committed { value } => write!(f, "{}", value.as_ref().unwrap()),
             Aborted { reason } => write!(f, "val={{{}}}", reason),
         }
     }
