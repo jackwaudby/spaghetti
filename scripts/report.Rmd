@@ -139,11 +139,11 @@ opt_hit_aborts <- tibble::rownames_to_column(opt_hit_aborts, "Metric")
 - Non-uniform random generator: TODO
 
 ```{r general, echo=FALSE}
-kable(dat, caption = paste0("TATP workload."),col.names = c('Protocol', 'Abort Rate (%)','Throughput (Txn/s)'))
+kable(dat, caption = paste0(params$workload," workload."),col.names = c('Protocol', 'Abort Rate (%)','Throughput (Txn/s)'))
 
 
 kable(latency,
-      caption = paste0("Latency (ms) for TATP workload."))
+      caption = paste0("Latency (ms) for ",params$workload," workload."))
 ```
 
 ## Serialization Graph Testing Protocol
@@ -151,7 +151,7 @@ kable(latency,
 - Completed: `r sgt$completed`
 
 ```{r sgt, echo=FALSE}
-kable(sgt_aborts, caption = paste0("SGT abort breakdown for TATP workload."))
+kable(sgt_aborts, caption = paste0("SGT abort breakdown for ",params$workload," workload."))
 ```
 
 ## Two Phase Locking Protocol
@@ -160,7 +160,7 @@ kable(sgt_aborts, caption = paste0("SGT abort breakdown for TATP workload."))
 - Worker threads: TODO
 
 ```{r tpl, echo=FALSE}
-kable(tpl_aborts, caption = paste0("2PL abort breakdown for TATP workload."))
+kable(tpl_aborts, caption = paste0("2PL abort breakdown for ",params$workload," workload."))
 ```
 
 ## Wait-hit Protocol
@@ -171,7 +171,8 @@ kable(tpl_aborts, caption = paste0("2PL abort breakdown for TATP workload."))
 - Garbage collection sleep: TODO
 
 ```{r hit, echo=FALSE}
-kable(hit_aborts,caption = paste0("Wait-hit abort breakdown for TATP workload."))
+kable(hit_aborts,caption = paste0("Wait-hit abort breakdown for ",params
+                                  $workload," workload."))
 ```
 
 ## Optimised Wait-hit Protocol
@@ -181,6 +182,6 @@ kable(hit_aborts,caption = paste0("Wait-hit abort breakdown for TATP workload.")
 - Garbage collection sleep: TODO
 
 ```{r opt-hit, echo=FALSE}
-kable(opt_hit_aborts,caption = paste0("Optimised wait-hit abort breakdown for TATP workload."))
+kable(opt_hit_aborts,caption = paste0("Optimised wait-hit abort breakdown for ",params$workload," workload."))
 ```
 
