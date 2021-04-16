@@ -1,0 +1,15 @@
+log = "info"
+
+transactions = 1000
+timeout = 10
+warmup = 1
+set_seed = false
+
+protocol="2pl"
+workers = 6
+garbage_collection = true
+garbage_collection_sleep = 1
+
+scale_factor = 0
+workload = "acid"
+load = false

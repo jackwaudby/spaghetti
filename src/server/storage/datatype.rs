@@ -3,7 +3,7 @@ use crate::common::error::NonFatalError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::fmt::{self, Write};
+use std::fmt;
 
 /// Element of a `Row' that holds `Data`.
 #[derive(Debug, Clone)]

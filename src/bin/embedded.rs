@@ -67,7 +67,7 @@ fn main() {
     let warmup = config.get_int("warmup").unwrap() as u32;
     let stats = Some(LocalStatistics::new(1, &w, &protocol));
     let logger = Logger::new(resp_rx, main_tx, stats, warmup);
-    logging::run(logger);
+    logging::run(logger, Arc::clone(&config));
 
     // Manager.
     let tm = TransactionManager::new(Arc::clone(&workload), req_rx, next_tx);
