@@ -7,7 +7,8 @@ use crate::workloads::PrimaryKey;
 
 use std::convert::TryFrom;
 use std::sync::Arc;
-use std::thread;
+use std::{thread, time};
+
 use tracing::debug;
 
 pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
@@ -62,6 +63,10 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
         &update,
         meta.clone(),
     )?;
+
+    let ten_millis = time::Duration::from_millis(100);
+
+    thread::sleep(ten_millis);
 
     // Abort transaction.
     protocol.scheduler.abort(meta.clone()).unwrap();
