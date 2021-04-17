@@ -25,7 +25,7 @@ pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonF
 
     protocol.scheduler.commit(meta.clone())?;
 
-    let res = datatype::to_result(&columns, &values).unwrap();
+    let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
 
     Ok(res)
 }

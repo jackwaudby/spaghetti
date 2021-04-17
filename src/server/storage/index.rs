@@ -385,23 +385,28 @@ mod tests {
         let cols = vec!["bit_4", "byte_2_5"];
         assert_eq!(
             datatype::to_result(
-                &cols,
-                &workload
-                    .get_internals()
-                    .get_index("sub_idx")
-                    .unwrap()
-                    .read(
-                        PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
-                        &cols,
-                        "2pl",
-                        "t1"
-                    )
-                    .unwrap()
-                    .get_values()
-                    .unwrap()
+                None,
+                None,
+                None,
+                Some(&cols),
+                Some(
+                    &workload
+                        .get_internals()
+                        .get_index("sub_idx")
+                        .unwrap()
+                        .read(
+                            PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                            &cols,
+                            "2pl",
+                            "t1"
+                        )
+                        .unwrap()
+                        .get_values()
+                        .unwrap()
+                )
             )
-            .unwrap(),
-            "{bit_4=\"1\", byte_2_5=\"205\"}"
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_4\":\"1\",\"byte_2_5\":\"205\"}}"
         );
 
         // 6. Successful write of entry.

@@ -1,7 +1,7 @@
 use crate::common::error::NonFatalError;
 
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
 use std::fmt;
 
@@ -102,38 +102,59 @@ impl TryFrom<Data> for String {
 }
 
 /// Convert columns and values to a result string.
-pub fn to_result(columns: &Vec<&str>, values: &Vec<Data>) -> crate::Result<String> {
-    // let mut res: String;
-    // res = "{".to_string();
-    // for (i, column) in columns.iter().enumerate() {
-    //     write!(res, "{}=\"{ }\", ", column, values[i])?;
-    // }
-    // res.truncate(res.len() - 2);
-    // write!(res, "}}")?;
+pub fn to_result(
+    created: Option<u64>,
+    updated: Option<u64>,
+    deleted: Option<u64>,
+    columns: Option<&Vec<&str>>,
+    values: Option<&Vec<Data>>,
+) -> crate::Result<String> {
+    let mut vals;
+    if let Some(_) = columns {
+        vals = Some(BTreeMap::new());
 
-    let mut resp = Response::new();
-
-    for (i, column) in columns.iter().enumerate() {
-        let key = format!("{}", column);
-        let value = format!("{}", values[i]);
-        resp.val.insert(key, value);
+        for (i, column) in columns.unwrap().iter().enumerate() {
+            let key = format!("{}", column);
+            let val = format!("{}", values.unwrap()[i]);
+            vals.as_mut().unwrap().insert(key, val);
+        }
+    } else {
+        vals = None;
     }
+    let sm = SuccessMessage::new(created, updated, deleted, vals);
 
-    let res = serde_json::to_string(&resp).unwrap();
+    let res = serde_json::to_string(&sm).unwrap();
 
     Ok(res)
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Response {
-    pub val: HashMap<String, String>,
+pub struct SuccessMessage {
+    created: Option<u64>,
+    updated: Option<u64>,
+    deleted: Option<u64>,
+    val: Option<BTreeMap<String, String>>,
 }
 
-impl Response {
-    fn new() -> Self {
-        Response {
-            val: HashMap::new(),
+impl SuccessMessage {
+    /// Create new success message.
+    fn new(
+        created: Option<u64>,
+        updated: Option<u64>,
+        deleted: Option<u64>,
+        val: Option<BTreeMap<String, String>>,
+    ) -> Self {
+        SuccessMessage {
+            created,
+            updated,
+            deleted,
+            val,
         }
+    }
+
+    /// Get values
+    pub fn get_values(&self) -> &BTreeMap<String, String> {
+        &self.val.as_ref().unwrap()
     }
 }
 
@@ -202,9 +223,6 @@ mod tests {
             Data::Int(10),
             Data::VarChar("hello".to_string()),
         ];
-        assert_eq!(
-            to_result(&columns, &values).unwrap(),
-            "{a=\"1.3\", b=\"null\", c=\"10\", d=\"hello\"}"
-        );
+        assert_eq!(to_result(None, None, None, Some(&columns), Some(&values)).unwrap(),"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"a\":\"1.3\",\"b\":\"null\",\"c\":\"10\",\"d\":\"hello\"}}");
     }
 }

@@ -506,8 +506,15 @@ mod tests {
         // read
         let r1 = row.get_values(&columns, "2pl", "t1").unwrap();
         assert_eq!(
-            datatype::to_result(&columns, &r1.get_values().unwrap()).unwrap(),
-            "{name=\"null\", year=\"null\", amount=\"null\"}"
+            datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&columns),
+                Some(&r1.get_values().unwrap())
+            )
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
         );
         assert_eq!(r1.get_access_history(), None);
 
@@ -528,8 +535,15 @@ mod tests {
         // read
         let r2 = row.get_values(&columns, "2pl", "t1").unwrap();
         assert_eq!(
-            datatype::to_result(&columns, &r2.get_values().unwrap()).unwrap(),
-            "{name=\"el camino\", year=\"2019\", amount=\"53.2\"}"
+            datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&columns),
+                Some(&r2.get_values().unwrap())
+            )
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"53.2\",\"name\":\"el camino\",\"year\":\"2019\"}}"
         );
         assert_eq!(r2.get_access_history(), None);
 
@@ -585,8 +599,15 @@ mod tests {
         // read
         let r1 = row.get_values(&columns, "sgt", "t1").unwrap();
         assert_eq!(
-            datatype::to_result(&columns, &r1.get_values().unwrap()).unwrap(),
-            "{name=\"null\", year=\"null\", amount=\"null\"}"
+            datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&columns),
+                Some(&r1.get_values().unwrap())
+            )
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
         );
         assert_eq!(r1.get_access_history(), Some(vec![]));
         assert_eq!(
@@ -620,8 +641,15 @@ mod tests {
         // read
         let r2 = row.get_values(&columns, "sgt", "t3").unwrap();
         assert_eq!(
-            datatype::to_result(&columns, &r2.get_values().unwrap()).unwrap(),
-            "{name=\"el camino\", year=\"2019\", amount=\"53.2\"}"
+            datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&columns),
+                Some(&r2.get_values().unwrap())
+            )
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"53.2\",\"name\":\"el camino\",\"year\":\"2019\"}}"
         );
         assert_eq!(
             r2.get_access_history(),

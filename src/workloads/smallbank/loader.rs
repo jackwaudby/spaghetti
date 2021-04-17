@@ -238,8 +238,8 @@ mod tests {
             .get_values()
             .unwrap();
         assert_eq!(
-            datatype::to_result(&cols, &res).unwrap(),
-            "{name=\"cust1\", customer_id=\"1\"}"
+            datatype::to_result(None, None, None, Some(&cols), Some(&res)).unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"customer_id\":\"1\",\"name\":\"cust1\"}}"
         );
     }
 
@@ -278,8 +278,8 @@ mod tests {
             .get_values()
             .unwrap();
         assert_eq!(
-            datatype::to_result(&cols, &res).unwrap(),
-            "{customer_id=\"1\", balance=\"21893\"}"
+            datatype::to_result(None, None, None, Some(&cols), Some(&res)).unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"balance\":\"21893\",\"customer_id\":\"1\"}}"
         );
     }
 
@@ -318,8 +318,8 @@ mod tests {
             .get_values()
             .unwrap();
         assert_eq!(
-            datatype::to_result(&cols, &res).unwrap(),
-            "{customer_id=\"1\", balance=\"13808\"}"
+            datatype::to_result(None, None, None, Some(&cols), Some(&res)).unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"balance\":\"13808\",\"customer_id\":\"1\"}}"
         );
     }
 }

@@ -4,7 +4,7 @@ use spaghetti::common::statistics::LocalStatistics;
 use spaghetti::embedded::generator::{self, Generator, InternalRequest};
 use spaghetti::embedded::logging::{self, Logger};
 use spaghetti::embedded::manager::{self, TransactionManager};
-use spaghetti::server::storage::datatype::Response;
+use spaghetti::server::storage::datatype::SuccessMessage;
 use spaghetti::workloads::Workload;
 
 use config::Config;
@@ -84,8 +84,13 @@ fn acid_test_sgt() {
     let reader = BufReader::new(file);
 
     for line in reader.lines() {
-        let resp: Response = serde_json::from_str(&line.unwrap()).unwrap();
-        let version = resp.val.get("version").unwrap().parse::<u64>().unwrap();
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        let version = resp
+            .get_values()
+            .get("version")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
         assert_eq!(version, 1, "expected: {}, actual: {}", version, 1);
     }
 }
@@ -100,8 +105,13 @@ fn acid_test_2pl() {
     let reader = BufReader::new(file);
 
     for line in reader.lines() {
-        let resp: Response = serde_json::from_str(&line.unwrap()).unwrap();
-        let version = resp.val.get("version").unwrap().parse::<u64>().unwrap();
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        let version = resp
+            .get_values()
+            .get("version")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
         assert_eq!(version, 1, "expected: {}, actual: {}", version, 1);
     }
 }
@@ -116,8 +126,13 @@ fn acid_test_hit() {
     let reader = BufReader::new(file);
 
     for line in reader.lines() {
-        let resp: Response = serde_json::from_str(&line.unwrap()).unwrap();
-        let version = resp.val.get("version").unwrap().parse::<u64>().unwrap();
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        let version = resp
+            .get_values()
+            .get("version")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
         assert_eq!(version, 1, "expected: {}, actual: {}", version, 1);
     }
 }
@@ -132,8 +147,13 @@ fn acid_test_opt_hit() {
     let reader = BufReader::new(file);
 
     for line in reader.lines() {
-        let resp: Response = serde_json::from_str(&line.unwrap()).unwrap();
-        let version = resp.val.get("version").unwrap().parse::<u64>().unwrap();
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        let version = resp
+            .get_values()
+            .get("version")
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
         assert_eq!(version, 1, "expected: {}, actual: {}", version, 1);
     }
 }

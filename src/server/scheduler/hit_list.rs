@@ -737,8 +737,11 @@ mod tests {
             let values = scheduler
                 .read("subscriber", pk.clone(), &columns, txn.clone())
                 .unwrap();
-            let res = datatype::to_result(&columns, &values).unwrap();
-            assert_eq!(res, "{bit_1=\"0\"}");
+            let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
+            assert_eq!(
+                res,
+                "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"0\"}}"
+            );
             scheduler.commit(txn).unwrap();
             drop(scheduler);
         });
