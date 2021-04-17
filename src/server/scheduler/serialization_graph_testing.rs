@@ -525,8 +525,6 @@ impl Scheduler for SerializationGraphTesting {
             drop(sl); // drop shared lock
 
             if let State::Active = state {
-                debug!("Thread {}: Node active", thread_id);
-
                 let commit_check = self.commit_check(id);
                 if !commit_check {
                     let cycle_check = self.reduced_depth_first_search(id);
@@ -848,7 +846,6 @@ mod test {
         assert_eq!(sg.reduced_depth_first_search(2), true);
     }
 
-    #[test]
     fn test_sgt_g1a() {
         let sg = Arc::new(SerializationGraphTesting::new(5, Arc::clone(&WORKLOAD)));
         let sg1 = Arc::clone(&sg);
