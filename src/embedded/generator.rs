@@ -106,7 +106,7 @@ impl Generator {
                 info!("All transactions sent: {} = {}", sent, max_transactions);
 
                 // ACID TEST ONLY;
-                /// send message read lost update for each person
+                //send message read lost update for each person
                 let workload = config.get_str("workload").unwrap().as_str();
                 let anomaly = config.get_str("anomaly").unwrap().as_str();
                 if workload == "acid" && anomaly == "lu" {
