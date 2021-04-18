@@ -783,15 +783,15 @@ impl SerializationGraphTesting {
 mod test {
     use super::*;
     use crate::workloads::tatp;
-    use crate::workloads::tatp::keys::TatpPrimaryKey;
+    //    use crate::workloads::tatp::keys::TatpPrimaryKey;
     use crate::workloads::Internal;
 
     use config::Config;
     use lazy_static::lazy_static;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
-    use std::convert::TryFrom;
-    use std::{thread, time};
+    //  use std::convert::TryFrom;
+    //use std::{thread, time};
     use test_env_log::test;
 
     lazy_static! {
@@ -846,85 +846,85 @@ mod test {
         assert_eq!(sg.reduced_depth_first_search(2), true);
     }
 
-    fn test_sgt_g1a() {
-        let sg = Arc::new(SerializationGraphTesting::new(5, Arc::clone(&WORKLOAD)));
-        let sg1 = Arc::clone(&sg);
-        let sg2 = Arc::clone(&sg);
+    // fn test_sgt_g1a() {
+    //     let sg = Arc::new(SerializationGraphTesting::new(5, Arc::clone(&WORKLOAD)));
+    //     let sg1 = Arc::clone(&sg);
+    //     let sg2 = Arc::clone(&sg);
 
-        let builder = thread::Builder::new().name("0".into());
+    //     let builder = thread::Builder::new().name("0".into());
 
-        // write a record then sleep
-        let jh1 = builder
-            .spawn(move || {
-                let meta = sg1.register().unwrap(); // register transaction
-                let table = "access_info"; // table name
-                let key = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1)); // primary key
-                let columns: Vec<String> = vec!["data_1".to_string()]; // columns to write
-                let params = vec![Data::Int(12)]; // values to write
+    //     // write a record then sleep
+    //     let jh1 = builder
+    //         .spawn(move || {
+    //             let meta = sg1.register().unwrap(); // register transaction
+    //             let table = "access_info"; // table name
+    //             let key = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1)); // primary key
+    //             let columns: Vec<String> = vec!["data_1".to_string()]; // columns to write
+    //             let params = vec![Data::Int(12)]; // values to write
 
-                // (columns, current_values, parameters) -> (columns, new_values)
-                let update = |_columns: Vec<String>,
-                              _current: Option<Vec<Data>>,
-                              params: Vec<Data>|
-                 -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-                    let value = match i64::try_from(params[0].clone()) {
-                        Ok(value) => value,
-                        Err(e) => {
-                            sg1.abort(meta.clone()).unwrap();
-                            return Err(e);
-                        }
-                    };
+    //             // (columns, current_values, parameters) -> (columns, new_values)
+    //             let update = |_columns: Vec<String>,
+    //                           _current: Option<Vec<Data>>,
+    //                           params: Vec<Data>|
+    //              -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+    //                 let value = match i64::try_from(params[0].clone()) {
+    //                     Ok(value) => value,
+    //                     Err(e) => {
+    //                         sg1.abort(meta.clone()).unwrap();
+    //                         return Err(e);
+    //                     }
+    //                 };
 
-                    let new_values = vec![value.to_string()];
-                    let columns = vec!["data_1".to_string()];
-                    Ok((columns, new_values))
-                };
+    //                 let new_values = vec![value.to_string()];
+    //                 let columns = vec!["data_1".to_string()];
+    //                 Ok((columns, new_values))
+    //             };
 
-                // table, pk, columns, read cols, params, update closure
-                sg1.update(
-                    table,
-                    key.clone(),
-                    columns,
-                    false,
-                    params,
-                    &update,
-                    meta.clone(),
-                )
-                .unwrap();
+    //             // table, pk, columns, read cols, params, update closure
+    //             sg1.update(
+    //                 table,
+    //                 key.clone(),
+    //                 columns,
+    //                 false,
+    //                 params,
+    //                 &update,
+    //                 meta.clone(),
+    //             )
+    //             .unwrap();
 
-                let ten_millis = time::Duration::from_millis(5000);
+    //             let ten_millis = time::Duration::from_millis(5000);
 
-                thread::sleep(ten_millis);
+    //             thread::sleep(ten_millis);
 
-                // // Check graph has edge between 0->1
-                // assert_eq!(sg.get_shared_lock(0).get_outgoing(), vec![1]);
-                // assert_eq!(sg.get_shared_lock(1).get_incoming(), vec![0]);
+    //             // // Check graph has edge between 0->1
+    //             // assert_eq!(sg.get_shared_lock(0).get_outgoing(), vec![1]);
+    //             // assert_eq!(sg.get_shared_lock(1).get_incoming(), vec![0]);
 
-                assert_eq!(sg1.abort(meta).unwrap(), ());
-            })
-            .unwrap();
+    //             assert_eq!(sg1.abort(meta).unwrap(), ());
+    //         })
+    //         .unwrap();
 
-        let ten_millis = time::Duration::from_millis(1000);
+    //     let ten_millis = time::Duration::from_millis(1000);
 
-        thread::sleep(ten_millis);
-        let builder2 = thread::Builder::new().name("1".into());
+    //     thread::sleep(ten_millis);
+    //     let builder2 = thread::Builder::new().name("1".into());
 
-        // write a record then sleep
-        let jh2 = builder2.spawn(move || {
-            let meta = sg2.register().unwrap(); // register transaction
-            let table = "access_info"; // table name
-            let key = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1)); // primary key
-            let columns: Vec<&str> = vec!["data_1"]; // columns to write
-            let _values = sg2.read(table, key, &columns, meta.clone()).unwrap();
-            assert_eq!(
-                sg2.commit(meta.clone()),
-                Err(NonFatalError::SerializationGraphTesting(
-                    SerializationGraphTestingError::NonSerializable
-                ))
-            );
-        });
+    //     // write a record then sleep
+    //     let jh2 = builder2.spawn(move || {
+    //         let meta = sg2.register().unwrap(); // register transaction
+    //         let table = "access_info"; // table name
+    //         let key = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1)); // primary key
+    //         let columns: Vec<&str> = vec!["data_1"]; // columns to write
+    //         let _values = sg2.read(table, key, &columns, meta.clone()).unwrap();
+    //         assert_eq!(
+    //             sg2.commit(meta.clone()),
+    //             Err(NonFatalError::SerializationGraphTesting(
+    //                 SerializationGraphTestingError::NonSerializable
+    //             ))
+    //         );
+    //     });
 
-        jh1.join().unwrap();
-        jh2.unwrap().join().unwrap();
-    }
+    //     jh1.join().unwrap();
+    //     jh2.unwrap().join().unwrap();
+    // }
 }

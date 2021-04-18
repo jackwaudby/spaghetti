@@ -8,9 +8,9 @@ use crate::workloads::PrimaryKey;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use std::{thread, time};
-
 use tracing::debug;
 
+/// Aborted Read (G1a) TR
 pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let columns: Vec<&str> = vec!["p_id", "version"];
     let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id));
@@ -31,6 +31,7 @@ pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonF
     Ok(res)
 }
 
+/// Aborted Read (G1a) TW
 pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let meta = protocol.scheduler.register().unwrap();
 
