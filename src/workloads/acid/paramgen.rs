@@ -171,7 +171,7 @@ impl AcidGenerator {
 
         let payload = LostUpdateWrite { p_id };
         (
-            AcidTransaction::LostUpdate,
+            AcidTransaction::LostUpdateWrite,
             AcidTransactionProfile::LostUpdateWrite(payload),
         )
     }

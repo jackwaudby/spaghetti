@@ -42,7 +42,7 @@ pub fn persons(persons: u64, sf: u64) -> Result<()> {
     let mut wtr = Writer::from_path(format!("./data/acid/sf-{}/persons.csv", sf))?;
 
     for p_id in 0..persons {
-        wtr.serialize(Person::new(p_id, 1))?;
+        wtr.serialize(Person::new(p_id, 1, 0))?;
     }
 
     wtr.flush()?;
