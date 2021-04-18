@@ -102,7 +102,7 @@ pub enum NonFatalError {
     /// Invalid column type.
     InvalidColumnType(String),
 
-    /// TODO: Replace with hit list.
+    /// Manual abort. Used in ACID test.
     NonSerializable,
 
     /// Two phase locking error.

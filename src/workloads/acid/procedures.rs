@@ -70,8 +70,7 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
     // Abort transaction.
     protocol.scheduler.abort(meta.clone()).unwrap();
 
-    // TODO: add acid abort type
-    Err(NonFatalError::RowDirty("1".to_string(), "2".to_string()))
+    Err(NonFatalError::NonSerializable)
 }
 
 /// Circular Information Flow (G1c) TRW
