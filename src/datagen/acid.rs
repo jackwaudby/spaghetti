@@ -54,11 +54,16 @@ pub fn persons(persons: u64, sf: u64) -> Result<()> {
 pub struct Person {
     pub p_id: u64,
     pub version: u64,
+    pub num_friends: u64,
 }
 
 impl Person {
     /// Create new `Person` record.
-    pub fn new(p_id: u64, version: u64) -> Self {
-        Person { p_id, version }
+    pub fn new(p_id: u64, version: u64, num_friends: u64) -> Self {
+        Person {
+            p_id,
+            version,
+            num_friends,
+        }
     }
 }
