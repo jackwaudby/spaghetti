@@ -1,3 +1,5 @@
+use test_env_log::test;
+
 const PROTOCOL: &str = "2pl";
 
 mod common;

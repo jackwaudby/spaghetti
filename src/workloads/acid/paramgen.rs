@@ -20,6 +20,9 @@ pub struct AcidGenerator {
     /// Anomaly.
     anomaly: String,
 
+    /// Artficial delay between operations.
+    delay: u64,
+
     /// Rng.
     rng: StdRng,
 
@@ -29,7 +32,7 @@ pub struct AcidGenerator {
 
 impl AcidGenerator {
     /// Create new `TatpGenerator`.
-    pub fn new(sf: u64, set_seed: bool, seed: Option<u64>, anomaly: &str) -> Self {
+    pub fn new(sf: u64, set_seed: bool, seed: Option<u64>, anomaly: &str, delay: u64) -> Self {
         info!("Parameter generator set seed: {}", set_seed);
         let persons = *ACID_SF_MAP.get(&sf).unwrap();
 
@@ -45,6 +48,7 @@ impl AcidGenerator {
             rng,
             generated: 0,
             anomaly: anomaly.to_string(),
+            delay: delay * 1000,
         }
     }
 }
@@ -98,7 +102,11 @@ impl AcidGenerator {
                 // G1A_WRITE
                 let p_id = self.rng.gen_range(0..self.persons);
 
-                let payload = G1aWrite { p_id, version: 2 };
+                let payload = G1aWrite {
+                    p_id,
+                    version: 2,
+                    delay: self.delay,
+                };
                 (
                     AcidTransaction::G1aWrite,
                     AcidTransactionProfile::G1aWrite(payload),
@@ -109,6 +117,7 @@ impl AcidGenerator {
 
     /// Get a transaction profile for g1c test.
     fn get_g1c_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
+        self.generated += 1; // as person version starts at 1;
         let p1_id = self.rng.gen_range(0..self.persons); // person1 id
         let mut p2_id = p1_id;
 
@@ -123,6 +132,7 @@ impl AcidGenerator {
             p2_id,
             transaction_id,
         };
+
         (
             AcidTransaction::G1cReadWrite,
             AcidTransactionProfile::G1cReadWrite(payload),
@@ -146,6 +156,7 @@ pub enum AcidTransactionProfile {
 pub struct G1aWrite {
     pub p_id: u64,
     pub version: u64,
+    pub delay: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -168,7 +179,7 @@ impl fmt::Display for AcidTransactionProfile {
                 write!(f, "0,{}", p_id)
             }
             AcidTransactionProfile::G1aWrite(params) => {
-                let G1aWrite { p_id, version } = params;
+                let G1aWrite { p_id, version, .. } = params;
                 write!(f, "1,{},{}", p_id, version)
             }
             AcidTransactionProfile::G1cReadWrite(params) => {

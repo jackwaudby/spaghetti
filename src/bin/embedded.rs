@@ -67,7 +67,9 @@ fn main() {
 
     if w.as_str() == "acid" {
         let anomaly = config.get_str("anomaly").unwrap();
+        let delay = config.get_int("delay").unwrap();
         tracing::info!("ACID test: {}", anomaly);
+        tracing::info!("Aritifical operation delay (secs): {}", delay);
     }
 
     let warmup = config.get_int("warmup").unwrap() as u32;

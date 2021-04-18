@@ -61,6 +61,14 @@ pub fn run(config: Arc<Config>) {
     // Logger.
     let protocol = config.get_str("protocol").unwrap();
     let w = config.get_str("workload").unwrap();
+
+    if w.as_str() == "acid" {
+        let anomaly = config.get_str("anomaly").unwrap();
+        let delay = config.get_int("delay").unwrap();
+        tracing::info!("ACID test: {}", anomaly);
+        tracing::info!("Aritifical operation delay: {} (secs)", delay);
+    }
+
     let warmup = config.get_int("warmup").unwrap() as u32;
     let stats = Some(LocalStatistics::new(1, &w, &protocol));
     let logger = Logger::new(resp_rx, main_tx, stats, warmup);
@@ -117,14 +125,18 @@ pub fn g1c(protocol: &str) {
 
     run(config);
 
-    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
+    let file = format!("./log/acid/{}/{}.json", protocol, anomaly);
+    let fh = match File::open(file.clone()) {
+        Ok(fh) => fh,
+        Err(_) => panic!("file: {} not found", file),
+    };
     let reader = BufReader::new(fh);
 
     let mut graph = Graph::<u64, (), petgraph::Directed>::new(); // directed and unlabeled
 
     for line in reader.lines() {
         let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        let values = resp.get_values(); // (transaction_id, version_id) = (ta) --wr--> (tb)
+        let values = resp.get_values(); // (transaction_id, version_id) = (version_id/tb) --wr--> (transaction_id/ta)
         let transaction_id = values
             .get("transaction_id")
             .unwrap()
@@ -142,15 +154,14 @@ pub fn g1c(protocol: &str) {
         match graph.node_indices().find(|i| graph[*i] == version_read) {
             // tb already exists; add edge
             Some(b) => {
-                graph.add_edge(a, b, ());
+                graph.add_edge(b, a, ());
             }
             // insert tb; add edge
             None => {
                 let b = graph.add_node(version_read);
-                graph.add_edge(a, b, ());
+                graph.add_edge(b, a, ());
             }
         }
     }
-
     assert_eq!(algo::is_cyclic_directed(&graph), false);
 }

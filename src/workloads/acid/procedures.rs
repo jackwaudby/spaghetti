@@ -65,9 +65,7 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
         meta.clone(),
     )?;
 
-    // TODO: parameterize
-    let ten_millis = time::Duration::from_millis(100);
-    thread::sleep(ten_millis);
+    thread::sleep(time::Duration::from_millis(params.delay)); // artifical delay
 
     // Abort transaction.
     protocol.scheduler.abort(meta.clone()).unwrap();
