@@ -14,7 +14,7 @@ pub mod keys;
 lazy_static! {
     pub static ref ACID_SF_MAP: HashMap<u64, u64> = {
         let mut m = HashMap::new();
-        m.insert(0, 1);
+        m.insert(0, 2);
         m.insert(1, 10);
         m
     };
@@ -24,4 +24,5 @@ lazy_static! {
 pub enum AcidTransaction {
     G1aWrite,
     G1aRead,
+    G1cReadWrite,
 }

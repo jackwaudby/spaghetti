@@ -50,3 +50,4 @@ statrs = "0.13.0"
 log = "0.4.14"
 env_logger = "*"
 test-env-log ={version = "0.2.7", features = ["log","trace"]}
+petgraph = "0.5.1"

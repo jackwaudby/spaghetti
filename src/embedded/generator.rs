@@ -68,7 +68,8 @@ impl Generator {
         }
         let mut generator = match config.get_str("workload").unwrap().as_str() {
             "acid" => {
-                let gen = AcidGenerator::new(sf, set_seed, seed);
+                let anomaly = config.get_str("anomaly").unwrap();
+                let gen = AcidGenerator::new(sf, set_seed, seed, &anomaly);
                 ParameterGenerator::Acid(gen)
             }
             "tatp" => {

@@ -64,6 +64,12 @@ fn main() {
     // Logger.
     let protocol = config.get_str("protocol").unwrap();
     let w = config.get_str("workload").unwrap();
+
+    if w.as_str() == "acid" {
+        let anomaly = config.get_str("anomaly").unwrap();
+        tracing::info!("ACID test: {}", anomaly);
+    }
+
     let warmup = config.get_int("warmup").unwrap() as u32;
     let stats = Some(LocalStatistics::new(1, &w, &protocol));
     let logger = Logger::new(resp_rx, main_tx, stats, warmup);

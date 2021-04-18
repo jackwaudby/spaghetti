@@ -53,7 +53,7 @@ impl Logger {
     pub fn run(&mut self, config: Arc<Config>) {
         let workload = config.get_str("workload").unwrap();
         let protocol = config.get_str("protocol").unwrap();
-        let test = "g1a";
+        let test = config.get_str("anomaly").unwrap();
         let file = format!("./log/acid/{}/{}.json", protocol, test);
         let dir = format!("./log/acid/{}/", protocol);
 
@@ -90,6 +90,7 @@ impl Logger {
                 }
                 BenchmarkPhase::Execution => {
                     if workload.as_str() == "acid" {
+                        //                        tracing::info!("{}", outcome.clone());
                         if let Outcome::Committed { value } = outcome.clone() {
                             let mut fh = OpenOptions::new()
                                 .write(true)

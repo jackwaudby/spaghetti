@@ -12,4 +12,5 @@ garbage_collection_sleep = 1
 
 scale_factor = 0
 workload = "acid"
+anomaly = "g1a"
 load = false
