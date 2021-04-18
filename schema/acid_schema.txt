@@ -2,6 +2,7 @@
 TABLE=PERSON
     8,int,P_ID
     1,int,VERSION
+    1,int,NUM_FRIENDS
 
 INDEX=PERSON_IDX
     PERSON,0
