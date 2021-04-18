@@ -107,9 +107,9 @@ impl Generator {
 
                 // ACID TEST ONLY;
                 //send message read lost update for each person
-                let workload = config.get_str("workload").unwrap().as_str();
-                let anomaly = config.get_str("anomaly").unwrap().as_str();
-                if workload == "acid" && anomaly == "lu" {
+                let workload = config.get_str("workload").unwrap();
+                let anomaly = config.get_str("anomaly").unwrap();
+                if workload.as_str() == "acid" && anomaly.as_str() == "lu" {
                     let sf = config.get_int("scale_factor").unwrap() as u64;
                     let persons = *ACID_SF_MAP.get(&sf).unwrap();
 

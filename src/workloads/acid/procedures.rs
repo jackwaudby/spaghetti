@@ -230,7 +230,7 @@ pub fn lu_read(params: LostUpdateRead, protocol: Arc<Protocol>) -> Result<String
     let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // pk
 
     let meta = protocol.scheduler.register().unwrap(); // register
-    let mut read = protocol
+    let read = protocol
         .scheduler
         .read("person", pk.clone(), &columns, meta.clone())?; // read
     protocol.scheduler.commit(meta.clone())?; // commit

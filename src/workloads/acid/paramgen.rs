@@ -80,6 +80,7 @@ impl AcidGenerator {
             "g1a" => self.get_g1a_params(n),
             "g1c" => self.get_g1c_params(),
             "imp" => self.get_imp_params(n),
+            "lu" => self.get_lu_params(),
             _ => panic!("anomaly: {} not recognised", self.anomaly),
         }
     }
