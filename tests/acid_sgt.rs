@@ -1,3 +1,5 @@
+use test_env_log::test;
+
 const PROTOCOL: &str = "sgt";
 
 mod common;
@@ -11,4 +13,9 @@ fn acid_sgt_g1a() {
 #[ignore]
 fn acid_sgt_g1c() {
     common::g1c(PROTOCOL);
+}
+
+#[test]
+fn acid_sgt_imp() {
+    common::imp(PROTOCOL);
 }

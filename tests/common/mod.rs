@@ -165,3 +165,28 @@ pub fn g1c(protocol: &str) {
     }
     assert_eq!(algo::is_cyclic_directed(&graph), false);
 }
+
+/// IMP
+///
+/// # Anomaly check
+///
+///
+///
+///
+pub fn imp(protocol: &str) {
+    let anomaly = "imp";
+    let config = setup_config(protocol, anomaly);
+
+    run(config);
+
+    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
+    let reader = BufReader::new(fh);
+
+    for line in reader.lines() {
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        let vals = resp.get_values(); // TODO: sometimes does not have values as it updated.
+        let first = vals.get("first_read").unwrap().parse::<u64>().unwrap();
+        let second = vals.get("second_read").unwrap().parse::<u64>().unwrap();
+        assert_eq!(first, second, "first: {}, second: {}", first, second);
+    }
+}

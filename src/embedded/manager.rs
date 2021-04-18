@@ -155,6 +155,14 @@ impl TransactionManager {
                                 debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                                 acid::procedures::g1c_read_write(params, scheduler)
                             }
+                            AcidTransactionProfile::ImpRead(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::imp_read(params, scheduler)
+                            }
+                            AcidTransactionProfile::ImpWrite(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::imp_write(params, scheduler)
+                            }
                         }
                     } else {
                         panic!("transaction type and parameters do not match");

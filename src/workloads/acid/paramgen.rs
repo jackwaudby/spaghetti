@@ -79,7 +79,7 @@ impl AcidGenerator {
         match self.anomaly.as_str() {
             "g1a" => self.get_g1a_params(n),
             "g1c" => self.get_g1c_params(),
-
+            "imp" => self.get_imp_params(n),
             _ => panic!("anomaly: {} not recognised", self.anomaly),
         }
     }
@@ -138,6 +138,32 @@ impl AcidGenerator {
             AcidTransactionProfile::G1cReadWrite(payload),
         )
     }
+
+    /// Get a transaction profile for IMP test.
+    fn get_imp_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
+        match n {
+            x if x < 0.5 => {
+                let p_id = self.rng.gen_range(0..self.persons);
+                let payload = ImpRead {
+                    p_id,
+                    delay: self.delay,
+                };
+                (
+                    AcidTransaction::ImpRead,
+                    AcidTransactionProfile::ImpRead(payload),
+                )
+            }
+
+            _ => {
+                let p_id = self.rng.gen_range(0..self.persons);
+                let payload = ImpWrite { p_id };
+                (
+                    AcidTransaction::ImpWrite,
+                    AcidTransactionProfile::ImpWrite(payload),
+                )
+            }
+        }
+    }
 }
 
 ///////////////////////////////////////
@@ -150,6 +176,8 @@ pub enum AcidTransactionProfile {
     G1aWrite(G1aWrite),
     G1aRead(G1aRead),
     G1cReadWrite(G1cReadWrite),
+    ImpRead(ImpRead),
+    ImpWrite(ImpWrite),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -171,6 +199,17 @@ pub struct G1cReadWrite {
     pub transaction_id: u32,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct ImpRead {
+    pub p_id: u64,
+    pub delay: u64,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct ImpWrite {
+    pub p_id: u64,
+}
+
 impl fmt::Display for AcidTransactionProfile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
@@ -189,6 +228,14 @@ impl fmt::Display for AcidTransactionProfile {
                     transaction_id,
                 } = params;
                 write!(f, "2,{},{},{}", p1_id, p2_id, transaction_id)
+            }
+            AcidTransactionProfile::ImpRead(params) => {
+                let ImpRead { p_id, .. } = params;
+                write!(f, "3,{}", p_id)
+            }
+            AcidTransactionProfile::ImpWrite(params) => {
+                let ImpWrite { p_id } = params;
+                write!(f, "4,{}", p_id)
             }
         }
     }

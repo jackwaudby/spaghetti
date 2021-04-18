@@ -1,3 +1,5 @@
+use test_env_log::test;
+
 const PROTOCOL: &str = "opt-hit";
 
 mod common;
@@ -10,4 +12,9 @@ fn acid_opt_hit_g1a() {
 #[test]
 fn acid_opt_hit_g1c() {
     common::g1c(PROTOCOL);
+}
+
+#[test]
+fn acid_opt_hit_imp() {
+    common::imp(PROTOCOL);
 }
