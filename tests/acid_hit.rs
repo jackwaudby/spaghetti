@@ -18,3 +18,8 @@ fn acid_hit_g1c() {
 fn acid_hit_imp() {
     common::imp(PROTOCOL);
 }
+
+#[test]
+fn acid_hit_lu() {
+    common::lu(PROTOCOL);
+}

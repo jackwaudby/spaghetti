@@ -190,3 +190,20 @@ pub fn imp(protocol: &str) {
         assert_eq!(first, second, "first: {}, second: {}", first, second);
     }
 }
+
+pub fn lu(protocol: &str) {
+    let anomaly = "lu";
+    let config = setup_config(protocol, anomaly);
+
+    run(config);
+
+    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
+    let reader = BufReader::new(fh);
+
+    for line in reader.lines() {
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        // TODO: work out how many sent!
+        // Sum up committed per person_id
+        log::info!("{:?}", resp);
+    }
+}

@@ -19,3 +19,8 @@ fn acid_2pl_g1c() {
 fn acid_2pl_imp() {
     common::imp(PROTOCOL);
 }
+
+#[test]
+fn acid_2pl_lu() {
+    common::lu(PROTOCOL);
+}
