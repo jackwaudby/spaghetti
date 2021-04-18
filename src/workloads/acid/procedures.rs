@@ -2,7 +2,9 @@ use crate::common::error::NonFatalError;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::acid::keys::AcidPrimaryKey;
-use crate::workloads::acid::paramgen::{G1aRead, G1aWrite, G1cReadWrite, ImpRead, ImpWrite};
+use crate::workloads::acid::paramgen::{
+    G1aRead, G1aWrite, G1cReadWrite, ImpRead, ImpWrite, LostUpdateRead, LostUpdateWrite,
+};
 use crate::workloads::PrimaryKey;
 
 use std::convert::TryFrom;
@@ -188,5 +190,52 @@ pub fn imp_write(params: ImpWrite, protocol: Arc<Protocol>) -> Result<String, No
     protocol.scheduler.commit(meta.clone())?; // commit
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
+    Ok(res)
+}
+
+pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    let meta = protocol.scheduler.register().unwrap(); // register
+    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // key
+    let columns: Vec<String> = vec!["num_friends".to_string()]; // columns
+    let update = |columns: Vec<String>,
+                  current: Option<Vec<Data>>,
+                  _params: Vec<Data>|
+     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+        let current_value = match i64::try_from(current.unwrap()[0].clone()) {
+            Ok(value) => value,
+            Err(e) => {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        }; // parse to i64 from spaghetti data type
+        let nv = current_value + 1; // increment current value
+        let new_values = vec![nv.to_string()]; // convert to string
+        Ok((columns, new_values)) // new values for columns
+    }; // update computation
+
+    let values = vec![Data::Int(params.p_id as i64)]; // TODO: placeholder
+
+    protocol
+        .scheduler
+        .update("person", pk, columns, true, values, &update, meta.clone())?; //  update
+
+    protocol.scheduler.commit(meta.clone())?; // commit
+
+    let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
+    Ok(res)
+}
+
+pub fn lu_read(params: LostUpdateRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    let columns: Vec<&str> = vec!["p_id", "num_friends"]; // columns to read
+    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // pk
+
+    let meta = protocol.scheduler.register().unwrap(); // register
+    let mut read = protocol
+        .scheduler
+        .read("person", pk.clone(), &columns, meta.clone())?; // read
+    protocol.scheduler.commit(meta.clone())?; // commit
+
+    let res = datatype::to_result(None, None, None, Some(&columns), Some(&read)).unwrap();
+
     Ok(res)
 }

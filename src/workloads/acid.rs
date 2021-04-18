@@ -27,4 +27,6 @@ pub enum AcidTransaction {
     G1cReadWrite,
     ImpRead,
     ImpWrite,
+    LostUpdateRead,
+    LostUpdateWrite,
 }
