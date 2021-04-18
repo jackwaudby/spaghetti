@@ -164,6 +164,17 @@ impl AcidGenerator {
             }
         }
     }
+
+    /// Get a transaction profile for LU test.
+    fn get_lu_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
+        let p_id = self.rng.gen_range(0..self.persons); // person id
+
+        let payload = LostUpdateWrite { p_id };
+        (
+            AcidTransaction::LostUpdate,
+            AcidTransactionProfile::LostUpdateWrite(payload),
+        )
+    }
 }
 
 ///////////////////////////////////////
@@ -178,6 +189,8 @@ pub enum AcidTransactionProfile {
     G1cReadWrite(G1cReadWrite),
     ImpRead(ImpRead),
     ImpWrite(ImpWrite),
+    LostUpdateRead(LostUpdateRead),
+    LostUpdateWrite(LostUpdateWrite),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -210,6 +223,16 @@ pub struct ImpWrite {
     pub p_id: u64,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct LostUpdateWrite {
+    pub p_id: u64,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct LostUpdateRead {
+    pub p_id: u64,
+}
+
 impl fmt::Display for AcidTransactionProfile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
@@ -236,6 +259,14 @@ impl fmt::Display for AcidTransactionProfile {
             AcidTransactionProfile::ImpWrite(params) => {
                 let ImpWrite { p_id } = params;
                 write!(f, "4,{}", p_id)
+            }
+            AcidTransactionProfile::LostUpdateRead(params) => {
+                let LostUpdateRead { p_id } = params;
+                write!(f, "5 {}", p_id)
+            }
+            AcidTransactionProfile::LostUpdateWrite(params) => {
+                let LostUpdateWrite { p_id } = params;
+                write!(f, "6 {}", p_id)
             }
         }
     }

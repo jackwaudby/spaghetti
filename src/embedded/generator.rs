@@ -1,6 +1,7 @@
 use crate::common::message::{InternalResponse, Message, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
-use crate::workloads::acid::paramgen::AcidGenerator;
+use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile, LostUpdateRead};
+use crate::workloads::acid::{AcidTransaction, ACID_SF_MAP};
 use crate::workloads::smallbank::paramgen::SmallBankGenerator;
 use crate::workloads::tatp::paramgen::TatpGenerator;
 
@@ -103,6 +104,43 @@ impl Generator {
         while let Ok(()) = self.next_rx.recv() {
             if sent == max_transactions {
                 info!("All transactions sent: {} = {}", sent, max_transactions);
+
+                // ACID TEST ONLY;
+                /// send message read lost update for each person
+                let workload = config.get_str("workload").unwrap().as_str();
+                let anomaly = config.get_str("anomaly").unwrap().as_str();
+                if workload == "acid" && anomaly == "lu" {
+                    let sf = config.get_int("scale_factor").unwrap() as u64;
+                    let persons = *ACID_SF_MAP.get(&sf).unwrap();
+
+                    for p_id in 0..persons {
+                        let payload = LostUpdateRead { p_id };
+
+                        let message = Message::Request {
+                            request_no: generator.get_generated() + 1,
+                            transaction: Transaction::Acid(AcidTransaction::LostUpdateRead),
+                            parameters: Parameters::Acid(AcidTransactionProfile::LostUpdateRead(
+                                payload,
+                            )),
+                        };
+
+                        let request = match message {
+                            Message::Request {
+                                request_no,
+                                transaction,
+                                parameters,
+                            } => InternalRequest {
+                                request_no,
+                                transaction,
+                                parameters,
+                                response_sender: self.logger_tx.clone(),
+                            },
+                            _ => unimplemented!(),
+                        };
+
+                        self.req_tx.send(request).unwrap();
+                    }
+                }
                 break;
             } else if Instant::now() > et {
                 info!("Timeout reached: {} minute(s)", timeout);
