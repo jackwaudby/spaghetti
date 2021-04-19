@@ -191,30 +191,14 @@ fn run() -> Result<()> {
                 log::info!("Generated persons.csv");
             });
 
-            pjh.join().unwrap();
+            let pkp = thread::spawn(move || {
+                log::info!("Generating person_knows_person.csv");
+                acid::person_knows_person(persons, sf).unwrap();
+                log::info!("Generated person_knows_person.csv");
+            });
 
-            //            if create_params {
-            //     let transactions = settings.get_int("transactions")? as u64;
-            //     let wrapped_seed;
-            //     if set_seed {
-            //         wrapped_seed = Some(seed);
-            //     } else {
-            //         wrapped_seed = None;
-            //     }
-            //     let use_balance_mix = settings.get_bool("use_balance_mix")?;
-            //     let hotspot_use_fixed_size = settings.get_bool("hotspot_use_fixed_size")?;
-            //     log::info!("Generating {} parameters", transactions);
-            //     smallbank::params(
-            //         sf,
-            //         set_seed,
-            //         wrapped_seed,
-            //         use_balance_mix,
-            //         hotspot_use_fixed_size,
-            //         transactions,
-            //     )
-            //     .unwrap();
-            //     log::info!("Generated {} parameters", transactions);
-            // }
+            pjh.join().unwrap();
+            pkp.join().unwrap();
         }
 
         _ => panic!("workload not recognised"),
