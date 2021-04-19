@@ -153,8 +153,12 @@ impl SuccessMessage {
     }
 
     /// Get values
-    pub fn get_values(&self) -> &BTreeMap<String, String> {
-        &self.val.as_ref().unwrap()
+    pub fn get_values(&self) -> Option<BTreeMap<String, String>> {
+        self.val.clone()
+    }
+
+    pub fn get_updated(&self) -> Option<u64> {
+        self.updated.clone()
     }
 }
 

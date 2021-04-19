@@ -221,7 +221,8 @@ pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<Stri
 
     protocol.scheduler.commit(meta.clone())?; // commit
 
-    let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
+    // Note; the person id is needed for the anomaly check so embedding it in the updated field as a workaround
+    let res = datatype::to_result(None, Some(params.p_id), None, None, None).unwrap();
     Ok(res)
 }
 

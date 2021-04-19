@@ -110,6 +110,10 @@ impl Generator {
                 let workload = config.get_str("workload").unwrap();
                 let anomaly = config.get_str("anomaly").unwrap();
                 if workload.as_str() == "acid" && anomaly.as_str() == "lu" {
+                    info!("Waiting to send LostUpdateRead");
+
+                    std::thread::sleep(std::time::Duration::from_millis(5000)); // artifical delay
+
                     let sf = config.get_int("scale_factor").unwrap() as u64;
                     let persons = *ACID_SF_MAP.get(&sf).unwrap();
 

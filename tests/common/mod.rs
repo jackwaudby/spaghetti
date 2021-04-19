@@ -5,6 +5,7 @@ use spaghetti::embedded::generator::{self, Generator, InternalRequest};
 use spaghetti::embedded::logging::{self, Logger};
 use spaghetti::embedded::manager::{self, TransactionManager};
 use spaghetti::server::storage::datatype::SuccessMessage;
+use spaghetti::workloads::acid::ACID_SF_MAP;
 use spaghetti::workloads::Workload;
 
 use config::Config;
@@ -104,6 +105,7 @@ pub fn g1a(protocol: &str) {
         let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
         let version = resp
             .get_values()
+            .unwrap()
             .get("version")
             .unwrap()
             .parse::<u64>()
@@ -136,7 +138,7 @@ pub fn g1c(protocol: &str) {
 
     for line in reader.lines() {
         let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        let values = resp.get_values(); // (transaction_id, version_id) = (version_id/tb) --wr--> (transaction_id/ta)
+        let values = resp.get_values().unwrap(); // (transaction_id, version_id) = (version_id/tb) --wr--> (transaction_id/ta)
         let transaction_id = values
             .get("transaction_id")
             .unwrap()
@@ -184,7 +186,7 @@ pub fn imp(protocol: &str) {
 
     for line in reader.lines() {
         let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        let vals = resp.get_values(); // TODO: sometimes does not have values as it updated.
+        let vals = resp.get_values().unwrap(); // TODO: sometimes does not have values as it updated.
         let first = vals.get("first_read").unwrap().parse::<u64>().unwrap();
         let second = vals.get("second_read").unwrap().parse::<u64>().unwrap();
         assert_eq!(first, second, "first: {}, second: {}", first, second);
@@ -194,16 +196,35 @@ pub fn imp(protocol: &str) {
 pub fn lu(protocol: &str) {
     let anomaly = "lu";
     let config = setup_config(protocol, anomaly);
+    let sf = config.get_int("scale_factor").unwrap() as u64;
 
     run(config);
 
     let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
     let reader = BufReader::new(fh);
 
+    let persons = *ACID_SF_MAP.get(&sf).unwrap();
+
+    let mut expected = vec![];
+    for _ in 0..persons {
+        expected.push(0);
+    }
+
     for line in reader.lines() {
         let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        // TODO: work out how many sent!
-        // Sum up committed per person_id
-        log::info!("{:?}", resp);
+        if let Some(p_id) = resp.get_updated() {
+            expected[p_id as usize] += 1;
+        }
+
+        if let Some(vals) = resp.get_values() {
+            let p_id = vals.get("p_id").unwrap().parse::<u64>().unwrap() as usize;
+            let nf = vals.get("num_friends").unwrap().parse::<u64>().unwrap();
+
+            assert_eq!(
+                expected[p_id], nf,
+                "expected: {}, actual: {}",
+                expected[p_id], nf
+            );
+        }
     }
 }
