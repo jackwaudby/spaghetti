@@ -63,10 +63,40 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
         row.init_value("p_id", &p_id.to_string())?;
         row.init_value("version", "1")?;
         row.init_value("num_friends", "0")?;
-        row.init_value("version_history", "[]")?;
+        row.init_value("version_history", "")?;
         i.insert(pk, row)?;
     }
     info!("Loaded {} row(s) into person", t.get_num_rows());
+
+    Ok(())
+}
+
+/// Populate the `Knows` table.
+///
+/// Schema: (p1_id, p2_id,  version_history)
+/// Primary key: (p1_id, p2_id)
+pub fn populate_person_knows_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
+    let t = data.get_table("knows")?;
+    let i_name = t.get_primary_index()?;
+    let i = data.get_index(&i_name)?;
+    let protocol = data.config.get_str("protocol")?;
+    let sf = data.config.get_int("scale_factor")? as u64;
+    let persons = *ACID_SF_MAP.get(&sf).unwrap();
+
+    info!("Populating knows table: {}", persons);
+    for p1_id in 0..persons {
+        for p2_id in p1_id + 1..persons {
+            let mut row = Row::new(Arc::clone(&t), &protocol);
+            let pk = PrimaryKey::Acid(AcidPrimaryKey::Knows(p1_id, p2_id));
+            row.set_primary_key(pk.clone());
+            row.init_value("p1_id", &p1_id.to_string())?;
+            row.init_value("p2_id", &p2_id.to_string())?;
+            row.init_value("version_history", "")?;
+            i.insert(pk, row)?;
+        }
+    }
+
+    info!("Loaded {} row(s) into knows", t.get_num_rows());
 
     Ok(())
 }
