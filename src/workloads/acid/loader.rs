@@ -87,7 +87,7 @@ pub fn populate_person_knows_person_table(data: &Internal, _rng: &mut StdRng) ->
     let persons = *ACID_SF_MAP.get(&sf).unwrap();
 
     info!("Populating knows table: {}", persons);
-    for p1_id in 0..persons {
+    for p1_id in (0..persons).step_by(2) {
         let p2_id = p1_id + 1;
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Knows(p1_id, p2_id));
@@ -96,8 +96,6 @@ pub fn populate_person_knows_person_table(data: &Internal, _rng: &mut StdRng) ->
         row.init_value("p2_id", &p2_id.to_string())?;
         row.init_value("version_history", "")?;
         i.insert(pk, row)?;
-
-        p1_id += 1;
     }
 
     info!("Loaded {} row(s) into knows", t.get_num_rows());

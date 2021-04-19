@@ -31,12 +31,11 @@ pub fn person_knows_person(persons: u64, sf: u64) -> Result<()> {
         .has_headers(false)
         .from_path(format!("./data/acid/sf-{}/person_knows_person.csv", sf))?;
 
-    for p1_id in 0..persons {
+    for p1_id in (0..persons).step_by(2) {
         let p2_id = p1_id + 1;
         let pkp = PersonKnowsPerson::new(p1_id, p2_id);
 
         wtr.serialize(pkp)?;
-        p1_id += 1;
     }
 
     wtr.flush()?;
