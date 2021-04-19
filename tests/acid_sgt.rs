@@ -16,6 +16,7 @@ fn acid_sgt_g1c() {
 }
 
 #[test]
+#[ignore]
 fn acid_sgt_imp() {
     common::imp(PROTOCOL);
 }

@@ -15,11 +15,13 @@ fn acid_opt_hit_g1c() {
 }
 
 #[test]
+#[ignore]
 fn acid_opt_hit_imp() {
     common::imp(PROTOCOL);
 }
 
 #[test]
+#[ignore]
 fn acid_opt_hit_lu() {
     common::lu(PROTOCOL);
 }

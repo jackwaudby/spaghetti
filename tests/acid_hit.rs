@@ -20,6 +20,7 @@ fn acid_hit_imp() {
 }
 
 #[test]
+#[ignore]
 fn acid_hit_lu() {
     common::lu(PROTOCOL);
 }
