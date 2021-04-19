@@ -3,7 +3,7 @@ use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::acid::keys::AcidPrimaryKey;
 use crate::workloads::acid::paramgen::{
-    G1aRead, G1aWrite, G1cReadWrite, ImpRead, ImpWrite, LostUpdateRead, LostUpdateWrite,
+    G0Write, G1aRead, G1aWrite, G1cReadWrite, ImpRead, ImpWrite, LostUpdateRead, LostUpdateWrite,
 };
 use crate::workloads::PrimaryKey;
 
@@ -11,6 +11,31 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 use std::{thread, time};
 use tracing::debug;
+
+/// Dirty Write (G0) TW
+pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    let pk_p1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id));
+    let pk_p2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
+    let pk_knows = PrimaryKey::Acid(AcidPrimaryKey::Knows(params.p1_id, params.p2_id));
+    let value = params.transaction_id.to_string();
+    let meta = protocol.scheduler.register().unwrap(); // register
+
+    protocol
+        .scheduler
+        .append("person", pk_p1, "version_history", &value, meta.clone())?;
+    protocol
+        .scheduler
+        .append("person", pk_p2, "version_history", &value, meta.clone())?;
+    protocol
+        .scheduler
+        .append("knows", pk_knows, "version_history", &value, meta.clone())?;
+
+    protocol.scheduler.commit(meta.clone())?; // commit
+
+    let res = datatype::to_result(None, Some(3), None, None, None).unwrap();
+
+    Ok(res)
+}
 
 /// Aborted Read (G1a) TR
 pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
