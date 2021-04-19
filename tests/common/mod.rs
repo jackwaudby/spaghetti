@@ -114,6 +114,26 @@ pub fn g1a(protocol: &str) {
     }
 }
 
+/// Dirty Write (G0).
+///
+/// # Anomaly check
+///
+///
+pub fn g0(protocol: &str) {
+    let anomaly = "g0";
+    let config = setup_config(protocol, anomaly);
+
+    run(config);
+
+    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
+    let reader = BufReader::new(fh);
+
+    for line in reader.lines() {
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        log::info!("{:?}", resp);
+    }
+}
+
 /// Circular information flow (G1c).
 ///
 /// # Anomaly check
