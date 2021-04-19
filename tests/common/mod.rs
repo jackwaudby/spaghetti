@@ -186,10 +186,11 @@ pub fn imp(protocol: &str) {
 
     for line in reader.lines() {
         let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        let vals = resp.get_values().unwrap(); // TODO: sometimes does not have values as it updated.
-        let first = vals.get("first_read").unwrap().parse::<u64>().unwrap();
-        let second = vals.get("second_read").unwrap().parse::<u64>().unwrap();
-        assert_eq!(first, second, "first: {}, second: {}", first, second);
+        if let Some(vals) = resp.get_values() {
+            let first = vals.get("first_read").unwrap().parse::<u64>().unwrap();
+            let second = vals.get("second_read").unwrap().parse::<u64>().unwrap();
+            assert_eq!(first, second, "first: {}, second: {}", first, second);
+        }
     }
 }
 
