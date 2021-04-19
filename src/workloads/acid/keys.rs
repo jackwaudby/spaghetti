@@ -3,6 +3,9 @@
 pub enum AcidPrimaryKey {
     /// (p_id)
     Person(u64),
+
+    /// (p1_id, p2_id)
+    Knows(u64, u64),
 }
 
 #[cfg(test)]
