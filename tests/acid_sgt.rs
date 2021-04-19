@@ -5,6 +5,12 @@ const PROTOCOL: &str = "sgt";
 mod common;
 
 #[test]
+#[ignore]
+fn acid_sgt_g0() {
+    common::g0(PROTOCOL);
+}
+
+#[test]
 fn acid_sgt_g1a() {
     common::g1a(PROTOCOL);
 }

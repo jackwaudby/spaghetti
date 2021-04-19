@@ -85,6 +85,51 @@ pub fn run(config: Arc<Config>) {
     global_stats.write_to_file();
 }
 
+/// Dirty Write (G0).
+///
+/// # Anomaly check
+///
+/// For each Person pair in the test graph:
+/// (i) prune each versionHistory list to remove any version numbers that do not appear in all lists; needed to account for interference from Lost Update anomalies (Section 4.8),
+/// (ii) perform an element-wise comparison between versionHistory lists
+///  for each entity, (iii) if lists do not agree a G0 anomaly has occurred.
+pub fn g0(protocol: &str) {
+    let anomaly = "g0";
+    let config = setup_config(protocol, anomaly);
+
+    run(config);
+
+    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
+    let reader = BufReader::new(fh);
+
+    for line in reader.lines() {
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+
+        if let Some(vals) = resp.get_values() {
+            let p1vh = vals.get("p1_version_history").unwrap().clone();
+            let p2vh = vals.get("p2_version_history").unwrap().clone();
+            let kvh = vals.get("knows_version_history").unwrap().clone();
+
+            // TODO: implement (i)
+            let x = string_to_vec64(p1vh);
+            let y = string_to_vec64(p2vh);
+            let z = string_to_vec64(kvh);
+
+            assert_eq!(x, y);
+            assert_eq!(y, z);
+            assert_eq!(x, z);
+        }
+    }
+}
+
+fn string_to_vec64(mut s: String) -> Vec<u64> {
+    s.retain(|c| !c.is_whitespace());
+    s.remove(0);
+    s.pop();
+    let res: Vec<u64> = s.split(",").map(|x| x.parse::<u64>().unwrap()).collect();
+    res
+}
+
 /// Aborted Read (G1a).
 ///
 /// # Anomaly check
@@ -111,26 +156,6 @@ pub fn g1a(protocol: &str) {
             .parse::<u64>()
             .unwrap();
         assert_eq!(version, 1, "expected: {}, actual: {}", 1, version);
-    }
-}
-
-/// Dirty Write (G0).
-///
-/// # Anomaly check
-///
-///
-pub fn g0(protocol: &str) {
-    let anomaly = "g0";
-    let config = setup_config(protocol, anomaly);
-
-    run(config);
-
-    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
-    let reader = BufReader::new(fh);
-
-    for line in reader.lines() {
-        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        log::info!("{:?}", resp);
     }
 }
 

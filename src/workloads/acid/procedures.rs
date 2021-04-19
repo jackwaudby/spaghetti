@@ -62,13 +62,13 @@ pub fn g0_read(params: G0Read, protocol: Arc<Protocol>) -> Result<String, NonFat
     protocol.scheduler.commit(meta.clone())?;
 
     let columns: Vec<&str> = vec![
-        "p_id",
-        "version_history",
-        "p_id",
-        "version_history",
         "p1_id",
+        "p1_version_history",
         "p2_id",
-        "version_history",
+        "p2_version_history",
+        "knows_p1_id",
+        "knows_p2_id",
+        "knows_version_history",
     ];
     r1.append(&mut r2);
     r1.append(&mut r3);
