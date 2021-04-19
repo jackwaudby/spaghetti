@@ -22,6 +22,7 @@ fn acid_sgt_imp() {
 }
 
 #[test]
+#[ignore]
 fn acid_sgt_lu() {
     common::lu(PROTOCOL);
 }
