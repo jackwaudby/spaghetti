@@ -143,6 +143,14 @@ impl TransactionManager {
                 Transaction::Acid(_) => {
                     if let Parameters::Acid(params) = parameters {
                         match params {
+                            AcidTransactionProfile::G0Write(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::g0_write(params, scheduler)
+                            }
+                            AcidTransactionProfile::G0Read(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::g0_read(params, scheduler)
+                            }
                             AcidTransactionProfile::G1aRead(params) => {
                                 debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                                 acid::procedures::g1a_read(params, scheduler)

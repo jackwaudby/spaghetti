@@ -3,7 +3,8 @@ use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::acid::keys::AcidPrimaryKey;
 use crate::workloads::acid::paramgen::{
-    G0Write, G1aRead, G1aWrite, G1cReadWrite, ImpRead, ImpWrite, LostUpdateRead, LostUpdateWrite,
+    G0Read, G0Write, G1aRead, G1aWrite, G1cReadWrite, ImpRead, ImpWrite, LostUpdateRead,
+    LostUpdateWrite,
 };
 use crate::workloads::PrimaryKey;
 
@@ -33,6 +34,46 @@ pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonF
     protocol.scheduler.commit(meta.clone())?; // commit
 
     let res = datatype::to_result(None, Some(3), None, None, None).unwrap();
+
+    Ok(res)
+}
+
+/// Dirty Write (G0) TR
+pub fn g0_read(params: G0Read, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    let person_columns: Vec<&str> = vec!["p_id", "version_history"];
+    let knows_columns: Vec<&str> = vec!["p1_id", "p2_id", "version_history"];
+
+    let pk_p1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id));
+    let pk_p2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
+    let pk_knows = PrimaryKey::Acid(AcidPrimaryKey::Knows(params.p1_id, params.p2_id));
+
+    let meta = protocol.scheduler.register().unwrap();
+
+    let mut r1 = protocol
+        .scheduler
+        .read("person", pk_p1, &person_columns, meta.clone())?;
+    let mut r2 = protocol
+        .scheduler
+        .read("person", pk_p2, &person_columns, meta.clone())?;
+    let mut r3 = protocol
+        .scheduler
+        .read("knows", pk_knows, &knows_columns, meta.clone())?;
+
+    protocol.scheduler.commit(meta.clone())?;
+
+    let columns: Vec<&str> = vec![
+        "p_id",
+        "version_history",
+        "p_id",
+        "version_history",
+        "p1_id",
+        "p2_id",
+        "version_history",
+    ];
+    r1.append(&mut r2);
+    r1.append(&mut r3);
+
+    let res = datatype::to_result(None, None, None, Some(&columns), Some(&r1)).unwrap();
 
     Ok(res)
 }
