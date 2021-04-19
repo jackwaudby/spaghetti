@@ -19,8 +19,6 @@ pub fn persons(persons: u64, sf: u64) -> Result<()> {
 }
 
 /// Generate `PersonKnowsPerson` records.
-///
-/// This generates a fully connected graph.
 pub fn person_knows_person(persons: u64, sf: u64) -> Result<()> {
     // TODO: desired format;
     // p1.id, p2.id,version.history
@@ -34,11 +32,11 @@ pub fn person_knows_person(persons: u64, sf: u64) -> Result<()> {
         .from_path(format!("./data/acid/sf-{}/person_knows_person.csv", sf))?;
 
     for p1_id in 0..persons {
-        for p2_id in p1_id + 1..persons {
-            let pkp = PersonKnowsPerson::new(p1_id, p2_id);
+        let p2_id = p1_id + 1;
+        let pkp = PersonKnowsPerson::new(p1_id, p2_id);
 
-            wtr.serialize(pkp)?;
-        }
+        wtr.serialize(pkp)?;
+        p1_id += 1;
     }
 
     wtr.flush()?;
