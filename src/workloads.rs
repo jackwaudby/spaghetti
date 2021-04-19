@@ -98,6 +98,7 @@ impl Workload {
                 } else {
                     info!("Generate sf-{}", sf);
                     acid::loader::populate_person_table(i, rng)?;
+                    acid::loader::populate_person_knows_person_table(i, rng)?;
                 }
             }
             Tatp(ref i) => {
