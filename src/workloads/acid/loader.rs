@@ -73,6 +73,9 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
 
 /// Populate the `Knows` table.
 ///
+/// Inserts distinct person pairs, e.g., p1 -> p2, p3 -> p4.
+/// Each person node has only a single edge in or out.
+///
 /// Schema: (p1_id, p2_id,  version_history)
 /// Primary key: (p1_id, p2_id)
 pub fn populate_person_knows_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
@@ -85,15 +88,16 @@ pub fn populate_person_knows_person_table(data: &Internal, _rng: &mut StdRng) ->
 
     info!("Populating knows table: {}", persons);
     for p1_id in 0..persons {
-        for p2_id in p1_id + 1..persons {
-            let mut row = Row::new(Arc::clone(&t), &protocol);
-            let pk = PrimaryKey::Acid(AcidPrimaryKey::Knows(p1_id, p2_id));
-            row.set_primary_key(pk.clone());
-            row.init_value("p1_id", &p1_id.to_string())?;
-            row.init_value("p2_id", &p2_id.to_string())?;
-            row.init_value("version_history", "")?;
-            i.insert(pk, row)?;
-        }
+        let p2_id = p1_id + 1;
+        let mut row = Row::new(Arc::clone(&t), &protocol);
+        let pk = PrimaryKey::Acid(AcidPrimaryKey::Knows(p1_id, p2_id));
+        row.set_primary_key(pk.clone());
+        row.init_value("p1_id", &p1_id.to_string())?;
+        row.init_value("p2_id", &p2_id.to_string())?;
+        row.init_value("version_history", "")?;
+        i.insert(pk, row)?;
+
+        p1_id += 1;
     }
 
     info!("Loaded {} row(s) into knows", t.get_num_rows());
