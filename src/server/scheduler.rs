@@ -123,6 +123,18 @@ pub trait Scheduler {
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError>;
 
+    /// List data type only.
+    ///
+    /// Append `value` to `column`.
+    fn append(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        column: &str,
+        value: &str,
+        meta: TransactionInfo,
+    ) -> Result<(), NonFatalError>;
+
     /// Update columns with values in a row.
     fn update(
         &self,

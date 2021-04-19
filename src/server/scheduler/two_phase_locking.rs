@@ -375,6 +375,95 @@ impl Scheduler for TwoPhaseLocking {
         }
     }
 
+    /// Attempt to append `value` to `columns` in row.
+    ///
+    /// # Aborts
+    ///
+    /// The table cannot be found.
+    /// There is no primary index on this table.
+    /// The index cannot be found.
+    /// Row cannot be found.
+    /// Column does not exist in the table.
+    /// Lock request denied.
+    fn append(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        column: &str,
+        value: &str,
+        meta: TransactionInfo,
+    ) -> Result<(), NonFatalError> {
+        debug!(
+            "Transaction {:?} requesting write lock on {:?}",
+            meta.get_id().unwrap(),
+            key
+        );
+        let table = self.get_table(table, meta.clone())?;
+        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+
+        let request = self.request_lock(
+            &index_name,
+            key.clone(),
+            LockMode::Write,
+            &meta.get_id().unwrap(),
+            meta.get_ts().unwrap(),
+        ); // request lock
+
+        match request {
+            LockRequest::Granted => {
+                debug!(
+                    "Write lock for {:?} granted to transaction {:?}",
+                    key.clone(),
+                    meta.get_id().unwrap()
+                );
+
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key.clone()); // register lock
+
+                match index.append(key.clone(), column, value, "2pl", &meta.get_id().unwrap()) {
+                    Ok(_) => {
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        self.abort(meta.clone()).unwrap();
+                        return Err(e);
+                    }
+                }
+            }
+            LockRequest::Delay(pair) => {
+                debug!("Waiting for write lock");
+                let (lock, cvar) = &*pair;
+                let mut waiting = lock.lock().unwrap();
+                while !*waiting {
+                    waiting = cvar.wait(waiting).unwrap();
+                }
+                debug!("Write lock granted");
+                self.active_transactions
+                    .get_mut(&meta.get_id().unwrap())
+                    .unwrap()
+                    .add_lock(key.clone()); // Register lock.
+                match index.append(key.clone(), column, value, "2pl", &meta.get_id().unwrap()) {
+                    Ok(_) => {
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        self.abort(meta.clone()).unwrap();
+                        return Err(e);
+                    }
+                }
+            }
+            LockRequest::Denied => {
+                debug!("Write lock denied");
+                let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key.clone()));
+                self.abort(meta.clone()).unwrap();
+                return Err(err.into());
+            }
+        }
+    }
+
     /// Attempt to update columns in row.
     ///
     /// # Aborts

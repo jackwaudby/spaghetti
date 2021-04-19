@@ -294,6 +294,75 @@ impl Scheduler for SerializationGraphTesting {
         }
     }
 
+    /// Append `value` to `column`.
+    ///
+    /// Adds an edge in the graph for each WW and RW conflict.
+    fn append(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        column: &str,
+        value: &str,
+        meta: TransactionInfo,
+    ) -> Result<(), NonFatalError> {
+        let handle = thread::current();
+        debug!(
+            "Thread {}: Executing update operation",
+            handle.name().unwrap()
+        );
+
+        let table = self.get_table(table, meta.clone())?; // get table
+        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+
+        let read_guard = match index.get_lock_on_row(key.clone()) {
+            Ok(rg) => rg, // get handle to row
+            Err(e) => {
+                self.abort(meta.clone()).unwrap(); // abort -- RowNotFound.
+                return Err(e);
+            }
+        };
+
+        let mut mg = read_guard.lock().unwrap(); // get mutex on row
+        let row = &mut *mg; // deref to row
+
+        match row.append_value(column, value, "sgt", &meta.get_id().unwrap()) {
+            Ok(res) => {
+                let access_history = res.get_access_history().unwrap(); // get access history
+                let this_node = meta.get_id().unwrap().parse::<usize>().unwrap(); // get position of this transaction in the graph
+
+                for access in access_history {
+                    match access {
+                        // WW conflict
+                        Access::Write(tid) => {
+                            let from_node: usize = tid.parse().unwrap(); // get position of conflicting transaction in the graph.
+
+                            // insert edges
+                            if let Err(e) = self.add_edge(from_node, this_node, false) {
+                                self.abort(meta.clone()).unwrap(); // abort -- parent aborted
+                                return Err(e.into());
+                            }
+                        }
+                        // RW conflict
+                        Access::Read(tid) => {
+                            let from_node: usize = tid.parse().unwrap();
+                            if let Err(e) = self.add_edge(from_node, this_node, true) {
+                                self.abort(meta.clone()).unwrap(); // abort -- parent abortde
+                                return Err(e.into());
+                            }
+                        }
+                    }
+                }
+                let this_node = self.get_shared_lock(this_node);
+                this_node.add_key(&index.get_name(), key, OperationType::Update);
+                Ok(())
+            }
+            Err(e) => {
+                self.abort(meta).unwrap(); // abort -- row deleted or row dirty
+                return Err(e);
+            }
+        }
+    }
+
     /// Execute a write operation.
     ///
     /// Adds an edge in the graph for each WW and RW conflict.

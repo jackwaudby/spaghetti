@@ -170,13 +170,11 @@ impl Index {
             Vec<Data>,
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
     {
-        // Attempt to get read guard.
         let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
             format!("{}", key),
             self.get_name(),
-        ))?;
-        // Deref to row.
-        let row = &mut *read_guard.lock().unwrap();
+        ))?; // attempt to get read guard on row
+        let row = &mut *read_guard.lock().unwrap(); // deref to row
 
         // If needed, get current values of columns.
         let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
@@ -188,13 +186,32 @@ impl Index {
             current = None;
         }
 
-        // Compute new values.
-        // Update closure expects vec of strings.
-        let (_, new_values) = f(columns.clone(), current, params)?;
+        let (_, new_values) = f(columns.clone(), current, params)?; // compute new values
         let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
 
-        // Execute write operation.
-        let res = row.set_values(&c, &nv, protocol, tid)?;
+        let res = row.set_values(&c, &nv, protocol, tid)?; // execute write operation
+        Ok(res)
+    }
+
+    /// Append `value` to `column` in a `Row` with the given `key`.
+    ///
+    /// # NonFatalErrors
+    ///
+    /// (i) Row does not exist with `key`, (ii) row is dirty, or (iii) row is marked for delete
+    pub fn append(
+        &self,
+        key: PrimaryKey,
+        column: &str,
+        value: &str,
+        protocol: &str,
+        tid: &str,
+    ) -> Result<OperationResult, NonFatalError> {
+        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+            format!("{}", key),
+            self.get_name(),
+        ))?; //  attempt to get read guard
+        let row = &mut *read_guard.lock().unwrap(); // deref to row
+        let res = row.append_value(column, value, protocol, tid)?; // execute append
         Ok(res)
     }
 
