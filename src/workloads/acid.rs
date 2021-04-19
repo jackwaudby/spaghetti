@@ -22,6 +22,8 @@ lazy_static! {
 
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum AcidTransaction {
+    G0Write,
+    G0Read,
     G1aWrite,
     G1aRead,
     G1cReadWrite,

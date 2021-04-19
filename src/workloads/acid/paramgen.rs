@@ -77,12 +77,37 @@ impl AcidGenerator {
         self.generated += 1;
 
         match self.anomaly.as_str() {
+            "g0" => self.get_g0_params(),
             "g1a" => self.get_g1a_params(n),
             "g1c" => self.get_g1c_params(),
             "imp" => self.get_imp_params(n),
             "lu" => self.get_lu_params(),
             _ => panic!("anomaly: {} not recognised", self.anomaly),
         }
+    }
+
+    /// Get a transaction profile for g0 test.
+    fn get_g0_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
+        self.generated += 1; // start transaction ids at 1
+        let p1_id = self.rng.gen_range(0..self.persons); // person1 id
+        let mut p2_id = p1_id;
+
+        while p1_id == p2_id {
+            p2_id = self.rng.gen_range(0..self.persons); // person2 id
+        }
+
+        // unique tid; ok as transaction generation is single-threaded
+        let transaction_id = self.generated;
+        let payload = G0Write {
+            p1_id,
+            p2_id,
+            transaction_id,
+        };
+
+        (
+            AcidTransaction::G0Write,
+            AcidTransactionProfile::G0Write(payload),
+        )
     }
 
     /// Get a transaction profile for g1a test.
@@ -185,6 +210,8 @@ impl AcidGenerator {
 /// Represents parameters for each transaction.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum AcidTransactionProfile {
+    G0Write(G0Write),
+    G0Read(G0Read),
     G1aWrite(G1aWrite),
     G1aRead(G1aRead),
     G1cReadWrite(G1cReadWrite),
@@ -192,6 +219,19 @@ pub enum AcidTransactionProfile {
     ImpWrite(ImpWrite),
     LostUpdateRead(LostUpdateRead),
     LostUpdateWrite(LostUpdateWrite),
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct G0Write {
+    pub p1_id: u64,
+    pub p2_id: u64,
+    pub transaction_id: u32,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct G0Read {
+    pub p1_id: u64,
+    pub p2_id: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -237,13 +277,25 @@ pub struct LostUpdateRead {
 impl fmt::Display for AcidTransactionProfile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
+            AcidTransactionProfile::G0Read(params) => {
+                let G0Read { p1_id, p2_id } = params;
+                write!(f, "0,{},{}", p1_id, p2_id)
+            }
+            AcidTransactionProfile::G0Write(params) => {
+                let G0Write {
+                    p1_id,
+                    p2_id,
+                    transaction_id,
+                } = params;
+                write!(f, "1,{},{},{}", p1_id, p2_id, transaction_id)
+            }
             AcidTransactionProfile::G1aRead(params) => {
                 let G1aRead { p_id } = params;
-                write!(f, "0,{}", p_id)
+                write!(f, "2,{}", p_id)
             }
             AcidTransactionProfile::G1aWrite(params) => {
                 let G1aWrite { p_id, version, .. } = params;
-                write!(f, "1,{},{}", p_id, version)
+                write!(f, "3,{},{}", p_id, version)
             }
             AcidTransactionProfile::G1cReadWrite(params) => {
                 let G1cReadWrite {
@@ -251,23 +303,23 @@ impl fmt::Display for AcidTransactionProfile {
                     p2_id,
                     transaction_id,
                 } = params;
-                write!(f, "2,{},{},{}", p1_id, p2_id, transaction_id)
+                write!(f, "6,{},{},{}", p1_id, p2_id, transaction_id)
             }
             AcidTransactionProfile::ImpRead(params) => {
                 let ImpRead { p_id, .. } = params;
-                write!(f, "3,{}", p_id)
+                write!(f, "7,{}", p_id)
             }
             AcidTransactionProfile::ImpWrite(params) => {
                 let ImpWrite { p_id } = params;
-                write!(f, "4,{}", p_id)
+                write!(f, "8,{}", p_id)
             }
             AcidTransactionProfile::LostUpdateRead(params) => {
                 let LostUpdateRead { p_id } = params;
-                write!(f, "5 {}", p_id)
+                write!(f, "14,{}", p_id)
             }
             AcidTransactionProfile::LostUpdateWrite(params) => {
                 let LostUpdateWrite { p_id } = params;
-                write!(f, "6 {}", p_id)
+                write!(f, "15,{}", p_id)
             }
         }
     }

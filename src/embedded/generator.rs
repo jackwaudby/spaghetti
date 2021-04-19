@@ -1,6 +1,8 @@
 use crate::common::message::{InternalResponse, Message, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
-use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile, LostUpdateRead};
+use crate::workloads::acid::paramgen::{
+    AcidGenerator, AcidTransactionProfile, G0Read, LostUpdateRead,
+};
 use crate::workloads::acid::{AcidTransaction, ACID_SF_MAP};
 use crate::workloads::smallbank::paramgen::SmallBankGenerator;
 use crate::workloads::tatp::paramgen::TatpGenerator;
@@ -105,44 +107,75 @@ impl Generator {
             if sent == max_transactions {
                 info!("All transactions sent: {} = {}", sent, max_transactions);
 
-                // ACID TEST ONLY;
-                //send message read lost update for each person
+                // ACID TEST ONLY -- post-execution recon queries
                 let workload = config.get_str("workload").unwrap();
-                let anomaly = config.get_str("anomaly").unwrap();
-                if workload.as_str() == "acid" && anomaly.as_str() == "lu" {
-                    info!("Waiting to send LostUpdateRead");
-
+                if workload.as_str() == "acid" {
+                    let anomaly = config.get_str("anomaly").unwrap(); // get anomaly
                     std::thread::sleep(std::time::Duration::from_millis(5000)); // artifical delay
+                    let sf = config.get_int("scale_factor").unwrap() as u64; // get sf
+                    let persons = *ACID_SF_MAP.get(&sf).unwrap(); // get persons
 
-                    let sf = config.get_int("scale_factor").unwrap() as u64;
-                    let persons = *ACID_SF_MAP.get(&sf).unwrap();
+                    match anomaly.as_str() {
+                        "g0" => {
+                            info!("Waiting to send G0Read");
+                            for p1_id in 0..persons {
+                                let p2_id = p1_id + 1;
+                                let payload = G0Read { p1_id, p2_id };
 
-                    for p_id in 0..persons {
-                        let payload = LostUpdateRead { p_id };
+                                let message = Message::Request {
+                                    request_no: generator.get_generated() + 1,
+                                    transaction: Transaction::Acid(AcidTransaction::G0Read),
+                                    parameters: Parameters::Acid(AcidTransactionProfile::G0Read(
+                                        payload,
+                                    )),
+                                };
 
-                        let message = Message::Request {
-                            request_no: generator.get_generated() + 1,
-                            transaction: Transaction::Acid(AcidTransaction::LostUpdateRead),
-                            parameters: Parameters::Acid(AcidTransactionProfile::LostUpdateRead(
-                                payload,
-                            )),
-                        };
+                                let request = match message {
+                                    Message::Request {
+                                        request_no,
+                                        transaction,
+                                        parameters,
+                                    } => InternalRequest {
+                                        request_no,
+                                        transaction,
+                                        parameters,
+                                        response_sender: self.logger_tx.clone(),
+                                    },
+                                    _ => unimplemented!(),
+                                };
+                                self.req_tx.send(request).unwrap();
+                            }
+                        }
+                        "lu" => {
+                            info!("Waiting to send LostUpdateRead");
+                            for p_id in 0..persons {
+                                let payload = LostUpdateRead { p_id };
 
-                        let request = match message {
-                            Message::Request {
-                                request_no,
-                                transaction,
-                                parameters,
-                            } => InternalRequest {
-                                request_no,
-                                transaction,
-                                parameters,
-                                response_sender: self.logger_tx.clone(),
-                            },
-                            _ => unimplemented!(),
-                        };
+                                let message = Message::Request {
+                                    request_no: generator.get_generated() + 1,
+                                    transaction: Transaction::Acid(AcidTransaction::LostUpdateRead),
+                                    parameters: Parameters::Acid(
+                                        AcidTransactionProfile::LostUpdateRead(payload),
+                                    ),
+                                };
 
-                        self.req_tx.send(request).unwrap();
+                                let request = match message {
+                                    Message::Request {
+                                        request_no,
+                                        transaction,
+                                        parameters,
+                                    } => InternalRequest {
+                                        request_no,
+                                        transaction,
+                                        parameters,
+                                        response_sender: self.logger_tx.clone(),
+                                    },
+                                    _ => unimplemented!(),
+                                };
+                                self.req_tx.send(request).unwrap();
+                            }
+                        }
+                        _ => info!("No post-execution recon queries"),
                     }
                 }
                 break;
