@@ -113,14 +113,11 @@ impl Row {
     /// A non-fatal error is returned if there is a conversion error or the column cannot be found.
     /// - Parsing error.
     pub fn init_value(&mut self, col_name: &str, col_value: &str) -> Result<(), NonFatalError> {
-        // Get handle to table.
-        let table = Arc::clone(&self.table);
+        let table = Arc::clone(&self.table); // get handle to  table
+        let field_index = table.schema().column_position_by_name(col_name)?; // get index of field in row
+        let field_type = table.schema().column_type_by_index(field_index); // get field type
 
-        // Get index of field in row.
-        let field_index = table.schema().column_position_by_name(col_name)?;
-        let field_type = table.schema().column_type_by_index(field_index);
-
-        // Convert value to spaghetti data type.
+        // convert value to `Data`
         let value = match field_type {
             ColumnKind::VarChar => Data::VarChar(col_value.to_string()),
             ColumnKind::Int => Data::Int(col_value.parse::<i64>().map_err(|_| {
@@ -132,9 +129,9 @@ impl Row {
                     "double".to_string(),
                 )
             })?),
+            ColumnKind::List => Data::List(vec![]), // lists are always empty upon initialisation
         };
-        // Set value.
-        self.current_fields[field_index].set(value);
+        self.current_fields[field_index].set(value); // set value
         Ok(())
     }
 
@@ -154,8 +151,8 @@ impl Row {
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
-        // If deleted operation fails.
         if self.is_deleted() {
+            //  if marked deleted operation fails
             return Err(NonFatalError::RowDeleted(
                 format!("{:?}", self.primary_key),
                 self.table.get_table_name(),
@@ -164,31 +161,89 @@ impl Row {
 
         let access_history = match protocol {
             "sgt" | "hit" | "opt-hit" => {
-                // Get access history.
-                let ah = self.get_access_history().unwrap();
-                // Append this operation.
-                self.append_access(Access::Read(tid.to_string())).unwrap();
+                let ah = self.get_access_history().unwrap(); // get access history
+                self.append_access(Access::Read(tid.to_string())).unwrap(); // append operation
                 Some(ah)
             }
             _ => None,
         };
 
-        // Get reference to table row resides in.
-        let table = Arc::clone(&self.table);
-        // Get each value.
-        let mut values = Vec::new();
+        let table = Arc::clone(&self.table); // get handle to table
+        let mut values = Vec::new(); // get each value
         for column in columns {
-            // Get index of field in row.
-            let field_index = table.schema().column_position_by_name(column)?;
-            // Get field.
-            let field = &self.current_fields[field_index];
-            // Copy value.
-            let value = field.get();
-            // Add to values.
-            values.push(value);
+            let field_index = table.schema().column_position_by_name(column)?; // get index of field in row
+            let field = &self.current_fields[field_index]; // get handle to field
+            let value = field.get(); // clone field
+            values.push(value); // add to result set
         }
-        // Create return result.
-        let res = OperationResult::new(Some(values), access_history);
+        let res = OperationResult::new(Some(values), access_history); // create return result
+
+        Ok(res)
+    }
+
+    /// List data type only!
+    ///
+    /// Append value to list
+    pub fn append_value(
+        &mut self,
+        column: &str,
+        value: &str,
+        protocol: &str,
+        tid: &str,
+    ) -> Result<OperationResult, NonFatalError> {
+        if self.is_dirty() {
+            // if marked dirty operation fails.
+            return Err(NonFatalError::RowDirty(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            ));
+        }
+
+        if self.is_deleted() {
+            // if marked deleted operation fails.
+            return Err(NonFatalError::RowDeleted(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            ));
+        }
+
+        let access_history = match protocol {
+            "sgt" | "hit" | "opt-hit" => {
+                let ah = self.get_access_history().unwrap(); // get access history
+                self.append_access(Access::Write(tid.to_string())).unwrap(); // append this operation
+                Some(ah)
+            }
+            _ => None,
+        };
+
+        let prev_fields = self.current_fields.clone(); // create copy of old fields
+        self.set_prev(Some(prev_fields)); // set prev
+        let table = Arc::clone(&self.table); // get handle to table
+
+        let field_index = table.schema().column_position_by_name(column)?; // get index of field in row
+        let field_type = table.schema().column_type_by_index(field_index); // get type of field
+        let field = &self.current_fields[field_index]; // get handle to field
+
+        if let ColumnKind::List = field_type {
+            let current_list = field.get(); // get the current value
+
+            if let Data::List(mut list) = current_list {
+                let to_append = value.parse::<u64>().unwrap(); // convert to u64
+                list.push(to_append); // append value
+
+                self.current_fields[field_index].set(Data::List(list)); // set value
+            } else {
+                panic!("expected Data::List");
+            }
+        } else {
+            panic!(
+                "append operation not supported for {} data type",
+                field_type
+            );
+        }
+
+        self.set_dirty(true); // set dirty flag
+        let res = OperationResult::new(None, access_history); // create return result
 
         Ok(res)
     }
@@ -219,31 +274,24 @@ impl Row {
 
         let access_history = match protocol {
             "sgt" | "hit" | "opt-hit" => {
-                // Get access history.
-                let ah = self.get_access_history().unwrap();
-                // Append this operation.
-                self.append_access(Access::Write(tid.to_string())).unwrap();
+                let ah = self.get_access_history().unwrap(); // get access history
+                self.append_access(Access::Write(tid.to_string())).unwrap(); // append this operation
                 Some(ah)
             }
             _ => None,
         };
 
-        // Create copy of old fields.
-        let prev_fields = self.current_fields.clone();
-        // Set prev.
-        self.set_prev(Some(prev_fields));
+        let prev_fields = self.current_fields.clone(); // create copy of old fields
+        self.set_prev(Some(prev_fields)); // set prev
+        let table = Arc::clone(&self.table); // get handle to table
 
-        // Get handle to table.
-        let table = Arc::clone(&self.table);
-        // Update each field.
+        // update each field;
         for (i, col_name) in columns.iter().enumerate() {
-            // Get index of field in row.
-            let field_index = table.schema().column_position_by_name(col_name)?;
-            // Get type of field.
-            let field_type = table.schema().column_type_by_index(field_index);
-            // New value.
-            let value = values[i];
-            // Convert value to spaghetti data type.
+            let field_index = table.schema().column_position_by_name(col_name)?; // get index of field in row
+            let field_type = table.schema().column_type_by_index(field_index); // get type of field
+            let value = values[i]; // new value
+
+            // convert value to `Data`
             let new_value = match field_type {
                 ColumnKind::VarChar => Data::VarChar(value.to_string()),
                 ColumnKind::Int => Data::Int(value.parse::<i64>().map_err(|_| {
@@ -255,14 +303,14 @@ impl Row {
                         "double".to_string(),
                     )
                 })?),
+                ColumnKind::List => panic!("set operation not supported for list data type"),
             };
-            // Set value.
-            self.current_fields[field_index].set(new_value);
+
+            self.current_fields[field_index].set(new_value); // set value
         }
-        // Set dirty flag.
-        self.set_dirty(true);
-        // Create return result.
-        let res = OperationResult::new(None, access_history);
+
+        self.set_dirty(true); // set dirty flag
+        let res = OperationResult::new(None, access_history); // create return result
 
         Ok(res)
     }
@@ -486,6 +534,8 @@ mod tests {
     use crate::server::storage::catalog::Catalog;
     use crate::server::storage::datatype;
 
+    use test_env_log::test;
+
     #[test]
     fn row_2pl_test() {
         // create table schema
@@ -493,28 +543,29 @@ mod tests {
         catalog.add_column(("name", "string")).unwrap();
         catalog.add_column(("year", "int")).unwrap();
         catalog.add_column(("amount", "double")).unwrap();
-        // create table
-        let table = Table::init(catalog);
-        // create row in table
-        let mut row = Row::new(Arc::new(table), "2pl");
+        catalog.add_column(("calories", "list")).unwrap();
+
+        let table = Table::init(catalog); // create table
+        let mut row = Row::new(Arc::new(table), "2pl"); // create row in table
         assert_eq!(row.get_table().get_table_id(), 1);
         assert_eq!(row.get_row_id(), 0);
 
-        let columns = vec!["name", "year", "amount"];
+        let rcolumns = vec!["name", "year", "amount", "calories"];
+        let wcolumns = vec!["name", "year", "amount"];
         let values = vec!["el camino", "2019", "53.2"];
 
         // read
-        let r1 = row.get_values(&columns, "2pl", "t1").unwrap();
+        let r1 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
         assert_eq!(
             datatype::to_result(
                 None,
                 None,
                 None,
-                Some(&columns),
+                Some(&rcolumns),
                 Some(&r1.get_values().unwrap())
             )
                 .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
         );
         assert_eq!(r1.get_access_history(), None);
 
@@ -522,28 +573,29 @@ mod tests {
         assert_eq!(format!("{:?}", row.prev_fields), "None");
 
         // write
-        let w1 = row.set_values(&columns, &values, "2pl", "t1").unwrap();
+        let w1 = row.set_values(&wcolumns, &values, "2pl", "t1").unwrap();
+
         assert_eq!(w1.get_values(), None);
         assert_eq!(w1.get_access_history(), None);
 
         assert_eq!(row.is_dirty(), true);
         assert_eq!(
             format!("{:?}", row.prev_fields),
-            "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }])"
+            "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: Null }])"
         );
 
         // read
-        let r2 = row.get_values(&columns, "2pl", "t1").unwrap();
+        let r2 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
         assert_eq!(
             datatype::to_result(
                 None,
                 None,
                 None,
-                Some(&columns),
+                Some(&rcolumns),
                 Some(&r2.get_values().unwrap())
             )
                 .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"53.2\",\"name\":\"el camino\",\"year\":\"2019\"}}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"53.2\",\"calories\":\"null\",\"name\":\"el camino\",\"year\":\"2019\"}}"
         );
         assert_eq!(r2.get_access_history(), None);
 
@@ -553,15 +605,15 @@ mod tests {
 
         // write
         let values2 = vec!["ford", "2005", "78.2"];
-        row.set_values(&columns, &values2, "2pl", "t1").unwrap();
+        row.set_values(&wcolumns, &values2, "2pl", "t1").unwrap();
 
         assert_eq!(
             format!("{:?}", row.prev_fields),
-            "Some([Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }])"
+            "Some([Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }, Field { data: Null }])"
         );
         assert_eq!(
                     format!("{:?}", row.current_fields),
-            "[Field { data: VarChar(\"ford\") }, Field { data: Int(2005) }, Field { data: Double(78.2) }]"
+            "[Field { data: VarChar(\"ford\") }, Field { data: Int(2005) }, Field { data: Double(78.2) }, Field { data: Null }]"
         );
 
         // revert
@@ -569,13 +621,107 @@ mod tests {
         assert_eq!(format!("{:?}", row.prev_fields), "None");
         assert_eq!(
                     format!("{:?}", row.current_fields),
-            "[Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }]"
+            "[Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }, Field { data: Null }]"
         );
         assert_eq!(row.is_dirty(), false);
 
         assert_eq!(
             format!("{}", row),
-            "[0, None, false, cars, el camino, 2019, 53.2, None]"
+            "[0, None, false, cars, el camino, 2019, 53.2, null, None]"
+        );
+    }
+
+    #[test]
+    fn row_2pl_append_test() {
+        // create table schema
+        let mut catalog = Catalog::init("cars", 1);
+        catalog.add_column(("name", "string")).unwrap();
+        catalog.add_column(("year", "int")).unwrap();
+        catalog.add_column(("amount", "double")).unwrap();
+        catalog.add_column(("calories", "list")).unwrap();
+
+        let table = Table::init(catalog); // create table
+        let mut row = Row::new(Arc::new(table), "2pl"); // create row in table
+
+        assert_eq!(row.get_table().get_table_id(), 1);
+        assert_eq!(row.get_row_id(), 0);
+
+        let rcolumns = vec!["name", "year", "amount", "calories"];
+
+        row.init_value("calories", "").unwrap(); // init list
+
+        // read
+        let r1 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
+        assert_eq!(
+            datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&rcolumns),
+                Some(&r1.get_values().unwrap())
+            )
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"[]\",\"name\":\"null\",\"year\":\"null\"}}"
+        );
+        assert_eq!(r1.get_access_history(), None);
+
+        assert_eq!(row.is_dirty(), false);
+        assert_eq!(format!("{:?}", row.prev_fields), "None");
+
+        // write
+        row.append_value("calories", "1678", "2pl", "t1").unwrap();
+
+        assert_eq!(row.is_dirty(), true);
+        assert_eq!(
+            format!("{:?}", row.prev_fields),
+            "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([]) }])"
+        );
+
+        // read
+        let r2 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
+
+        assert_eq!(
+            datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&rcolumns),
+                Some(&r2.get_values().unwrap())
+            )
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"[1678]\",\"name\":\"null\",\"year\":\"null\"}}"
+        );
+        assert_eq!(r2.get_access_history(), None);
+
+        // commit
+        row.commit("2pl", "t1");
+        assert_eq!(format!("{:?}", row.prev_fields), "None");
+
+        // write
+        row.append_value("calories", "1203", "2pl", "t1").unwrap();
+
+        assert_eq!(
+            format!("{:?}", row.prev_fields),
+            "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678]) }])"
+        );
+        assert_eq!(
+            format!("{:?}", row.current_fields),
+            "[Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678, 1203]) }]"
+        );
+
+        // revert
+        row.revert("2pl", "t1");
+        assert_eq!(format!("{:?}", row.prev_fields), "None");
+        assert_eq!(
+            format!("{:?}", row.current_fields),
+            "[Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678]) }]"
+        );
+
+        assert_eq!(row.is_dirty(), false);
+
+        assert_eq!(
+            format!("{}", row),
+            "[0, None, false, cars, null, null, null, [1678], None]"
         );
     }
 

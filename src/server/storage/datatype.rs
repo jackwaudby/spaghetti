@@ -17,6 +17,7 @@ pub enum Data {
     Int(i64),
     VarChar(String),
     Double(f64),
+    List(Vec<u64>), // TODO: make generic
     Null,
 }
 
@@ -51,6 +52,7 @@ impl fmt::Display for Data {
             Data::Int(val) => write!(f, "{}", val.to_string()),
             Data::VarChar(ref val) => write!(f, "{}", val),
             Data::Double(val) => write!(f, "{}", val.to_string()),
+            Data::List(val) => write!(f, "{:?}", val),
             Data::Null => write!(f, "null"),
         }
     }
@@ -185,6 +187,10 @@ mod tests {
         f.set(Data::Double(1.7));
         assert_eq!(f.get(), Data::Double(1.7));
         assert_eq!(format!("{}", f), String::from("1.7"));
+
+        f.set(Data::List(vec![1, 2]));
+        assert_eq!(f.get(), Data::List(vec![1, 2]));
+        assert_eq!(format!("{}", f), String::from("[1, 2]"));
 
         // Conversion success
         assert_eq!(i64::try_from(Data::Int(5)), Ok(5));

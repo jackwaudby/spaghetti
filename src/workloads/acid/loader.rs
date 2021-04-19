@@ -63,6 +63,7 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
         row.init_value("p_id", &p_id.to_string())?;
         row.init_value("version", "1")?;
         row.init_value("num_friends", "0")?;
+        row.init_value("version_history", "[]")?;
         i.insert(pk, row)?;
     }
     info!("Loaded {} row(s) into person", t.get_num_rows());

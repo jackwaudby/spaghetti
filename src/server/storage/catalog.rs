@@ -49,6 +49,7 @@ impl Catalog {
             "int" | "int64_t" | "uint64_t" => ColumnKind::Int,
             "string" => ColumnKind::VarChar,
             "double" => ColumnKind::Double,
+            "list" => ColumnKind::List,
             _ => return Err(FatalError::InvalidColumnType(col.1.to_string())),
         };
 
@@ -152,6 +153,7 @@ pub enum ColumnKind {
     Int,
     VarChar,
     Double,
+    List,
 }
 
 /// Format: type
@@ -161,6 +163,7 @@ impl fmt::Display for ColumnKind {
             ColumnKind::Int => "int",
             ColumnKind::VarChar => "varchar",
             ColumnKind::Double => "double",
+            ColumnKind::List => "list",
         };
         write!(f, "{}", printable)
     }

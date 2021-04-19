@@ -1,17 +1,11 @@
 use crate::Result;
 
-use csv::{Writer, WriterBuilder};
+use csv::WriterBuilder;
 use serde::{Deserialize, Serialize};
 
 /// Generate `Person` records.
 pub fn persons(persons: u64, sf: u64) -> Result<()> {
-    // TODO: desired format;
-    // p1.id, p2.id,version.history
-    // 0,1,[]
-    //
-    // Currently does not serialize with headers as vec![1,3,5] is flatten into 1,3,5
-    // rather than [1,3,5]
-    // Loader will not work with this format
+    // TODO: see person knows person
     let mut wtr = WriterBuilder::new()
         .has_headers(false)
         .from_path(format!("./data/acid/sf-{}/persons.csv", sf))?;
