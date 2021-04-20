@@ -56,7 +56,7 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
     let mut persons = *ACID_SF_MAP.get(&sf).unwrap();
     let anomaly = data.config.get_str("anomaly")?;
 
-    if anomaly.as_str() == "otv" {
+    if anomaly.as_str() == "otv" || anomaly.as_str() == "fr" {
         persons = persons * 4;
     }
 

@@ -90,7 +90,6 @@ impl Logger {
                 }
                 BenchmarkPhase::Execution => {
                     if workload.as_str() == "acid" {
-                        //                        tracing::info!("{}", outcome.clone());
                         if let Outcome::Committed { value } = outcome.clone() {
                             let mut fh = OpenOptions::new()
                                 .write(true)

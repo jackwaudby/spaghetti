@@ -33,6 +33,11 @@ fn acid_sgt_otv() {
 }
 
 #[test]
+fn acid_sgt_fr() {
+    common::fr(PROTOCOL);
+}
+
+#[test]
 #[ignore]
 fn acid_sgt_lu() {
     common::lu(PROTOCOL);

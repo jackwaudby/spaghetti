@@ -83,6 +83,7 @@ impl AcidGenerator {
             "g1c" => self.get_g1c_params(),
             "imp" => self.get_imp_params(n),
             "otv" => self.get_otv_params(n),
+            "fr" => self.get_otv_params(n), // uses same profiles as otv
             "lu" => self.get_lu_params(),
             _ => panic!("anomaly: {} not recognised", self.anomaly),
         }
