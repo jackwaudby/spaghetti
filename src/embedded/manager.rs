@@ -171,6 +171,14 @@ impl TransactionManager {
                                 debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                                 acid::procedures::imp_write(params, scheduler)
                             }
+                            AcidTransactionProfile::OtvRead(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::otv_read(params, scheduler)
+                            }
+                            AcidTransactionProfile::OtvWrite(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::otv_write(params, scheduler)
+                            }
                             AcidTransactionProfile::LostUpdateRead(params) => {
                                 debug!("Thread {}: {:?}", handle.name().unwrap(), params);
                                 acid::procedures::lu_read(params, scheduler)

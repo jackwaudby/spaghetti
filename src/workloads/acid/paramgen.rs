@@ -194,7 +194,10 @@ impl AcidGenerator {
     }
 
     /// Get a transaction profile for OTV test.
-    fn get_otv_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
+    ///
+    /// OTV Read/Write transactions are generated with equal chance.
+    /// The parameters for both transaction are a disjoint person sequence of length 4.
+    fn get_otv_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
         let id = self.rng.gen_range(0..self.persons) as f64;
         let id = id / 4.0;
         let rounded = (round::floor(id, 0) * 4.0) as u64;
@@ -209,7 +212,18 @@ impl AcidGenerator {
             p3_id,
             p4_id,
         };
-        (AcidTransaction::Otv, AcidTransactionProfile::Otv(payload))
+
+        match n {
+            x if x < 0.5 => (
+                AcidTransaction::OtvRead,
+                AcidTransactionProfile::OtvRead(payload),
+            ),
+
+            _ => (
+                AcidTransaction::OtvWrite,
+                AcidTransactionProfile::OtvWrite(payload),
+            ),
+        }
     }
 
     /// Get a transaction profile for LU test.
@@ -238,7 +252,8 @@ pub enum AcidTransactionProfile {
     G1cReadWrite(G1cReadWrite),
     ImpRead(ImpRead),
     ImpWrite(ImpWrite),
-    Otv(Otv),
+    OtvRead(Otv),
+    OtvWrite(Otv),
     LostUpdateRead(LostUpdateRead),
     LostUpdateWrite(LostUpdateWrite),
 }
@@ -343,7 +358,16 @@ impl fmt::Display for AcidTransactionProfile {
                 let ImpWrite { p_id } = params;
                 write!(f, "8,{}", p_id)
             }
-            AcidTransactionProfile::Otv(params) => {
+            AcidTransactionProfile::OtvRead(params) => {
+                let Otv {
+                    p1_id,
+                    p2_id,
+                    p3_id,
+                    p4_id,
+                } = params;
+                write!(f, "9,{},{},{},{}", p1_id, p2_id, p3_id, p4_id)
+            }
+            AcidTransactionProfile::OtvWrite(params) => {
                 let Otv {
                     p1_id,
                     p2_id,
