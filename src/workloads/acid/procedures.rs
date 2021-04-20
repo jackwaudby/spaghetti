@@ -299,7 +299,7 @@ pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFata
             pk,
             column.clone(),
             true,
-            params,
+            params.clone(),
             &calc,
             meta.clone(),
         )?;
