@@ -41,6 +41,7 @@ fn acid_2pl_lu() {
 }
 
 #[test]
+#[ignore]
 fn acid_2pl_g2item() {
     common::g2item(PROTOCOL);
 }

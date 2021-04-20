@@ -42,6 +42,7 @@ fn acid_opt_hit_lu() {
 }
 
 #[test]
+#[ignore]
 fn acid_opt_hit_g2item() {
     common::g2item(PROTOCOL);
 }
