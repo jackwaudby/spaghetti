@@ -1,7 +1,7 @@
 use crate::common::message::{InternalResponse, Message, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::workloads::acid::paramgen::{
-    AcidGenerator, AcidTransactionProfile, G0Read, LostUpdateRead,
+    AcidGenerator, AcidTransactionProfile, G0Read, G2itemRead, LostUpdateRead,
 };
 use crate::workloads::acid::{AcidTransaction, ACID_SF_MAP};
 use crate::workloads::smallbank::paramgen::SmallBankGenerator;
@@ -156,6 +156,39 @@ impl Generator {
                                     transaction: Transaction::Acid(AcidTransaction::LostUpdateRead),
                                     parameters: Parameters::Acid(
                                         AcidTransactionProfile::LostUpdateRead(payload),
+                                    ),
+                                };
+
+                                let request = match message {
+                                    Message::Request {
+                                        request_no,
+                                        transaction,
+                                        parameters,
+                                    } => InternalRequest {
+                                        request_no,
+                                        transaction,
+                                        parameters,
+                                        response_sender: self.logger_tx.clone(),
+                                    },
+                                    _ => unimplemented!(),
+                                };
+                                self.req_tx.send(request).unwrap();
+                            }
+                        }
+
+                        "g2item" => {
+                            info!("Waiting to send G2itemRead");
+                            for p_id in (0..persons).step_by(2) {
+                                let payload = G2itemRead {
+                                    p1_id: p_id,
+                                    p2_id: p_id + 1,
+                                };
+
+                                let message = Message::Request {
+                                    request_no: generator.get_generated() + 1,
+                                    transaction: Transaction::Acid(AcidTransaction::G2itemRead),
+                                    parameters: Parameters::Acid(
+                                        AcidTransactionProfile::G2itemRead(payload),
                                     ),
                                 };
 

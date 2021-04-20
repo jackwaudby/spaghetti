@@ -39,3 +39,8 @@ fn acid_hit_fr() {
 fn acid_hit_lu() {
     common::lu(PROTOCOL);
 }
+
+#[test]
+fn acid_hit_g2item() {
+    common::g2item(PROTOCOL);
+}

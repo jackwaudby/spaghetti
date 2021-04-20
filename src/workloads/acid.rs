@@ -33,4 +33,6 @@ pub enum AcidTransaction {
     OtvWrite,
     LostUpdateRead,
     LostUpdateWrite,
+    G2itemWrite,
+    G2itemRead,
 }

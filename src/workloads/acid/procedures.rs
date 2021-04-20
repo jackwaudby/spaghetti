@@ -3,8 +3,8 @@ use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::acid::keys::AcidPrimaryKey;
 use crate::workloads::acid::paramgen::{
-    G0Read, G0Write, G1aRead, G1aWrite, G1cReadWrite, ImpRead, ImpWrite, LostUpdateRead,
-    LostUpdateWrite, Otv,
+    G0Read, G0Write, G1aRead, G1aWrite, G1cReadWrite, G2itemRead, G2itemWrite, ImpRead, ImpWrite,
+    LostUpdateRead, LostUpdateWrite, Otv,
 };
 use crate::workloads::PrimaryKey;
 
@@ -385,6 +385,146 @@ pub fn lu_read(params: LostUpdateRead, protocol: Arc<Protocol>) -> Result<String
     protocol.scheduler.commit(meta.clone())?; // commit
 
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&read)).unwrap();
+
+    Ok(res)
+}
+
+/// G2-item/Write Skew Write Transaction.
+///
+/// Selects a disjoint person pair, retrieves `value` properties, if sum >= 100; then decrement a person in the pair's
+/// value by 100.
+pub fn g2_item_write(
+    params: G2itemWrite,
+    protocol: Arc<Protocol>,
+) -> Result<String, NonFatalError> {
+    let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // key
+    let pk2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
+    let read_column: Vec<&str> = vec!["value"]; // column
+    let write_column: Vec<String> = vec!["value".to_string()]; // column
+
+    let meta = protocol.scheduler.register().unwrap(); // register
+
+    if params.p_id_update == params.p1_id {
+        // read p2 for value
+        let read = protocol
+            .scheduler
+            .read("person", pk2.clone(), &read_column, meta.clone())?; // read 1
+
+        // takes in current value of p1 and value of p2 via params
+        let calc = |columns: Vec<String>,
+                    current: Option<Vec<Data>>,
+                    params: Vec<Data>|
+         -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+            let current_value = match i64::try_from(current.unwrap()[0].clone()) {
+                Ok(value) => value,
+                Err(e) => {
+                    protocol.scheduler.abort(meta.clone()).unwrap();
+                    return Err(e);
+                }
+            };
+
+            let other_value = match i64::try_from(params[0].clone()) {
+                Ok(value) => value,
+                Err(e) => {
+                    protocol.scheduler.abort(meta.clone()).unwrap();
+                    return Err(e);
+                }
+            };
+
+            if current_value + other_value < 100 {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(NonFatalError::NonSerializable);
+            }
+
+            // TODO: sleep
+
+            let nv = current_value - 100;
+            let new_values = vec![nv.to_string()]; // convert to string
+            Ok((columns, new_values)) // new values for columns
+        };
+
+        protocol.scheduler.update(
+            "person",
+            pk1.clone(),
+            write_column,
+            true,
+            read,
+            &calc,
+            meta.clone(),
+        )?;
+    } else {
+        let read = protocol
+            .scheduler
+            .read("person", pk1.clone(), &read_column, meta.clone())?; // read 1
+
+        // takes in current value of p1 and value of p2 via params
+        let calc = |columns: Vec<String>,
+                    current: Option<Vec<Data>>,
+                    params: Vec<Data>|
+         -> Result<(Vec<String>, Vec<String>), NonFatalError> {
+            let current_value = match i64::try_from(current.unwrap()[0].clone()) {
+                Ok(value) => value,
+                Err(e) => {
+                    protocol.scheduler.abort(meta.clone()).unwrap();
+                    return Err(e);
+                }
+            };
+
+            let other_value = match i64::try_from(params[0].clone()) {
+                Ok(value) => value,
+                Err(e) => {
+                    protocol.scheduler.abort(meta.clone()).unwrap();
+                    return Err(e);
+                }
+            };
+
+            if current_value + other_value < 100 {
+                protocol.scheduler.abort(meta.clone()).unwrap();
+                return Err(NonFatalError::NonSerializable);
+            }
+
+            // TODO: sleep
+
+            let nv = current_value - 100;
+            let new_values = vec![nv.to_string()]; // convert to string
+            Ok((columns, new_values)) // new values for columns
+        };
+
+        protocol.scheduler.update(
+            "person",
+            pk2.clone(),
+            write_column,
+            true,
+            read,
+            &calc,
+            meta.clone(),
+        )?;
+    }
+
+    protocol.scheduler.commit(meta.clone())?; // commit
+
+    let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
+    Ok(res)
+}
+
+pub fn g2_item_read(params: G2itemRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    let columns: Vec<&str> = vec!["value"]; // columns to read
+    let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // pk
+    let pk2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id)); // pk
+
+    let meta = protocol.scheduler.register().unwrap(); // register
+    let mut read1 = protocol
+        .scheduler
+        .read("person", pk1.clone(), &columns, meta.clone())?; // read
+    let mut read2 = protocol
+        .scheduler
+        .read("person", pk2.clone(), &columns, meta.clone())?; // read
+    protocol.scheduler.commit(meta.clone())?; // commit
+
+    read1.append(&mut read2);
+
+    let columns: Vec<&str> = vec!["p1_value", "p2_value"];
+    let res = datatype::to_result(None, None, None, Some(&columns), Some(&read1)).unwrap();
 
     Ok(res)
 }

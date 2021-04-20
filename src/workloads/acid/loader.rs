@@ -61,6 +61,7 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
     }
 
     info!("Populating person table: {}", persons);
+    let mut ws_flag = true;
     for p_id in 0..persons {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(p_id));
@@ -69,6 +70,15 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
         row.init_value("version", "1")?;
         row.init_value("num_friends", "0")?;
         row.init_value("version_history", "")?;
+
+        if ws_flag {
+            row.init_value("value", "70")?;
+            ws_flag = false;
+        } else {
+            row.init_value("value", "80")?;
+            ws_flag = true;
+        }
+
         i.insert(pk, row)?;
     }
     info!("Loaded {} row(s) into person", t.get_num_rows());

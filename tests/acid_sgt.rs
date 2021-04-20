@@ -42,3 +42,8 @@ fn acid_sgt_fr() {
 fn acid_sgt_lu() {
     common::lu(PROTOCOL);
 }
+
+#[test]
+fn acid_sgt_g2item() {
+    common::g2item(PROTOCOL);
+}

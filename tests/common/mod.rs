@@ -342,3 +342,28 @@ pub fn lu(protocol: &str) {
         }
     }
 }
+
+///
+///
+/// # Anomaly check
+///
+pub fn g2item(protocol: &str) {
+    let anomaly = "g2item";
+    let config = setup_config(protocol, anomaly);
+
+    run(config);
+
+    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
+    let reader = BufReader::new(fh);
+
+    for line in reader.lines() {
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        // get read transaction responses
+        if let Some(vals) = resp.get_values() {
+            let p1 = vals.get("p1_value").unwrap().parse::<i64>().unwrap();
+            let p2 = vals.get("p2_value").unwrap().parse::<i64>().unwrap();
+
+            assert!(p1 + p2 > 0, "p1: {}, p2: {}", p1, p2);
+        }
+    }
+}

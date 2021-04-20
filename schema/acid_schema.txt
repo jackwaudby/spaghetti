@@ -4,6 +4,7 @@ TABLE=PERSON
     1,int,VERSION
     1,int,NUM_FRIENDS
     1,list,VERSION_HISTORY
+    1,int,VALUE
 
 TABLE=KNOWS
     1,int,P1_ID

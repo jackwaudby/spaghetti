@@ -85,6 +85,7 @@ impl AcidGenerator {
             "otv" => self.get_otv_params(n),
             "fr" => self.get_otv_params(n), // uses same profiles as otv
             "lu" => self.get_lu_params(),
+            "g2item" => self.get_g2item_params(n),
             _ => panic!("anomaly: {} not recognised", self.anomaly),
         }
     }
@@ -237,6 +238,35 @@ impl AcidGenerator {
             AcidTransactionProfile::LostUpdateWrite(payload),
         )
     }
+
+    /// Get a transaction profile for the Write Skew (G2-item) test.
+    ///
+    /// Returns a G2-item Write transactions, as G2-item Read transactions are issued after execution.
+    /// Selects a person pair and an update person from the pair.
+    fn get_g2item_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
+        let id = self.rng.gen_range(0..self.persons) as f64;
+        let id = id / 2.0;
+        let rounded = (round::floor(id, 0) * 2.0) as u64;
+        let p1_id = rounded;
+        let p2_id = rounded + 1;
+
+        let p_id_update = match n {
+            x if x < 0.5 => p1_id,
+
+            _ => p2_id,
+        };
+
+        let payload = G2itemWrite {
+            p1_id,
+            p2_id,
+            p_id_update,
+        };
+
+        (
+            AcidTransaction::G2itemWrite,
+            AcidTransactionProfile::G2itemWrite(payload),
+        )
+    }
 }
 
 ///////////////////////////////////////
@@ -257,6 +287,8 @@ pub enum AcidTransactionProfile {
     OtvWrite(Otv),
     LostUpdateRead(LostUpdateRead),
     LostUpdateWrite(LostUpdateWrite),
+    G2itemWrite(G2itemWrite),
+    G2itemRead(G2itemRead),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -320,6 +352,19 @@ pub struct LostUpdateRead {
     pub p_id: u64,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct G2itemWrite {
+    pub p1_id: u64,
+    pub p2_id: u64,
+    pub p_id_update: u64,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct G2itemRead {
+    pub p1_id: u64,
+    pub p2_id: u64,
+}
+
 impl fmt::Display for AcidTransactionProfile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
@@ -375,15 +420,27 @@ impl fmt::Display for AcidTransactionProfile {
                     p3_id,
                     p4_id,
                 } = params;
-                write!(f, "9,{},{},{},{}", p1_id, p2_id, p3_id, p4_id)
+                write!(f, "10,{},{},{},{}", p1_id, p2_id, p3_id, p4_id)
             }
             AcidTransactionProfile::LostUpdateRead(params) => {
                 let LostUpdateRead { p_id } = params;
-                write!(f, "14,{}", p_id)
+                write!(f, "11,{}", p_id)
             }
             AcidTransactionProfile::LostUpdateWrite(params) => {
                 let LostUpdateWrite { p_id } = params;
-                write!(f, "15,{}", p_id)
+                write!(f, "12,{}", p_id)
+            }
+            AcidTransactionProfile::G2itemWrite(params) => {
+                let G2itemWrite {
+                    p1_id,
+                    p2_id,
+                    p_id_update,
+                } = params;
+                write!(f, "13,{},{},{}", p1_id, p2_id, p_id_update)
+            }
+            AcidTransactionProfile::G2itemRead(params) => {
+                let G2itemRead { p1_id, p2_id } = params;
+                write!(f, "14,{},{}", p1_id, p2_id)
             }
         }
     }
