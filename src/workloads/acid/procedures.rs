@@ -291,7 +291,7 @@ pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFata
     };
 
     // TODO: unneeded
-    let params = vec![Data::Int(params.p_id as i64)]; // convert parameters to Vec<Data>
+    let params = vec![Data::Int(params.p1_id as i64)]; // convert parameters to Vec<Data>
 
     for pk in keys {
         protocol.scheduler.update(
