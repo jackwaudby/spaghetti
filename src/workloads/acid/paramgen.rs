@@ -2,6 +2,7 @@ use crate::common::message::{Message, Parameters, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::acid::{AcidTransaction, ACID_SF_MAP};
 
+use math::round;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
@@ -81,6 +82,7 @@ impl AcidGenerator {
             "g1a" => self.get_g1a_params(n),
             "g1c" => self.get_g1c_params(),
             "imp" => self.get_imp_params(n),
+            "otv" => self.get_otv_params(),
             "lu" => self.get_lu_params(),
             _ => panic!("anomaly: {} not recognised", self.anomaly),
         }
@@ -191,6 +193,25 @@ impl AcidGenerator {
         }
     }
 
+    /// Get a transaction profile for OTV test.
+    fn get_otv_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
+        let id = self.rng.gen_range(0..self.persons) as f64;
+        let id = id / 4.0;
+        let rounded = (round::floor(id, 0) * 4.0) as u64;
+        let p1_id = rounded;
+        let p2_id = rounded + 1;
+        let p3_id = rounded + 2;
+        let p4_id = rounded + 3;
+
+        let payload = Otv {
+            p1_id,
+            p2_id,
+            p3_id,
+            p4_id,
+        };
+        (AcidTransaction::Otv, AcidTransactionProfile::Otv(payload))
+    }
+
     /// Get a transaction profile for LU test.
     fn get_lu_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
         let p_id = self.rng.gen_range(0..self.persons); // person id
@@ -217,6 +238,7 @@ pub enum AcidTransactionProfile {
     G1cReadWrite(G1cReadWrite),
     ImpRead(ImpRead),
     ImpWrite(ImpWrite),
+    Otv(Otv),
     LostUpdateRead(LostUpdateRead),
     LostUpdateWrite(LostUpdateWrite),
 }
@@ -262,6 +284,14 @@ pub struct ImpRead {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub struct ImpWrite {
     pub p_id: u64,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+pub struct Otv {
+    pub p1_id: u64,
+    pub p2_id: u64,
+    pub p3_id: u64,
+    pub p4_id: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -312,6 +342,15 @@ impl fmt::Display for AcidTransactionProfile {
             AcidTransactionProfile::ImpWrite(params) => {
                 let ImpWrite { p_id } = params;
                 write!(f, "8,{}", p_id)
+            }
+            AcidTransactionProfile::Otv(params) => {
+                let Otv {
+                    p1_id,
+                    p2_id,
+                    p3_id,
+                    p4_id,
+                } = params;
+                write!(f, "9,{},{},{},{}", p1_id, p2_id, p3_id, p4_id)
             }
             AcidTransactionProfile::LostUpdateRead(params) => {
                 let LostUpdateRead { p_id } = params;

@@ -53,7 +53,12 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
     let i = data.get_index(&i_name)?;
     let protocol = data.config.get_str("protocol")?;
     let sf = data.config.get_int("scale_factor")? as u64;
-    let persons = *ACID_SF_MAP.get(&sf).unwrap();
+    let mut persons = *ACID_SF_MAP.get(&sf).unwrap();
+    let anomaly = data.config.get_str("anomaly")?;
+
+    if anomaly.as_str() == "otv" {
+        persons = persons * 4;
+    }
 
     info!("Populating person table: {}", persons);
     for p_id in 0..persons {
