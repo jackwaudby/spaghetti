@@ -26,6 +26,11 @@ fn acid_opt_hit_imp() {
 }
 
 #[test]
+fn acid_opt_hit_otv() {
+    common::otv(PROTOCOL);
+}
+
+#[test]
 #[ignore]
 fn acid_opt_hit_lu() {
     common::lu(PROTOCOL);

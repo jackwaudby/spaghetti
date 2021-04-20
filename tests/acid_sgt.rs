@@ -28,6 +28,11 @@ fn acid_sgt_imp() {
 }
 
 #[test]
+fn acid_sgt_otv() {
+    common::otv(PROTOCOL);
+}
+
+#[test]
 #[ignore]
 fn acid_sgt_lu() {
     common::lu(PROTOCOL);

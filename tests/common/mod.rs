@@ -239,6 +239,40 @@ pub fn imp(protocol: &str) {
     }
 }
 
+/// Observed Transaction Vanishes (OTV)
+///
+/// # Anomaly check
+///
+/// The list of versions read should be monontically increasing.
+/// Valid; 4, 5, 5, 6
+/// Invalid: 4, 3, 4, 5
+/// Once a version has been observed each subsequent version read should be equal or more recent.
+pub fn otv(protocol: &str) {
+    let anomaly = "otv";
+    let config = setup_config(protocol, anomaly);
+
+    run(config);
+
+    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
+    let reader = BufReader::new(fh);
+
+    for line in reader.lines() {
+        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        // get read transaction responses
+        if let Some(vals) = resp.get_values() {
+            let p1 = vals.get("p1_version").unwrap().parse::<u64>().unwrap();
+            let p2 = vals.get("p2_version").unwrap().parse::<u64>().unwrap();
+            let p3 = vals.get("p3_version").unwrap().parse::<u64>().unwrap();
+            let p4 = vals.get("p4_version").unwrap().parse::<u64>().unwrap();
+            let reads = vec![p1, p2, p3, p4];
+
+            for i in 0..3 {
+                assert!(reads[i] <= reads[i + 1], "{} > {}", reads[i], reads[i + 1]);
+            }
+        }
+    }
+}
+
 pub fn lu(protocol: &str) {
     let anomaly = "lu";
     let config = setup_config(protocol, anomaly);

@@ -26,6 +26,11 @@ fn acid_2pl_imp() {
 }
 
 #[test]
+fn acid_2pl_otv() {
+    common::otv(PROTOCOL);
+}
+
+#[test]
 fn acid_2pl_lu() {
     common::lu(PROTOCOL);
 }
