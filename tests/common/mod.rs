@@ -90,7 +90,7 @@ pub fn run(config: Arc<Config>) {
 /// # Anomaly check
 ///
 /// For each Person pair in the test graph:
-/// (i) prune each versionHistory list to remove any version numbers that do not appear in all lists; needed to account for interference from Lost Update anomalies (Section 4.8),
+/// (i) prune each versionHistory list to remove any version numbers that do not appear in all lists
 /// (ii) perform an element-wise comparison between versionHistory lists
 ///  for each entity, (iii) if lists do not agree a G0 anomaly has occurred.
 pub fn g0(protocol: &str) {

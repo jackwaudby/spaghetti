@@ -135,11 +135,11 @@ impl Index {
         Ok(res)
     }
 
+    /// Attempt to get a read handle to a row with `key`.
     pub fn get_lock_on_row(
         &self,
         key: PrimaryKey,
     ) -> Result<ReadGuard<PrimaryKey, Mutex<Row>>, NonFatalError> {
-        // Attempt to get read guard.
         self.map.get(&key).ok_or(NonFatalError::RowNotFound(
             format!("{}", key),
             self.get_name(),
@@ -286,14 +286,20 @@ impl Index {
     ///
     /// - Row does not exist with `key`.
     pub fn revert(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<(), NonFatalError> {
-        // Attempt to get read guard.
+        let th = std::thread::current();
+        let thread_id = th.name().unwrap(); // get thread id
+                                            // Attempt to get read guard.
         let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
             format!("{}", key),
             self.get_name(),
         ))?;
 
+        tracing::debug!("Thread {}: Revert; acquring mutex", thread_id);
+
         // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
+        tracing::debug!("Thread {}: Revert; got mutex", thread_id);
+
         // Revert changes.
         row.revert(protocol, tid);
         Ok(())
