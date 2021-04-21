@@ -178,7 +178,8 @@ impl Generator {
 
                         "g2item" => {
                             info!("Waiting to send G2itemRead");
-                            for p_id in (0..persons).step_by(2) {
+                            let p = persons * 4;
+                            for p_id in (0..p).step_by(2) {
                                 let payload = G2itemRead {
                                     p1_id: p_id,
                                     p2_id: p_id + 1,
