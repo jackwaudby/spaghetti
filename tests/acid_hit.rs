@@ -35,13 +35,11 @@ fn acid_hit_fr() {
 }
 
 #[test]
-#[ignore]
 fn acid_hit_lu() {
     common::lu(PROTOCOL);
 }
 
 #[test]
-#[ignore]
 fn acid_hit_g2item() {
     common::g2item(PROTOCOL);
 }
