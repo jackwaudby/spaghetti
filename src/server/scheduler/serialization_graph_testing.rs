@@ -839,11 +839,13 @@ impl Scheduler for SerializationGraphTesting {
 
                 for (index, key) in deletes {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
-                    let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
-                    let mut mg = rh.lock().unwrap(); // acquire mutex on the row
-                    let row = &mut *mg; // deref to row
-                    row.delete("sgt").unwrap(); // commit delete
-                    drop(mg);
+                    index.get_map().remove(&key); // Remove the row from the map.
+
+                    // let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
+                    // let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                    // let row = &mut *mg; // deref to row
+                    // row.delete("sgt").unwrap(); // commit delete
+                    // drop(mg);
                 }
 
                 {
