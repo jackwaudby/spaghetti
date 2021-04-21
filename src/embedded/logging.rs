@@ -80,29 +80,28 @@ impl Logger {
                 ..
             } = response;
 
+            if workload.as_str() == "acid" {
+                tracing::info!("{:?}", outcome.clone());
+
+                if let Outcome::Committed { value } = outcome.clone() {
+                    let mut fh = OpenOptions::new()
+                        .write(true)
+                        .append(true)
+                        .create(true)
+                        .open(&file)
+                        .expect("cannot open file");
+                    write!(fh, "{}\n", &value.unwrap()).unwrap();
+                }
+            }
+
             match self.phase {
                 BenchmarkPhase::Warmup => {
                     completed += 1;
-
                     if completed == self.warmup {
                         self.start_execution();
                     }
                 }
                 BenchmarkPhase::Execution => {
-                    if workload.as_str() == "acid" {
-                        tracing::info!("{:?}", outcome.clone());
-
-                        if let Outcome::Committed { value } = outcome.clone() {
-                            let mut fh = OpenOptions::new()
-                                .write(true)
-                                .append(true)
-                                .create(true)
-                                .open(&file)
-                                .expect("cannot open file");
-                            write!(fh, "{}\n", &value.unwrap()).unwrap();
-                        }
-                    }
-
                     self.stats
                         .as_mut()
                         .unwrap()

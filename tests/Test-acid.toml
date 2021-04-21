@@ -1,8 +1,8 @@
 log = "info"
 
-transactions = 100
+transactions = 100000
 timeout = 10
-warmup = 1
+warmup = 0
 set_seed = false
 
 workers = 6

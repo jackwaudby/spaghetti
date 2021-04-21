@@ -18,8 +18,8 @@ pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonF
     let pk_p1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id));
     let pk_p2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
     // flip for knows edge; 1,0 becomes 0,1
-    let mut min;
-    let mut max;
+    let min;
+    let max;
     if params.p1_id > params.p2_id {
         min = params.p2_id;
         max = params.p1_id;
@@ -363,7 +363,6 @@ pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<Stri
         let current_value = match i64::try_from(current.unwrap()[0].clone()) {
             Ok(value) => value,
             Err(e) => {
-                protocol.scheduler.abort(meta.clone()).unwrap();
                 return Err(e);
             }
         }; // parse to i64 from spaghetti data type
