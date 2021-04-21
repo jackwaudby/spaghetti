@@ -20,7 +20,6 @@ fn acid_opt_hit_g1c() {
 }
 
 #[test]
-#[ignore]
 fn acid_opt_hit_imp() {
     common::imp(PROTOCOL);
 }
@@ -36,13 +35,11 @@ fn acid_opt_hit_fr() {
 }
 
 #[test]
-#[ignore]
 fn acid_opt_hit_lu() {
     common::lu(PROTOCOL);
 }
 
 #[test]
-#[ignore]
 fn acid_opt_hit_g2item() {
     common::g2item(PROTOCOL);
 }
