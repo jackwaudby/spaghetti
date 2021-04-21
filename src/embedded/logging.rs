@@ -81,7 +81,7 @@ impl Logger {
             } = response;
 
             if workload.as_str() == "acid" {
-                tracing::info!("{:?}", outcome.clone());
+                //                tracing::info!("{:?}", outcome.clone());
 
                 if let Outcome::Committed { value } = outcome.clone() {
                     let mut fh = OpenOptions::new()

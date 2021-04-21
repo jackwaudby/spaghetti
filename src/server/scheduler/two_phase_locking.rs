@@ -43,20 +43,21 @@ impl Scheduler for TwoPhaseLocking {
     ///
     /// A transaction with the same name is already registered.
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
-        let handle = thread::current();
-        let counter = Arc::clone(&self.id);
-        let mut lock = counter.lock().unwrap();
-        let id = *lock;
-        *lock += 1;
-        debug!("Thread {}: assigned id {}", handle.name().unwrap(), id);
+        let th = thread::current();
+        let thread_id = th.name().unwrap(); // get thread id
+        let counter = Arc::clone(&self.id); // get handle to id generator
+        let mut lock = counter.lock().unwrap(); // get lock
+        let id = *lock; // get id
+        *lock += 1; // increment
+        debug!("Thread {}: assigned id {}", thread_id, id);
+        drop(lock); // drop lock
 
         let t = TransactionInfo::new(Some(id.to_string()), Some(id));
-        // Register with active transactions.
-        let at = ActiveTransaction::new(&t.get_id().unwrap());
+        let at = ActiveTransaction::new(&t.get_id().unwrap()); // create active transaction
+
+        // insert into map of active transactions.
         if let Some(_) = self.active_transactions.insert(t.get_id().unwrap(), at) {
-            let err = TwoPhaseLockingError::AlreadyRegistered(t.get_id().unwrap());
-            drop(lock);
-            return Err(err.into());
+            return Err(TwoPhaseLockingError::AlreadyRegistered(t.get_id().unwrap()).into());
         }
 
         Ok(t)
@@ -82,80 +83,79 @@ impl Scheduler for TwoPhaseLocking {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let table = self.get_table(table, meta.clone())?;
-        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+        let th = thread::current(); // get handle to thread
+        let th_id = th.name().unwrap(); // get thread id
+        let t_id = meta.get_id().unwrap().clone();
+        debug!("Thread {}: Executing create operation for {}", th_id, t_id);
 
-        // Attempt to get lock for the new record.
-        let lock_info = self.lock_table.get_mut(&key.clone());
+        let table = self.get_table(table, meta.clone())?; // get handle to table
+        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get handle to index
+
+        let lock_info = self.lock_table.get_mut(&key.clone()); // get lock for the new record
         match lock_info {
-            // Lock exists for new record, hence the record already exists.
+            // lock exists for proposed new record, hence the record already exists
             Some(_) => {
                 self.abort(meta.clone()).unwrap();
                 return Err(NonFatalError::RowAlreadyExists(
                     format!("{}", key.clone()),
                     table.to_string(),
-                ));
+                )); // abort -- record exists in index
             }
-            // No lock in the table for this record.
+            // no lock in the table for this record
             None => {
                 let mut lock_info =
-                    LockInfo::new(LockMode::Write, meta.get_ts().unwrap(), &index_name);
+                    LockInfo::new(LockMode::Write, meta.get_ts().unwrap(), &index_name); // new lock info
                 let entry = Entry::new(
                     meta.get_id().unwrap().to_string(),
                     LockMode::Write,
                     None,
                     meta.get_ts().unwrap(),
-                );
+                ); // new lock entry
                 lock_info.add_entry(entry);
-                // Attempt to insert into lock table
-                let res = self.lock_table.insert(key.clone(), lock_info);
+                let res = self.lock_table.insert(key.clone(), lock_info); // attempt to insert into lock tabe
                 if let Some(existing_lock) = res {
-                    // Lock was concurrently created, back off.
-                    self.lock_table.insert(key.clone(), existing_lock);
+                    self.lock_table.insert(key.clone(), existing_lock); // lock was concurrently created, back off
                     return Err(NonFatalError::RowAlreadyExists(
                         format!("{}", key.clone()),
                         table.to_string(),
-                    ));
+                    )); // abort -- record exists in index
                 }
             }
         };
-        // Register lock.
+
         self.active_transactions
             .get_mut(&meta.get_id().unwrap())
             .unwrap()
-            .add_lock(key.clone());
-        // Now have the lock, check if record exists in index.
+            .add_lock(key.clone()); // register lock with transaction
+
         if index.key_exists(key.clone()) {
             return Err(NonFatalError::RowAlreadyExists(
                 format!("{}", key.clone()),
                 table.to_string(),
-            ));
+            )); // abort -- record exists in index
         }
 
-        // Init row.
-        let mut row = Row::new(Arc::clone(&table), "2pl");
-        // Set pk.
-        row.set_primary_key(key.clone());
-        // Init values.
+        let mut row = Row::new(Arc::clone(&table), "2pl"); // init row
+        row.set_primary_key(key.clone()); // set pk
+
         for (i, column) in columns.iter().enumerate() {
             if let Err(e) = row.init_value(column, &values[i].to_string()) {
                 self.abort(meta.clone()).unwrap();
-                return Err(e);
+                return Err(e); // abort -- initalise error
             }
         }
-        // Get Index
-        let index = self.get_index(table, meta.clone())?;
-        // Set values - Needed to make the row "dirty"
+
+        // make rows dirty
         if let Err(e) = row.set_values(columns, values, "2pl", &meta.get_id().unwrap()) {
             self.abort(meta.clone()).unwrap();
             return Err(e);
         }
-        // Add to active transaction, actually inserted at commit time.
+
         self.active_transactions
             .get_mut(&meta.get_id().unwrap())
             .unwrap()
-            .add_row_to_insert(index, row);
+            .add_row_to_insert(index, row); // register insert
 
         Ok(())
     }
@@ -177,68 +177,69 @@ impl Scheduler for TwoPhaseLocking {
         columns: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        // Get table.
-        let table = self.get_table(table, meta.clone())?;
-        // Get primary index name.
+        let th = thread::current(); // get handle to thread
+        let th_id = th.name().unwrap(); // get thread id
+        let t_id = meta.get_id().unwrap().clone();
+        debug!("Thread {}: Executing read operation for {}", th_id, t_id);
+
+        let table = self.get_table(table, meta.clone())?; // get handle to table
         let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-        // Get index for this key's table.
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
-        // Get read lock on row with pk `key`.
+        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get handle to index
+
         let request = self.request_lock(
             &index_name,
             key.clone(),
             LockMode::Read,
             &meta.get_id().unwrap(),
             meta.get_ts().unwrap(),
-        );
+        ); // request read lock
+
         match request {
             LockRequest::Granted => {
                 debug!(
-                    "Read lock for {:?} granted to transaction {:?}",
-                    key,
-                    meta.get_id().unwrap()
+                    "Thread {}: Read lock granted for {} to {}",
+                    th_id,
+                    key.clone(),
+                    t_id
                 );
-                // Register lock.
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
-                    .add_lock(key.clone());
-                // Execute read operation.
-                let result = index.read(key.clone(), columns, "2pl", &meta.get_id().unwrap());
-                match result {
+                    .add_lock(key.clone()); // register lock
+
+                match index.read(key.clone(), columns, "2pl", &meta.get_id().unwrap()) {
                     Ok(res) => {
-                        // Get values.
-                        let vals = res.get_values().unwrap();
+                        let vals = res.get_values().unwrap(); // get values
                         return Ok(vals);
                     }
                     Err(e) => {
                         self.abort(meta.clone()).unwrap();
-                        return Err(e);
+                        return Err(e); // abort -- ???
                     }
                 }
             }
 
             LockRequest::Delay(pair) => {
-                debug!("Waiting for read lock");
+                debug!(
+                    "Thread {}: Read lock delayed for {} to {}",
+                    th_id,
+                    key.clone(),
+                    t_id
+                );
                 let (lock, cvar) = &*pair;
                 let mut waiting = lock.lock().unwrap();
                 while !*waiting {
                     waiting = cvar.wait(waiting).unwrap();
                 }
-                debug!("Read lock granted");
-                // Register lock.
+
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
-                    .add_lock(key.clone());
+                    .add_lock(key.clone()); // register lock
 
-                // Execute read operation.
-                let result = index.read(key.clone(), columns, "2pl", &meta.get_id().unwrap());
-
-                match result {
+                match index.read(key.clone(), columns, "2pl", &meta.get_id().unwrap()) {
                     Ok(res) => {
-                        // Get values.
-                        let vals = res.get_values().unwrap();
+                        let vals = res.get_values().unwrap(); // Get values
                         return Ok(vals);
                     }
                     Err(e) => {
@@ -249,10 +250,18 @@ impl Scheduler for TwoPhaseLocking {
             }
 
             LockRequest::Denied => {
-                debug!("Read lock denied");
-                let err = TwoPhaseLockingError::ReadLockRequestDenied(format!("{}", key.clone()));
+                debug!(
+                    "Thread {}: Read lock denied for {} to {}",
+                    th_id,
+                    key.clone(),
+                    t_id
+                );
                 self.abort(meta.clone()).unwrap();
-                return Err(err.into());
+                return Err(TwoPhaseLockingError::ReadLockRequestDenied(format!(
+                    "{}",
+                    key.clone()
+                ))
+                .into());
             }
         }
     }
@@ -274,7 +283,6 @@ impl Scheduler for TwoPhaseLocking {
         columns: Vec<String>,
         read: bool,
         params: Vec<Data>,
-        // (columns, current_values, parameters) -> (columns,new_values)
         f: &dyn Fn(
             Vec<String>,
             Option<Vec<Data>>,
@@ -282,38 +290,38 @@ impl Scheduler for TwoPhaseLocking {
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        debug!(
-            "Transaction {:?} requesting write lock on {:?}",
-            meta.get_id().unwrap(),
-            key
-        );
-        let table = self.get_table(table, meta.clone())?;
+        let th = thread::current(); // get handle to thread
+        let th_id = th.name().unwrap(); // get thread id
+        let t_id = meta.get_id().unwrap().clone();
+        debug!("Thread {}: Executing update operation for {}", th_id, t_id);
+
+        let table = self.get_table(table, meta.clone())?; // get handle to table
         let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
-        // Request lock.
+        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get handle to index
+
         let request = self.request_lock(
             &index_name,
             key.clone(),
             LockMode::Write,
             &meta.get_id().unwrap(),
             meta.get_ts().unwrap(),
-        );
+        ); // request lock
 
         match request {
             LockRequest::Granted => {
                 debug!(
-                    "Write lock for {:?} granted to transaction {:?}",
+                    "Thread {}: Write lock granted for {} to {}",
+                    th_id,
                     key.clone(),
-                    meta.get_id().unwrap()
+                    t_id
                 );
-                // Register lock.
+
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
-                    .add_lock(key.clone());
+                    .add_lock(key.clone()); // Register lock.
 
-                // Execute update.
-                let result = index.update(
+                match index.update(
                     key.clone(),
                     columns,
                     read,
@@ -321,8 +329,7 @@ impl Scheduler for TwoPhaseLocking {
                     f,
                     "2pl",
                     &meta.get_id().unwrap(),
-                );
-                match result {
+                ) {
                     Ok(_) => {
                         return Ok(());
                     }
@@ -333,20 +340,25 @@ impl Scheduler for TwoPhaseLocking {
                 }
             }
             LockRequest::Delay(pair) => {
-                debug!("Waiting for write lock");
+                debug!(
+                    "Thread {}: Write lock delayed for {} to {}",
+                    th_id,
+                    key.clone(),
+                    t_id
+                );
+
                 let (lock, cvar) = &*pair;
                 let mut waiting = lock.lock().unwrap();
                 while !*waiting {
                     waiting = cvar.wait(waiting).unwrap();
                 }
-                debug!("Write lock granted");
-                // Register lock.
+
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
-                    .add_lock(key.clone());
-                // Execute update.
-                let result = index.update(
+                    .add_lock(key.clone()); // register lock
+
+                match index.update(
                     key.clone(),
                     columns,
                     read,
@@ -354,9 +366,7 @@ impl Scheduler for TwoPhaseLocking {
                     f,
                     "2pl",
                     &meta.get_id().unwrap(),
-                );
-
-                match result {
+                ) {
                     Ok(_) => {
                         return Ok(());
                     }
@@ -367,7 +377,12 @@ impl Scheduler for TwoPhaseLocking {
                 }
             }
             LockRequest::Denied => {
-                debug!("Write lock denied");
+                debug!(
+                    "Thread {}: Write lock denied for {} to {}",
+                    th_id,
+                    key.clone(),
+                    t_id
+                );
                 let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key.clone()));
                 self.abort(meta.clone()).unwrap();
                 return Err(err.into());
@@ -393,11 +408,16 @@ impl Scheduler for TwoPhaseLocking {
         value: &str,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        let th = thread::current(); // get handle to thread
+        let th_id = th.name().unwrap(); // get thread id
+        let t_id = meta.get_id().unwrap().clone();
         debug!(
-            "Transaction {:?} requesting write lock on {:?}",
-            meta.get_id().unwrap(),
-            key
+            "Thread {}: Executing append operation on {} for {}",
+            th_id,
+            key.clone(),
+            t_id
         );
+
         let table = self.get_table(table, meta.clone())?;
         let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
@@ -413,11 +433,11 @@ impl Scheduler for TwoPhaseLocking {
         match request {
             LockRequest::Granted => {
                 debug!(
-                    "Write lock for {:?} granted to transaction {:?}",
+                    "Thread {}: Write lock granted for {} to {}",
+                    th_id,
                     key.clone(),
-                    meta.get_id().unwrap()
+                    t_id
                 );
-
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
@@ -434,13 +454,18 @@ impl Scheduler for TwoPhaseLocking {
                 }
             }
             LockRequest::Delay(pair) => {
-                debug!("Waiting for write lock");
+                debug!(
+                    "Thread {}: Write lock delayed for {} to {}",
+                    th_id,
+                    key.clone(),
+                    t_id
+                );
                 let (lock, cvar) = &*pair;
                 let mut waiting = lock.lock().unwrap();
                 while !*waiting {
                     waiting = cvar.wait(waiting).unwrap();
                 }
-                debug!("Write lock granted");
+
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
@@ -456,7 +481,12 @@ impl Scheduler for TwoPhaseLocking {
                 }
             }
             LockRequest::Denied => {
-                debug!("Write lock denied");
+                debug!(
+                    "Thread {}: Write lock denied for {} to {}",
+                    th_id,
+                    key.clone(),
+                    t_id
+                );
                 let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key.clone()));
                 self.abort(meta.clone()).unwrap();
                 return Err(err.into());
@@ -482,15 +512,18 @@ impl Scheduler for TwoPhaseLocking {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
+        let th = thread::current(); // get handle to thread
+        let th_id = th.name().unwrap(); // get thread id
+        let t_id = meta.get_id().unwrap().clone();
         debug!(
-            "Transaction {:?} requesting write lock on {:?}",
-            meta.get_id().unwrap(),
-            key
+            "Thread {}: Executing read and update operation for {}",
+            th_id, t_id
         );
+
         let table = self.get_table(table, meta.clone())?;
         let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
-        // Request lock.
+
         let request = self.request_lock(
             &index_name,
             key.clone(),
@@ -501,29 +534,20 @@ impl Scheduler for TwoPhaseLocking {
 
         match request {
             LockRequest::Granted => {
-                debug!(
-                    "Write lock for {:?} granted to transaction {:?}",
-                    key,
-                    meta.get_id().unwrap()
-                );
-                // Register lock.
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
                     .add_lock(key.clone());
 
-                // Execute update.
-                let result = index.read_and_update(
+                match index.read_and_update(
                     key.clone(),
                     columns,
                     values,
                     "2pl",
                     &meta.get_id().unwrap(),
-                );
-                match result {
+                ) {
                     Ok(res) => {
-                        // Get values.
-                        let vals = res.get_values().unwrap();
+                        let vals = res.get_values().unwrap(); // Get values.
                         return Ok(vals);
                     }
                     Err(e) => {
@@ -533,27 +557,26 @@ impl Scheduler for TwoPhaseLocking {
                 }
             }
             LockRequest::Delay(pair) => {
-                debug!("Waiting for write lock");
                 let (lock, cvar) = &*pair;
                 let mut waiting = lock.lock().unwrap();
                 while !*waiting {
                     waiting = cvar.wait(waiting).unwrap();
                 }
-                debug!("Write lock granted");
+
                 // Register lock.
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
                     .add_lock(key.clone());
                 // Execute update.
-                let result = index.read_and_update(
+
+                match index.read_and_update(
                     key.clone(),
                     columns,
                     values,
                     "2pl",
                     &meta.get_id().unwrap(),
-                );
-                match result {
+                ) {
                     Ok(res) => {
                         let vals = res.get_values().unwrap();
                         return Ok(vals);
@@ -565,7 +588,6 @@ impl Scheduler for TwoPhaseLocking {
                 }
             }
             LockRequest::Denied => {
-                debug!("Write lock denied");
                 let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key));
                 self.abort(meta.clone()).unwrap();
                 return Err(err.into());
@@ -587,6 +609,11 @@ impl Scheduler for TwoPhaseLocking {
         key: PrimaryKey,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        let th = thread::current(); // get handle to thread
+        let th_id = th.name().unwrap(); // get thread id
+        let t_id = meta.get_id().unwrap().clone();
+        debug!("Thread {}: Executing delete operation for {}", th_id, t_id);
+
         let table = self.get_table(table, meta.clone())?;
         let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
@@ -607,15 +634,12 @@ impl Scheduler for TwoPhaseLocking {
                     meta.get_id().unwrap()
                 );
 
-                // Register lock.
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
                     .add_lock(key.clone());
 
-                // Execute delete.
-                let result = index.delete(key.clone(), "2pl");
-                match result {
+                match index.delete(key.clone(), "2pl") {
                     Ok(_) => {
                         return Ok(());
                     }
@@ -626,23 +650,18 @@ impl Scheduler for TwoPhaseLocking {
                 }
             }
             LockRequest::Delay(pair) => {
-                debug!("Waiting for write lock");
                 let (lock, cvar) = &*pair;
                 let mut waiting = lock.lock().unwrap();
                 while !*waiting {
                     waiting = cvar.wait(waiting).unwrap();
                 }
-                debug!("Write lock granted");
 
-                // Register lock.
                 self.active_transactions
                     .get_mut(&meta.get_id().unwrap())
                     .unwrap()
                     .add_lock(key.clone());
 
-                // Execute delete.
-                let result = index.delete(key.clone(), "2pl");
-                match result {
+                match index.delete(key.clone(), "2pl") {
                     Ok(_) => {
                         return Ok(());
                     }
@@ -653,7 +672,6 @@ impl Scheduler for TwoPhaseLocking {
                 }
             }
             LockRequest::Denied => {
-                debug!("Write lock denied");
                 let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key.clone()));
                 self.abort(meta.clone()).unwrap();
                 return Err(err.into());
@@ -664,7 +682,6 @@ impl Scheduler for TwoPhaseLocking {
     /// Commit a transaction.
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         debug!("Commit transaction {:?}", meta.get_id().unwrap());
-        // Get rows to insert.
         let rows = self
             .active_transactions
             .get_mut(&meta.get_id().unwrap())
@@ -760,29 +777,23 @@ impl TwoPhaseLocking {
         tid: &str,
         tts: u64,
     ) -> LockRequest {
-        // Attempt to get lock for a key.
-        let lock_info = self.lock_table.get_mut(&key.clone());
+        let th = thread::current(); // get handle to thread
+        let th_id = th.name().unwrap(); // get thread id
+
+        let lock_info = self.lock_table.get_mut(&key.clone()); // attempt to get lock for a key
         let mut lock_info = match lock_info {
             // Lock exists.
-            Some(lock) => {
-                debug!("lock: {:?} exists for {:?}", lock, key.clone());
-                lock
-            }
+            Some(lock) => lock,
             // No lock for this record, create a new one.
             None => {
-                debug!("no lock exists for {:?}", key.clone());
-                // Create new lock information.
-                let mut lock_info = LockInfo::new(request_mode, tts, index);
-                // Create new request entry.
-                let entry = Entry::new(tid.to_string(), request_mode, None, tts);
-                lock_info.add_entry(entry);
-                // Attempt to insert into lock table
-                let res = self.lock_table.insert(key.clone(), lock_info);
-                match res {
+                let mut lock_info = LockInfo::new(request_mode, tts, index); // Create new lock information.
+                let entry = Entry::new(tid.to_string(), request_mode, None, tts); // Create new request entry.
+                lock_info.add_entry(entry); // Attempt to insert into lock table
+
+                match self.lock_table.insert(key.clone(), lock_info) {
                     // Error.
                     Some(existing_lock) => {
-                        // Lock was concurrently created, back off.
-                        self.lock_table.insert(key.clone(), existing_lock);
+                        self.lock_table.insert(key.clone(), existing_lock); // Lock was concurrently created, back off.
                         return LockRequest::Denied;
                     }
                     // Inserted.
@@ -808,26 +819,37 @@ impl TwoPhaseLocking {
                     // Current lock type.
                     match lock_info.group_mode.unwrap() {
                         LockMode::Read => {
-                            // Create new entry.
-                            let entry = Entry::new(tid.to_string(), LockMode::Read, None, tts);
-                            // Add to holder/request list.
-                            lock_info.add_entry(entry);
-                            // Update lock timestamp if this lock request has higher timestamp
-                            if tts > lock_info.timestamp.unwrap() {
-                                lock_info.timestamp = Some(tts);
+                            let entry = Entry::new(tid.to_string(), LockMode::Read, None, tts); // Create new entry.
+                            lock_info.add_entry(entry); // Add to holder/request list
+                            if tts < lock_info.timestamp.unwrap() {
+                                lock_info.timestamp = Some(tts); // Update lock timestamp if this lock request has lower timestamp
                             }
-                            // Increment locks held
-                            let held = lock_info.granted.unwrap();
+                            let held = lock_info.granted.unwrap(); // Increment locks held
                             lock_info.granted = Some(held + 1);
-                            // Grant lock.
+
                             return LockRequest::Granted;
                         }
                         LockMode::Write => {
                             // Record locked with write lock, read lock can not be granted.
                             // Apply wait-die deadlock detection.
+                            debug!(
+                                "Thread {}: Write lock TS: {}, Request TS: {}",
+                                th_id,
+                                lock_info.timestamp.unwrap(),
+                                tts
+                            );
                             if lock_info.timestamp.unwrap() < tts {
                                 return LockRequest::Denied;
                             }
+                            // Only wait if all waiting write requests are older
+                            if lock_info
+                                .list
+                                .iter()
+                                .any(|e| e.timestamp > tts && e.lock_mode == LockMode::Write)
+                            {
+                                return LockRequest::Denied;
+                            }
+
                             // Initialise a `Condvar` that will be used to sleep the thread.
                             let pair = Arc::new((Mutex::new(false), Condvar::new()));
                             // Create new entry for transaction request list.
@@ -849,10 +871,21 @@ impl TwoPhaseLocking {
                 }
                 LockMode::Write => {
                     // Apply deadlock detection.
+                    debug!(
+                        "Thread {}: Write lock TS: {}, Request TS: {}",
+                        th_id,
+                        lock_info.timestamp.unwrap(),
+                        tts
+                    );
                     if tts > lock_info.timestamp.unwrap() {
-                        debug!("deny due to wait-die");
                         return LockRequest::Denied;
                     }
+
+                    // Only wait if all other waiting requests are older.
+                    if lock_info.list.iter().any(|e| e.timestamp > tts) {
+                        return LockRequest::Denied;
+                    }
+
                     // Initialise a `Condvar` that will be used to wake up thread.
                     let pair = Arc::new((Mutex::new(false), Condvar::new()));
                     // Create new entry.
@@ -896,8 +929,9 @@ impl TwoPhaseLocking {
         tid: &str,
         commit: bool,
     ) -> Result<UnlockRequest, NonFatalError> {
-        debug!("release lock on {:?}", key);
-
+        let th = thread::current(); // get handle to thread
+        let th_id = th.name().unwrap(); // get thread id
+        let t_id = tid;
         let mut lock_info = self
             .lock_table
             .get_mut(&key)
@@ -905,7 +939,12 @@ impl TwoPhaseLocking {
                 TwoPhaseLockingError::LockNotInTable(format!("{}", key.clone())),
             ))?;
 
-        debug!("lock state: {:?}", lock_info);
+        tracing::debug!(
+            "Thread {}: Release lock: {:?} held by {}",
+            th_id,
+            lock_info,
+            t_id
+        );
 
         // Get index for this key's table.
         let index = self
@@ -917,10 +956,8 @@ impl TwoPhaseLocking {
         // If write lock then commit or revert changes.
         if let LockMode::Write = lock_info.group_mode.unwrap() {
             if commit {
-                debug!("commit changes");
                 index.commit(key.clone(), "2pl", tid).unwrap();
             } else {
-                debug!("revert changes");
                 // TODO: could be reverting a row that does not exist if a create failed.
                 match index.revert(key.clone(), "2pl", tid) {
                     Ok(_) => {}
@@ -931,19 +968,12 @@ impl TwoPhaseLocking {
 
         // If 1 granted lock and no waiting requests, reset lock and return.
         if lock_info.granted.unwrap() == 1 && !lock_info.waiting {
-            debug!("1 lock held and no waiting locks");
-            // Reset group mode.
-            lock_info.group_mode = None;
-            // Remove from list.
-            lock_info.list.clear();
-            // Set granted to 0.
-            lock_info.granted = None;
-            // Reset timestamp.
-            lock_info.timestamp = None;
-            // Set reclaimed.
-            // lock_info.reclaimed = true;
-            lock_info.reclaimed = false;
-            debug!("set to default");
+            lock_info.group_mode = None; // Reset group mode.
+            lock_info.list.clear(); // Remove from list.
+            lock_info.granted = None; // Set granted to 0.
+            lock_info.timestamp = None; // Reset timestamp.
+            lock_info.reclaimed = false; // Set reclaimed.
+
             return Ok(UnlockRequest::Reclaim);
         }
 
@@ -968,7 +998,7 @@ impl TwoPhaseLocking {
                     }
                     read_requests += 1;
                 }
-                debug!("{} read requests waiting on lock", read_requests);
+
                 // If some reads requests first in queue.
                 if read_requests != 0 {
                     // Wake up threads and determine new lock timestamp.
@@ -1000,7 +1030,6 @@ impl TwoPhaseLocking {
                         lock_info.waiting = false;
                     }
                 } else {
-                    // Next lock request is a Write request.
                     // Set new lock information.
                     lock_info.timestamp = Some(lock_info.list[0].timestamp);
                     lock_info.group_mode = Some(LockMode::Write);
@@ -1041,9 +1070,8 @@ impl TwoPhaseLocking {
                     lock_info.granted = Some(held - 1);
                 } else {
                     // 1 active read lock and some write lock waiting.
-                    debug!("Waiting Write lock(s): {}", lock_info.waiting);
+
                     if lock_info.waiting {
-                        debug!("Grant a Write lock");
                         let next_write_entry_index = lock_info
                             .list
                             .iter()
@@ -1088,7 +1116,6 @@ impl TwoPhaseLocking {
                 }
             }
         }
-        debug!("All locks released for {:?}", tid);
     }
 }
 

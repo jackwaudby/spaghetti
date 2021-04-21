@@ -5,7 +5,7 @@ timeout = 10
 warmup = 0
 set_seed = false
 
-workers = 6
+workers = 8
 garbage_collection = true
 garbage_collection_sleep = 1
 

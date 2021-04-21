@@ -120,6 +120,7 @@ pub fn g0(protocol: &str) {
             assert_eq!(x, z);
         }
     }
+    log::info!("{} anomaly check complete", anomaly);
 }
 
 fn string_to_vec64(mut s: String) -> Vec<u64> {
@@ -143,6 +144,7 @@ pub fn g1a(protocol: &str) {
 
     run(config);
 
+    log::info!("Starting {} anomaly check", anomaly);
     let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
     let reader = BufReader::new(fh);
 
@@ -157,6 +159,7 @@ pub fn g1a(protocol: &str) {
             .unwrap();
         assert_eq!(version, 1, "expected: {}, actual: {}", 1, version);
     }
+    log::info!("{} anomaly check complete", anomaly);
 }
 
 /// Circular information flow (G1c).
@@ -172,6 +175,7 @@ pub fn g1c(protocol: &str) {
 
     run(config);
 
+    log::info!("Starting {} anomaly check", anomaly);
     let file = format!("./log/acid/{}/{}.json", protocol, anomaly);
     let fh = match File::open(file.clone()) {
         Ok(fh) => fh,
@@ -211,6 +215,7 @@ pub fn g1c(protocol: &str) {
         }
     }
     assert_eq!(algo::is_cyclic_directed(&graph), false);
+    log::info!("{} anomaly check complete", anomaly);
 }
 
 /// IMP
@@ -226,6 +231,7 @@ pub fn imp(protocol: &str) {
 
     run(config);
 
+    log::info!("Starting {} anomaly check", anomaly);
     let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
     let reader = BufReader::new(fh);
 
@@ -237,6 +243,7 @@ pub fn imp(protocol: &str) {
             assert_eq!(first, second, "first: {}, second: {}", first, second);
         }
     }
+    log::info!("{} anomaly check complete", anomaly);
 }
 
 /// Observed Transaction Vanishes (OTV)
@@ -253,6 +260,7 @@ pub fn otv(protocol: &str) {
 
     run(config);
 
+    log::info!("Starting {} anomaly check", anomaly);
     let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
     let reader = BufReader::new(fh);
 
@@ -271,6 +279,7 @@ pub fn otv(protocol: &str) {
             }
         }
     }
+    log::info!("{} anomaly check complete", anomaly);
 }
 
 /// Fractured Read (FR)
@@ -287,6 +296,7 @@ pub fn fr(protocol: &str) {
 
     run(config);
 
+    log::info!("Starting {} anomaly check", anomaly);
     let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
     let reader = BufReader::new(fh);
 
@@ -305,6 +315,7 @@ pub fn fr(protocol: &str) {
             }
         }
     }
+    log::info!("{} anomaly check complete", anomaly);
 }
 
 pub fn lu(protocol: &str) {
@@ -313,6 +324,8 @@ pub fn lu(protocol: &str) {
     let sf = config.get_int("scale_factor").unwrap() as u64;
 
     run(config);
+
+    log::info!("Starting {} anomaly check", anomaly);
 
     let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
     let reader = BufReader::new(fh);
@@ -341,6 +354,7 @@ pub fn lu(protocol: &str) {
             );
         }
     }
+    log::info!("{} anomaly check complete", anomaly);
 }
 
 ///
@@ -352,6 +366,8 @@ pub fn g2item(protocol: &str) {
     let config = setup_config(protocol, anomaly);
 
     run(config);
+
+    log::info!("Starting {} anomaly check", anomaly);
 
     let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
     let reader = BufReader::new(fh);
@@ -366,4 +382,5 @@ pub fn g2item(protocol: &str) {
             assert!(p1 + p2 > 0, "p1: {}, p2: {}", p1, p2);
         }
     }
+    log::info!("{} anomaly check complete", anomaly);
 }

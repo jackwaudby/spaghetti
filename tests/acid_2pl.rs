@@ -15,7 +15,6 @@ fn acid_2pl_g1a() {
 }
 
 #[test]
-#[ignore]
 fn acid_2pl_g1c() {
     common::g1c(PROTOCOL);
 }
@@ -41,7 +40,6 @@ fn acid_2pl_lu() {
 }
 
 #[test]
-#[ignore]
 fn acid_2pl_g2item() {
     common::g2item(PROTOCOL);
 }
