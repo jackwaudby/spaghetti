@@ -418,7 +418,6 @@ pub fn g2_item_write(
             let current_value = match i64::try_from(current.unwrap()[0].clone()) {
                 Ok(value) => value,
                 Err(e) => {
-                    protocol.scheduler.abort(meta.clone()).unwrap();
                     return Err(e);
                 }
             };
@@ -426,13 +425,11 @@ pub fn g2_item_write(
             let other_value = match i64::try_from(params[0].clone()) {
                 Ok(value) => value,
                 Err(e) => {
-                    protocol.scheduler.abort(meta.clone()).unwrap();
                     return Err(e);
                 }
             };
 
             if current_value + other_value < 100 {
-                protocol.scheduler.abort(meta.clone()).unwrap();
                 return Err(NonFatalError::NonSerializable);
             }
 
@@ -465,7 +462,6 @@ pub fn g2_item_write(
             let current_value = match i64::try_from(current.unwrap()[0].clone()) {
                 Ok(value) => value,
                 Err(e) => {
-                    protocol.scheduler.abort(meta.clone()).unwrap();
                     return Err(e);
                 }
             };
@@ -473,13 +469,11 @@ pub fn g2_item_write(
             let other_value = match i64::try_from(params[0].clone()) {
                 Ok(value) => value,
                 Err(e) => {
-                    protocol.scheduler.abort(meta.clone()).unwrap();
                     return Err(e);
                 }
             };
 
             if current_value + other_value < 100 {
-                protocol.scheduler.abort(meta.clone()).unwrap();
                 return Err(NonFatalError::NonSerializable);
             }
 

@@ -304,15 +304,13 @@ impl Scheduler for SerializationGraphTesting {
                 return Err(e);
             }
         };
-
         let mut mg = rh.lock().unwrap(); // acquire mutex on the row
         let row = &mut *mg; // deref to row
-
         match row.get_values(columns, "sgt", &meta.get_id().unwrap()) {
             Ok(res) => {
                 let this_node = meta.get_id().unwrap().parse::<usize>().unwrap(); // get this_node position in sgt
                 let node = self.get_shared_lock(this_node); // take shared lock on this_node
-                node.add_key(&index.get_name(), key, OperationType::Read); // operation succeeded -- register
+                node.add_key(&index.get_name(), key.clone(), OperationType::Read); // operation succeeded -- register
                 drop(node); // drop shared lock on node
                 let access_history = res.get_access_history().unwrap(); // get access history
 
@@ -321,10 +319,6 @@ impl Scheduler for SerializationGraphTesting {
                     // WR conflict
                     if let Access::Write(tid) = access {
                         let from_node: usize = tid.parse().unwrap(); // get from_node position in sgt
-                        debug!(
-                            "Thread {}: WR conflict detected; {} --> {}",
-                            thread_id, from_node, this_node
-                        );
 
                         // add edge
                         if let Err(e) = self.add_edge(from_node, this_node, false) {
@@ -403,7 +397,6 @@ impl Scheduler for SerializationGraphTesting {
                 Err(e) => {
                     drop(mg); // drop mutex on row
                     drop(rh); // drop read handle to row
-
                     self.abort(meta.clone()).unwrap(); // abort -- row not found
                     return Err(e);
                 }
@@ -419,7 +412,6 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-
                 self.abort(meta.clone()).unwrap(); // abort -- row not found
                 return Err(e);
             }
@@ -446,7 +438,6 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-
                                 self.abort(meta.clone()).unwrap(); // abort -- from_node aborted
                                 return Err(e.into());
                             }
@@ -466,6 +457,8 @@ impl Scheduler for SerializationGraphTesting {
                     }
                 }
 
+                drop(mg); // drop mutex on row
+                drop(rh); // drop read handle to row
                 Ok(())
             }
             Err(e) => {
@@ -567,7 +560,7 @@ impl Scheduler for SerializationGraphTesting {
     ) -> Result<Vec<Data>, NonFatalError> {
         let handle = thread::current();
         debug!(
-            "Thread {}: Executing update operation",
+            "Thread {}: Executing read and update operation",
             handle.name().unwrap()
         );
 
@@ -755,6 +748,7 @@ impl Scheduler for SerializationGraphTesting {
             // get read handle to row
             if let Ok(rh) = index.get_lock_on_row(key.clone()) {
                 let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+
                 let row = &mut *mg; // deref to row
                 row.revert("sgt", &meta.get_id().unwrap());
                 drop(mg);
@@ -837,7 +831,6 @@ impl Scheduler for SerializationGraphTesting {
                 for (index, key) in updates {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
                     let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
-
                     let mut mg = rh.lock().unwrap(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
                     row.commit("sgt", &id.to_string()); // commit updates
@@ -860,7 +853,6 @@ impl Scheduler for SerializationGraphTesting {
             State::Active => panic!("node should not be active"),
         }
 
-        debug!("Thread {}: Commit procedure finished", thread_id);
         Ok(())
     }
 
