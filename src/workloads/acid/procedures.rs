@@ -17,7 +17,18 @@ use tracing::debug;
 pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let pk_p1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id));
     let pk_p2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
-    let pk_knows = PrimaryKey::Acid(AcidPrimaryKey::Knows(params.p1_id, params.p2_id));
+    // flip for knows edge; 1,0 becomes 0,1
+    let mut min;
+    let mut max;
+    if params.p1_id > params.p2_id {
+        min = params.p2_id;
+        max = params.p1_id;
+    } else {
+        min = params.p1_id;
+        max = params.p2_id;
+    }
+
+    let pk_knows = PrimaryKey::Acid(AcidPrimaryKey::Knows(min, max));
     let value = params.transaction_id.to_string();
     let meta = protocol.scheduler.register().unwrap(); // register
 
