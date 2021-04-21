@@ -777,9 +777,6 @@ impl TwoPhaseLocking {
         tid: &str,
         tts: u64,
     ) -> LockRequest {
-        let th = thread::current(); // get handle to thread
-        let th_id = th.name().unwrap(); // get thread id
-
         let lock_info = self.lock_table.get_mut(&key.clone()); // attempt to get lock for a key
         let mut lock_info = match lock_info {
             // Lock exists.
@@ -832,21 +829,16 @@ impl TwoPhaseLocking {
                         LockMode::Write => {
                             // Record locked with write lock, read lock can not be granted.
                             // Apply wait-die deadlock detection.
-                            debug!(
-                                "Thread {}: Write lock TS: {}, Request TS: {}",
-                                th_id,
-                                lock_info.timestamp.unwrap(),
-                                tts
-                            );
+
                             if lock_info.timestamp.unwrap() < tts {
                                 return LockRequest::Denied;
                             }
                             // Only wait if all waiting write requests are older
-                            if lock_info
-                                .list
-                                .iter()
-                                .any(|e| e.timestamp > tts && e.lock_mode == LockMode::Write)
-                            {
+                            if lock_info.list.iter().any(|e| {
+                                e.timestamp > tts
+                                    && e.lock_mode == LockMode::Write
+                                    && e.timestamp != lock_info.timestamp.unwrap()
+                            }) {
                                 return LockRequest::Denied;
                             }
 
@@ -871,18 +863,17 @@ impl TwoPhaseLocking {
                 }
                 LockMode::Write => {
                     // Apply deadlock detection.
-                    debug!(
-                        "Thread {}: Write lock TS: {}, Request TS: {}",
-                        th_id,
-                        lock_info.timestamp.unwrap(),
-                        tts
-                    );
+
                     if tts > lock_info.timestamp.unwrap() {
                         return LockRequest::Denied;
                     }
 
                     // Only wait if all other waiting requests are older.
-                    if lock_info.list.iter().any(|e| e.timestamp > tts) {
+                    if lock_info
+                        .list
+                        .iter()
+                        .any(|e| e.timestamp > tts && e.timestamp != lock_info.timestamp.unwrap())
+                    {
                         return LockRequest::Denied;
                     }
 
@@ -1248,7 +1239,7 @@ mod tests {
                 lock.group_mode == Some(LockMode::Read)
                     && !lock.waiting
                     && lock.list.len() as u32 == 3
-                    && lock.timestamp == Some(tc.get_ts().unwrap())
+                    && lock.timestamp == Some(3)
                     && lock.granted == Some(3),
                 true,
                 "{}",

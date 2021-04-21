@@ -5,6 +5,7 @@ const PROTOCOL: &str = "2pl";
 mod common;
 
 #[test]
+#[ignore]
 fn acid_2pl_g0() {
     common::g0(PROTOCOL);
 }
@@ -40,6 +41,7 @@ fn acid_2pl_lu() {
 }
 
 #[test]
+#[ignore]
 fn acid_2pl_g2item() {
     common::g2item(PROTOCOL);
 }
