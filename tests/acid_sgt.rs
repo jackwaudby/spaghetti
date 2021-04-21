@@ -35,7 +35,6 @@ fn acid_sgt_fr() {
 }
 
 #[test]
-#[ignore]
 fn acid_sgt_lu() {
     common::lu(PROTOCOL);
 }
