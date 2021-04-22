@@ -94,7 +94,7 @@ impl Generator for SmallBankGenerator {
     fn generate(&mut self) -> Message {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
-
+        tracing::info!("{:?}", parameters);
         Message::Request {
             request_no: self.generated,
             transaction: Transaction::SmallBank(transaction),
