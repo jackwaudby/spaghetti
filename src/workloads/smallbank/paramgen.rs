@@ -160,16 +160,16 @@ impl SmallBankGenerator {
                     SmallBankTransactionProfile::TransactSaving(payload),
                 )
             }
-            // AMALGAMATE
-            x if x < 0.6667 => {
-                let (name1, name2) = self.get_names();
+            // // AMALGAMATE
+            // x if x < 0.6667 => {
+            //     let (name1, name2) = self.get_names();
 
-                let payload = Amalgamate { name1, name2 };
-                (
-                    SmallBankTransaction::Amalgamate,
-                    SmallBankTransactionProfile::Amalgamate(payload),
-                )
-            }
+            //     let payload = Amalgamate { name1, name2 };
+            //     (
+            //         SmallBankTransaction::Amalgamate,
+            //         SmallBankTransactionProfile::Amalgamate(payload),
+            //     )
+            // }
             // WRITE_CHECK
             x if x < 0.8333 => {
                 let name = self.get_name();
@@ -240,16 +240,16 @@ impl SmallBankGenerator {
                     SmallBankTransactionProfile::TransactSaving(payload),
                 )
             }
-            // AMALGAMATE
-            x if x < 0.84 => {
-                let (name1, name2) = self.get_names();
+            // // AMALGAMATE
+            // x if x < 0.84 => {
+            //     let (name1, name2) = self.get_names();
 
-                let payload = Amalgamate { name1, name2 };
-                (
-                    SmallBankTransaction::Amalgamate,
-                    SmallBankTransactionProfile::Amalgamate(payload),
-                )
-            }
+            //     let payload = Amalgamate { name1, name2 };
+            //     (
+            //         SmallBankTransaction::Amalgamate,
+            //         SmallBankTransactionProfile::Amalgamate(payload),
+            //     )
+            // }
             // WRITE_CHECK
             x if x < 0.92 => {
                 let name = self.get_name();
