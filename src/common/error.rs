@@ -6,6 +6,7 @@ use crate::server::scheduler::hit_list::error::HitListError;
 use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
 use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
+use crate::workloads::smallbank::error::SmallBankError;
 
 use serde::{Deserialize, Serialize};
 use std::error;
@@ -116,6 +117,9 @@ pub enum NonFatalError {
 
     /// Optimised Hit-list error.
     OptimisedHitListError(OptimisedHitListError),
+
+    /// Smallbank error.
+    SmallBankError(SmallBankError),
 }
 
 impl fmt::Display for FatalError {
@@ -185,6 +189,7 @@ impl fmt::Display for NonFatalError {
                 spaghetti_type, value
             ),
             NonSerializable => write!(f, "non-serializable behaviour"),
+            SmallBankError(ref e) => write!(f, "{}", e),
         }
     }
 }
@@ -229,6 +234,12 @@ impl From<SerializationGraphTestingError> for FatalError {
 impl From<SerializationGraphTestingError> for NonFatalError {
     fn from(error: SerializationGraphTestingError) -> Self {
         NonFatalError::SerializationGraphTesting(error)
+    }
+}
+
+impl From<SmallBankError> for NonFatalError {
+    fn from(error: SmallBankError) -> Self {
+        NonFatalError::SmallBankError(error)
     }
 }
 

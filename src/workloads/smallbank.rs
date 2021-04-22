@@ -11,6 +11,8 @@ pub mod procedures;
 
 pub mod keys;
 
+pub mod error;
+
 lazy_static! {
     pub static ref SB_SF_MAP: HashMap<u64, u64> = {
         let mut m = HashMap::new();

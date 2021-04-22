@@ -1,6 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
+use crate::workloads::smallbank::error::SmallBankError;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
 use crate::workloads::smallbank::paramgen::{
     Amalgamate, Balance, DepositChecking, SendPayment, TransactSaving, WriteCheck,
@@ -11,54 +12,59 @@ use std::convert::TryFrom;
 use std::sync::Arc;
 
 /// Balance transaction.
+///
+/// Sum the balances of a customer's checking and savings accounts.
 pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    let accounts_cols: Vec<&str> = vec!["customer_id"]; // columns
+    let other_cols: Vec<&str> = vec!["balance"];
+
+    let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
+
     let meta = protocol.scheduler.register()?; // register
 
-    let accounts_cols: Vec<&str> = vec!["customer_id"];
-    let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
-    let res1 = protocol
+    let read1 = protocol
         .scheduler
-        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
+        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read 1 -- get customer ID
 
-    let cust_id = match i64::try_from(res1[0].clone()) {
+    let cust_id = match i64::try_from(read1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
             protocol.scheduler.abort(meta.clone()).unwrap();
             return Err(e);
         }
-    };
+    }; // convert to u64
 
-    let other_cols: Vec<&str> = vec!["balance"];
-    let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
+    let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id)); // keys
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
-    let res2 = protocol
-        .scheduler
-        .read("savings", savings_pk, &other_cols, meta.clone())?; // read -- get savings
-    let res3 = protocol
-        .scheduler
-        .read("checking", checking_pk, &other_cols, meta.clone())?; // read -- get checking
 
-    let a = match f64::try_from(res2[0].clone()) {
+    let read2 = protocol
+        .scheduler
+        .read("savings", savings_pk, &other_cols, meta.clone())?; // read 2 -- get savings
+    let read3 = protocol
+        .scheduler
+        .read("checking", checking_pk, &other_cols, meta.clone())?; // read 3 -- get checking
+
+    let savings_balance = match f64::try_from(read2[0].clone()) {
         Ok(bal) => bal,
         Err(e) => {
             protocol.scheduler.abort(meta.clone()).unwrap();
             return Err(e);
         }
-    };
-    let b = match f64::try_from(res3[0].clone()) {
+    }; // convert to u64
+
+    let checking_balance = match f64::try_from(read3[0].clone()) {
         Ok(bal) => bal,
         Err(e) => {
             protocol.scheduler.abort(meta.clone()).unwrap();
             return Err(e);
         }
-    };
-    let total = a + b;
+    }; // convert to u64
 
     protocol.scheduler.commit(meta.clone())?; // commit
 
     let res_cols = vec!["total_balance"];
-    let res_vals = vec![Data::Double(total)];
-    let res = datatype::to_result(None, None, None, Some(&res_cols), Some(&res_vals)).unwrap(); // convert
+    let total_balance = vec![Data::Double(savings_balance + checking_balance)]; // calculate total balance
+    let res = datatype::to_result(None, None, None, Some(&res_cols), Some(&total_balance)).unwrap(); // convert
 
     Ok(res)
 }
@@ -113,24 +119,28 @@ pub fn deposit_checking(
 }
 
 /// TransactSavings transaction.
+///
+/// Makes a withdrawal on the savings account.
 pub fn transact_savings(
     params: TransactSaving,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    let meta = protocol.scheduler.register()?; // register
-
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
+
+    let meta = protocol.scheduler.register()?; // register
+
     let res1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
+
     let cust_id = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
             protocol.scheduler.abort(meta.clone()).unwrap();
             return Err(e);
         }
-    };
+    }; // convert to u64
 
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let savings_cols: Vec<String> = vec!["balance".to_string()];
@@ -141,13 +151,11 @@ pub fn transact_savings(
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
         let balance = f64::try_from(current.unwrap()[0].clone())?; // get current balance
         let value = f64::try_from(params[0].clone())?; // get value
-
         if balance - value > 0.0 {
             let new_balance = vec![(balance - value).to_string()]; // create new balance
             Ok((columns, new_balance))
         } else {
-            // TODO: add constraint error type
-            Err(NonFatalError::NonSerializable)
+            Err(SmallBankError::InsufficientFunds.into())
         }
     };
 
@@ -168,6 +176,8 @@ pub fn transact_savings(
 }
 
 /// Amalgamate transaction.
+///
+/// Move all the funds from one customer to another.
 pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let meta = protocol.scheduler.register()?; // register
 
@@ -264,6 +274,8 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 }
 
 /// Write check transaction.
+///
+/// Write a check against an account taking funds from checking; applying overdraft charge if needed.
 pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let meta = protocol.scheduler.register()?; // register
 
@@ -323,6 +335,8 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 }
 
 /// Send payment transaction.
+///
+/// Transfer money between accounts; if there is sufficient funds in the checking account.
 pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let meta = protocol.scheduler.register()?; // register
 
@@ -367,8 +381,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
             let new_balance = vec![(current_balance - value).to_string()];
             Ok((columns, new_balance))
         } else {
-            // TODO: better error.
-            Err(NonFatalError::NonSerializable)
+            Err(SmallBankError::InsufficientFunds.into())
         }
     };
 
