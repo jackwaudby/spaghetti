@@ -111,9 +111,9 @@ impl Generator for SmallBankGenerator {
 impl SmallBankGenerator {
     /// Get a random transaction profile (type, params)
     fn get_params(&mut self, n: f32) -> (SmallBankTransaction, SmallBankTransactionProfile) {
-        // Increment generated.
-        self.generated += 1;
-        // Use desired mix.
+        self.generated += 1; // increment generated
+
+        // use desired mix
         if self.use_balance_mix {
             self.balance_mix(n)
         } else {
@@ -316,7 +316,7 @@ impl SmallBankGenerator {
         let n: f32 = self.rng.gen();
         match n {
             // Choose from hot.
-            x if x < 0.9 => {
+            x if x < 0.99 => {
                 let ind = self.rng.gen_range(0..hotspot_size);
                 hot[ind].clone()
             }
