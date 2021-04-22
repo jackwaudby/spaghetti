@@ -393,12 +393,12 @@ mod tests {
         let mut c = Config::default();
         c.merge(config::File::with_name("./tests/Test-smallbank.toml"))
             .unwrap();
-        let mut gen = SmallBankGenerator::new(1, true, Some(1), true, false);
+        let mut gen = SmallBankGenerator::new(1, true, Some(1), true);
         assert_eq!(
             (
                 SmallBankTransaction::Balance,
                 SmallBankTransactionProfile::Balance(Balance {
-                    name: "cust3468".to_string()
+                    name: "cust82".to_string()
                 })
             ),
             gen.get_params(0.1)
