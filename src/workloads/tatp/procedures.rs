@@ -274,13 +274,7 @@ pub fn update_subscriber_data(
                      params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
         // Get new bit_1.
-        let value = match i64::try_from(params[0].clone()) {
-            Ok(value) => value,
-            Err(e) => {
-                protocol.scheduler.abort(meta.clone()).unwrap();
-                return Err(e);
-            }
-        };
+        let value = i64::try_from(params[0].clone())?;
 
         // Create new balance.
         let new_values = vec![value.to_string()];
@@ -331,13 +325,7 @@ pub fn update_location(
                   params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
         // Get new bit_1.
-        let value = match i64::try_from(params[0].clone()) {
-            Ok(value) => value,
-            Err(e) => {
-                protocol.scheduler.abort(meta.clone()).unwrap();
-                return Err(e);
-            }
-        };
+        let value = i64::try_from(params[0].clone())?;
 
         let new_values = vec![value.to_string()];
         let columns = vec!["bit_1".to_string()];
