@@ -29,5 +29,5 @@ ssh -i ~/.ssh-keys/<key>.pem azureuser@<pubic-ip>
 
 Copy results from VM to local machine.
 ```
-scp -r -i ./ssh_keys/<key>.pem azureuser@azureuser@<pubic-ip>:~/spaghetti/results ./
+scp -r -i ./ssh_keys/<key>.pem azureuser@<pubic-ip>:~/spaghetti/results ./
 ```
