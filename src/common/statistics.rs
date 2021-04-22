@@ -67,7 +67,7 @@ impl GlobalStatistics {
 
         let workload_breakdown = WorkloadBreakdown::new(&workload);
 
-        let abort_breakdown = AbortBreakdown::new(&protocol);
+        let abort_breakdown = AbortBreakdown::new(&protocol, &workload);
 
         GlobalStatistics {
             scale_factor,
@@ -224,7 +224,7 @@ impl LocalStatistics {
     pub fn new(client_id: u32, workload: &str, protocol: &str) -> LocalStatistics {
         let workload_breakdown = WorkloadBreakdown::new(workload);
 
-        let abort_breakdown = AbortBreakdown::new(protocol);
+        let abort_breakdown = AbortBreakdown::new(protocol, workload);
 
         LocalStatistics {
             client_id,
@@ -248,15 +248,24 @@ impl LocalStatistics {
         self.workload_breakdown
             .record(transaction, outcome.clone(), latency);
 
-        // Protocol
+        // Abort reasons
         if let Outcome::Aborted { reason } = outcome {
             match reason {
                 NonFatalError::RowAlreadyExists(_, _) => {
                     self.abort_breakdown.row_already_exists += 1
                 }
                 NonFatalError::RowNotFound(_, _) => self.abort_breakdown.row_not_found += 1,
+                NonFatalError::SmallBankError(_) => {
+                    if let Some(ref mut wab) = self.abort_breakdown.workload_specific {
+                        match wab {
+                            WorkloadAbortBreakdown::SmallBank(ref mut metric) => {
+                                metric.inc_insufficient_funds()
+                            }
+                        }
+                    }
+                }
                 _ =>
-                // workload dependent
+                // protocol dependent
                 {
                     match &mut self.abort_breakdown.protocol_specific {
                         ProtocolAbortBreakdown::HitList(ref mut metric) => match reason {
@@ -489,11 +498,14 @@ struct AbortBreakdown {
 
     /// Protocol specific aborts reasons.
     protocol_specific: ProtocolAbortBreakdown,
+
+    /// Workload specific abort reasons -- used for constraint violations, e.g., insufficient funds
+    workload_specific: Option<WorkloadAbortBreakdown>,
 }
 
 impl AbortBreakdown {
     /// Create new holder for protocol specific abort reasons.
-    fn new(protocol: &str) -> AbortBreakdown {
+    fn new(protocol: &str, workload: &str) -> AbortBreakdown {
         let protocol_specific = match protocol {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
             "2pl" => ProtocolAbortBreakdown::TwoPhaseLocking(TwoPhaseLockingReasons::new()),
@@ -502,10 +514,20 @@ impl AbortBreakdown {
             _ => unimplemented!(),
         };
 
+        let workload_specific;
+        if workload == "smallbank" {
+            workload_specific = Some(WorkloadAbortBreakdown::SmallBank(
+                SmallBankConstraints::new(),
+            ));
+        } else {
+            workload_specific = None;
+        }
+
         AbortBreakdown {
             row_already_exists: 0,
             row_not_found: 0,
             protocol_specific,
+            workload_specific,
         }
     }
 
@@ -528,7 +550,7 @@ impl AbortBreakdown {
                 {
                     reasons.merge(other_reasons);
                 } else {
-                    panic!("abort breakdowns do not match");
+                    panic!("protocol abort breakdowns do not match");
                 }
             }
             ProtocolAbortBreakdown::SerializationGraph(ref mut reasons) => {
@@ -537,7 +559,7 @@ impl AbortBreakdown {
                 {
                     reasons.merge(other_reasons);
                 } else {
-                    panic!("abort breakdowns do not match");
+                    panic!("protocol abort breakdowns do not match");
                 }
             }
             ProtocolAbortBreakdown::TwoPhaseLocking(ref mut reasons) => {
@@ -546,10 +568,53 @@ impl AbortBreakdown {
                 {
                     reasons.merge(other_reasons);
                 } else {
-                    panic!("abort breakdowns do not match");
+                    panic!("protocol abort breakdowns do not match");
                 }
             }
         }
+
+        // merging abort breakdowns
+        if let Some(ref mut workload_aborts) = self.workload_specific {
+            match workload_aborts {
+                WorkloadAbortBreakdown::SmallBank(constraints) => {
+                    if let Some(other_workload_aborts) = other.workload_specific {
+                        match other_workload_aborts {
+                            WorkloadAbortBreakdown::SmallBank(other_constraints) => {
+                                constraints.merge(other_constraints);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+#[derive(Serialize, Deserialize, Debug, Clone)]
+enum WorkloadAbortBreakdown {
+    SmallBank(SmallBankConstraints),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct SmallBankConstraints {
+    /// Insufficient funds
+    insufficient_funds: u32,
+}
+
+impl SmallBankConstraints {
+    /// Create new holder for smallbank constraint violations
+    fn new() -> Self {
+        SmallBankConstraints {
+            insufficient_funds: 0,
+        }
+    }
+
+    /// Increment insufficient funds
+    fn inc_insufficient_funds(&mut self) {
+        self.insufficient_funds += 1;
+    }
+
+    fn merge(&mut self, other: SmallBankConstraints) {
+        self.insufficient_funds += other.insufficient_funds;
     }
 }
 
