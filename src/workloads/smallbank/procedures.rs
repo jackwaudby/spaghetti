@@ -395,6 +395,8 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         meta.clone(),
     )?; // update
 
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id2));
     let checking_cols: Vec<String> = vec!["balance".to_string()];
     let update = |columns: Vec<String>,

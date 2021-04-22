@@ -14,12 +14,10 @@ pub fn params(
     set_seed: bool,
     seed: Option<u64>,
     use_balance_mix: bool,
-    hotspot_use_fixed_size: bool,
     transactions: u64,
 ) -> Result<()> {
     let mut wtr = Writer::from_path(format!("./data/smallbank/sf-{}/params.csv", sf))?;
-    let mut gen =
-        SmallBankGenerator::new(sf, set_seed, seed, use_balance_mix, hotspot_use_fixed_size);
+    let mut gen = SmallBankGenerator::new(sf, set_seed, seed, use_balance_mix);
 
     for _ in 1..=transactions {
         let message = gen.generate();

@@ -161,17 +161,10 @@ fn run() -> Result<()> {
                     wrapped_seed = None;
                 }
                 let use_balance_mix = settings.get_bool("use_balance_mix")?;
-                let hotspot_use_fixed_size = settings.get_bool("hotspot_use_fixed_size")?;
+
                 log::info!("Generating {} parameters", transactions);
-                smallbank::params(
-                    sf,
-                    set_seed,
-                    wrapped_seed,
-                    use_balance_mix,
-                    hotspot_use_fixed_size,
-                    transactions,
-                )
-                .unwrap();
+                smallbank::params(sf, set_seed, wrapped_seed, use_balance_mix, transactions)
+                    .unwrap();
                 log::info!("Generated {} parameters", transactions);
             }
         }

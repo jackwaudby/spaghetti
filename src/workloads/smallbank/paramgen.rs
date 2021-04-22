@@ -34,15 +34,6 @@ pub struct SmallBankGenerator {
 
     /// Value of a cheque written against an account.
     write_check_amount: f64,
-
-    /// Use hotspot fixed size.
-    hotspot_use_fixed_size: bool,
-
-    /// Hotspot fixed size.
-    hotspot_fixed_size: usize,
-
-    /// Hotspot percentage.
-    hotspot_percentage: f64,
 }
 
 impl SmallBankGenerator {
@@ -52,11 +43,18 @@ impl SmallBankGenerator {
         set_seed: bool,
         seed: Option<u64>,
         use_balance_mix: bool,
-        hotspot_use_fixed_size: bool,
     ) -> SmallBankGenerator {
+        let contention = match sf {
+            0 => "NA",
+            1 => "high",
+            2 => "mid",
+            3 => "low",
+            _ => panic!("invalid scale factor"),
+        };
+
         info!("Parameter generator set seed: {}", set_seed);
         info!("Balance mix: {}", use_balance_mix);
-        info!("Fixed hotspot: {}", hotspot_use_fixed_size);
+        info!("Contention: {}", contention);
 
         let rng: StdRng;
         if set_seed {
@@ -70,8 +68,6 @@ impl SmallBankGenerator {
         let deposit_checking_amount = DEPOSIT_CHECKING_AMOUNT;
         let transact_savings_amount = TRANSACT_SAVINGS_AMOUNT;
         let write_check_amount = WRITE_CHECK_AMOUNT;
-        let hotspot_fixed_size = HOTSPOT_FIXED_SIZE as usize;
-        let hotspot_percentage = HOTSPOT_PERCENTAGE;
 
         SmallBankGenerator {
             rng,
@@ -82,9 +78,6 @@ impl SmallBankGenerator {
             deposit_checking_amount,
             transact_savings_amount,
             write_check_amount,
-            hotspot_use_fixed_size,
-            hotspot_fixed_size,
-            hotspot_percentage,
         }
     }
 }
@@ -94,7 +87,7 @@ impl Generator for SmallBankGenerator {
     fn generate(&mut self) -> Message {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
-        tracing::info!("{:?}", parameters);
+
         Message::Request {
             request_no: self.generated,
             transaction: Transaction::SmallBank(transaction),
@@ -125,64 +118,64 @@ impl SmallBankGenerator {
     fn uniform_mix(&mut self, n: f32) -> (SmallBankTransaction, SmallBankTransactionProfile) {
         match n {
             // BALANCE
-            // x if x < 0.1667 => {
-            //     let name = self.get_name();
-            //     let payload = Balance { name };
+            x if x < 0.1667 => {
+                let name = self.get_name();
+                let payload = Balance { name };
 
-            //     (
-            //         SmallBankTransaction::Balance,
-            //         SmallBankTransactionProfile::Balance(payload),
-            //     )
-            // }
+                (
+                    SmallBankTransaction::Balance,
+                    SmallBankTransactionProfile::Balance(payload),
+                )
+            }
             // DEPOSIT_CHECKING
-            // x if x < 0.3333 => {
-            //     let name = self.get_name();
+            x if x < 0.3333 => {
+                let name = self.get_name();
 
-            //     let payload = DepositChecking {
-            //         name,
-            //         value: self.deposit_checking_amount,
-            //     };
-            //     (
-            //         SmallBankTransaction::DepositChecking,
-            //         SmallBankTransactionProfile::DepositChecking(payload),
-            //     )
-            // }
+                let payload = DepositChecking {
+                    name,
+                    value: self.deposit_checking_amount,
+                };
+                (
+                    SmallBankTransaction::DepositChecking,
+                    SmallBankTransactionProfile::DepositChecking(payload),
+                )
+            }
             // TRANSACT_SAVING
-            // x if x < 0.50 => {
-            //     let name = self.get_name();
+            x if x < 0.50 => {
+                let name = self.get_name();
 
-            //     let payload = TransactSaving {
-            //         name,
-            //         value: self.transact_savings_amount,
-            //     };
-            //     (
-            //         SmallBankTransaction::TransactSaving,
-            //         SmallBankTransactionProfile::TransactSaving(payload),
-            //     )
-            // }
-            // // AMALGAMATE
-            // x if x < 0.6667 => {
-            //     let (name1, name2) = self.get_names();
+                let payload = TransactSaving {
+                    name,
+                    value: self.transact_savings_amount,
+                };
+                (
+                    SmallBankTransaction::TransactSaving,
+                    SmallBankTransactionProfile::TransactSaving(payload),
+                )
+            }
+            // AMALGAMATE
+            x if x < 0.6667 => {
+                let (name1, name2) = self.get_names();
 
-            //     let payload = Amalgamate { name1, name2 };
-            //     (
-            //         SmallBankTransaction::Amalgamate,
-            //         SmallBankTransactionProfile::Amalgamate(payload),
-            //     )
-            // }
+                let payload = Amalgamate { name1, name2 };
+                (
+                    SmallBankTransaction::Amalgamate,
+                    SmallBankTransactionProfile::Amalgamate(payload),
+                )
+            }
             // WRITE_CHECK
-            // x if x < 0.8333 => {
-            //     let name = self.get_name();
+            x if x < 0.8333 => {
+                let name = self.get_name();
 
-            //     let payload = WriteCheck {
-            //         name,
-            //         value: self.write_check_amount,
-            //     };
-            //     (
-            //         SmallBankTransaction::WriteCheck,
-            //         SmallBankTransactionProfile::WriteCheck(payload),
-            //     )
-            // }
+                let payload = WriteCheck {
+                    name,
+                    value: self.write_check_amount,
+                };
+                (
+                    SmallBankTransaction::WriteCheck,
+                    SmallBankTransactionProfile::WriteCheck(payload),
+                )
+            }
             // SEND_PAYMENT
             _ => {
                 let (name1, name2) = self.get_names();
@@ -204,65 +197,65 @@ impl SmallBankGenerator {
     fn balance_mix(&mut self, n: f32) -> (SmallBankTransaction, SmallBankTransactionProfile) {
         match n {
             // BALANCE
-            // x if x < 0.6 => {
-            //     let name = self.get_name();
+            x if x < 0.6 => {
+                let name = self.get_name();
 
-            //     let payload = Balance { name };
+                let payload = Balance { name };
 
-            //     (
-            //         SmallBankTransaction::Balance,
-            //         SmallBankTransactionProfile::Balance(payload),
-            //     )
-            // }
+                (
+                    SmallBankTransaction::Balance,
+                    SmallBankTransactionProfile::Balance(payload),
+                )
+            }
             // DEPOSIT_CHECKING
-            // x if x < 0.68 => {
-            //     let name = self.get_name();
+            x if x < 0.68 => {
+                let name = self.get_name();
 
-            //     let payload = DepositChecking {
-            //         name,
-            //         value: self.deposit_checking_amount,
-            //     };
-            //     (
-            //         SmallBankTransaction::DepositChecking,
-            //         SmallBankTransactionProfile::DepositChecking(payload),
-            //     )
-            // }
+                let payload = DepositChecking {
+                    name,
+                    value: self.deposit_checking_amount,
+                };
+                (
+                    SmallBankTransaction::DepositChecking,
+                    SmallBankTransactionProfile::DepositChecking(payload),
+                )
+            }
             // TRANSACT_SAVING
-            // x if x < 0.76 => {
-            //     let name = self.get_name();
+            x if x < 0.76 => {
+                let name = self.get_name();
 
-            //     let payload = TransactSaving {
-            //         name,
-            //         value: self.transact_savings_amount,
-            //     };
-            //     (
-            //         SmallBankTransaction::TransactSaving,
-            //         SmallBankTransactionProfile::TransactSaving(payload),
-            //     )
-            // }
-            // // AMALGAMATE
-            // x if x < 0.84 => {
-            //     let (name1, name2) = self.get_names();
+                let payload = TransactSaving {
+                    name,
+                    value: self.transact_savings_amount,
+                };
+                (
+                    SmallBankTransaction::TransactSaving,
+                    SmallBankTransactionProfile::TransactSaving(payload),
+                )
+            }
+            // AMALGAMATE
+            x if x < 0.84 => {
+                let (name1, name2) = self.get_names();
 
-            //     let payload = Amalgamate { name1, name2 };
-            //     (
-            //         SmallBankTransaction::Amalgamate,
-            //         SmallBankTransactionProfile::Amalgamate(payload),
-            //     )
-            // }
+                let payload = Amalgamate { name1, name2 };
+                (
+                    SmallBankTransaction::Amalgamate,
+                    SmallBankTransactionProfile::Amalgamate(payload),
+                )
+            }
             // WRITE_CHECK
-            // x if x < 0.92 => {
-            //     let name = self.get_name();
+            x if x < 0.92 => {
+                let name = self.get_name();
 
-            //     let payload = WriteCheck {
-            //         name,
-            //         value: self.write_check_amount,
-            //     };
-            //     (
-            //         SmallBankTransaction::WriteCheck,
-            //         SmallBankTransactionProfile::WriteCheck(payload),
-            //     )
-            // }
+                let payload = WriteCheck {
+                    name,
+                    value: self.write_check_amount,
+                };
+                (
+                    SmallBankTransaction::WriteCheck,
+                    SmallBankTransactionProfile::WriteCheck(payload),
+                )
+            }
             // SEND_PAYMENT
             _ => {
                 let (name1, name2) = self.get_names();
@@ -280,53 +273,20 @@ impl SmallBankGenerator {
         }
     }
 
-    /// Split account range into cold and hot.
-    ///
-    /// Sets the first n accounts as the hotspot.
-    fn split_accounts(&self, hotspot_size: usize) -> (Vec<String>, Vec<String>) {
-        assert!(self.accounts as usize > hotspot_size);
-        let mut hot = vec![];
-        let mut cold = vec![];
-
-        for account in 1..=hotspot_size {
-            hot.push(format!("cust{}", account));
-        }
-
-        for account in hotspot_size + 1..=self.accounts as usize {
-            cold.push(format!("cust{}", account));
-        }
-
-        (hot, cold)
-    }
-
-    /// Calculate size of hotspot.
-    pub fn get_hotspot_size(&self) -> usize {
-        if self.hotspot_use_fixed_size {
-            self.hotspot_fixed_size
-        } else {
-            (self.accounts as f64 * self.hotspot_percentage) as usize
-        }
-    }
-
     /// Get customer name.
     pub fn get_name(&mut self) -> String {
-        let hotspot_size = self.get_hotspot_size();
-        let (hot, cold) = self.split_accounts(hotspot_size);
+        if self.accounts == 100 {
+            let id = self.rng.gen_range(0..self.accounts);
+            return format!("cust{}", id);
+        }
 
         let n: f32 = self.rng.gen();
-        match n {
-            // Choose from hot.
-            x if x < 0.99 => {
-                let ind = self.rng.gen_range(0..hotspot_size);
-                hot[ind].clone()
-            }
-            // Choose from cold.
-            _ => {
-                let cold_size = cold.len();
-                let ind = self.rng.gen_range(0..cold_size);
-                cold[ind].clone()
-            }
-        }
+        let id = match n {
+            x if x < 0.25 => self.rng.gen_range(0..100),
+
+            _ => self.rng.gen_range(100..self.accounts),
+        };
+        format!("cust{}", id)
     }
 
     /// Get distinct customer names.

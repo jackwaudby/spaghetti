@@ -83,14 +83,7 @@ impl Generator {
             }
             "smallbank" => {
                 let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
-                let hotspot_use_fixed_size = config.get_bool("hotspot_use_fixed_size").unwrap();
-                let gen = SmallBankGenerator::new(
-                    sf,
-                    set_seed,
-                    seed,
-                    use_balance_mix,
-                    hotspot_use_fixed_size,
-                );
+                let gen = SmallBankGenerator::new(sf, set_seed, seed, use_balance_mix);
                 ParameterGenerator::SmallBank(gen)
             }
             _ => unimplemented!(),

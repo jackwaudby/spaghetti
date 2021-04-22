@@ -17,9 +17,9 @@ lazy_static! {
     pub static ref SB_SF_MAP: HashMap<u64, u64> = {
         let mut m = HashMap::new();
         m.insert(0, 10);
-        m.insert(1, 18000);
-        m.insert(10, 180000);
-        m.insert(100, 1800000);
+        m.insert(1, 100);
+        m.insert(2, 1000);
+        m.insert(3, 10000);
         m
     };
 }
