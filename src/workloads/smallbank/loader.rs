@@ -126,7 +126,7 @@ pub fn populate_account(data: &Internal) -> Result<()> {
 
     info!("Populating accounts table: {}", accounts);
 
-    for a_id in 1..=accounts {
+    for a_id in 0..accounts {
         let name = format!("cust{}", a_id);
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(name.clone()));
