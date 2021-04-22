@@ -152,7 +152,7 @@ pub fn populate_savings(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let min_bal = MIN_BALANCE;
     let max_bal = MAX_BALANCE;
 
-    for customer_id in 1..=accounts {
+    for customer_id in 0..accounts {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(customer_id));
         row.set_primary_key(pk.clone());
@@ -182,7 +182,7 @@ pub fn populate_checking(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let min_bal = MIN_BALANCE;
     let max_bal = MAX_BALANCE;
 
-    for customer_id in 1..=accounts {
+    for customer_id in 0..accounts {
         let mut row = Row::new(Arc::clone(&t), &protocol);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(customer_id));
         row.set_primary_key(pk.clone());
