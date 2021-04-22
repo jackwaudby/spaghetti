@@ -1,6 +1,7 @@
 use crate::datagen::smallbank::{Account, Checking, Savings};
 use crate::server::storage::row::Row;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
+use crate::workloads::smallbank::{MAX_BALANCE, MIN_BALANCE, SB_SF_MAP};
 use crate::workloads::{Internal, PrimaryKey};
 use crate::Result;
 
@@ -114,15 +115,14 @@ pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
 
 /// Populate the `Account` table.
 pub fn populate_account(data: &Internal) -> Result<()> {
-    // Get table and index.
     let table_name = "accounts";
-    let t = data.get_table(table_name)?;
+    let t = data.get_table(table_name)?; // get handle to table
     let index_name = t.get_primary_index()?;
-    let i = data.get_index(&index_name)?;
+    let i = data.get_index(&index_name)?; // get handle to index
 
-    // Get protocol.
-    let protocol = data.config.get_str("protocol")?;
-    let accounts = data.config.get_int("accounts")? as u32;
+    let protocol = data.config.get_str("protocol")?; // get protocol
+    let sf = data.config.get_int("scale_factor")? as u64; // get sf
+    let accounts = *SB_SF_MAP.get(&sf).unwrap(); // get accounts
 
     info!("Populating accounts table: {}", accounts);
 
@@ -143,16 +143,14 @@ pub fn populate_account(data: &Internal) -> Result<()> {
 /// Populate the `Savings` table.
 pub fn populate_savings(data: &Internal, rng: &mut StdRng) -> Result<()> {
     info!("Populating savings table");
-    // Get handle to `Table` and `Index`.
-    let table_name = "savings";
-    let t = data.get_table(table_name)?;
+    let t = data.get_table("savings")?;
     let index_name = t.get_primary_index()?;
     let i = data.get_index(&index_name)?;
-
     let protocol = data.config.get_str("protocol")?;
-    let accounts = data.config.get_int("accounts")? as u64;
-    let min_bal = data.config.get_int("min_balance")?;
-    let max_bal = data.config.get_int("max_balance")?;
+    let sf = data.config.get_int("scale_factor")? as u64;
+    let accounts = *SB_SF_MAP.get(&sf).unwrap();
+    let min_bal = MIN_BALANCE;
+    let max_bal = MAX_BALANCE;
 
     for customer_id in 1..=accounts {
         let mut row = Row::new(Arc::clone(&t), &protocol);
@@ -178,9 +176,11 @@ pub fn populate_checking(data: &Internal, rng: &mut StdRng) -> Result<()> {
 
     // Get protocol.
     let protocol = data.config.get_str("protocol")?;
-    let accounts = data.config.get_int("accounts")? as u64;
-    let min_bal = data.config.get_int("min_balance")?;
-    let max_bal = data.config.get_int("max_balance")?;
+    let sf = data.config.get_int("scale_factor")? as u64;
+
+    let accounts = *SB_SF_MAP.get(&sf).unwrap();
+    let min_bal = MIN_BALANCE;
+    let max_bal = MAX_BALANCE;
 
     for customer_id in 1..=accounts {
         let mut row = Row::new(Arc::clone(&t), &protocol);
