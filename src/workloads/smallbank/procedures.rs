@@ -62,7 +62,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
     let res_vals = vec![Data::Double(total)];
 
     // Convert to result
-    let res = datatype::to_result(&res_cols, &res_vals).unwrap();
+    let res = datatype::to_result(None, None, None, Some(&res_cols), Some(&res_vals)).unwrap();
 
     Ok(res)
 }
@@ -130,8 +130,9 @@ pub fn deposit_checking(
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
+    let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
 
-    Ok("{\"updated 1 row.\"}".to_string())
+    Ok(res)
 }
 
 /// TransactSavings transaction.
@@ -205,8 +206,9 @@ pub fn transact_savings(
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
+    let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
 
-    Ok("{\"updated 1 row.\"}".to_string())
+    Ok(res)
 }
 
 /// Amalgamate transaction.
@@ -322,8 +324,9 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
+    let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
-    Ok("{\"updated 2 rows.\"}".to_string())
+    Ok(res)
 }
 
 /// Write check transaction.
@@ -411,8 +414,9 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
+    let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
-    Ok("{\"updated 2 rows.\"}".to_string())
+    Ok(res)
 }
 
 /// Send payment transaction.
@@ -538,8 +542,9 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
+    let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
-    Ok("{\"updated 2 rows.\"}".to_string())
+    Ok(res)
 }
 
 #[cfg(test)]
@@ -584,8 +589,8 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{total_balance=\"53334\"}"
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"53334\"}}"
         );
 
         ////////////////////////////////////
@@ -601,7 +606,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"updated 1 row.\"}"
+            "{\"created\":null,\"updated\":1,\"deleted\":null,\"val\":null}"
         );
 
         assert_eq!(
@@ -611,8 +616,9 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{total_balance=\"53344\"}"
+                .unwrap(),
+
+        "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"53344\"}}"
         );
 
         ////////////////////////////////////
@@ -628,7 +634,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"updated 1 row.\"}"
+            "{\"created\":null,\"updated\":1,\"deleted\":null,\"val\":null}"
         );
 
         assert_eq!(
@@ -638,8 +644,9 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{total_balance=\"53300.7\"}"
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"53300.7\"}}"
+
         );
 
         /////////////////////////////
@@ -647,15 +654,16 @@ mod tests {
         /////////////////////////////
 
         assert_eq!(
-            balance(
-                Balance {
-                    name: "cust2".to_string()
-                },
-                Arc::clone(&protocol)
-            )
-            .unwrap(),
-            "{total_balance=\"72811\"}"
-        );
+                balance(
+                    Balance {
+                        name: "cust2".to_string()
+                    },
+                    Arc::clone(&protocol)
+                )
+                    .unwrap(),
+        "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"72811\"}}"
+
+            );
 
         assert_eq!(
             amalgmate(
@@ -666,19 +674,21 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"updated 2 rows.\"}"
+            "{\"created\":null,\"updated\":2,\"deleted\":null,\"val\":null}"
         );
 
         assert_eq!(
-            balance(
-                Balance {
-                    name: "cust1".to_string()
-                },
-                Arc::clone(&protocol)
-            )
-            .unwrap(),
-            "{total_balance=\"0\"}"
-        );
+                balance(
+                    Balance {
+                        name: "cust1".to_string()
+                    },
+                    Arc::clone(&protocol)
+                )
+                    .unwrap(),
+        "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"0\"}}"
+
+
+            );
 
         assert_eq!(
             balance(
@@ -687,8 +697,10 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{total_balance=\"126111.7\"}"
+                .unwrap(),
+                    "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"126111.7\"}}"
+
+
         );
 
         /////////////////////////////
@@ -703,7 +715,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"updated 2 rows.\"}"
+            "{\"created\":null,\"updated\":2,\"deleted\":null,\"val\":null}"
         );
 
         assert_eq!(
@@ -713,8 +725,10 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{total_balance=\"-51\"}"
+                .unwrap(),
+                                "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"-51\"}}"
+
+
         );
 
         assert_eq!(
@@ -726,7 +740,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"updated 2 rows.\"}"
+            "{\"created\":null,\"updated\":2,\"deleted\":null,\"val\":null}"
         );
 
         assert_eq!(
@@ -736,8 +750,10 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{total_balance=\"126100\"}"
+                .unwrap(),
+                                            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"126100\"}}"
+
+
         );
 
         /////////////////////////////////
@@ -753,7 +769,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"updated 2 rows.\"}"
+            "{\"created\":null,\"updated\":2,\"deleted\":null,\"val\":null}"
         );
 
         assert_eq!(
@@ -763,8 +779,10 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{total_balance=\"-1\"}"
+                .unwrap(),
+                                            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"-1\"}}"
+
+
         );
 
         assert_eq!(
@@ -774,8 +792,10 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{total_balance=\"126050\"}"
+                .unwrap(),
+                                            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"126050\"}}"
+
+
         );
     }
 }

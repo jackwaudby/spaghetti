@@ -1,11 +1,11 @@
 log = "info"
-workload = "smallbank"
+workload = "acid"
 transactions = 10
 seed = 42
 set_seed = false
 
 params = true
-scale_factor = 100
+scale_factor = 0
 
 use_nurand = true
 

@@ -1,7 +1,10 @@
+use spaghetti::datagen::acid;
 use spaghetti::datagen::smallbank;
 use spaghetti::datagen::tatp;
+use spaghetti::workloads::acid::ACID_SF_MAP;
 use spaghetti::workloads::smallbank::{MAX_BALANCE, MIN_BALANCE, SB_SF_MAP};
 use spaghetti::workloads::tatp::TATP_SF_MAP;
+
 use spaghetti::Result;
 
 use config::Config;
@@ -172,6 +175,32 @@ fn run() -> Result<()> {
                 log::info!("Generated {} parameters", transactions);
             }
         }
+        "acid" => {
+            let dir = format!("./data/acid/sf-{}", sf);
+
+            if Path::new(&dir).exists() {
+                fs::remove_dir_all(&dir)?;
+            }
+
+            fs::create_dir_all(&dir)?;
+            let persons = *ACID_SF_MAP.get(&sf).unwrap(); // get account
+
+            let pjh = thread::spawn(move || {
+                log::info!("Generating persons.csv");
+                acid::persons(persons, sf).unwrap();
+                log::info!("Generated persons.csv");
+            });
+
+            let pkp = thread::spawn(move || {
+                log::info!("Generating person_knows_person.csv");
+                acid::person_knows_person(persons, sf).unwrap();
+                log::info!("Generated person_knows_person.csv");
+            });
+
+            pjh.join().unwrap();
+            pkp.join().unwrap();
+        }
+
         _ => panic!("workload not recognised"),
     }
 

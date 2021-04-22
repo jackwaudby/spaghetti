@@ -2,20 +2,14 @@ log = "info"
 
 transactions = 1000
 timeout = 10
-warmup = 1
+warmup = 0
 set_seed = false
 
-protocol="2pl"
-workers = 6
+workers = 8
 garbage_collection = true
 garbage_collection_sleep = 1
 
 scale_factor = 0
 workload = "acid"
-anomaly = "g1c"
+delay = 0
 load = false
-
-nurand = true
-
-use_balance_mix = false
-hotspot_use_fixed_size = true

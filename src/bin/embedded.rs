@@ -64,10 +64,18 @@ fn main() {
     // Logger.
     let protocol = config.get_str("protocol").unwrap();
     let w = config.get_str("workload").unwrap();
+
+    if w.as_str() == "acid" {
+        let anomaly = config.get_str("anomaly").unwrap();
+        let delay = config.get_int("delay").unwrap();
+        tracing::info!("ACID test: {}", anomaly);
+        tracing::info!("Aritifical operation delay (secs): {}", delay);
+    }
+
     let warmup = config.get_int("warmup").unwrap() as u32;
     let stats = Some(LocalStatistics::new(1, &w, &protocol));
     let logger = Logger::new(resp_rx, main_tx, stats, warmup);
-    logging::run(logger);
+    logging::run(logger, Arc::clone(&config));
 
     // Manager.
     let tm = TransactionManager::new(Arc::clone(&workload), req_rx, next_tx);

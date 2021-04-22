@@ -456,8 +456,14 @@ mod tests {
             .get_values()
             .unwrap();
         assert_eq!(
-            datatype::to_result(&cols_s, &res).unwrap(),
-          "{s_id=\"1\", sub_nbr=\"000000000000001\", bit_1=\"1\", bit_2=\"0\", bit_3=\"1\", bit_4=\"1\", bit_5=\"0\", bit_6=\"0\", bit_7=\"0\", bit_8=\"1\", bit_9=\"0\", bit_10=\"0\", hex_1=\"3\", hex_2=\"12\", hex_3=\"15\", hex_4=\"8\", hex_5=\"2\", hex_6=\"3\", hex_7=\"5\", hex_8=\"4\", hex_9=\"7\", hex_10=\"0\", byte_2_1=\"55\", byte_2_2=\"65\", byte_2_3=\"99\", byte_2_4=\"138\", byte_2_5=\"93\", byte_2_6=\"228\", byte_2_7=\"150\", byte_2_8=\"132\", byte_2_9=\"121\", byte_2_10=\"203\", msc_location=\"8\", vlr_location=\"9\"}"
+            datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&cols_s),
+                Some(&res)
+            ).unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"1\",\"bit_10\":\"0\",\"bit_2\":\"0\",\"bit_3\":\"1\",\"bit_4\":\"1\",\"bit_5\":\"0\",\"bit_6\":\"0\",\"bit_7\":\"0\",\"bit_8\":\"1\",\"bit_9\":\"0\",\"byte_2_1\":\"55\",\"byte_2_10\":\"203\",\"byte_2_2\":\"65\",\"byte_2_3\":\"99\",\"byte_2_4\":\"138\",\"byte_2_5\":\"93\",\"byte_2_6\":\"228\",\"byte_2_7\":\"150\",\"byte_2_8\":\"132\",\"byte_2_9\":\"121\",\"hex_1\":\"3\",\"hex_10\":\"0\",\"hex_2\":\"12\",\"hex_3\":\"15\",\"hex_4\":\"8\",\"hex_5\":\"2\",\"hex_6\":\"3\",\"hex_7\":\"5\",\"hex_8\":\"4\",\"hex_9\":\"7\",\"msc_location\":\"8\",\"s_id\":\"1\",\"sub_nbr\":\"000000000000001\",\"vlr_location\":\"9\"}}"
         );
 
         // Access info.
@@ -475,14 +481,18 @@ mod tests {
         let index = internals.indexes.get("access_idx").unwrap();
         assert_eq!(
             datatype::to_result(
-                &cols_ai,
-                &index
+                        None,
+                None,
+                None,
+                Some(
+                &cols_ai),
+                Some(&index
                     .read(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2)), &cols_ai,"2pl","t1")
-                      .unwrap().get_values().unwrap()
+                      .unwrap().get_values().unwrap())
 
             )
                 .unwrap(),
-            "{s_id=\"1\", ai_type=\"2\", data_1=\"118\", data_2=\"249\", data_3=\"QYU\", data_4=\"PTUKB\"}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"ai_type\":\"2\",\"data_1\":\"118\",\"data_2\":\"249\",\"data_3\":\"QYU\",\"data_4\":\"PTUKB\",\"s_id\":\"1\"}}"
         );
 
         // Special facillity.
@@ -506,19 +516,24 @@ mod tests {
         let index = internals.indexes.get("special_idx").unwrap();
 
         assert_eq!(
-            datatype::to_result(
-                &cols_sf,
-                &index
+            datatype::to_result(        None,
+                None,
+                None,
+                Some(
+                &cols_sf),
+                Some(&index
                     .read(
                         PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 2)),
                         &cols_sf,
                         "2pl",
                         "t1",
                     )
-                    .unwrap().get_values().unwrap()
+                    .unwrap().get_values().unwrap())
             )
                 .unwrap(),
-            "{s_id=\"1\", sf_type=\"3\", is_active=\"1\", error_cntrl=\"30\", data_a=\"217\", data_b=\"IWPXS\"}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"data_a\":\"217\",\"data_b\":\"IWPXS\",\"error_cntrl\":\"30\",\"is_active\":\"1\",\"s_id\":\"1\",\"sf_type\":\"3\"}}"
+
+
         );
 
         // Call forwarding.
@@ -533,8 +548,11 @@ mod tests {
         let index = internals.indexes.get("call_idx").unwrap();
         assert_eq!(
             datatype::to_result(
-                &cols_cf,
-                &index
+                None,
+                None,
+                None,
+                Some(&cols_cf),
+                Some(&index
                     .read(
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 2, 16)),
                         &cols_cf,
@@ -542,9 +560,10 @@ mod tests {
                         "t1",
                     )
                     .unwrap().get_values().unwrap()
-            )
+            ))
                 .unwrap(),
-            "{s_id=\"1\", sf_type=\"3\", start_time=\"16\", end_time=\"22\", number_x=\"255859837238459\"}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"end_time\":\"22\",\"number_x\":\"255859837238459\",\"s_id\":\"1\",\"sf_type\":\"3\",\"start_time\":\"16\"}}"
+
         );
     }
 }

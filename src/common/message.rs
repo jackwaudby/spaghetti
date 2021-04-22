@@ -1,5 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::frame::Frame;
+use crate::workloads::acid::paramgen::AcidTransactionProfile;
+use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::paramgen::TatpTransactionProfile;
@@ -50,6 +52,7 @@ pub enum Message {
 /// Transaction types.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Transaction {
+    Acid(AcidTransaction),
     Tatp(TatpTransaction),
     Tpcc(TpccTransaction),
     SmallBank(SmallBankTransaction),
@@ -58,6 +61,7 @@ pub enum Transaction {
 /// Transaction parameters.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Parameters {
+    Acid(AcidTransactionProfile),
     Tatp(TatpTransactionProfile),
     Tpcc(TpccTransactionProfile),
     SmallBank(SmallBankTransactionProfile),
@@ -139,7 +143,7 @@ impl fmt::Display for Outcome {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Outcome::*;
         match &*self {
-            Committed { value } => write!(f, "val={}", value.as_ref().unwrap()),
+            Committed { value } => write!(f, "{}", value.as_ref().unwrap()),
             Aborted { reason } => write!(f, "val={{{}}}", reason),
         }
     }

@@ -135,11 +135,11 @@ impl Index {
         Ok(res)
     }
 
+    /// Attempt to get a read handle to a row with `key`.
     pub fn get_lock_on_row(
         &self,
         key: PrimaryKey,
     ) -> Result<ReadGuard<PrimaryKey, Mutex<Row>>, NonFatalError> {
-        // Attempt to get read guard.
         self.map.get(&key).ok_or(NonFatalError::RowNotFound(
             format!("{}", key),
             self.get_name(),
@@ -170,13 +170,11 @@ impl Index {
             Vec<Data>,
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
     {
-        // Attempt to get read guard.
         let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
             format!("{}", key),
             self.get_name(),
-        ))?;
-        // Deref to row.
-        let row = &mut *read_guard.lock().unwrap();
+        ))?; // attempt to get read guard on row
+        let row = &mut *read_guard.lock().unwrap(); // deref to row
 
         // If needed, get current values of columns.
         let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
@@ -188,13 +186,32 @@ impl Index {
             current = None;
         }
 
-        // Compute new values.
-        // Update closure expects vec of strings.
-        let (_, new_values) = f(columns.clone(), current, params)?;
+        let (_, new_values) = f(columns.clone(), current, params)?; // compute new values
         let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
 
-        // Execute write operation.
-        let res = row.set_values(&c, &nv, protocol, tid)?;
+        let res = row.set_values(&c, &nv, protocol, tid)?; // execute write operation
+        Ok(res)
+    }
+
+    /// Append `value` to `column` in a `Row` with the given `key`.
+    ///
+    /// # NonFatalErrors
+    ///
+    /// (i) Row does not exist with `key`, (ii) row is dirty, or (iii) row is marked for delete
+    pub fn append(
+        &self,
+        key: PrimaryKey,
+        column: &str,
+        value: &str,
+        protocol: &str,
+        tid: &str,
+    ) -> Result<OperationResult, NonFatalError> {
+        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
+            format!("{}", key),
+            self.get_name(),
+        ))?; //  attempt to get read guard
+        let row = &mut *read_guard.lock().unwrap(); // deref to row
+        let res = row.append_value(column, value, protocol, tid)?; // execute append
         Ok(res)
     }
 
@@ -269,16 +286,14 @@ impl Index {
     ///
     /// - Row does not exist with `key`.
     pub fn revert(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<(), NonFatalError> {
-        // Attempt to get read guard.
+        // attempt to get read guard
         let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
             format!("{}", key),
             self.get_name(),
         ))?;
 
-        // Deref to row.
-        let row = &mut *read_guard.lock().unwrap();
-        // Revert changes.
-        row.revert(protocol, tid);
+        let row = &mut *read_guard.lock().unwrap(); // Deref to row.
+        row.revert(protocol, tid); // Revert changes.
         Ok(())
     }
 
@@ -385,23 +400,28 @@ mod tests {
         let cols = vec!["bit_4", "byte_2_5"];
         assert_eq!(
             datatype::to_result(
-                &cols,
-                &workload
-                    .get_internals()
-                    .get_index("sub_idx")
-                    .unwrap()
-                    .read(
-                        PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
-                        &cols,
-                        "2pl",
-                        "t1"
-                    )
-                    .unwrap()
-                    .get_values()
-                    .unwrap()
+                None,
+                None,
+                None,
+                Some(&cols),
+                Some(
+                    &workload
+                        .get_internals()
+                        .get_index("sub_idx")
+                        .unwrap()
+                        .read(
+                            PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+                            &cols,
+                            "2pl",
+                            "t1"
+                        )
+                        .unwrap()
+                        .get_values()
+                        .unwrap()
+                )
             )
-            .unwrap(),
-            "{bit_4=\"1\", byte_2_5=\"205\"}"
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_4\":\"1\",\"byte_2_5\":\"205\"}}"
         );
 
         // 6. Successful write of entry.

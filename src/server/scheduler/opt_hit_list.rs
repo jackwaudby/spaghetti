@@ -283,6 +283,55 @@ impl Scheduler for OptimisedHitList {
         }
     }
 
+    /// Execute an append operation.
+    fn append(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        column: &str,
+        value: &str,
+        meta: TransactionInfo,
+    ) -> Result<(), NonFatalError> {
+        let (thread_id, seq_num) = parse_id(meta.get_id().unwrap());
+        debug!("Update: {}-{}", thread_id, seq_num);
+
+        let table = self.get_table(table, meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+
+        match index.append(key.clone(), column, value, "hit", &meta.get_id().unwrap()) {
+            Ok(res) => {
+                let access_history = res.get_access_history().unwrap();
+                for access in access_history {
+                    match access {
+                        // WW conflict
+                        Access::Write(predecessor_id) => {
+                            self.thread_states[thread_id].add_predecessor(
+                                seq_num,
+                                predecessor_id,
+                                PredecessorUpon::Write,
+                            );
+                        }
+                        // RW conflict
+                        Access::Read(predecessor_id) => {
+                            self.thread_states[thread_id].add_predecessor(
+                                seq_num,
+                                predecessor_id,
+                                PredecessorUpon::Write,
+                            );
+                        }
+                    }
+                }
+                let pair = (index.get_name(), key.clone());
+                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Update);
+                Ok(())
+            }
+            Err(e) => {
+                self.abort(meta.clone()).unwrap();
+                return Err(e);
+            }
+        }
+    }
+
     /// Delete record with `key` from `table`.
     fn delete(
         &self,

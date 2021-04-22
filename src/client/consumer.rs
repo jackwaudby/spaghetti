@@ -60,7 +60,9 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
                 .create(true)
                 .open("log/responses.txt")
                 .expect("cannot open file");
+
             write!(file, "{}\n", message.to_string()).unwrap();
+
             if let Message::ConnectionClosed = message {
                 info!("Connection closed");
                 return Ok(());

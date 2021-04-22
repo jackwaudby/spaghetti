@@ -343,6 +343,61 @@ impl Scheduler for HitList {
         }
     }
 
+    /// Execute an append operation.
+    fn append(
+        &self,
+        table: &str,
+        key: PrimaryKey,
+        column: &str,
+        value: &str,
+        meta: TransactionInfo,
+    ) -> Result<(), NonFatalError> {
+        let tname = thread::current().name().unwrap().to_string();
+        let worker_id = tname.parse::<usize>().unwrap();
+
+        let handle = thread::current();
+        debug!("Thread {} executing update", handle.name().unwrap());
+
+        let table = self.get_table(table, meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+
+        match index.append(key.clone(), column, value, "hit", &meta.get_id().unwrap()) {
+            Ok(res) => {
+                let access_history = res.get_access_history().unwrap();
+                for access in access_history {
+                    match access {
+                        // WW conflict
+                        Access::Write(tid) => {
+                            let tid = tid.parse::<u64>().unwrap();
+                            self.active_transactions.add_predecessor(
+                                worker_id,
+                                tid,
+                                Predecessor::Write,
+                            );
+                        }
+                        // RW conflict
+                        Access::Read(tid) => {
+                            let tid = tid.parse::<u64>().unwrap();
+                            self.active_transactions.add_predecessor(
+                                worker_id,
+                                tid,
+                                Predecessor::Write,
+                            );
+                        }
+                    }
+                }
+                let pair = (index.get_name(), key.clone());
+                self.active_transactions
+                    .add_key(worker_id, pair, Operation::Update);
+                Ok(())
+            }
+            Err(e) => {
+                self.abort(meta).unwrap();
+                return Err(e);
+            }
+        }
+    }
+
     /// Delete record with `key` from `table`.
     fn delete(
         &self,
@@ -737,8 +792,11 @@ mod tests {
             let values = scheduler
                 .read("subscriber", pk.clone(), &columns, txn.clone())
                 .unwrap();
-            let res = datatype::to_result(&columns, &values).unwrap();
-            assert_eq!(res, "{bit_1=\"0\"}");
+            let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
+            assert_eq!(
+                res,
+                "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"0\"}}"
+            );
             scheduler.commit(txn).unwrap();
             drop(scheduler);
         });

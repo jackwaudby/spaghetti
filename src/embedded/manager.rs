@@ -2,6 +2,8 @@ use crate::common::message::{InternalResponse, Outcome, Parameters, Transaction}
 use crate::embedded::generator::InternalRequest;
 use crate::embedded::pool::ThreadPool;
 use crate::server::scheduler::Protocol;
+use crate::workloads::acid;
+use crate::workloads::acid::paramgen::AcidTransactionProfile;
 use crate::workloads::smallbank;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::tatp;
@@ -138,6 +140,66 @@ impl TransactionManager {
                     }
                 }
                 Transaction::Tpcc(_) => unimplemented!(),
+                Transaction::Acid(_) => {
+                    if let Parameters::Acid(params) = parameters {
+                        match params {
+                            AcidTransactionProfile::G0Write(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::g0_write(params, scheduler)
+                            }
+                            AcidTransactionProfile::G0Read(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::g0_read(params, scheduler)
+                            }
+                            AcidTransactionProfile::G1aRead(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::g1a_read(params, scheduler)
+                            }
+                            AcidTransactionProfile::G1aWrite(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::g1a_write(params, scheduler)
+                            }
+                            AcidTransactionProfile::G1cReadWrite(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::g1c_read_write(params, scheduler)
+                            }
+                            AcidTransactionProfile::ImpRead(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::imp_read(params, scheduler)
+                            }
+                            AcidTransactionProfile::ImpWrite(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::imp_write(params, scheduler)
+                            }
+                            AcidTransactionProfile::OtvRead(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::otv_read(params, scheduler)
+                            }
+                            AcidTransactionProfile::OtvWrite(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::otv_write(params, scheduler)
+                            }
+                            AcidTransactionProfile::LostUpdateRead(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::lu_read(params, scheduler)
+                            }
+                            AcidTransactionProfile::LostUpdateWrite(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::lu_write(params, scheduler)
+                            }
+                            AcidTransactionProfile::G2itemRead(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::g2_item_read(params, scheduler)
+                            }
+                            AcidTransactionProfile::G2itemWrite(params) => {
+                                debug!("Thread {}: {:?}", handle.name().unwrap(), params);
+                                acid::procedures::g2_item_write(params, scheduler)
+                            }
+                        }
+                    } else {
+                        panic!("transaction type and parameters do not match");
+                    }
+                }
             };
 
             // Stop timer.

@@ -80,7 +80,7 @@ pub fn get_subscriber_data(
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
     // Convert to result
-    let res = datatype::to_result(&columns, &values).unwrap();
+    let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
 
     Ok(res)
 }
@@ -162,7 +162,14 @@ pub fn get_new_destination(
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
     // Convert to result
-    let res = datatype::to_result(&vec![cf_columns[4].clone()], &vec![cf_res[4].clone()]).unwrap();
+    let res = datatype::to_result(
+        None,
+        None,
+        None,
+        Some(&vec![cf_columns[4].clone()]),
+        Some(&vec![cf_res[4].clone()]),
+    )
+    .unwrap();
     Ok(res)
 }
 
@@ -200,7 +207,7 @@ pub fn get_access_data(
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
     // Convert to result
-    let res = datatype::to_result(&columns, &values).unwrap();
+    let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
 
     Ok(res)
 }
@@ -292,8 +299,9 @@ pub fn update_subscriber_data(
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
+    let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
-    Ok("{\"updated 2 rows.\"}".to_string())
+    Ok(res)
 }
 
 /// Update location transaction.
@@ -348,8 +356,9 @@ pub fn update_location(
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
+    let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
 
-    Ok("{\"updated 1 row.\"}".to_string())
+    Ok(res)
 }
 
 /// Insert call forwarding transaction.
@@ -421,8 +430,9 @@ pub fn insert_call_forwarding(
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
+    let res = datatype::to_result(Some(1), None, None, None, None).unwrap();
 
-    Ok("{\"inserted 1 row into call_forwarding.\"}".to_string())
+    Ok(res)
 }
 
 /// Delete call forwarding transaction.
@@ -466,8 +476,9 @@ pub fn delete_call_forwarding(
 
     // Commit transaction.
     protocol.scheduler.commit(meta.clone())?;
+    let res = datatype::to_result(None, None, Some(1), None, None).unwrap();
 
-    Ok("{\"deleted 1 row from call_forwarding.\"}".to_string())
+    Ok(res)
 }
 
 #[cfg(test)]
@@ -506,7 +517,7 @@ mod tests {
         ///////////////////////////////////////
         assert_eq!(
             get_subscriber_data(GetSubscriberData { s_id: 1 }, Arc::clone(&protocol)).unwrap(),
-            "{s_id=\"1\", sub_nbr=\"000000000000001\", bit_1=\"0\", bit_2=\"1\", bit_3=\"0\", bit_4=\"1\", bit_5=\"1\", bit_6=\"1\", bit_7=\"0\", bit_8=\"0\", bit_9=\"1\", bit_10=\"0\", hex_1=\"8\", hex_2=\"6\", hex_3=\"10\", hex_4=\"8\", hex_5=\"2\", hex_6=\"13\", hex_7=\"8\", hex_8=\"10\", hex_9=\"1\", hex_10=\"9\", byte_2_1=\"222\", byte_2_2=\"248\", byte_2_3=\"210\", byte_2_4=\"100\", byte_2_5=\"205\", byte_2_6=\"163\", byte_2_7=\"118\", byte_2_8=\"127\", byte_2_9=\"77\", byte_2_10=\"52\", msc_location=\"16\"}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"0\",\"bit_10\":\"0\",\"bit_2\":\"1\",\"bit_3\":\"0\",\"bit_4\":\"1\",\"bit_5\":\"1\",\"bit_6\":\"1\",\"bit_7\":\"0\",\"bit_8\":\"0\",\"bit_9\":\"1\",\"byte_2_1\":\"222\",\"byte_2_10\":\"52\",\"byte_2_2\":\"248\",\"byte_2_3\":\"210\",\"byte_2_4\":\"100\",\"byte_2_5\":\"205\",\"byte_2_6\":\"163\",\"byte_2_7\":\"118\",\"byte_2_8\":\"127\",\"byte_2_9\":\"77\",\"hex_1\":\"8\",\"hex_10\":\"9\",\"hex_2\":\"6\",\"hex_3\":\"10\",\"hex_4\":\"8\",\"hex_5\":\"2\",\"hex_6\":\"13\",\"hex_7\":\"8\",\"hex_8\":\"10\",\"hex_9\":\"1\",\"msc_location\":\"16\",\"s_id\":\"1\",\"sub_nbr\":\"000000000000001\"}}"
         );
 
         assert_eq!(
@@ -531,8 +542,9 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{number_x=\"563603967554067\"}"
+                .unwrap(),
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"number_x\":\"563603967554067\"}}"
+
         );
         assert_eq!(
             format!(
@@ -562,8 +574,8 @@ mod tests {
                 },
                 Arc::clone(&protocol)
             )
-            .unwrap(),
-            "{data_1=\"150\", data_2=\"113\", data_3=\"VDO\", data_4=\"TQMST\"}"
+                .unwrap(),
+"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"data_1\":\"150\",\"data_2\":\"113\",\"data_3\":\"VDO\",\"data_4\":\"TQMST\"}}"
         );
 
         assert_eq!(
@@ -612,10 +624,30 @@ mod tests {
             )
             .unwrap();
 
-        let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
-        let res_sf = datatype::to_result(&columns_sf, &values_sf.get_values().unwrap()).unwrap();
-        assert_eq!(res_sb, "{bit_1=\"0\"}");
-        assert_eq!(res_sf, "{data_a=\"81\"}");
+        let res_sb = datatype::to_result(
+            None,
+            None,
+            None,
+            Some(&columns_sb),
+            Some(&values_sb.get_values().unwrap()),
+        )
+        .unwrap();
+        let res_sf = datatype::to_result(
+            None,
+            None,
+            None,
+            Some(&columns_sf),
+            Some(&values_sf.get_values().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(
+            res_sb,
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"0\"}}"
+        );
+        assert_eq!(
+            res_sf,
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"data_a\":\"81\"}}"
+        );
 
         assert_eq!(
             update_subscriber_data(
@@ -628,7 +660,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"updated 2 rows.\"}"
+            "{\"created\":null,\"updated\":2,\"deleted\":null,\"val\":null}"
         );
 
         // After
@@ -655,10 +687,30 @@ mod tests {
             )
             .unwrap();
 
-        let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
-        let res_sf = datatype::to_result(&columns_sf, &values_sf.get_values().unwrap()).unwrap();
-        assert_eq!(res_sb, "{bit_1=\"1\"}");
-        assert_eq!(res_sf, "{data_a=\"29\"}");
+        let res_sb = datatype::to_result(
+            None,
+            None,
+            None,
+            Some(&columns_sb),
+            Some(&values_sb.get_values().unwrap()),
+        )
+        .unwrap();
+        let res_sf = datatype::to_result(
+            None,
+            None,
+            None,
+            Some(&columns_sf),
+            Some(&values_sf.get_values().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(
+            res_sb,
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"1\"}}"
+        );
+        assert_eq!(
+            res_sf,
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"data_a\":\"29\"}}"
+        );
 
         assert_eq!(
             format!(
@@ -695,8 +747,15 @@ mod tests {
                 "t1",
             )
             .unwrap();
-        let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
-        assert_eq!(res_sb, "{vlr_location=\"12\"}");
+        let res_sb = datatype::to_result(
+            None,
+            None,
+            None,
+            Some(&columns_sb),
+            Some(&values_sb.get_values().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(res_sb,"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"vlr_location\":\"12\"}}");
 
         assert_eq!(
             update_location(
@@ -707,7 +766,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"updated 1 row.\"}"
+            "{\"created\":null,\"updated\":1,\"deleted\":null,\"val\":null}"
         );
 
         // After
@@ -723,8 +782,18 @@ mod tests {
             )
             .unwrap();
 
-        let res_sb = datatype::to_result(&columns_sb, &values_sb.get_values().unwrap()).unwrap();
-        assert_eq!(res_sb, "{vlr_location=\"4\"}");
+        let res_sb = datatype::to_result(
+            None,
+            None,
+            None,
+            Some(&columns_sb),
+            Some(&values_sb.get_values().unwrap()),
+        )
+        .unwrap();
+        assert_eq!(
+            res_sb,
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"vlr_location\":\"4\"}}"
+        );
 
         assert_eq!(
             format!(
@@ -775,7 +844,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"inserted 1 row into call_forwarding.\"}"
+            "{\"created\":1,\"updated\":null,\"deleted\":null,\"val\":null}"
         );
 
         let values_cf = workload
@@ -789,9 +858,20 @@ mod tests {
                 "t1",
             )
             .unwrap();
-        let res_cf = datatype::to_result(&columns_cf, &values_cf.get_values().unwrap()).unwrap();
+        let res_cf = datatype::to_result(
+            None,
+            None,
+            None,
+            Some(&columns_cf),
+            Some(&values_cf.get_values().unwrap()),
+        )
+        .unwrap();
 
-        assert_eq!(res_cf, "{number_x=\"551795089196026\"}");
+        assert_eq!(
+            res_cf,
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"number_x\":\"551795089196026\"}}"
+
+        );
 
         //////////////////////////////////////////
         //// DeleteCallForwarding ////
@@ -810,9 +890,18 @@ mod tests {
                 "t1",
             )
             .unwrap();
-        let res_cf = datatype::to_result(&columns_cf, &values_cf.get_values().unwrap()).unwrap();
+        let res_cf = datatype::to_result(
+            None,
+            None,
+            None,
+            Some(&columns_cf),
+            Some(&values_cf.get_values().unwrap()),
+        )
+        .unwrap();
 
-        assert_eq!(res_cf, "{number_x=\"551795089196026\"}");
+        assert_eq!(res_cf,
+"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"number_x\":\"551795089196026\"}}"
+);
 
         assert_eq!(
             delete_call_forwarding(
@@ -824,7 +913,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
             .unwrap(),
-            "{\"deleted 1 row from call_forwarding.\"}"
+            "{\"created\":null,\"updated\":null,\"deleted\":1,\"val\":null}"
         );
 
         assert_eq!(

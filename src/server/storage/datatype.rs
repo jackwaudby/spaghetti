@@ -1,7 +1,9 @@
 use crate::common::error::NonFatalError;
 
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::convert::TryFrom;
-use std::fmt::{self, Write};
+use std::fmt;
 
 /// Element of a `Row' that holds `Data`.
 #[derive(Debug, Clone)]
@@ -15,6 +17,7 @@ pub enum Data {
     Int(i64),
     VarChar(String),
     Double(f64),
+    List(Vec<u64>), // TODO: make generic
     Null,
 }
 
@@ -49,6 +52,7 @@ impl fmt::Display for Data {
             Data::Int(val) => write!(f, "{}", val.to_string()),
             Data::VarChar(ref val) => write!(f, "{}", val),
             Data::Double(val) => write!(f, "{}", val.to_string()),
+            Data::List(val) => write!(f, "{:?}", val),
             Data::Null => write!(f, "null"),
         }
     }
@@ -100,15 +104,64 @@ impl TryFrom<Data> for String {
 }
 
 /// Convert columns and values to a result string.
-pub fn to_result(columns: &Vec<&str>, values: &Vec<Data>) -> crate::Result<String> {
-    let mut res: String;
-    res = "{".to_string();
-    for (i, column) in columns.iter().enumerate() {
-        write!(res, "{}=\"{ }\", ", column, values[i])?;
+pub fn to_result(
+    created: Option<u64>,
+    updated: Option<u64>,
+    deleted: Option<u64>,
+    columns: Option<&Vec<&str>>,
+    values: Option<&Vec<Data>>,
+) -> crate::Result<String> {
+    let mut vals;
+    if let Some(_) = columns {
+        vals = Some(BTreeMap::new());
+
+        for (i, column) in columns.unwrap().iter().enumerate() {
+            let key = format!("{}", column);
+            let val = format!("{}", values.unwrap()[i]);
+            vals.as_mut().unwrap().insert(key, val);
+        }
+    } else {
+        vals = None;
     }
-    res.truncate(res.len() - 2);
-    write!(res, "}}")?;
+    let sm = SuccessMessage::new(created, updated, deleted, vals);
+
+    let res = serde_json::to_string(&sm).unwrap();
+
     Ok(res)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SuccessMessage {
+    created: Option<u64>,
+    updated: Option<u64>,
+    deleted: Option<u64>,
+    val: Option<BTreeMap<String, String>>,
+}
+
+impl SuccessMessage {
+    /// Create new success message.
+    fn new(
+        created: Option<u64>,
+        updated: Option<u64>,
+        deleted: Option<u64>,
+        val: Option<BTreeMap<String, String>>,
+    ) -> Self {
+        SuccessMessage {
+            created,
+            updated,
+            deleted,
+            val,
+        }
+    }
+
+    /// Get values
+    pub fn get_values(&self) -> Option<BTreeMap<String, String>> {
+        self.val.clone()
+    }
+
+    pub fn get_updated(&self) -> Option<u64> {
+        self.updated.clone()
+    }
 }
 
 #[cfg(test)]
@@ -134,6 +187,10 @@ mod tests {
         f.set(Data::Double(1.7));
         assert_eq!(f.get(), Data::Double(1.7));
         assert_eq!(format!("{}", f), String::from("1.7"));
+
+        f.set(Data::List(vec![1, 2]));
+        assert_eq!(f.get(), Data::List(vec![1, 2]));
+        assert_eq!(format!("{}", f), String::from("[1, 2]"));
 
         // Conversion success
         assert_eq!(i64::try_from(Data::Int(5)), Ok(5));
@@ -176,9 +233,6 @@ mod tests {
             Data::Int(10),
             Data::VarChar("hello".to_string()),
         ];
-        assert_eq!(
-            to_result(&columns, &values).unwrap(),
-            "{a=\"1.3\", b=\"null\", c=\"10\", d=\"hello\"}"
-        );
+        assert_eq!(to_result(None, None, None, Some(&columns), Some(&values)).unwrap(),"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"a\":\"1.3\",\"b\":\"null\",\"c\":\"10\",\"d\":\"hello\"}}");
     }
 }
