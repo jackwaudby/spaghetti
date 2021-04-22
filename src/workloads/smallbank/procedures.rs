@@ -468,7 +468,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
                 .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"94248399\"}}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"49368358\"}}"
         );
 
         ////////////////////////////////////
@@ -496,7 +496,7 @@ mod tests {
             )
                 .unwrap(),
 
-        "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"94248409\"}}"
+        "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"49368368\"}}"
         );
 
         ////////////////////////////////////
@@ -523,7 +523,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
                 .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"94248365.7\"}}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"49368324.7\"}}"
 
         );
 
@@ -539,7 +539,7 @@ mod tests {
                     Arc::clone(&protocol)
                 )
                     .unwrap(),
-        "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"49368358\"}}"
+        "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"51361298\"}}"
 
             );
 
@@ -576,7 +576,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
                 .unwrap(),
-                    "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"143616723.7\"}}"
+                    "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"100729622.7\"}}"
 
 
         );
@@ -629,7 +629,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
                 .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"143616712\"}}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"100729611\"}}"
         );
 
         /////////////////////////////////
@@ -669,7 +669,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
                 .unwrap(),
-                                            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"143616662\"}}"
+                                            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"total_balance\":\"100729561\"}}"
 
 
         );

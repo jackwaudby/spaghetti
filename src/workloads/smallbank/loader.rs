@@ -279,7 +279,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             datatype::to_result(None, None, None, Some(&cols), Some(&res)).unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"balance\":\"21893033\",\"customer_id\":\"1\"}}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"balance\":\"28425308\",\"customer_id\":\"1\"}}"
         );
     }
 
@@ -319,7 +319,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             datatype::to_result(None, None, None, Some(&cols), Some(&res)).unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"balance\":\"17353809\",\"customer_id\":\"1\"}}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"balance\":\"27059721\",\"customer_id\":\"1\"}}"
         );
     }
 }
