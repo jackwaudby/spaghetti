@@ -1,13 +1,13 @@
-log = "info"
+log = "debug"
 
 transactions = 100
 timeout = 10
 warmup = 1
 set_seed = false
 
-protocol="sgt"
+protocol="opt-hit"
 workers = 6
-garbage_collection = true
+garbage_collection = false
 garbage_collection_sleep = 1
 
 scale_factor = 1

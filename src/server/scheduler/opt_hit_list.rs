@@ -150,11 +150,18 @@ impl Scheduler for OptimisedHitList {
                 for access in access_history {
                     // WR conflict
                     if let Access::Write(predecessor_id) = access {
-                        self.thread_states[thread_id].add_predecessor(
-                            seq_num,
-                            predecessor_id,
-                            PredecessorUpon::Read,
-                        );
+                        if predecessor_id != meta.get_id().unwrap() {
+                            debug!(
+                                "Read: {}-{}; predecessor: {}",
+                                thread_id, seq_num, predecessor_id
+                            );
+
+                            self.thread_states[thread_id].add_predecessor(
+                                seq_num,
+                                predecessor_id,
+                                PredecessorUpon::Read,
+                            );
+                        }
                     }
                 }
                 let pair = (index.get_name(), key.clone());
@@ -189,19 +196,31 @@ impl Scheduler for OptimisedHitList {
                     match access {
                         // WW conflict
                         Access::Write(predecessor_id) => {
-                            self.thread_states[thread_id].add_predecessor(
-                                seq_num,
-                                predecessor_id,
-                                PredecessorUpon::Write,
-                            );
+                            if predecessor_id != meta.get_id().unwrap() {
+                                debug!(
+                                    "Read: {}-{}; predecessor: {}",
+                                    thread_id, seq_num, predecessor_id
+                                );
+                                self.thread_states[thread_id].add_predecessor(
+                                    seq_num,
+                                    predecessor_id,
+                                    PredecessorUpon::Write,
+                                );
+                            }
                         }
                         // RW conflict
                         Access::Read(predecessor_id) => {
-                            self.thread_states[thread_id].add_predecessor(
-                                seq_num,
-                                predecessor_id,
-                                PredecessorUpon::Write,
-                            );
+                            if predecessor_id != meta.get_id().unwrap() {
+                                debug!(
+                                    "Read: {}-{}; predecessor: {}",
+                                    thread_id, seq_num, predecessor_id
+                                );
+                                self.thread_states[thread_id].add_predecessor(
+                                    seq_num,
+                                    predecessor_id,
+                                    PredecessorUpon::Write,
+                                );
+                            }
                         }
                     }
                 }
@@ -256,19 +275,31 @@ impl Scheduler for OptimisedHitList {
                     match access {
                         // WW conflict
                         Access::Write(predecessor_id) => {
-                            self.thread_states[thread_id].add_predecessor(
-                                seq_num,
-                                predecessor_id,
-                                PredecessorUpon::Write,
-                            );
+                            if predecessor_id != meta.get_id().unwrap() {
+                                debug!(
+                                    "Read: {}-{}; predecessor: {}",
+                                    thread_id, seq_num, predecessor_id
+                                );
+                                self.thread_states[thread_id].add_predecessor(
+                                    seq_num,
+                                    predecessor_id,
+                                    PredecessorUpon::Write,
+                                );
+                            }
                         }
                         // RW conflict
                         Access::Read(predecessor_id) => {
-                            self.thread_states[thread_id].add_predecessor(
-                                seq_num,
-                                predecessor_id,
-                                PredecessorUpon::Write,
-                            );
+                            if predecessor_id != meta.get_id().unwrap() {
+                                debug!(
+                                    "Read: {}-{}; predecessor: {}",
+                                    thread_id, seq_num, predecessor_id
+                                );
+                                self.thread_states[thread_id].add_predecessor(
+                                    seq_num,
+                                    predecessor_id,
+                                    PredecessorUpon::Write,
+                                );
+                            }
                         }
                     }
                 }
@@ -305,19 +336,31 @@ impl Scheduler for OptimisedHitList {
                     match access {
                         // WW conflict
                         Access::Write(predecessor_id) => {
-                            self.thread_states[thread_id].add_predecessor(
-                                seq_num,
-                                predecessor_id,
-                                PredecessorUpon::Write,
-                            );
+                            if predecessor_id != meta.get_id().unwrap() {
+                                debug!(
+                                    "Read: {}-{}; predecessor: {}",
+                                    thread_id, seq_num, predecessor_id
+                                );
+                                self.thread_states[thread_id].add_predecessor(
+                                    seq_num,
+                                    predecessor_id,
+                                    PredecessorUpon::Write,
+                                );
+                            }
                         }
                         // RW conflict
                         Access::Read(predecessor_id) => {
-                            self.thread_states[thread_id].add_predecessor(
-                                seq_num,
-                                predecessor_id,
-                                PredecessorUpon::Write,
-                            );
+                            if predecessor_id != meta.get_id().unwrap() {
+                                debug!(
+                                    "Read: {}-{}; predecessor: {}",
+                                    thread_id, seq_num, predecessor_id
+                                );
+                                self.thread_states[thread_id].add_predecessor(
+                                    seq_num,
+                                    predecessor_id,
+                                    PredecessorUpon::Write,
+                                );
+                            }
                         }
                     }
                 }
@@ -352,19 +395,23 @@ impl Scheduler for OptimisedHitList {
                     match access {
                         // WW conflict
                         Access::Write(predecessor_id) => {
-                            self.thread_states[thread_id].add_predecessor(
-                                seq_num,
-                                predecessor_id,
-                                PredecessorUpon::Write,
-                            );
+                            if predecessor_id != meta.get_id().unwrap() {
+                                self.thread_states[thread_id].add_predecessor(
+                                    seq_num,
+                                    predecessor_id,
+                                    PredecessorUpon::Write,
+                                );
+                            }
                         }
                         // RW conflict
                         Access::Read(predecessor_id) => {
-                            self.thread_states[thread_id].add_predecessor(
-                                seq_num,
-                                predecessor_id,
-                                PredecessorUpon::Write,
-                            );
+                            if predecessor_id != meta.get_id().unwrap() {
+                                self.thread_states[thread_id].add_predecessor(
+                                    seq_num,
+                                    predecessor_id,
+                                    PredecessorUpon::Write,
+                                );
+                            }
                         }
                     }
                 }
