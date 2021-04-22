@@ -12,7 +12,7 @@ fn setup_config() -> Arc<Config> {
 }
 
 #[test(tokio::test)]
-#[ignored]
+#[ignore]
 async fn opt_hit_integration_test() {
     info!("Starting opt-hit-list integration test...");
     let config = setup_config();
