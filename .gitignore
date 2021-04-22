@@ -8,3 +8,4 @@ ssh_keys/
 *.pdf
 .Rhistory
 reports/
+Embedded.toml
