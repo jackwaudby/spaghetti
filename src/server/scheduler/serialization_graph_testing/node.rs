@@ -1,7 +1,7 @@
 use crate::workloads::PrimaryKey;
 
+use parking_lot::Mutex;
 use std::fmt;
-use std::sync::Mutex;
 
 use std::thread;
 use tracing::debug;
@@ -21,7 +21,7 @@ pub struct Node {
     id: usize,
 
     /// Node status
-    state: parking_lot::Mutex<Option<State>>,
+    state: Mutex<Option<State>>,
 
     /// List of outgoing edges.
     /// (this_node) --> (other_node)
@@ -32,7 +32,7 @@ pub struct Node {
     incoming: Mutex<Option<Vec<usize>>>,
 
     /// Keys inserted
-    keys_inserted: parking_lot::Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_inserted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
 
     /// List of keys read by transaction.
     keys_read: Mutex<Option<Vec<(String, PrimaryKey)>>>,
@@ -76,8 +76,8 @@ impl Node {
             id,
             outgoing: Mutex::new(Some(vec![])),
             incoming: Mutex::new(Some(vec![])),
-            state: parking_lot::Mutex::new(None),
-            keys_inserted: parking_lot::Mutex::new(Some(vec![])),
+            state: Mutex::new(None),
+            keys_inserted: Mutex::new(Some(vec![])),
             keys_read: Mutex::new(Some(vec![])),
             keys_updated: Mutex::new(Some(vec![])),
             keys_deleted: Mutex::new(Some(vec![])),
@@ -91,13 +91,18 @@ impl Node {
     /// This method is only called by the thread on which the
     /// node belongs.
     pub fn reset(&self) {
-        *self.outgoing.lock().unwrap() = Some(vec![]);
-        *self.incoming.lock().unwrap() = Some(vec![]);
-        let mut data = self.keys_inserted.lock();
-        *data = Some(vec![]);
-        *self.keys_read.lock().unwrap() = Some(vec![]);
-        *self.keys_updated.lock().unwrap() = Some(vec![]);
-        *self.keys_deleted.lock().unwrap() = Some(vec![]);
+        let mut outgoing = self.outgoing.lock();
+        let mut incoming = self.incoming.lock();
+        let mut inserted = self.keys_inserted.lock();
+        let mut read = self.keys_read.lock();
+        let mut updated = self.keys_updated.lock();
+        let mut deleted = self.keys_deleted.lock();
+        *outgoing = Some(vec![]);
+        *incoming = Some(vec![]);
+        *inserted = Some(vec![]);
+        *read = Some(vec![]);
+        *updated = Some(vec![]);
+        *deleted = Some(vec![]);
     }
 
     /// Insert edge into a `Node`.
@@ -110,14 +115,14 @@ impl Node {
     pub fn insert_edge(&self, id: usize, edge_type: EdgeType) {
         match edge_type {
             EdgeType::Incoming => {
-                if let Some(incoming) = self.incoming.lock().unwrap().as_mut() {
+                if let Some(incoming) = self.incoming.lock().as_mut() {
                     if !incoming.contains(&id) {
                         incoming.push(id);
                     }
                 }
             }
             EdgeType::Outgoing => {
-                if let Some(outgoing) = self.outgoing.lock().unwrap().as_mut() {
+                if let Some(outgoing) = self.outgoing.lock().as_mut() {
                     if !outgoing.contains(&id) {
                         outgoing.push(id);
                     }
@@ -134,20 +139,10 @@ impl Node {
     pub fn delete_edge(&self, id: usize, edge_type: EdgeType) {
         match edge_type {
             EdgeType::Incoming => {
-                self.incoming
-                    .lock()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .retain(|&x| x != id);
+                self.incoming.lock().as_mut().unwrap().retain(|&x| x != id);
             }
             EdgeType::Outgoing => {
-                self.outgoing
-                    .lock()
-                    .unwrap()
-                    .as_mut()
-                    .unwrap()
-                    .retain(|&x| x != id);
+                self.outgoing.lock().as_mut().unwrap().retain(|&x| x != id);
             }
         }
     }
@@ -158,7 +153,7 @@ impl Node {
     ///
     /// Fails to acquire mutex.
     pub fn get_incoming(&self) -> Vec<usize> {
-        self.incoming.lock().unwrap().clone().unwrap()
+        self.incoming.lock().clone().unwrap()
     }
 
     /// Clones the outgoing edges from a `Node` leaving a `None`.
@@ -167,7 +162,7 @@ impl Node {
     ///
     /// Fails to acquire mutex.
     pub fn get_outgoing(&self) -> Vec<usize> {
-        self.outgoing.lock().unwrap().clone().unwrap()
+        self.outgoing.lock().clone().unwrap()
     }
 
     /// Takes the list of keys inserted/read/updated/deleted by the transaction in the node.
@@ -183,9 +178,9 @@ impl Node {
                 data.take().unwrap()
             }
 
-            Read => self.keys_read.lock().unwrap().take().unwrap(),
-            Update => self.keys_updated.lock().unwrap().take().unwrap(),
-            Delete => self.keys_deleted.lock().unwrap().take().unwrap(),
+            Read => self.keys_read.lock().take().unwrap(),
+            Update => self.keys_updated.lock().take().unwrap(),
+            Delete => self.keys_deleted.lock().take().unwrap(),
         }
     }
 
@@ -208,21 +203,9 @@ impl Node {
                 let mut data = self.keys_inserted.lock();
                 data.as_mut().unwrap().push(pair)
             }
-            Read => self.keys_read.lock().unwrap().as_mut().unwrap().push(pair),
-            Update => self
-                .keys_updated
-                .lock()
-                .unwrap()
-                .as_mut()
-                .unwrap()
-                .push(pair),
-            Delete => self
-                .keys_deleted
-                .lock()
-                .unwrap()
-                .as_mut()
-                .unwrap()
-                .push(pair),
+            Read => self.keys_read.lock().as_mut().unwrap().push(pair),
+            Update => self.keys_updated.lock().as_mut().unwrap().push(pair),
+            Delete => self.keys_deleted.lock().as_mut().unwrap().push(pair),
         }
     }
 
@@ -254,7 +237,8 @@ impl Node {
     ///
     /// Fails to acquire mutex.
     pub fn has_incoming(&self) -> bool {
-        !self.incoming.lock().unwrap().as_ref().unwrap().is_empty()
+        let data = self.incoming.lock();
+        data.as_ref().unwrap().is_empty()
     }
 }
 
