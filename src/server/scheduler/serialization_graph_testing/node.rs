@@ -238,7 +238,7 @@ impl Node {
     /// Fails to acquire mutex.
     pub fn has_incoming(&self) -> bool {
         let data = self.incoming.lock();
-        data.as_ref().unwrap().is_empty()
+        !data.as_ref().unwrap().is_empty()
     }
 }
 
@@ -274,7 +274,7 @@ mod tests {
         assert_eq!(n.insert_edge(2, EdgeType::Outgoing), ());
 
         // Check incoming
-        assert_eq!(n.has_incoming(), false);
+        assert_eq!(n.has_incoming(), false, "{:?}", n);
         assert_eq!(n.insert_edge(2, EdgeType::Incoming), ());
         assert_eq!(n.has_incoming(), true);
         assert_eq!(n.delete_edge(2, EdgeType::Incoming), ());
