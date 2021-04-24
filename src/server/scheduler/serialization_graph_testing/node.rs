@@ -2,6 +2,7 @@ use crate::workloads::PrimaryKey;
 
 use std::fmt;
 use std::sync::Mutex;
+
 use std::thread;
 use tracing::debug;
 
@@ -20,7 +21,7 @@ pub struct Node {
     id: usize,
 
     /// Node status
-    state: Mutex<Option<State>>,
+    state: parking_lot::Mutex<Option<State>>,
 
     /// List of outgoing edges.
     /// (this_node) --> (other_node)
@@ -31,7 +32,7 @@ pub struct Node {
     incoming: Mutex<Option<Vec<usize>>>,
 
     /// Keys inserted
-    keys_inserted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_inserted: parking_lot::Mutex<Option<Vec<(String, PrimaryKey)>>>,
 
     /// List of keys read by transaction.
     keys_read: Mutex<Option<Vec<(String, PrimaryKey)>>>,
@@ -75,8 +76,8 @@ impl Node {
             id,
             outgoing: Mutex::new(Some(vec![])),
             incoming: Mutex::new(Some(vec![])),
-            state: Mutex::new(None),
-            keys_inserted: Mutex::new(Some(vec![])),
+            state: parking_lot::Mutex::new(None),
+            keys_inserted: parking_lot::Mutex::new(Some(vec![])),
             keys_read: Mutex::new(Some(vec![])),
             keys_updated: Mutex::new(Some(vec![])),
             keys_deleted: Mutex::new(Some(vec![])),
@@ -92,7 +93,8 @@ impl Node {
     pub fn reset(&self) {
         *self.outgoing.lock().unwrap() = Some(vec![]);
         *self.incoming.lock().unwrap() = Some(vec![]);
-        *self.keys_inserted.lock().unwrap() = Some(vec![]);
+        let mut data = self.keys_inserted.lock();
+        *data = Some(vec![]);
         *self.keys_read.lock().unwrap() = Some(vec![]);
         *self.keys_updated.lock().unwrap() = Some(vec![]);
         *self.keys_deleted.lock().unwrap() = Some(vec![]);
@@ -176,7 +178,11 @@ impl Node {
     pub fn get_keys(&self, operation_type: OperationType) -> Vec<(String, PrimaryKey)> {
         use OperationType::*;
         match operation_type {
-            Insert => self.keys_inserted.lock().unwrap().take().unwrap(),
+            Insert => {
+                let mut data = self.keys_inserted.lock();
+                data.take().unwrap()
+            }
+
             Read => self.keys_read.lock().unwrap().take().unwrap(),
             Update => self.keys_updated.lock().unwrap().take().unwrap(),
             Delete => self.keys_deleted.lock().unwrap().take().unwrap(),
@@ -198,13 +204,10 @@ impl Node {
         let pair = (index.to_string(), key);
         use OperationType::*;
         match operation_type {
-            Insert => self
-                .keys_inserted
-                .lock()
-                .unwrap()
-                .as_mut()
-                .unwrap()
-                .push(pair),
+            Insert => {
+                let mut data = self.keys_inserted.lock();
+                data.as_mut().unwrap().push(pair)
+            }
             Read => self.keys_read.lock().unwrap().as_mut().unwrap().push(pair),
             Update => self
                 .keys_updated
@@ -231,7 +234,8 @@ impl Node {
     ///
     /// Fails to acquire mutex.
     pub fn get_state(&self) -> State {
-        self.state.lock().unwrap().as_ref().unwrap().clone()
+        let data = self.state.lock();
+        data.as_ref().unwrap().clone()
     }
 
     /// Set the status of the `Node`.
@@ -240,7 +244,8 @@ impl Node {
     ///
     /// Fails to acquire mutex.
     pub fn set_state(&self, state: State) {
-        *self.state.lock().unwrap() = Some(state);
+        let mut data = self.state.lock();
+        *data = Some(state);
     }
 
     /// Check if `Node` has any incoming edges.
