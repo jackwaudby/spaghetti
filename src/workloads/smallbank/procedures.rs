@@ -8,8 +8,17 @@ use crate::workloads::smallbank::paramgen::{
 };
 use crate::workloads::PrimaryKey;
 
+use lazy_static::lazy_static;
 use std::convert::TryFrom;
 use std::sync::Arc;
+
+lazy_static! {
+    pub static ref COMMIT_TIME: parking_lot::Mutex<u128> = parking_lot::Mutex::new(0);
+}
+
+fn add_commit_time(time: u128) {
+    *COMMIT_TIME.lock() += time;
+}
 
 /// Balance transaction.
 ///
@@ -59,8 +68,10 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
             return Err(e);
         }
     }; // convert to u64
-
+    let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
+    let end = start.elapsed();
+    add_commit_time(end.as_millis());
 
     let res_cols = vec!["total_balance"];
     let total_balance = vec![Data::Double(savings_balance + checking_balance)]; // calculate total balance
@@ -111,7 +122,10 @@ pub fn deposit_checking(
         meta.clone(),
     )?; // update -- set balance
 
+    let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
+    let end = start.elapsed();
+    add_commit_time(end.as_millis());
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -169,7 +183,11 @@ pub fn transact_savings(
         meta.clone(),
     )?; // update -- set savings balance
 
+    let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
+    let end = start.elapsed();
+    add_commit_time(end.as_millis());
+
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
     Ok(res)
@@ -266,8 +284,11 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         &update,
         meta.clone(),
     )?; // update
-
+    let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
+    let end = start.elapsed();
+    add_commit_time(end.as_millis());
+
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
     Ok(res)
@@ -328,7 +349,11 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
         meta.clone(),
     )?; // update
 
+    let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
+    let end = start.elapsed();
+    add_commit_time(end.as_millis());
+
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
     Ok(res)
@@ -395,8 +420,6 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         meta.clone(),
     )?; // update
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
-
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id2));
     let checking_cols: Vec<String> = vec!["balance".to_string()];
     let update = |columns: Vec<String>,
@@ -419,7 +442,11 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         meta.clone(),
     )?; // update
 
+    let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
+    let end = start.elapsed();
+    add_commit_time(end.as_millis());
+
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
     Ok(res)
