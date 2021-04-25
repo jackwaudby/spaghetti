@@ -24,6 +24,10 @@ path = "src/bin/datagen.rs"
 name = "spag-em"
 path = "src/bin/embedded.rs"
 
+[[bin]]
+name = "spag-gpc"
+path = "src/bin/gpc.rs"
+
 [dependencies]
 chashmap = "2.2.2"
 rand = "0.8.0"

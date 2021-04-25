@@ -7,7 +7,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tracing::info;
+use tracing::debug;
 
 /////////////////////////////////////////
 /// Parameter Generator. ///
@@ -31,8 +31,8 @@ pub struct TatpGenerator {
 impl TatpGenerator {
     /// Create new `TatpGenerator`.
     pub fn new(sf: u64, set_seed: bool, seed: Option<u64>, use_nurand: bool) -> TatpGenerator {
-        info!("Parameter generator set seed: {}", set_seed);
-        info!("Non-uniform parameter generator: {}", use_nurand);
+        debug!("Parameter generator set seed: {}", set_seed);
+        debug!("Non-uniform parameter generator: {}", use_nurand);
         let subscribers = *TATP_SF_MAP.get(&sf).unwrap(); // get subscribers for sf
         let rng: StdRng; // rng
         if set_seed {

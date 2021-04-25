@@ -9,6 +9,7 @@ use spaghetti::workloads::Workload;
 use config::Config;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+
 use std::sync::mpsc::{Receiver, SyncSender};
 use std::sync::Arc;
 use std::time::Instant;

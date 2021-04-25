@@ -15,7 +15,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{debug, info};
 
 pub mod acid;
 
@@ -96,13 +96,16 @@ impl Workload {
                     info!("Load sf-{} from files", sf);
                     acid::loader::load_person_table(i)?;
                 } else {
-                    info!("Generate sf-{}", sf);
+                    info!("Generate ACID SF-{} ", sf);
                     acid::loader::populate_person_table(i, rng)?;
                     acid::loader::populate_person_knows_person_table(i, rng)?;
                 }
             }
             Tatp(ref i) => {
-                let sf = self.get_internals().get_config().get_int("scale_factor")?;
+                let config = self.get_internals().get_config();
+                let sf = config.get_int("scale_factor")?;
+                let set_seed = config.get_bool("set_seed")?;
+                let use_nurand = config.get_bool("nurand")?;
                 if self.get_internals().get_config().get_bool("load")? {
                     info!("Load sf-{} from files", sf);
                     tatp::loader::load_sub_table(i)?;
@@ -110,9 +113,11 @@ impl Workload {
                     tatp::loader::load_call_forwarding_table(i)?;
                     tatp::loader::load_special_facility_table(i)?;
                 } else {
-                    info!("Generate sf-{}", sf);
+                    info!("Generate TATP SF-{}", sf);
                     tatp::loader::populate_tables(i, rng)?;
                 }
+                info!("Generator set seed: {}", set_seed);
+                info!("Generator nurand: {}", use_nurand);
             }
             Tpcc(ref i) => {
                 if self.get_internals().get_config().get_bool("load")? {
@@ -130,7 +135,7 @@ impl Workload {
                     smallbank::loader::load_checking_table(i)?;
                     smallbank::loader::load_savings_table(i)?;
                 } else {
-                    info!("Generate sf-{}", sf);
+                    info!("Generate SmallBank SF-{}", sf);
                     smallbank::loader::populate_tables(i, rng)?
                 }
             } // TODO
@@ -187,7 +192,7 @@ impl Internal {
                 }
                 let table = Table::init(catalog);
                 let table = Arc::new(table);
-                info!("Initialise table: {}", table.get_table_name());
+                debug!("Initialise table: {}", table.get_table_name());
                 tables.insert(table_name, table);
             } else if line.starts_with("INDEX") {
                 let index_name: String = match line.strip_prefix("INDEX=") {
@@ -213,7 +218,7 @@ impl Internal {
                 }
 
                 let index = Arc::new(Index::init(&index_name));
-                info!("Initialise index: {}", index);
+                debug!("Initialise index: {}", index);
 
                 indexes.insert(index_name, index);
             }

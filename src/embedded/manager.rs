@@ -209,6 +209,7 @@ impl TransactionManager {
                 Ok(value) => Outcome::Committed { value: Some(value) },
                 Err(reason) => Outcome::Aborted { reason },
             };
+
             // Create internal response.
             let response = InternalResponse {
                 request_no,

@@ -8,6 +8,7 @@ use spaghetti::workloads::tatp::TATP_SF_MAP;
 use spaghetti::Result;
 
 use config::Config;
+
 use env_logger::Env;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
