@@ -8,8 +8,9 @@ use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{Access, Row};
 use crate::workloads::{PrimaryKey, Workload};
 
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::collections::HashSet;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::Arc;
 use std::thread;
 use tracing::{debug, info};
 
@@ -53,7 +54,7 @@ impl SerializationGraphTesting {
     ///
     /// Acquiring `RwLock` fails.
     fn get_shared_lock(&self, id: usize) -> RwLockReadGuard<Node> {
-        let rg = self.nodes[id].read().unwrap();
+        let rg = self.nodes[id].read();
         rg
     }
 
@@ -63,7 +64,7 @@ impl SerializationGraphTesting {
     ///
     /// Acquiring `RwLock` fails.
     fn get_exculsive_lock(&self, id: usize) -> RwLockWriteGuard<Node> {
-        let wg = self.nodes[id].write().unwrap();
+        let wg = self.nodes[id].write();
         wg
     }
 
