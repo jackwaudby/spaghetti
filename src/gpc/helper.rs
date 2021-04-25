@@ -9,11 +9,12 @@ use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
 /// Initialise configuration.
-pub fn init_config(file: &str) -> Arc<Config> {
+pub fn init_config(file: &str) -> Config {
     tracing::info!("initialise configuration using {}", file);
     let mut settings = Config::default();
     settings.merge(config::File::with_name(file)).unwrap();
-    Arc::new(settings)
+
+    settings
 }
 
 /// Set logging level.
