@@ -165,6 +165,15 @@ impl GlobalStatistics {
 
             abort_rate = (tatp_aborted as f64 / completed as f64) * 100.0;
             throughput = tatp_success as f64 / self.end.unwrap().as_secs() as f64;
+        } else if self.workload == "smallbank" {
+            let wab = self.abort_breakdown.workload_specific.as_mut().unwrap();
+            match wab {
+                WorkloadAbortBreakdown::SmallBank(reason) => {
+                    abort_rate =
+                        ((aborted - reason.insufficient_funds) as f64 / completed as f64) * 100.0;
+                    throughput = committed as f64 / self.end.unwrap().as_secs() as f64;
+                }
+            }
         } else {
             abort_rate = (aborted as f64 / completed as f64) * 100.0;
             throughput = committed as f64 / self.end.unwrap().as_secs() as f64;
@@ -314,9 +323,13 @@ impl LocalStatistics {
                                 NonFatalError::SerializationGraphTesting(e) => {
                                     if let SerializationGraphTestingError::ParentAborted = e {
                                         metric.inc_parent_aborted();
+                                    } else {
+                                        tracing::info!("Other: {:?}", e);
                                     }
                                 }
-                                _ => {}
+                                _ => {
+                                    tracing::info!("Other: {:?}", reason);
+                                }
                             }
                         }
                         ProtocolAbortBreakdown::TwoPhaseLocking(ref mut metric) => {

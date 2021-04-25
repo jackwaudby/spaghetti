@@ -66,11 +66,11 @@ impl Worker {
                         let start = Instant::now(); // start timer
                         let txn = generator.get_next(); // get txn
                         let end = start.elapsed();
-                        txn_gen_wait_time += end.as_millis();
+                        txn_gen_wait_time += end.as_nanos();
                         let start = Instant::now(); // start timer
                         let ir = execute(txn, Arc::clone(&scheduler)); // execute txn
                         let end = start.elapsed();
-                        execution_time += end.as_millis();
+                        execution_time += end.as_nanos();
                         let InternalResponse {
                             transaction,
                             outcome,
@@ -81,17 +81,20 @@ impl Worker {
 
                         stats.record(transaction, outcome.clone(), latency); // record txn
                         let end = start.elapsed();
-                        record_time += end.as_millis();
+                        record_time += end.as_nanos();
                         sent += 1;
                     }
                 }
 
                 tx.send(stats).unwrap();
                 tracing::debug!("Worker {} finished", id);
-                tracing::info!("Generator wait time: {:?}", txn_gen_wait_time);
-                tracing::info!("Execution wait time: {:?}", execution_time);
-                tracing::info!("Recording wait time: {:?}", record_time);
-                tracing::info!("{:?}", *COMMIT_TIME.lock());
+                tracing::info!(
+                    "Generator wait time: {:?} (ms)",
+                    txn_gen_wait_time / 1000000
+                );
+                tracing::info!("Execution wait time: {:?} (ms)", execution_time / 1000000);
+                tracing::info!("Recording wait time: {:?} (ms)", record_time / 1000000);
+                tracing::info!("Commit time: {:?} (ms)", *COMMIT_TIME.lock() / 1000000);
             })
             .unwrap();
 

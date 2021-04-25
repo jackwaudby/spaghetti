@@ -809,7 +809,7 @@ impl Scheduler for SerializationGraphTesting {
         match state {
             State::Aborted => {
                 self.abort(meta.clone()).unwrap();
-                let e = SerializationGraphTestingError::NonSerializable;
+                let e = SerializationGraphTestingError::ParentAborted;
                 return Err(e.into());
             }
             State::Committed => {
