@@ -203,6 +203,19 @@ impl GlobalStatistics {
         });
 
         serde_json::to_writer_pretty(file, &overview).unwrap();
+
+        let pr = json!({
+            "sf": self.scale_factor,
+            "protocol": self.protocol,
+            "workload": self.workload,
+            "total_duration": self.end.unwrap().as_secs(),
+            "completed": completed,
+            "throughput": format!("{:.3}", throughput),
+            "abort_rate": format!("{:.3}", abort_rate),
+            "mean": format!("{:.3}", mean),
+        });
+
+        tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
     }
 }
 
