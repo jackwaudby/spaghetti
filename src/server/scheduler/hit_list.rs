@@ -186,7 +186,7 @@ impl Scheduler for HitList {
         // execute read
         match index.read(key.clone(), columns, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
-                let access_history = res.get_access_history().unwrap(); // get access history
+                let access_history = res.get_access_history();
                 for access in access_history {
                     // WR conflict
                     if let Access::Write(tid) = access {
@@ -234,7 +234,7 @@ impl Scheduler for HitList {
         // execute read and update
         match index.read_and_update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
-                let access_history = res.get_access_history().unwrap();
+                let access_history = res.get_access_history();
                 for access in access_history {
                     match access {
                         // WW conflict
@@ -308,7 +308,7 @@ impl Scheduler for HitList {
             &meta.get_id().unwrap(),
         ) {
             Ok(res) => {
-                let access_history = res.get_access_history().unwrap();
+                let access_history = res.get_access_history();
                 for access in access_history {
                     match access {
                         // WW conflict
@@ -363,7 +363,7 @@ impl Scheduler for HitList {
 
         match index.append(key.clone(), column, value, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
-                let access_history = res.get_access_history().unwrap();
+                let access_history = res.get_access_history();
                 for access in access_history {
                     match access {
                         // WW conflict
@@ -416,7 +416,7 @@ impl Scheduler for HitList {
 
         match index.delete(key.clone(), "hit") {
             Ok(res) => {
-                let access_history = res.get_access_history().unwrap();
+                let access_history = res.get_access_history();
                 for access in access_history {
                     match access {
                         // WW conflict

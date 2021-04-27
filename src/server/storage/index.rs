@@ -1,7 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::server::storage::datatype::Data;
-use crate::server::storage::row::OperationResult;
-use crate::server::storage::row::Row;
+use crate::server::storage::row::{OperationResult, Row, State as RowState};
 use crate::workloads::PrimaryKey;
 
 use chashmap::{CHashMap, ReadGuard};
@@ -252,16 +251,16 @@ impl Index {
     /// - Row does not exist with `key`.
     pub fn commit(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<(), NonFatalError> {
         // Check to be deleted
-        let df = self
+        let row_state = self
             .map
             .get(&key)
             .expect(&format!("No entry for {}", key))
             .lock()
             .unwrap()
-            .is_deleted();
-        if df {
-            // Remove row.
-            self.remove(key).unwrap();
+            .get_state();
+
+        if let RowState::Deleted = row_state {
+            self.remove(key).unwrap(); // Remove row.
         } else {
             // Commit changes
             // Attempt to get read guard.

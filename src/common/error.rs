@@ -2,6 +2,7 @@
 //! Fatal errors, result in the termination of the database.
 //! Non-fatal errors, are reasons for transactions to abort.
 use crate::common::frame::ParseError;
+use crate::server::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
 use crate::server::scheduler::hit_list::error::HitListError;
 use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
@@ -109,6 +110,9 @@ pub enum NonFatalError {
     /// Two phase locking error.
     TwoPhaseLocking(TwoPhaseLockingError),
 
+    /// Basic SGT error.
+    BasicSerializationGraphTesting(BasicSerializationGraphTestingError),
+
     /// SGT error.
     SerializationGraphTesting(SerializationGraphTestingError),
 
@@ -172,6 +176,7 @@ impl fmt::Display for NonFatalError {
             OptimisedHitListError(ref e) => write!(f, "{}", e),
             TwoPhaseLocking(ref e) => write!(f, "{}", e),
             SerializationGraphTesting(ref e) => write!(f, "{}", e),
+            BasicSerializationGraphTesting(ref e) => write!(f, "{}", e),
             RowAlreadyExists(ref key, ref index) => {
                 write!(f, "already exists: {} in {}", key, index)
             }
@@ -234,6 +239,12 @@ impl From<SerializationGraphTestingError> for FatalError {
 impl From<SerializationGraphTestingError> for NonFatalError {
     fn from(error: SerializationGraphTestingError) -> Self {
         NonFatalError::SerializationGraphTesting(error)
+    }
+}
+
+impl From<BasicSerializationGraphTestingError> for NonFatalError {
+    fn from(error: BasicSerializationGraphTestingError) -> Self {
+        NonFatalError::BasicSerializationGraphTesting(error)
     }
 }
 

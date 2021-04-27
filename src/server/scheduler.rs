@@ -19,6 +19,8 @@ pub mod two_phase_locking;
 
 pub mod serialization_graph_testing;
 
+pub mod basic_sgt;
+
 /// A concurrency control protocol.
 ///
 /// Uses trait object for dynamic dispatch to switch between protocols.

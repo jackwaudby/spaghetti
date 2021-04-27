@@ -1,4 +1,4 @@
-use crate::common::error::{FatalError, NonFatalError};
+use crate::common::error::NonFatalError;
 use crate::server::storage::catalog::ColumnKind;
 use crate::server::storage::datatype::Data;
 use crate::server::storage::datatype::Field;
@@ -7,6 +7,13 @@ use crate::workloads::PrimaryKey;
 
 use std::fmt;
 use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub enum State {
+    Clean,
+    Modified,
+    Deleted,
+}
 
 /// Represents a row in the database.
 #[derive(Debug)]
@@ -26,22 +33,20 @@ pub struct Row {
     /// Previous version of fields.
     prev_fields: Option<Vec<Field>>,
 
-    /// Dirty flag.
-    dirty: bool,
+    /// Row state.
+    state: State,
 
-    /// Delete flag.
-    delete: bool,
-
-    /// Optional list of accesses.
+    /// Sequence of accesses to the row (op_type,txn_id) (optional)
     access_history: Option<Vec<Access>>,
+
+    /// List of delayed transactions. (thread_id, txn_id)
+    delayed: Vec<(usize, u64)>,
 }
 
 /// Represents the type of access made to row.
 #[derive(Debug, PartialEq, Clone)]
 pub enum Access {
-    /// Get
     Read(String),
-    /// Set.
     Write(String),
 }
 
@@ -50,6 +55,7 @@ pub enum Access {
 pub struct OperationResult {
     /// Optional values.
     values: Option<Vec<Data>>,
+
     /// Optional access history.
     access_history: Option<Vec<Access>>,
 }
@@ -57,20 +63,16 @@ pub struct OperationResult {
 impl Row {
     /// Return an empty `Row`.
     pub fn new(table: Arc<Table>, protocol: &str) -> Self {
-        // Get handle to table.
-        let t = Arc::clone(&table);
-        // Get row id.
-        let row_id = t.get_next_row_id();
-        // Get number of fields in this table.
-        let field_cnt = t.schema().column_cnt();
-        // Create fields.
-        let mut fields = Vec::new();
+        let t = Arc::clone(&table); // get handle to table
+        let row_id = t.get_next_row_id(); // get row id
+        let field_cnt = t.schema().column_cnt(); // get number of fields in this table
+        let mut fields = Vec::new(); // create emty fields
         for _ in 0..field_cnt {
             fields.push(Field::new());
         }
-        // Optional track access history
+
         let access_history = match protocol {
-            "sgt" | "hit" | "opt-hit" => Some(vec![]),
+            "sgt" | "hit" | "opt-hit" | "basic-sgt" => Some(vec![]), // (optional) track access history
             _ => None,
         };
 
@@ -80,9 +82,9 @@ impl Row {
             table: t,
             current_fields: fields,
             prev_fields: None,
-            dirty: false,
-            delete: false,
+            state: State::Clean,
             access_history,
+            delayed: vec![],
         }
     }
 
@@ -107,13 +109,8 @@ impl Row {
     }
 
     /// Initialise the value of a field in a row. Used by loaders.
-    ///
-    /// # Non-Fatal Errors
-    ///
-    /// A non-fatal error is returned if there is a conversion error or the column cannot be found.
-    /// - Parsing error.
     pub fn init_value(&mut self, col_name: &str, col_value: &str) -> Result<(), NonFatalError> {
-        let table = Arc::clone(&self.table); // get handle to  table
+        let table = Arc::clone(&self.table); // get handle to table
         let field_index = table.schema().column_position_by_name(col_name)?; // get index of field in row
         let field_type = table.schema().column_type_by_index(field_index); // get field type
 
@@ -135,34 +132,24 @@ impl Row {
         Ok(())
     }
 
-    /// Get the values in a row.
-    ///
-    /// # Non-Fatal Errors
-    ///
-    /// A non-fatal error is returned if (i) row is marked for deletecolumn does not exist in the table.
-    /// - Row marked for delete.
-    ///
-    /// # Fatal Errors
-    ///
-    /// The access history is not initialised.
+    /// Get the values of `columns` in a row.
     pub fn get_values(
         &mut self,
         columns: &Vec<&str>,
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
-        if self.is_deleted() {
-            //  if marked deleted operation fails
+        if let State::Deleted = self.state {
             return Err(NonFatalError::RowDeleted(
                 format!("{:?}", self.primary_key),
                 self.table.get_table_name(),
-            ));
+            )); // if marked deleted operation
         }
 
         let access_history = match protocol {
-            "sgt" | "hit" | "opt-hit" => {
-                let ah = self.get_access_history().unwrap(); // get access history
-                self.append_access(Access::Read(tid.to_string())).unwrap(); // append operation
+            "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
+                let ah = self.access_history.unwrap().clone(); // get access history
+                self.append_access(Access::Read(tid.to_string())); // append operation
                 Some(ah)
             }
             _ => None,
@@ -181,9 +168,7 @@ impl Row {
         Ok(res)
     }
 
-    /// List data type only!
-    ///
-    /// Append value to list
+    /// Append value to list. (list datatype only).
     pub fn append_value(
         &mut self,
         column: &str,
@@ -191,61 +176,58 @@ impl Row {
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
-        if self.is_dirty() {
-            // if marked dirty operation fails.
-            return Err(NonFatalError::RowDirty(
-                format!("{:?}", self.primary_key),
-                self.table.get_table_name(),
-            ));
-        }
-
-        if self.is_deleted() {
-            // if marked deleted operation fails.
-            return Err(NonFatalError::RowDeleted(
-                format!("{:?}", self.primary_key),
-                self.table.get_table_name(),
-            ));
-        }
-
-        let access_history = match protocol {
-            "sgt" | "hit" | "opt-hit" => {
-                let ah = self.get_access_history().unwrap(); // get access history
-                self.append_access(Access::Write(tid.to_string())).unwrap(); // append this operation
-                Some(ah)
+        match self.state {
+            State::Modified => {
+                return Err(NonFatalError::RowDirty(
+                    format!("{:?}", self.primary_key),
+                    self.table.get_table_name(),
+                ));
             }
-            _ => None,
-        };
-
-        let prev_fields = self.current_fields.clone(); // create copy of old fields
-        self.set_prev(Some(prev_fields)); // set prev
-        let table = Arc::clone(&self.table); // get handle to table
-
-        let field_index = table.schema().column_position_by_name(column)?; // get index of field in row
-        let field_type = table.schema().column_type_by_index(field_index); // get type of field
-        let field = &self.current_fields[field_index]; // get handle to field
-
-        if let ColumnKind::List = field_type {
-            let current_list = field.get(); // get the current value
-
-            if let Data::List(mut list) = current_list {
-                let to_append = value.parse::<u64>().unwrap(); // convert to u64
-                list.push(to_append); // append value
-
-                self.current_fields[field_index].set(Data::List(list)); // set value
-            } else {
-                panic!("expected Data::List");
+            State::Deleted => {
+                return Err(NonFatalError::RowDeleted(
+                    format!("{:?}", self.primary_key),
+                    self.table.get_table_name(),
+                ));
             }
-        } else {
-            panic!(
-                "append operation not supported for {} data type",
-                field_type
-            );
+            State::Clean => {
+                let access_history = match protocol {
+                    "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
+                        let ah = self.get_access_history(); // get access history
+                        self.append_access(Access::Write(tid.to_string())); // append this operation
+                        Some(ah)
+                    }
+                    _ => None,
+                };
+
+                let prev_fields = self.current_fields.clone(); // create copy of old fields
+                self.set_prev(Some(prev_fields)); // set prev
+                let table = Arc::clone(&self.table); // get handle to table
+                let field_index = table.schema().column_position_by_name(column)?; // get index of field in row
+                let field_type = table.schema().column_type_by_index(field_index); // get type of field
+                let field = &self.current_fields[field_index]; // get handle to field
+
+                if let ColumnKind::List = field_type {
+                    let current_list = field.get(); // get the current value
+                    if let Data::List(mut list) = current_list {
+                        let to_append = value.parse::<u64>().unwrap(); // convert to u64
+                        list.push(to_append); // append value
+                        self.current_fields[field_index].set(Data::List(list)); // set value
+                    } else {
+                        panic!("expected list data type");
+                    }
+                } else {
+                    panic!(
+                        "append operation not supported for {} data type",
+                        field_type
+                    );
+                }
+
+                self.state = State::Modified; // set state
+                let res = OperationResult::new(None, access_history); // create return result
+
+                return Ok(res);
+            }
         }
-
-        self.set_dirty(true); // set dirty flag
-        let res = OperationResult::new(None, access_history); // create return result
-
-        Ok(res)
     }
 
     /// Set the values of a field in a row.
@@ -256,63 +238,68 @@ impl Row {
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
-        // If dirty operation fails.
-        if self.is_dirty() {
-            return Err(NonFatalError::RowDirty(
-                format!("{:?}", self.primary_key),
-                self.table.get_table_name(),
-            ));
-        }
-
-        // If deleted operation fails.
-        if self.is_deleted() {
-            return Err(NonFatalError::RowDeleted(
-                format!("{:?}", self.primary_key),
-                self.table.get_table_name(),
-            ));
-        }
-
-        let access_history = match protocol {
-            "sgt" | "hit" | "opt-hit" => {
-                let ah = self.get_access_history().unwrap(); // get access history
-                self.append_access(Access::Write(tid.to_string())).unwrap(); // append this operation
-                Some(ah)
+        match self.state {
+            State::Modified => {
+                return Err(NonFatalError::RowDirty(
+                    format!("{:?}", self.primary_key),
+                    self.table.get_table_name(),
+                ));
             }
-            _ => None,
-        };
+            State::Deleted => {
+                return Err(NonFatalError::RowDeleted(
+                    format!("{:?}", self.primary_key),
+                    self.table.get_table_name(),
+                ));
+            }
+            State::Clean => {
+                let access_history = match protocol {
+                    "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
+                        let ah = self.access_history.unwrap().clone(); // get access history
+                        self.append_access(Access::Write(tid.to_string())); // append this operation
+                        Some(ah)
+                    }
+                    _ => None,
+                };
 
-        let prev_fields = self.current_fields.clone(); // create copy of old fields
-        self.set_prev(Some(prev_fields)); // set prev
-        let table = Arc::clone(&self.table); // get handle to table
+                let prev_fields = self.current_fields.clone(); // create copy of old fields
+                self.set_prev(Some(prev_fields)); // set prev
+                let table = Arc::clone(&self.table); // get handle to table
 
-        // update each field;
-        for (i, col_name) in columns.iter().enumerate() {
-            let field_index = table.schema().column_position_by_name(col_name)?; // get index of field in row
-            let field_type = table.schema().column_type_by_index(field_index); // get type of field
-            let value = values[i]; // new value
+                // update each field;
+                for (i, col_name) in columns.iter().enumerate() {
+                    let field_index = table.schema().column_position_by_name(col_name)?; // get index of field in row
+                    let field_type = table.schema().column_type_by_index(field_index); // get type of field
+                    let value = values[i]; // new value
 
-            // convert value to `Data`
-            let new_value = match field_type {
-                ColumnKind::VarChar => Data::VarChar(value.to_string()),
-                ColumnKind::Int => Data::Int(value.parse::<i64>().map_err(|_| {
-                    NonFatalError::UnableToConvertToDataType(value.to_string(), "int".to_string())
-                })?),
-                ColumnKind::Double => Data::Double(value.parse::<f64>().map_err(|_| {
-                    NonFatalError::UnableToConvertToDataType(
-                        value.to_string(),
-                        "double".to_string(),
-                    )
-                })?),
-                ColumnKind::List => panic!("set operation not supported for list data type"),
-            };
+                    // convert value to `Data`
+                    let new_value = match field_type {
+                        ColumnKind::VarChar => Data::VarChar(value.to_string()),
+                        ColumnKind::Int => Data::Int(value.parse::<i64>().map_err(|_| {
+                            NonFatalError::UnableToConvertToDataType(
+                                value.to_string(),
+                                "int".to_string(),
+                            )
+                        })?),
+                        ColumnKind::Double => Data::Double(value.parse::<f64>().map_err(|_| {
+                            NonFatalError::UnableToConvertToDataType(
+                                value.to_string(),
+                                "double".to_string(),
+                            )
+                        })?),
+                        ColumnKind::List => {
+                            panic!("set operation not supported for list data type")
+                        }
+                    };
 
-            self.current_fields[field_index].set(new_value); // set value
+                    self.current_fields[field_index].set(new_value); // set value
+                }
+
+                self.state = State::Modified; // set dirty flag
+                let res = OperationResult::new(None, access_history); // create return result
+
+                Ok(res)
+            }
         }
-
-        self.set_dirty(true); // set dirty flag
-        let res = OperationResult::new(None, access_history); // create return result
-
-        Ok(res)
     }
 
     /// Get and set
@@ -323,70 +310,59 @@ impl Row {
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
-        let res = self.get_values(columns, protocol, tid);
-        self.set_values(columns, values, protocol, tid)?;
+        let res = self.get_values(columns, protocol, tid); // get old
+        self.set_values(columns, values, protocol, tid)?; // set new
         res
     }
 
     /// Mark row as deleted.
     pub fn delete(&mut self, protocol: &str) -> Result<OperationResult, NonFatalError> {
-        // If dirty operation fails.
-        if self.is_dirty() {
-            return Err(NonFatalError::RowDirty(
-                format!("{:?}", self.primary_key),
-                self.table.get_table_name(),
-            ));
-        }
-
-        // If deleted operation fails.
-        if self.is_deleted() {
-            return Err(NonFatalError::RowDeleted(
-                format!("{:?}", self.primary_key),
-                self.table.get_table_name(),
-            ));
-        }
-
-        // Set dirty flag.
-        self.set_deleted(true);
-
-        // Get access history.
-        let access_history = match protocol {
-            "sgt" | "hit" | "opt-hit" => {
-                // Get access history.
-                let ah = self.get_access_history().unwrap();
-                Some(ah)
+        match self.state {
+            State::Modified => {
+                return Err(NonFatalError::RowDirty(
+                    format!("{:?}", self.primary_key),
+                    self.table.get_table_name(),
+                ));
             }
-            _ => None,
-        };
-
-        let res = OperationResult::new(None, access_history);
-        Ok(res)
+            State::Deleted => {
+                return Err(NonFatalError::RowDeleted(
+                    format!("{:?}", self.primary_key),
+                    self.table.get_table_name(),
+                ));
+            }
+            State::Clean => {
+                self.state = State::Deleted; // set state
+                let access_history = match protocol {
+                    "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
+                        let ah = self.access_history.unwrap().clone(); // get access history
+                        Some(ah)
+                    }
+                    _ => None,
+                };
+                let res = OperationResult::new(None, access_history);
+                return Ok(res);
+            }
+        }
     }
 
     /// Make an update permanent.
     ///
     /// Committing a delete is handled at the index level.
     pub fn commit(&mut self, protocol: &str, tid: &str) {
-        // Set dirty flag to false.
-        self.set_dirty(false);
-        // Remove perv version.
+        self.state = State::Clean;
         self.set_prev(None);
-        // Trim access history.
-        match protocol {
-            "sgt" | "hit" | "opt-hit" => {
-                let mut ah = self.access_history.take().unwrap();
 
-                // Get index of this write.
+        // safe to remove all accesses before this write; as if this committed all previous accesses must have committed.
+        match protocol {
+            "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
+                let mut ah = self.access_history.take().unwrap(); // take access history
                 let ind = ah
                     .iter()
                     .position(|a| a == &Access::Write(tid.to_string()))
-                    .unwrap();
-                // Remove "old" access information.
-                let new_ah = ah.split_off(ind + 1);
-                // Reset access history
-                self.access_history = Some(new_ah);
+                    .unwrap(); // get index of this write
+                let new_ah = ah.split_off(ind + 1); // remove "old" access information
+                self.access_history = Some(new_ah); // reset
             }
-
             _ => {}
         };
     }
@@ -395,43 +371,32 @@ impl Row {
     ///
     /// Handles reverting a delete and an update.
     pub fn revert(&mut self, protocol: &str, tid: &str) {
-        // Handle case when record has been flagged for deletion.
-        if self.delete {
-            self.delete = false;
-        } else {
-            // Handle case when record has been updated.
-            // Retrieve old values.
-            let old_fields = self.prev_fields.take();
-            // Reset.
-            if let Some(_) = old_fields {
-                self.current_fields = old_fields.unwrap();
-            }
-            self.set_dirty(false);
-            // Trim access history.
-            match protocol {
-                "sgt" | "hit" | "opt-hit" => {
-                    let mut ah = self.access_history.take().unwrap();
+        match self.state {
+            State::Deleted => self.state = State::Clean,
+            State::Modified => {
+                self.current_fields = self.prev_fields.take().unwrap(); // revert to old values
+                self.state = State::Clean;
 
-                    // Get index of this write.
-                    let ind = ah
-                        .iter()
-                        .position(|a| a == &Access::Write(tid.to_string()))
-                        .unwrap();
-                    // Remove "old" access information.
-                    let _s = ah.split_off(ind);
-                    // Reset access history
-                    self.access_history = Some(ah);
-                }
-                _ => {}
-            };
+                // remove all accesses after this write as they should also have aborted
+                match protocol {
+                    "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
+                        let mut ah = self.access_history.take().unwrap();
+                        let ind = ah
+                            .iter()
+                            .position(|a| a == &Access::Write(tid.to_string()))
+                            .unwrap(); // get index of this write
+                        ah.split_off(ind); // remove "old" access information
+                        self.access_history = Some(ah); // reset access history
+                    }
+                    _ => {}
+                };
+            }
+            State::Clean => {}
         }
     }
 
     /// Revert reads to a `Row`.
-    ///
-    /// Handles reverting a read operation SGT and HIT only.
     pub fn revert_read(&mut self, tid: &str) {
-        // Remove read from access history
         self.access_history
             .as_mut()
             .unwrap()
@@ -444,41 +409,32 @@ impl Row {
     }
 
     /// Append `Access` to access history.
-    pub fn append_access(&mut self, access: Access) -> Result<(), FatalError> {
-        match &mut self.access_history {
-            Some(ref mut ah) => ah.push(access),
-            None => return Err(FatalError::NotTrackingAccessHistory),
-        }
-        Ok(())
+    pub fn append_access(&mut self, access: Access) {
+        self.access_history.unwrap().push(access);
     }
 
     /// Get access history.
-    pub fn get_access_history(&self) -> Result<Vec<Access>, FatalError> {
-        let ah = match &self.access_history {
-            Some(ah) => ah.clone(),
-            None => return Err(FatalError::NotTrackingAccessHistory),
-        };
-        Ok(ah)
+    pub fn get_access_history(&self) -> Vec<Access> {
+        self.access_history.unwrap().clone()
     }
 
-    /// Get dirty flag.
-    fn is_dirty(&self) -> bool {
-        self.dirty
+    /// Get row state
+    pub fn get_state(&self) -> State {
+        self.state.clone()
     }
 
-    // Set dirty flag.
-    fn set_dirty(&mut self, dirty: bool) {
-        self.dirty = dirty;
+    pub fn get_delayed(&self) -> Vec<(usize, u64)> {
+        self.delayed.clone()
     }
 
-    /// Get delete flag.
-    pub fn is_deleted(&self) -> bool {
-        self.delete
+    pub fn remove_delayed(&mut self, t: (usize, u64)) {
+        self.delayed.retain(|&x| x != t);
     }
 
-    // Set delete flag.
-    pub fn set_deleted(&mut self, delete: bool) {
-        self.delete = delete;
+    pub fn add_delayed(&mut self, t: (usize, u64)) -> (usize, u64) {
+        let wait = self.delayed.last().unwrap().clone();
+        self.delayed.push(t);
+        wait
     }
 }
 
@@ -497,17 +453,15 @@ impl OperationResult {
     }
 
     /// Get access history.
-    pub fn get_access_history(&self) -> Option<Vec<Access>> {
-        self.access_history.clone()
+    pub fn get_access_history(&self) -> Vec<Access> {
+        self.access_history.unwrap().clone()
     }
 }
 
 // [row_id,pk,dirty,table_name,fields,access_history]
 impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // Table.
         let table = Arc::clone(&self.table);
-        // Current fields.
         let fc = self.current_fields.len();
         let mut fields = String::new();
         for field in &self.current_fields[0..fc - 1] {
@@ -517,10 +471,10 @@ impl fmt::Display for Row {
         fields.push_str(format!("{}", last).as_str());
         write!(
             f,
-            "[{}, {:?}, {}, {}, {}, {:?}]",
+            "[{}, {:?}, {:?}, {}, {}, {:?}]",
             self.get_row_id(),
             self.get_primary_key(),
-            self.is_dirty(),
+            self.state,
             table.get_table_name(),
             fields,
             self.access_history

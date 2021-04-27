@@ -313,7 +313,7 @@ impl Scheduler for SerializationGraphTesting {
                 let node = self.get_shared_lock(this_node); // take shared lock on this_node
                 node.add_key(&index.get_name(), key.clone(), OperationType::Read); // operation succeeded -- register
                 drop(node); // drop shared lock on node
-                let access_history = res.get_access_history().unwrap(); // get access history
+                let access_history = res.get_access_history(); // get access history
 
                 // detect conflicts and insert edges.
                 for access in access_history {
@@ -426,7 +426,7 @@ impl Scheduler for SerializationGraphTesting {
                 node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded register
                 drop(node);
 
-                let access_history = res.get_access_history().unwrap(); // get access history
+                let access_history = res.get_access_history(); // get access history
 
                 // insert edges
                 for access in access_history {
@@ -507,7 +507,7 @@ impl Scheduler for SerializationGraphTesting {
                 node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
                 drop(node);
 
-                let access_history = res.get_access_history().unwrap(); // get access history
+                let access_history = res.get_access_history(); // get access history
 
                 for access in access_history {
                     match access {
@@ -587,7 +587,7 @@ impl Scheduler for SerializationGraphTesting {
                 node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
                 drop(node);
 
-                let access_history = res.get_access_history().unwrap(); // get access history
+                let access_history = res.get_access_history(); // get access history
 
                 for access in access_history {
                     match access {
@@ -664,7 +664,7 @@ impl Scheduler for SerializationGraphTesting {
                 node.add_key(&index.get_name(), key, OperationType::Delete); // operation succeeded -- register
                 drop(node);
 
-                let access_history = res.get_access_history().unwrap(); // get the access history
+                let access_history = res.get_access_history(); // get the access history
 
                 // detect conflicts
                 for access in access_history {
