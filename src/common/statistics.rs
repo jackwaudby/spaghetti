@@ -10,6 +10,7 @@ use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::TatpTransaction;
 
 use config::Config;
+use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use statrs::statistics::OrderStatistics;
@@ -20,6 +21,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use strum::IntoEnumIterator;
+
+lazy_static! {
+    pub static ref COMMIT_TIME: parking_lot::Mutex<u128> = parking_lot::Mutex::new(0);
+}
+
+pub fn add_commit_time(time: u128) {
+    *COMMIT_TIME.lock() += time;
+}
 
 /// Each write handler track statistics in its own instance of `LocalStatisitics`.
 /// After the benchmark has completed the statisitics are merged into `GlobalStatistics`.
@@ -223,6 +232,7 @@ impl GlobalStatistics {
             "throughput": format!("{:.3}", throughput),
             "abort_rate": format!("{:.3}", abort_rate),
             "mean": format!("{:.3}", mean),
+            "commit time (ms)":  format!("{:.3}", *COMMIT_TIME.lock()/1000),
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
@@ -267,9 +277,8 @@ impl LocalStatistics {
         outcome: Outcome,
         latency: Option<Duration>,
     ) {
-        // Workload
         self.workload_breakdown
-            .record(transaction, outcome.clone(), latency);
+            .record(transaction, outcome.clone(), latency); // workload
 
         // Abort reasons
         if let Outcome::Aborted { reason } = outcome {

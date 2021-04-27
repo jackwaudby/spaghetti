@@ -7,7 +7,7 @@ use std::fmt;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use tracing::info;
+use tracing::debug;
 
 /// SmallBank workload transaction generator.
 pub struct SmallBankGenerator {
@@ -52,9 +52,9 @@ impl SmallBankGenerator {
             _ => panic!("invalid scale factor"),
         };
 
-        info!("Parameter generator set seed: {}", set_seed);
-        info!("Balance mix: {}", use_balance_mix);
-        info!("Contention: {}", contention);
+        debug!("Parameter generator set seed: {}", set_seed);
+        debug!("Balance mix: {}", use_balance_mix);
+        debug!("Contention: {}", contention);
 
         let rng: StdRng;
         if set_seed {

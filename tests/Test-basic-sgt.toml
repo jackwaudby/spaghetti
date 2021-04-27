@@ -1,0 +1,11 @@
+log = "info"
+transactions = 10
+timeout = 10
+warmup = 1
+set_seed = false
+protocol="basic-sgt"
+workers = 4
+scale_factor = 1
+workload = "smallbank"
+load = false
+use_balance_mix = false

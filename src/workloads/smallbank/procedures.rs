@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::common::statistics::add_commit_time;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::smallbank::error::SmallBankError;
@@ -8,17 +9,8 @@ use crate::workloads::smallbank::paramgen::{
 };
 use crate::workloads::PrimaryKey;
 
-use lazy_static::lazy_static;
 use std::convert::TryFrom;
 use std::sync::Arc;
-
-lazy_static! {
-    pub static ref COMMIT_TIME: parking_lot::Mutex<u128> = parking_lot::Mutex::new(0);
-}
-
-fn add_commit_time(time: u128) {
-    *COMMIT_TIME.lock() += time;
-}
 
 /// Balance transaction.
 ///

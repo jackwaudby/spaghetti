@@ -6,7 +6,6 @@ use crate::workloads::acid;
 use crate::workloads::acid::paramgen::AcidTransactionProfile;
 use crate::workloads::smallbank;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
-use crate::workloads::smallbank::procedures::COMMIT_TIME;
 use crate::workloads::tatp;
 use crate::workloads::tatp::paramgen::TatpTransactionProfile;
 
@@ -46,10 +45,6 @@ impl Worker {
                     core_affinity::set_for_current(core_id); // pin thread to cpu core
                 }
 
-                let mut txn_gen_wait_time = 0;
-                let mut execution_time = 0;
-                let mut record_time = 0;
-
                 let mut sent = 0; // txns sent
 
                 let st = Instant::now();
@@ -63,38 +58,21 @@ impl Worker {
                         tracing::debug!("Timeout reached: {} minute(s)", timeout);
                         break;
                     } else {
-                        let start = Instant::now(); // start timer
                         let txn = generator.get_next(); // get txn
-                        let end = start.elapsed();
-                        txn_gen_wait_time += end.as_nanos();
-                        let start = Instant::now(); // start timer
                         let ir = execute(txn, Arc::clone(&scheduler)); // execute txn
-                        let end = start.elapsed();
-                        execution_time += end.as_nanos();
                         let InternalResponse {
                             transaction,
                             outcome,
                             latency,
                             ..
                         } = ir;
-                        let start = Instant::now(); // start timer
-
                         stats.record(transaction, outcome.clone(), latency); // record txn
-                        let end = start.elapsed();
-                        record_time += end.as_nanos();
                         sent += 1;
                     }
                 }
 
                 tx.send(stats).unwrap();
                 tracing::debug!("Worker {} finished", id);
-                tracing::info!(
-                    "Generator wait time: {:?} (ms)",
-                    txn_gen_wait_time / 1000000
-                );
-                tracing::info!("Execution wait time: {:?} (ms)", execution_time / 1000000);
-                tracing::info!("Recording wait time: {:?} (ms)", record_time / 1000000);
-                tracing::info!("Commit time: {:?} (ms)", *COMMIT_TIME.lock() / 1000000);
             })
             .unwrap();
 

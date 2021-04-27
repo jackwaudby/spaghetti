@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::server::scheduler::basic_sgt;
 use crate::server::storage::catalog::ColumnKind;
 use crate::server::storage::datatype::Data;
 use crate::server::storage::datatype::Field;
@@ -44,10 +45,21 @@ pub struct Row {
 }
 
 /// Represents the type of access made to row.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub enum Access {
     Read(String),
     Write(String),
+}
+
+impl PartialEq for Access {
+    fn eq(&self, other: &Self) -> bool {
+        use Access::*;
+        match (self, other) {
+            (&Read(_), &Read(_)) => true,
+            (&Write(_), &Write(_)) => true,
+            _ => false,
+        }
+    }
 }
 
 /// Represents the packet of information returned from a get/set operation on a row.
@@ -432,7 +444,26 @@ impl Row {
     }
 
     pub fn add_delayed(&mut self, t: (usize, u64)) -> (usize, u64) {
-        let wait = self.delayed.last().unwrap().clone();
+        let wait = match self.delayed.last() {
+            Some(wait) => wait.clone(),
+            None => {
+                let access = self
+                    .access_history
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .filter(|&x| x == &Access::Write("xx".to_string()))
+                    .last()
+                    .unwrap();
+                if let Access::Write(id) = access {
+                    let wait = basic_sgt::parse_id(id.to_string());
+                    wait
+                } else {
+                    panic!("todo");
+                }
+            }
+        };
+
         self.delayed.push(t);
         wait
     }
@@ -521,18 +552,14 @@ mod tests {
                 .unwrap(),
             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
         );
-        assert_eq!(r1.get_access_history(), None);
 
-        assert_eq!(row.is_dirty(), false);
         assert_eq!(format!("{:?}", row.prev_fields), "None");
 
         // write
         let w1 = row.set_values(&wcolumns, &values, "2pl", "t1").unwrap();
 
         assert_eq!(w1.get_values(), None);
-        assert_eq!(w1.get_access_history(), None);
 
-        assert_eq!(row.is_dirty(), true);
         assert_eq!(
             format!("{:?}", row.prev_fields),
             "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: Null }])"
@@ -551,7 +578,6 @@ mod tests {
                 .unwrap(),
             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"53.2\",\"calories\":\"null\",\"name\":\"el camino\",\"year\":\"2019\"}}"
         );
-        assert_eq!(r2.get_access_history(), None);
 
         // commit
         row.commit("2pl", "t1");
@@ -577,7 +603,6 @@ mod tests {
                     format!("{:?}", row.current_fields),
             "[Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }, Field { data: Null }]"
         );
-        assert_eq!(row.is_dirty(), false);
 
         assert_eq!(
             format!("{}", row),
@@ -617,15 +642,12 @@ mod tests {
                 .unwrap(),
             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"[]\",\"name\":\"null\",\"year\":\"null\"}}"
         );
-        assert_eq!(r1.get_access_history(), None);
 
-        assert_eq!(row.is_dirty(), false);
         assert_eq!(format!("{:?}", row.prev_fields), "None");
 
         // write
         row.append_value("calories", "1678", "2pl", "t1").unwrap();
 
-        assert_eq!(row.is_dirty(), true);
         assert_eq!(
             format!("{:?}", row.prev_fields),
             "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([]) }])"
@@ -645,7 +667,6 @@ mod tests {
                 .unwrap(),
             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"[1678]\",\"name\":\"null\",\"year\":\"null\"}}"
         );
-        assert_eq!(r2.get_access_history(), None);
 
         // commit
         row.commit("2pl", "t1");
@@ -670,8 +691,6 @@ mod tests {
             format!("{:?}", row.current_fields),
             "[Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678]) }]"
         );
-
-        assert_eq!(row.is_dirty(), false);
 
         assert_eq!(
             format!("{}", row),
@@ -709,12 +728,12 @@ mod tests {
                 .unwrap(),
             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
         );
-        assert_eq!(r1.get_access_history(), Some(vec![]));
+        assert_eq!(r1.get_access_history(), vec![]);
         assert_eq!(
-            row.access_history,
-            Some(vec![Access::Read("t1".to_string())])
+            row.get_access_history(),
+            vec![Access::Read("t1".to_string())]
         );
-        assert_eq!(row.is_dirty(), false);
+
         assert_eq!(format!("{:?}", row.prev_fields), "None");
 
         // write
@@ -722,17 +741,16 @@ mod tests {
         assert_eq!(w1.get_values(), None);
         assert_eq!(
             w1.get_access_history(),
-            Some(vec![Access::Read("t1".to_string())])
+            vec![Access::Read("t1".to_string())]
         );
         assert_eq!(
-            row.access_history,
-            Some(vec![
+            row.get_access_history(),
+            vec![
                 Access::Read("t1".to_string()),
                 Access::Write("t2".to_string())
-            ])
+            ]
         );
 
-        assert_eq!(row.is_dirty(), true);
         assert_eq!(
             format!("{:?}", row.prev_fields),
             "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }])"
@@ -753,44 +771,43 @@ mod tests {
         );
         assert_eq!(
             r2.get_access_history(),
-            Some(vec![
+            vec![
                 Access::Read("t1".to_string()),
                 Access::Write("t2".to_string())
-            ])
+            ]
         );
         assert_eq!(
-            row.access_history,
-            Some(vec![
+            row.get_access_history(),
+            vec![
                 Access::Read("t1".to_string()),
                 Access::Write("t2".to_string()),
                 Access::Read("t3".to_string())
-            ])
+            ]
         );
 
         // commit
         row.commit("sgt", "t2");
         assert_eq!(format!("{:?}", row.prev_fields), "None");
         assert_eq!(
-            row.access_history,
-            Some(vec![Access::Read("t3".to_string())])
+            row.get_access_history(),
+            vec![Access::Read("t3".to_string())]
         );
-        assert_eq!(row.is_dirty(), false);
 
         // write
         let values2 = vec!["ford", "2005", "78.2"];
         let w2 = row.set_values(&columns, &values2, "sgt", "t4").unwrap();
         assert_eq!(
             w2.get_access_history(),
-            Some(vec![Access::Read("t3".to_string())])
+            vec![Access::Read("t3".to_string())]
         );
         assert_eq!(
-            row.access_history,
-            Some(vec![
+            row.get_access_history(),
+            vec![
                 Access::Read("t3".to_string()),
                 Access::Write("t4".to_string())
-            ])
+            ]
         );
-        assert_eq!(row.is_dirty(), true);
+
         assert_eq!(
             format!("{:?}", row.prev_fields),
             "Some([Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }])"
@@ -807,7 +824,7 @@ mod tests {
                     format!("{:?}", row.current_fields),
             "[Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }]"
         );
-        assert_eq!(row.is_dirty(), false);
+
         assert_eq!(
             row.access_history,
             Some(vec![Access::Read("t3".to_string()),])
@@ -846,23 +863,6 @@ mod tests {
                 row.set_values(&columns, &values, "sgt", "t2").unwrap_err()
             ),
             "dirty: None in table cars"
-        );
-
-        // access history error.
-        let mut row1 = Row::new(Arc::clone(&table), "2pl");
-
-        assert_eq!(
-            format!(
-                "{}",
-                row1.append_access(Access::Read("t1".to_string()))
-                    .unwrap_err()
-            ),
-            "not tracking access history"
-        );
-
-        assert_eq!(
-            format!("{}", row1.get_access_history().unwrap_err()),
-            "not tracking access history"
         );
 
         // init_value

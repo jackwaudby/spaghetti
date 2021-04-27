@@ -94,14 +94,14 @@ impl BasicSerializationGraphTesting {
             match access {
                 // WW conflict
                 Access::Write(tid) => {
-                    let from_node: usize = tid.parse().unwrap();
+                    let (from_node, _) = parse_id(tid);
                     if let Err(e) = self.add_edge(from_node, this_node, false) {
                         return Err(e.into()); // abort -- cascading abort
                     }
                 }
                 // RW conflict
                 Access::Read(tid) => {
-                    let from_node: usize = tid.parse().unwrap();
+                    let (from_node, _) = parse_id(tid);
                     if let Err(e) = self.add_edge(from_node, this_node, true) {
                         return Err(e.into()); // abort -- cascading abort
                     }
@@ -122,7 +122,7 @@ impl BasicSerializationGraphTesting {
             match access {
                 // WR conflict
                 Access::Write(tid) => {
-                    let from_node: usize = tid.parse().unwrap();
+                    let (from_node, _) = parse_id(tid);
                     if let Err(e) = self.add_edge(from_node, this_node, false) {
                         return Err(e.into()); // abort -- cascading abort
                     }
@@ -213,7 +213,7 @@ impl BasicSerializationGraphTesting {
 }
 
 /// Split a transaction id into its thread id and thread-local transaction id.
-fn parse_id(joint: String) -> (usize, u64) {
+pub fn parse_id(joint: String) -> (usize, u64) {
     let split = joint.split("-");
     let vec: Vec<usize> = split.map(|x| x.parse::<usize>().unwrap()).collect();
     (vec[0], vec[1] as u64)
@@ -1217,7 +1217,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         match state {
             State::Aborted => {
                 self.abort(meta.clone()).unwrap();
-                let e = ProtocolError::ParentAborted;
+                let e = ProtocolError::CascadingAbort;
                 return Err(e.into());
             }
             State::Committed => {

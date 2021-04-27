@@ -128,7 +128,18 @@ impl Workload {
                 }
             }
             SmallBank(ref i) => {
-                let sf = self.get_internals().get_config().get_int("scale_factor")?;
+                let config = self.get_internals().get_config();
+                let sf = config.get_int("scale_factor")?;
+                let set_seed = config.get_bool("set_seed")?;
+                let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
+                let contention = match sf {
+                    0 => "NA",
+                    1 => "high",
+                    2 => "mid",
+                    3 => "low",
+                    _ => panic!("invalid scale factor"),
+                };
+
                 if self.get_internals().get_config().get_bool("load")? {
                     info!("Load sf-{} from files", sf);
                     smallbank::loader::load_account_table(i)?;
@@ -138,6 +149,9 @@ impl Workload {
                     info!("Generate SmallBank SF-{}", sf);
                     smallbank::loader::populate_tables(i, rng)?
                 }
+                info!("Parameter generator set seed: {}", set_seed);
+                info!("Balance mix: {}", use_balance_mix);
+                info!("Contention: {}", contention);
             } // TODO
         }
         Ok(())
