@@ -42,6 +42,8 @@ impl fmt::Display for BasicSerializationGraphTestingError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use BasicSerializationGraphTestingError::*;
         let err_msg = match *self {
+            CascadingAbort => "cascading abort",
+            CycleFound => "cycle found",
             NoSpaceInGraph => "no nodes free in graph",
             TransactionIdAlreadySet => "transaction id field already set",
             EdgeAlreadyExists => "edge already exists between two nodes",

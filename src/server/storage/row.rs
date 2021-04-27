@@ -148,7 +148,7 @@ impl Row {
 
         let access_history = match protocol {
             "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
-                let ah = self.access_history.unwrap().clone(); // get access history
+                let ah = self.access_history.as_ref().unwrap().clone(); // get access history
                 self.append_access(Access::Read(tid.to_string())); // append operation
                 Some(ah)
             }
@@ -254,7 +254,7 @@ impl Row {
             State::Clean => {
                 let access_history = match protocol {
                     "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
-                        let ah = self.access_history.unwrap().clone(); // get access history
+                        let ah = self.access_history.as_ref().unwrap().clone(); // get access history
                         self.append_access(Access::Write(tid.to_string())); // append this operation
                         Some(ah)
                     }
@@ -334,7 +334,7 @@ impl Row {
                 self.state = State::Deleted; // set state
                 let access_history = match protocol {
                     "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
-                        let ah = self.access_history.unwrap().clone(); // get access history
+                        let ah = self.access_history.as_ref().unwrap().clone(); // get access history
                         Some(ah)
                     }
                     _ => None,
@@ -385,7 +385,7 @@ impl Row {
                             .iter()
                             .position(|a| a == &Access::Write(tid.to_string()))
                             .unwrap(); // get index of this write
-                        ah.split_off(ind); // remove "old" access information
+                        ah.truncate(ind); // remove "old" access information
                         self.access_history = Some(ah); // reset access history
                     }
                     _ => {}
@@ -410,12 +410,12 @@ impl Row {
 
     /// Append `Access` to access history.
     pub fn append_access(&mut self, access: Access) {
-        self.access_history.unwrap().push(access);
+        self.access_history.as_mut().unwrap().push(access);
     }
 
     /// Get access history.
     pub fn get_access_history(&self) -> Vec<Access> {
-        self.access_history.unwrap().clone()
+        self.access_history.as_ref().unwrap().clone()
     }
 
     /// Get row state
@@ -454,7 +454,7 @@ impl OperationResult {
 
     /// Get access history.
     pub fn get_access_history(&self) -> Vec<Access> {
-        self.access_history.unwrap().clone()
+        self.access_history.as_ref().unwrap().clone()
     }
 }
 
