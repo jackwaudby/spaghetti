@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
+use crate::server::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
 use crate::server::scheduler::hit_list::error::HitListError;
 use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
 use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
@@ -332,6 +333,23 @@ impl LocalStatistics {
                                 }
                             }
                         }
+                        ProtocolAbortBreakdown::BasicSerializationGraph(ref mut metric) => {
+                            match reason {
+                                NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
+                                NonFatalError::BasicSerializationGraphTesting(e) => match e {
+                                    BasicSerializationGraphTestingError::CascadingAbort => {
+                                        metric.inc_cascading_abort();
+                                    }
+                                    BasicSerializationGraphTestingError::CycleFound => {
+                                        metric.inc_cycle_found();
+                                    }
+                                    _ => tracing::info!("Other: {:?}", e),
+                                },
+                                _ => {
+                                    tracing::info!("Other: {:?}", reason);
+                                }
+                            }
+                        }
                         ProtocolAbortBreakdown::TwoPhaseLocking(ref mut metric) => {
                             if let NonFatalError::TwoPhaseLocking(e) = reason {
                                 match e {
@@ -534,6 +552,9 @@ impl AbortBreakdown {
     fn new(protocol: &str, workload: &str) -> AbortBreakdown {
         let protocol_specific = match protocol {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
+            "basic-sgt" => ProtocolAbortBreakdown::BasicSerializationGraph(
+                BasicSerializationGraphReasons::new(),
+            ),
             "2pl" => ProtocolAbortBreakdown::TwoPhaseLocking(TwoPhaseLockingReasons::new()),
             "hit" => ProtocolAbortBreakdown::HitList(HitListReasons::new()),
             "opt-hit" => ProtocolAbortBreakdown::OptimisedHitList(HitListReasons::new()),
@@ -581,6 +602,15 @@ impl AbortBreakdown {
             }
             ProtocolAbortBreakdown::SerializationGraph(ref mut reasons) => {
                 if let ProtocolAbortBreakdown::SerializationGraph(other_reasons) =
+                    other.protocol_specific
+                {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+            ProtocolAbortBreakdown::BasicSerializationGraph(ref mut reasons) => {
+                if let ProtocolAbortBreakdown::BasicSerializationGraph(other_reasons) =
                     other.protocol_specific
                 {
                     reasons.merge(other_reasons);
@@ -649,6 +679,7 @@ impl SmallBankConstraints {
 enum ProtocolAbortBreakdown {
     TwoPhaseLocking(TwoPhaseLockingReasons),
     SerializationGraph(SerializationGraphReasons),
+    BasicSerializationGraph(BasicSerializationGraphReasons),
     HitList(HitListReasons),
     OptimisedHitList(HitListReasons),
 }
@@ -672,6 +703,18 @@ struct SerializationGraphReasons {
 
     /// Transaction aborted as conflicting transaction was aborted (cascading abort).
     parent_aborted: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct BasicSerializationGraphReasons {
+    /// Transaction attempted to read or modify a row already marked for deletion.
+    row_deleted: u32,
+
+    /// Transaction aborted as conflicting transaction was aborted (cascading abort).
+    cascading_abort: u32,
+
+    /// Transaction was in a cycle.
+    cycle_found: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -746,6 +789,36 @@ impl SerializationGraphReasons {
         self.row_dirty += other.row_dirty;
         self.row_deleted += other.row_deleted;
         self.parent_aborted += other.parent_aborted;
+    }
+}
+
+impl BasicSerializationGraphReasons {
+    /// Create new holder for SGT abort reasons.
+    fn new() -> BasicSerializationGraphReasons {
+        BasicSerializationGraphReasons {
+            row_deleted: 0,
+            cascading_abort: 0,
+            cycle_found: 0,
+        }
+    }
+
+    /// Increment row deleted counter.
+    fn inc_row_deleted(&mut self) {
+        self.row_deleted += 1;
+    }
+
+    fn inc_cascading_abort(&mut self) {
+        self.cascading_abort += 1;
+    }
+
+    fn inc_cycle_found(&mut self) {
+        self.cycle_found += 1;
+    }
+
+    fn merge(&mut self, other: BasicSerializationGraphReasons) {
+        self.row_deleted += other.row_deleted;
+        self.cascading_abort += other.cascading_abort;
+        self.cycle_found += other.cycle_found;
     }
 }
 

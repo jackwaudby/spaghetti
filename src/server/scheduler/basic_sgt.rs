@@ -1119,8 +1119,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let th = thread::current();
         let thread_id = th.name().unwrap(); // get thread id
         debug!("Thread {}: Starting abort procedure", thread_id);
-
-        let this_node_id = meta.get_id().unwrap().parse::<usize>().unwrap();
+        let (this_node_id, _) = parse_id(meta.get_id().unwrap());
 
         {
             self.get_exculsive_lock(this_node_id)
@@ -1186,7 +1185,8 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         let th = thread::current();
         let thread_id = th.name().unwrap(); // get thread id
-        let id = meta.get_id().unwrap().parse::<usize>().unwrap(); // get this_node id
+        let (id, _) = parse_id(meta.get_id().unwrap());
+
         debug!("Thread {}: Starting commit procedure", thread_id);
 
         // While node is active keep cycle checking.
@@ -1233,7 +1233,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
                     let mut mg = rh.lock().unwrap(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
-                    row.commit("sgt", &id.to_string()); // commit inserts
+                    row.commit("basic-sgt", &meta.get_id().unwrap()); // commit inserts
                     drop(mg);
                 }
 
@@ -1242,19 +1242,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                     let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
                     let mut mg = rh.lock().unwrap(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
-                    row.commit("sgt", &id.to_string()); // commit updates
+                    row.commit("basic-sgt", &meta.get_id().unwrap()); // commit inserts
+
                     drop(mg);
                 }
 
                 for (index, key) in deletes {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
                     index.get_map().remove(&key); // Remove the row from the map.
-
-                    // let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
-                    // let mut mg = rh.lock().unwrap(); // acquire mutex on the row
-                    // let row = &mut *mg; // deref to row
-                    // row.delete("sgt").unwrap(); // commit delete
-                    // drop(mg);
                 }
 
                 {

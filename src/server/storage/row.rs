@@ -359,7 +359,7 @@ impl Row {
                 let ind = ah
                     .iter()
                     .position(|a| a == &Access::Write(tid.to_string()))
-                    .unwrap(); // get index of this write
+                    .unwrap();
                 let new_ah = ah.split_off(ind + 1); // remove "old" access information
                 self.access_history = Some(new_ah); // reset
             }

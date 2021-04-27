@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::server::scheduler::basic_sgt::BasicSerializationGraphTesting;
 use crate::server::scheduler::hit_list::HitList;
 use crate::server::scheduler::opt_hit_list::OptimisedHitList;
 use crate::server::scheduler::serialization_graph_testing::SerializationGraphTesting;
@@ -53,6 +54,12 @@ impl Protocol {
             },
             "sgt" => Protocol {
                 scheduler: Box::new(SerializationGraphTesting::new(
+                    cores as u32,
+                    Arc::clone(&workload),
+                )),
+            },
+            "basic-sgt" => Protocol {
+                scheduler: Box::new(BasicSerializationGraphTesting::new(
                     cores as u32,
                     Arc::clone(&workload),
                 )),
