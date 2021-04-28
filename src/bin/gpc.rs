@@ -1,5 +1,4 @@
 use spaghetti::common::statistics::GlobalStatistics;
-use spaghetti::gpc::coordinator;
 use spaghetti::gpc::helper;
 
 use clap::clap_app;
@@ -67,12 +66,13 @@ fn main() {
 
     tracing::info!("Starting execution");
     global_stats.start();
-    coordinator::run(workers, scheduler, config, tx);
+    helper::run(workers, scheduler, Arc::clone(&config), tx);
     global_stats.end();
     tracing::info!("Execution finished");
 
-    // TODO: ACID recon queries
-    // TODO: logging
+    if config.get_str("workload").unwrap().as_str() == "acid" {
+        // run recon thread
+    }
 
     tracing::info!("Collecting statistics..");
     while let Ok(local_stats) = rx.recv() {

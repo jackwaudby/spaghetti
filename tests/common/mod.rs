@@ -102,6 +102,7 @@ pub fn g0(protocol: &str) {
     let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
     let reader = BufReader::new(fh);
 
+    log::info!("Start {} anomaly check", anomaly);
     for line in reader.lines() {
         let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
 

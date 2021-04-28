@@ -91,19 +91,14 @@ pub fn g0_read(params: G0Read, protocol: Arc<Protocol>) -> Result<String, NonFat
 
 /// Aborted Read (G1a) TR
 pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let columns: Vec<&str> = vec!["p_id", "version"];
+    let columns: Vec<&str> = vec!["p_id", "version"]; // --- setup
     let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id));
 
-    let handle = thread::current();
-    debug!("Thread {}: register", handle.name().unwrap());
-    let meta = protocol.scheduler.register().unwrap();
-    debug!("Thread {}: read", handle.name().unwrap());
+    let meta = protocol.scheduler.register().unwrap(); // --- register
     let values = protocol
         .scheduler
-        .read("person", pk, &columns, meta.clone())?;
-    debug!("Thread {}: commit", handle.name().unwrap());
-
-    protocol.scheduler.commit(meta.clone())?;
+        .read("person", pk, &columns, meta.clone())?; // --- read
+    protocol.scheduler.commit(meta.clone())?; // --- commit
 
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
 
@@ -112,9 +107,7 @@ pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonF
 
 /// Aborted Read (G1a) TW
 pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let meta = protocol.scheduler.register().unwrap();
-
-    let pk_sb = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id));
+    let pk_sb = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // --- setup
     let columns_sb: Vec<String> = vec!["version".to_string()];
     let values_sb = vec![Data::Int(params.version as i64)];
     let update = |_columns: Vec<String>,
@@ -124,7 +117,6 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
         let value = match i64::try_from(params[0].clone()) {
             Ok(value) => value,
             Err(e) => {
-                protocol.scheduler.abort(meta.clone()).unwrap();
                 return Err(e);
             }
         };
@@ -134,6 +126,8 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
         Ok((columns, new_values))
     };
 
+    let meta = protocol.scheduler.register().unwrap(); // --- register
+
     protocol.scheduler.update(
         "person",
         pk_sb,
@@ -142,12 +136,11 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
         values_sb,
         &update,
         meta.clone(),
-    )?;
+    )?; // --- update
 
     thread::sleep(time::Duration::from_millis(params.delay)); // artifical delay
 
-    // Abort transaction.
-    protocol.scheduler.abort(meta.clone()).unwrap();
+    protocol.scheduler.abort(meta.clone()).unwrap(); // --- abort
 
     Err(NonFatalError::NonSerializable)
 }

@@ -226,16 +226,15 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
         let th = thread::current(); // get handle to thread
         let thread_id = th.name().unwrap(); // get thread id
-        let node_id = thread_id.parse::<usize>().unwrap(); // get node id
-        debug!(
-            "Thread {}: Registered transaction with node {}",
-            thread_id, node_id
-        );
+        let node_id: usize = thread_id.parse().unwrap(); // get node id
         let node = self.get_exculsive_lock(node_id); // get exculsive lock
         node.set_state(State::Active); // set state to active
         let (node_id, txn_id) = node.get_transaction_id();
-
         let transaction_id = format!("{}-{}", node_id, txn_id); // create transaction id
+        debug!(
+            "Thread {}: Registered transaction {}",
+            thread_id, transaction_id
+        );
 
         Ok(TransactionInfo::new(Some(transaction_id), None))
     }
@@ -308,7 +307,11 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<Vec<Data>, NonFatalError> {
         let th = thread::current(); // get handle to thread
         let thread_id = th.name().unwrap(); // get thread id
-        debug!("Thread {}: Executing read operation", thread_id);
+        debug!(
+            "Thread {}: Executing read operation for {}",
+            thread_id,
+            meta.get_id().unwrap()
+        );
 
         // -- setup
         let table = self.get_table(table, meta.clone())?;
@@ -354,6 +357,12 @@ impl Scheduler for BasicSerializationGraphTesting {
                 let vals = res.get_values().unwrap(); // get values
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
+                debug!(
+                    "Thread {}: Executed read operation for {}: {:?}",
+                    thread_id,
+                    meta.get_id().unwrap(),
+                    vals,
+                );
                 return Ok(vals);
             }
             Err(e) => {
@@ -384,7 +393,11 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<(), NonFatalError> {
         let th = thread::current();
         let thread_id = th.name().unwrap(); // get thread id
-        debug!("Thread {}: Executing update operation", thread_id);
+        debug!(
+            "Thread {}: Executing update operation for {}",
+            thread_id,
+            meta.get_id().unwrap()
+        );
 
         // --- setup
         let table = self.get_table(table, meta.clone())?; // get table
