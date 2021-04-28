@@ -387,9 +387,7 @@ impl LocalStatistics {
                                     }
                                     _ => tracing::info!("Other: {:?}", e),
                                 },
-                                _ => {
-                                    tracing::info!("Other: {:?}", reason);
-                                }
+                                _ => {}
                             }
                         }
                         ProtocolAbortBreakdown::TwoPhaseLocking(ref mut metric) => {

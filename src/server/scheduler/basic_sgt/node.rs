@@ -201,6 +201,18 @@ impl Node {
     }
 }
 
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "\n id: {} | incoming: {:?} | outgoing: {:?}",
+            self.id,
+            self.incoming.lock().as_ref().unwrap(),
+            self.outgoing.lock().as_ref().unwrap()
+        )
+    }
+}
+
 impl fmt::Display for OperationType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use OperationType::*;
