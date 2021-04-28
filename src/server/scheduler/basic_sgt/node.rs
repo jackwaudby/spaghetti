@@ -101,6 +101,7 @@ impl Node {
         let mut read = self.keys_read.lock();
         let mut updated = self.keys_updated.lock();
         let mut deleted = self.keys_deleted.lock();
+
         *counter += 1;
         *outgoing = Some(vec![]);
         *incoming = Some(vec![]);

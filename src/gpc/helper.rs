@@ -13,7 +13,6 @@ use config::Config;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::fs;
-use std::io::prelude::*;
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::Arc;
@@ -38,20 +37,19 @@ pub fn create_results_dir(config: Arc<Config>) {
         let workload = config.get_str("workload").unwrap();
         let protocol = config.get_str("protocol").unwrap();
 
-        //  let file;
         let dir;
         if workload.as_str() == "acid" {
             let anomaly = config.get_str("anomaly").unwrap();
-            //      file = format!("./log/acid/{}/{}.json", protocol, anomaly);
             dir = format!("./log/{}/{}/{}/", workload, protocol, anomaly);
         } else {
-            //    file = format!("./log/{}/{}.json", workload, protocol);
             dir = format!("./log/{}/{}/", workload, protocol);
         }
 
-        if !Path::new(&dir).exists() {
-            fs::create_dir_all(&dir).unwrap(); // create directory
+        if Path::new(&dir).exists() {
+            fs::remove_dir_all(&dir).unwrap(); // if exists remove dir
         }
+
+        fs::create_dir_all(&dir).unwrap(); // create directory
     }
 }
 

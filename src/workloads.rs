@@ -91,7 +91,10 @@ impl Workload {
         use Workload::*;
         match *self {
             Acid(ref i) => {
-                let sf = self.get_internals().get_config().get_int("scale_factor")?;
+                let config = self.get_internals().get_config();
+                let sf = config.get_int("scale_factor")?;
+                let set_seed = config.get_bool("set_seed")?;
+                info!("Parameter generator set seed: {}", set_seed);
                 if self.get_internals().get_config().get_bool("load")? {
                     info!("Load sf-{} from files", sf);
                     acid::loader::load_person_table(i)?;

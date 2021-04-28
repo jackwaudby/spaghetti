@@ -1,13 +1,13 @@
 log = "info"
 
-transactions = 10
+transactions = 10000
 timeout = 10
 warmup = 0
 set_seed = false
 
 log_results = true
 
-workers = 2
+workers = 4
 garbage_collection = true
 garbage_collection_sleep = 1
 

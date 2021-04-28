@@ -58,6 +58,8 @@ impl BasicSerializationGraphTesting {
     ///
     /// The operation fails if the parent node (from) is already aborted; a cascading abort.
     pub fn add_edge(&self, from: usize, to: usize, rw_edge: bool) -> Result<(), ProtocolError> {
+        let th = thread::current();
+        let thread_id = th.name().unwrap(); // get thread id
         if from == to {
             return Ok(()); // don't add self edges
         }
@@ -68,6 +70,7 @@ impl BasicSerializationGraphTesting {
         match from_node.get_state() {
             State::Aborted => {
                 if !rw_edge {
+                    debug!("Thread {}: from node {} aborted", thread_id, from);
                     return Err(ProtocolError::CascadingAbort); // w-w/w-r; cascading abort
                 }
             }
@@ -89,22 +92,28 @@ impl BasicSerializationGraphTesting {
         &self,
         this_node: usize,
         access_history: Vec<Access>,
-    ) -> Result<(), NonFatalError> {
+    ) -> Result<(), ProtocolError> {
+        let th = thread::current();
+        let thread_id = th.name().unwrap(); // get thread id
         for access in access_history {
             match access {
                 // WW conflict
                 Access::Write(tid) => {
                     let (from_node, _) = parse_id(tid);
-                    if let Err(e) = self.add_edge(from_node, this_node, false) {
-                        return Err(e.into()); // abort -- cascading abort
-                    }
+                    self.add_edge(from_node, this_node, false)?;
+                    debug!(
+                        "Thread {}: add edge {} -> {}",
+                        thread_id, from_node, this_node
+                    );
                 }
                 // RW conflict
                 Access::Read(tid) => {
                     let (from_node, _) = parse_id(tid);
-                    if let Err(e) = self.add_edge(from_node, this_node, true) {
-                        return Err(e.into()); // abort -- cascading abort
-                    }
+                    self.add_edge(from_node, this_node, true)?;
+                    debug!(
+                        "Thread {}: add edge {} -> {}",
+                        thread_id, from_node, this_node
+                    );
                 }
             }
         }
@@ -117,19 +126,28 @@ impl BasicSerializationGraphTesting {
         &self,
         this_node: usize,
         access_history: Vec<Access>,
-    ) -> Result<(), NonFatalError> {
+    ) -> Result<(), ProtocolError> {
         for access in access_history {
             match access {
                 // WR conflict
                 Access::Write(tid) => {
                     let (from_node, _) = parse_id(tid);
-                    if let Err(e) = self.add_edge(from_node, this_node, false) {
-                        return Err(e.into()); // abort -- cascading abort
-                    }
+                    self.add_edge(from_node, this_node, false)?;
                 }
                 Access::Read(_) => {}
             }
         }
+        Ok(())
+    }
+
+    /// Detect conflicts, insert edges, and do cycle check.
+    pub fn insert_and_check(
+        &self,
+        this_node: usize,
+        access_history: Vec<Access>,
+    ) -> Result<(), ProtocolError> {
+        self.detect_write_conflicts(this_node, access_history)?;
+        self.reduced_depth_first_search(this_node)?;
         Ok(())
     }
 
@@ -636,7 +654,11 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<(), NonFatalError> {
         let th = thread::current();
         let thread_id = th.name().unwrap(); // get thread id
-        debug!("Thread {}: Executing append operation", thread_id);
+        debug!(
+            "Thread {}: Executing append operation on {}",
+            thread_id,
+            key.clone()
+        );
 
         // --- setup
         let (this_node, txn_id) = parse_id(meta.get_id().unwrap());
@@ -647,6 +669,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
             Err(e) => {
+                debug!("Thread {}: row not found", thread_id);
                 self.abort(meta.clone()).unwrap(); // abort -- row not found
                 return Err(e);
             }
@@ -656,136 +679,219 @@ impl Scheduler for BasicSerializationGraphTesting {
         let mut mg = rh.lock().unwrap(); // get mutex on row
         let row = &mut *mg; // deref to row
 
-        match row.get_state() {
-            RowState::Clean => {
-                // --- detect conflicts
-                let ah = row.get_access_history(); // get access history
-                if let Err(e) = self.detect_write_conflicts(this_node, ah) {
-                    drop(mg);
-                    drop(rh);
-                    self.abort(meta.clone()).unwrap();
-                    return Err(e.into()); // abort -- cascading abort
-                }
+        // if there are no delayed transactions;
+        //   if row is clean;
+        //      then insert edges, do cycle check, and do append
+        //   else if row is modified;
+        //      then insert edges, do cycle check, and delay
+        //   else row is deleted;
+        //      then abort
+        //
+        // else there are delayed transactions;
+        //   if row is clean;
+        //    then insert edges, do cycle check, and delay
+        //   else if row is modified;
+        //     then insert edges, do cycle check, and delay
+        //   else row is deleted;
+        //     then abort
+        if !row.has_delayed() {
+            match row.get_state() {
+                RowState::Clean => {
+                    debug!("Thread {}: row state clean", thread_id);
 
-                // --- cycle check
-                if let Err(e) = self.reduced_depth_first_search(this_node) {
-                    drop(mg);
-                    drop(rh);
-                    self.abort(meta.clone()).unwrap();
-                    return Err(e.into()); // abort -- cycle found
-                }
-
-                // --- execute append
-                match row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap()) {
-                    Ok(_) => {
-                        let node = self.get_shared_lock(this_node);
-                        node.add_key(&index.get_name(), key, OperationType::Update); // register operation
-                        drop(node);
+                    // --- insert and check
+                    let ah = row.get_access_history(); // get access history
+                    if let Err(e) = self.insert_and_check(this_node, ah) {
                         drop(mg);
                         drop(rh);
-                        return Ok(());
+                        self.abort(meta.clone()).unwrap();
+                        return Err(e.into()); // abort -- cascading abort or cycle found
                     }
-                    Err(e) => {
+
+                    // --- execute append
+                    row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
+                        .unwrap();
+
+                    let node = self.get_shared_lock(this_node);
+                    node.add_key(&index.get_name(), key, OperationType::Update); // register operation
+                    drop(node);
+                    drop(mg);
+                    drop(rh);
+                    debug!("Thread {}: append successful", thread_id);
+
+                    return Ok(());
+                }
+                // w-w conflict; delay operation
+                RowState::Modified => {
+                    debug!("Thread {}: row state modified", thread_id);
+                    // --- detect conflicts
+                    let ah = row.get_access_history();
+                    if let Err(e) = self.insert_and_check(this_node, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta).unwrap(); // abort -- append error
-                        return Err(e);
+                        self.abort(meta.clone()).unwrap();
+                        return Err(e.into()); // abort -- cascading abort
+                    }
+
+                    // --- delay and drop locks
+                    let (wait_th, wait_t) = row.add_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
+                    debug!(
+                        "Thread {}: {}-{} delayed, waiting on {}-{}",
+                        thread_id, this_node, txn_id, wait_th, wait_t
+                    );
+
+                    drop(mg); // drop mutex on row
+                    drop(rh); // drop read handle to row
+
+                    loop {
+                        // if txn waiting on has finished
+                        if self.get_shared_lock(wait_th).has_terminated(wait_t) {
+                            debug!(
+                                "Thread {}: {}-{} finished, resume {}-{}",
+                                thread_id, wait_th, wait_t, this_node, txn_id
+                            );
+
+                            // --- get read handle to row in index
+                            let rh = match index.get_lock_on_row(key.clone()) {
+                                Ok(rg) => rg,
+                                Err(e) => {
+                                    debug!("Thread {}: row not found", thread_id);
+
+                                    self.abort(meta.clone()).unwrap(); // abort -- row not found
+                                    return Err(e);
+                                }
+                            };
+
+                            // --- exculsive access on the row
+                            let mut mg = rh.lock().unwrap();
+                            let row = &mut *mg;
+
+                            // -- remove this_node from delayed queye
+                            row.remove_delayed((this_node, txn_id));
+
+                            // --- detect conflicts; if missed some reads
+                            let ah = row.get_access_history();
+                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                                drop(mg);
+                                drop(rh);
+                                self.abort(meta.clone()).unwrap();
+                                return Err(e.into()); // abort -- cascading abort or cycle
+                            }
+
+                            // --- execute append/ should never fails
+                            row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
+                                .unwrap();
+
+                            let node = self.get_shared_lock(this_node);
+                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                            drop(node);
+                            drop(mg); // drop mutex on row
+                            drop(rh); // drop read handle to row
+                            debug!("Thread {}: append complete", thread_id);
+
+                            return Ok(());
+                        }
                     }
                 }
-            }
-            // w-w conflict; delay operation
-            RowState::Modified => {
-                // --- detect conflicts
-                let mut ah = row.get_access_history(); // get access history
-                let delayed = row.get_delayed(); // other delayed transactions; multiple w-w conflicts
-                for (node_id, txn_id) in delayed {
-                    let transaction_id = format!("{}-{}", node_id, txn_id); // create transaction id
-                    ah.push(Access::Write(transaction_id));
-                }
-                if let Err(e) = self.detect_write_conflicts(this_node, ah) {
+                RowState::Deleted => {
                     drop(mg); // drop mutex on row
                     drop(rh); // drop read handle to row
                     self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                    return Err(e.into());
+                    return Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key.clone()),
+                        table.to_string(),
+                    ));
                 }
+            }
+        } else {
+            match row.get_state() {
+                RowState::Clean | RowState::Modified => {
+                    debug!("Thread {}: row state modified", thread_id);
+                    // --- detect conflicts
+                    let mut ah = row.get_access_history(); // get access history
+                    let delayed = row.get_delayed(); // other delayed transactions; multiple w-w conflicts
+                    for (node_id, txn_id) in delayed {
+                        let transaction_id = format!("{}-{}", node_id, txn_id); // create transaction id
+                        ah.push(Access::Write(transaction_id));
+                    }
 
-                // --- cycle check
-                if let Err(e) = self.reduced_depth_first_search(this_node) {
+                    // --- insert and check
+                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                        drop(mg);
+                        drop(rh);
+                        self.abort(meta.clone()).unwrap();
+                        return Err(e.into()); // abort -- cascading abort
+                    }
+
+                    // --- delay and drop locks
+                    let (wait_th, wait_t) = row.add_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
+                    debug!(
+                        "Thread {}: {}-{} delayed, waiting on {}-{}",
+                        thread_id, this_node, txn_id, wait_th, wait_t
+                    );
+
                     drop(mg); // drop mutex on row
                     drop(rh); // drop read handle to row
-                    self.abort(meta.clone()).unwrap(); // abort -- cycle found
-                    return Err(e.into());
-                }
 
-                // --- delay and drop locks
-                let (wait_th, wait_t) = row.add_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
-                drop(mg); // drop mutex on row
-                drop(rh); // drop read handle to row
+                    loop {
+                        // if txn waiting on has finished
+                        if self.get_shared_lock(wait_th).has_terminated(wait_t) {
+                            debug!(
+                                "Thread {}: {}-{} finished, resume {}-{}",
+                                thread_id, wait_th, wait_t, this_node, txn_id
+                            );
 
-                loop {
-                    // if txn waiting on has finished
-                    if !self.get_shared_lock(wait_th).has_terminated(wait_t) {
-                        // --- get read handle to row in index
-                        let rh = match index.get_lock_on_row(key.clone()) {
-                            Ok(rg) => rg,
-                            Err(e) => {
-                                self.abort(meta.clone()).unwrap(); // abort -- row not found
-                                return Err(e);
+                            // --- get read handle to row in index
+                            let rh = match index.get_lock_on_row(key.clone()) {
+                                Ok(rg) => rg,
+                                Err(e) => {
+                                    debug!("Thread {}: row not found", thread_id);
+
+                                    self.abort(meta.clone()).unwrap(); // abort -- row not found
+                                    return Err(e);
+                                }
+                            };
+
+                            // --- exculsive access on the row
+                            let mut mg = rh.lock().unwrap();
+                            let row = &mut *mg;
+
+                            // -- remove this_node from delayed queye
+                            row.remove_delayed((this_node, txn_id));
+
+                            // --- detect conflicts; if missed some reads
+                            let ah = row.get_access_history();
+                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                                drop(mg);
+                                drop(rh);
+                                self.abort(meta.clone()).unwrap();
+                                return Err(e.into()); // abort -- cascading abort
                             }
-                        };
 
-                        // --- exculsive access on the row
-                        let mut mg = rh.lock().unwrap();
-                        let row = &mut *mg;
+                            // --- execute append / should never fail
+                            row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
+                                .unwrap();
 
-                        // -- remove this_node from delayed queye
-                        row.remove_delayed((this_node, txn_id));
+                            let node = self.get_shared_lock(this_node);
+                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                            drop(node);
+                            drop(mg); // drop mutex on row
+                            drop(rh); // drop read handle to row
+                            debug!("Thread {}: append complete", thread_id);
 
-                        // --- detect conflicts; if missed some reads
-                        let ah = row.get_access_history();
-                        if let Err(e) = self.detect_write_conflicts(this_node, ah) {
-                            drop(mg);
-                            drop(rh);
-                            self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                            return Err(e.into());
-                        }
-
-                        // --- cycle check
-                        if let Err(e) = self.reduced_depth_first_search(this_node) {
-                            drop(mg);
-                            drop(rh);
-                            self.abort(meta.clone()).unwrap(); // abort -- cycle found
-                            return Err(e.into());
-                        }
-                        // --- execute append
-                        match row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
-                        {
-                            Ok(_) => {
-                                let node = self.get_shared_lock(this_node);
-                                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
-                                drop(node);
-                                drop(mg); // drop mutex on row
-                                drop(rh); // drop read handle to row
-                                return Ok(());
-                            }
-                            Err(e) => {
-                                drop(mg); // drop mutex on row
-                                drop(rh); // drop read handle to row
-                                self.abort(meta).unwrap(); // abort
-                                return Err(e);
-                            }
+                            return Ok(());
                         }
                     }
                 }
-            }
-            RowState::Deleted => {
-                drop(mg); // drop mutex on row
-                drop(rh); // drop read handle to row
-                self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                return Err(NonFatalError::RowDeleted(
-                    format!("{:?}", key.clone()),
-                    table.to_string(),
-                ));
+                RowState::Deleted => {
+                    drop(mg); // drop mutex on row
+                    drop(rh); // drop read handle to row
+                    self.abort(meta.clone()).unwrap(); // abort -- cascading abort
+                    return Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key.clone()),
+                        table.to_string(),
+                    ));
+                }
             }
         }
     }
@@ -1171,7 +1277,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                 let mut mg = rh.lock().unwrap(); // acquire mutex on the row
 
                 let row = &mut *mg; // deref to row
+                debug!("Thread {}: revert updated on {}", thread_id, key.clone());
+
                 row.revert("sgt", &meta.get_id().unwrap());
+                debug!("Thread {}: row state: {}", thread_id, row);
                 drop(mg);
             };
         }
@@ -1207,12 +1316,17 @@ impl Scheduler for BasicSerializationGraphTesting {
             let sl = self.get_shared_lock(id); // get shared lock on this_node
             let state = sl.get_state(); // get node state
             drop(sl); // drop shared lock
+            debug!("Thread {}: Node state: {:?}", thread_id, state);
 
             if let State::Active = state {
                 let commit_check = self.commit_check(id);
+                debug!("Thread {}: Commit check: {}", thread_id, commit_check);
+
                 if !commit_check {
                     let cycle_check = self.reduced_depth_first_search(id);
                     if let Err(ProtocolError::CycleFound) = cycle_check {
+                        debug!("Thread {}: Commit procedure cycle found", thread_id);
+
                         let sl = self.get_shared_lock(id);
                         sl.set_state(State::Aborted);
                         drop(sl);

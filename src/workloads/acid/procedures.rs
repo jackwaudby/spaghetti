@@ -11,7 +11,6 @@ use crate::workloads::PrimaryKey;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use std::{thread, time};
-use tracing::debug;
 
 /// Dirty Write (G0) TW.
 ///

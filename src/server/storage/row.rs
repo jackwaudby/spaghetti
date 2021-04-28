@@ -435,6 +435,11 @@ impl Row {
         self.state.clone()
     }
 
+    /// Returns true if there are delayed transactions
+    pub fn has_delayed(&self) -> bool {
+        !self.delayed.is_empty()
+    }
+
     pub fn get_delayed(&self) -> Vec<(usize, u64)> {
         self.delayed.clone()
     }
@@ -502,13 +507,14 @@ impl fmt::Display for Row {
         fields.push_str(format!("{}", last).as_str());
         write!(
             f,
-            "[{}, {:?}, {:?}, {}, {}, {:?}]",
+            "[{}, {:?}, {:?}, {}, {}, {:?}, {:?}]",
             self.get_row_id(),
             self.get_primary_key(),
             self.state,
             table.get_table_name(),
             fields,
-            self.access_history
+            self.access_history,
+            self.delayed,
         )
     }
 }

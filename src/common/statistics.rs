@@ -63,6 +63,9 @@ pub struct GlobalStatistics {
     /// Workload.
     workload: String,
 
+    /// Anomaly.
+    anomaly: Option<String>,
+
     /// Per-transaction metrics.
     workload_breakdown: WorkloadBreakdown,
 
@@ -76,6 +79,13 @@ impl GlobalStatistics {
         let scale_factor = config.get_int("scale_factor").unwrap() as u64;
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
+        let anomaly;
+        if let Ok(a) = config.get_str("anomaly") {
+            anomaly = Some(a);
+        } else {
+            anomaly = None;
+        }
+
         let warmup = config.get_int("warmup").unwrap() as u32;
         let cores = config.get_int("workers").unwrap() as u32;
 
@@ -93,6 +103,7 @@ impl GlobalStatistics {
             clients: None,
             protocol,
             workload,
+            anomaly,
             cores,
             workload_breakdown,
             abort_breakdown,
@@ -132,17 +143,32 @@ impl GlobalStatistics {
     }
 
     pub fn write_to_file(&mut self) {
-        // Create directory if does not exist.
-        let path = format!("./results/{}", self.workload);
+        let path;
+        let file;
+        if self.workload.as_str() == "acid" {
+            path = format!(
+                "./results/{}/{}/",
+                self.workload,
+                self.anomaly.as_ref().unwrap()
+            );
+            file = format!(
+                "./results/{}/{}/{}-sf{}.json",
+                self.workload,
+                self.anomaly.as_ref().unwrap(),
+                self.protocol,
+                self.scale_factor
+            );
+        } else {
+            path = format!("./results/{}", self.workload);
+            file = format!(
+                "./results/{}/{}-sf{}.json",
+                self.workload, self.protocol, self.scale_factor
+            );
+        }
 
         if !Path::new(&path).exists() {
             fs::create_dir_all(&path).unwrap();
         }
-
-        let file = format!(
-            "./results/{}/{}-sf{}.json",
-            self.workload, self.protocol, self.scale_factor
-        );
 
         // Remove file if already exists.
         if Path::new(&file).exists() {
@@ -233,6 +259,7 @@ impl GlobalStatistics {
             "cores": self.cores,
             "protocol": self.protocol,
             "workload": self.workload,
+            "anomaly": self.anomaly,
             "total_duration": self.end.unwrap().as_secs(),
             "completed": completed,
             "throughput": format!("{:.3}", throughput),

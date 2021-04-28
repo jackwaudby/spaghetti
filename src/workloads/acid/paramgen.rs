@@ -7,7 +7,6 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tracing::info;
 
 /////////////////////////////////////////
 /// Parameter Generator. ///
@@ -37,7 +36,6 @@ pub struct AcidGenerator {
 impl AcidGenerator {
     /// Create new `TatpGenerator`.
     pub fn new(sf: u64, set_seed: bool, seed: Option<u64>, anomaly: &str, delay: u64) -> Self {
-        info!("Parameter generator set seed: {}", set_seed);
         let handle = std::thread::current();
         let thread_id: u64 = handle.name().unwrap().parse().unwrap();
         let persons = *ACID_SF_MAP.get(&sf).unwrap();
@@ -68,7 +66,6 @@ impl Generator for AcidGenerator {
 
         let request_no = format!("{}{}", self.thread_id + 1, self.generated);
         let request_no: u32 = request_no.parse().unwrap();
-        info!("Request no: {}", request_no);
 
         Message::Request {
             request_no,
@@ -85,8 +82,6 @@ impl Generator for AcidGenerator {
 impl AcidGenerator {
     /// Get a random transaction profile (type, params)
     fn get_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
-        self.generated += 1;
-
         match self.anomaly.as_str() {
             "g0" => self.get_g0_params(n),
             "g1a" => self.get_g1a_params(n),
@@ -182,7 +177,7 @@ impl AcidGenerator {
         let p1_id = p1_id / 2.0;
         let rounded = (round::floor(p1_id, 0) * 4.0) as u64;
         let p1_id = rounded;
-        let p2_id = rounded + 1;
+        let _p2_id = rounded + 1;
 
         let mut p2_id = p1_id;
 
