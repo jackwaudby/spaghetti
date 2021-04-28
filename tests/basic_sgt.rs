@@ -1,4 +1,3 @@
-use spaghetti::gpc::coordinator;
 use spaghetti::gpc::helper;
 
 use config::Config;
@@ -31,7 +30,7 @@ fn basic_sgt_integration_test() {
 
     log::info!("Start execution");
     global_stats.start();
-    coordinator::run(workers, scheduler, config, tx);
+    helper::run(workers, scheduler, config, tx);
     global_stats.end();
     log::info!("Execution finished");
 

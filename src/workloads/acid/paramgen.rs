@@ -15,6 +15,9 @@ use tracing::info;
 
 /// ACID workload transaction generator.
 pub struct AcidGenerator {
+    /// Thread id
+    thread_id: u64,
+
     /// Persons.
     persons: u64,
 
@@ -35,6 +38,8 @@ impl AcidGenerator {
     /// Create new `TatpGenerator`.
     pub fn new(sf: u64, set_seed: bool, seed: Option<u64>, anomaly: &str, delay: u64) -> Self {
         info!("Parameter generator set seed: {}", set_seed);
+        let handle = std::thread::current();
+        let thread_id: u64 = handle.name().unwrap().parse().unwrap();
         let persons = *ACID_SF_MAP.get(&sf).unwrap();
 
         let rng: StdRng;
@@ -45,6 +50,7 @@ impl AcidGenerator {
         }
 
         AcidGenerator {
+            thread_id,
             persons,
             rng,
             generated: 0,
@@ -60,8 +66,12 @@ impl Generator for AcidGenerator {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
+        let request_no = format!("{}{}", self.thread_id + 1, self.generated);
+        let request_no: u32 = request_no.parse().unwrap();
+        info!("Request no: {}", request_no);
+
         Message::Request {
-            request_no: self.generated,
+            request_no,
             transaction: Transaction::Acid(transaction),
             parameters: Parameters::Acid(parameters),
         }
@@ -78,7 +88,7 @@ impl AcidGenerator {
         self.generated += 1;
 
         match self.anomaly.as_str() {
-            "g0" => self.get_g0_params(),
+            "g0" => self.get_g0_params(n),
             "g1a" => self.get_g1a_params(n),
             "g1c" => self.get_g1c_params(),
             "imp" => self.get_imp_params(n),
@@ -90,18 +100,38 @@ impl AcidGenerator {
         }
     }
 
-    /// Get a transaction profile for g0 test.
-    fn get_g0_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
-        self.generated += 1; // start transaction ids at 1
-        let p1_id = self.rng.gen_range(0..self.persons); // person1 id
-        let mut p2_id = p1_id;
+    /// Get the parameters for a Dirty Write (G0) write transaction.
+    ///
+    /// Select a unique person pair: (p1) -- [knows] --> (p2).
+    /// Transactions are required to have a unique id.
+    fn get_g0_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
+        // --- transaction id
+        self.generated += 1;
+        let request_no = format!("{}{}", self.thread_id + 1, self.generated);
+        let transaction_id: u32 = request_no.parse().unwrap();
 
-        while p1_id == p2_id {
-            p2_id = self.rng.gen_range(0..self.persons); // person2 id
+        // --- person pair
+        let mut p1_id;
+        let mut p2_id;
+
+        let p_id = self.rng.gen_range(0..self.persons); // person id
+
+        // person pairs go from even id to odd id
+        if p_id % 2 == 0 {
+            p1_id = p_id;
+            p2_id = p_id + 1;
+        } else {
+            p1_id = p_id - 1;
+            p2_id = p_id;
         }
 
-        // unique tid; ok as transaction generation is single-threaded
-        let transaction_id = self.generated;
+        if n < 0.5 {
+            // flip so they get accessed in different orders
+            let temp = p1_id;
+            p1_id = p2_id;
+            p2_id = temp;
+        }
+
         let payload = G0Write {
             p1_id,
             p2_id,
@@ -147,8 +177,13 @@ impl AcidGenerator {
 
     /// Get a transaction profile for g1c test.
     fn get_g1c_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
-        self.generated += 1; // as person version starts at 1;
-        let p1_id = self.rng.gen_range(0..self.persons); // person1 id
+        self.generated += 1; // person version starts at 1;
+        let p1_id = self.rng.gen_range(0..self.persons) as f64; // person1 id
+        let p1_id = p1_id / 2.0;
+        let rounded = (round::floor(p1_id, 0) * 4.0) as u64;
+        let p1_id = rounded;
+        let p2_id = rounded + 1;
+
         let mut p2_id = p1_id;
 
         while p1_id == p2_id {

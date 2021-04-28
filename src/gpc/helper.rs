@@ -30,30 +30,26 @@ pub fn init_config(file: &str) -> Config {
     settings
 }
 
-/// Initialise result logging
-pub fn init_logging(config: Arc<Config>) {
+/// Initialise result logging, creating the required directory
+pub fn create_results_dir(config: Arc<Config>) {
     let log_results = config.get_bool("log_results").unwrap();
 
     if log_results {
         let workload = config.get_str("workload").unwrap();
         let protocol = config.get_str("protocol").unwrap();
 
-        let file;
+        //  let file;
         let dir;
         if workload.as_str() == "acid" {
             let anomaly = config.get_str("anomaly").unwrap();
-            file = format!("./log/acid/{}/{}.json", protocol, anomaly);
-            dir = format!("./log/acid/{}/", protocol);
+            //      file = format!("./log/acid/{}/{}.json", protocol, anomaly);
+            dir = format!("./log/{}/{}/{}/", workload, protocol, anomaly);
         } else {
-            file = format!("./log/{}/{}.json", workload, protocol);
-            dir = format!("./log/{}/", workload);
+            //    file = format!("./log/{}/{}.json", workload, protocol);
+            dir = format!("./log/{}/{}/", workload, protocol);
         }
 
-        if Path::new(&dir).exists() {
-            if Path::new(&file).exists() {
-                fs::remove_file(&file).unwrap(); // remove file if already exists
-            }
-        } else {
+        if !Path::new(&dir).exists() {
             fs::create_dir_all(&dir).unwrap(); // create directory
         }
     }

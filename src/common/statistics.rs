@@ -54,6 +54,9 @@ pub struct GlobalStatistics {
     /// Number of clients.
     clients: Option<u32>,
 
+    /// Number of cores.
+    cores: u32,
+
     /// Protocol.
     protocol: String,
 
@@ -74,6 +77,7 @@ impl GlobalStatistics {
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
         let warmup = config.get_int("warmup").unwrap() as u32;
+        let cores = config.get_int("workers").unwrap() as u32;
 
         let workload_breakdown = WorkloadBreakdown::new(&workload);
 
@@ -89,6 +93,7 @@ impl GlobalStatistics {
             clients: None,
             protocol,
             workload,
+            cores,
             workload_breakdown,
             abort_breakdown,
         }
@@ -225,6 +230,7 @@ impl GlobalStatistics {
 
         let pr = json!({
             "sf": self.scale_factor,
+            "cores": self.cores,
             "protocol": self.protocol,
             "workload": self.workload,
             "total_duration": self.end.unwrap().as_secs(),

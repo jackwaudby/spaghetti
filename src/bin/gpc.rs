@@ -46,6 +46,8 @@ fn main() {
 
     helper::set_log_level(Arc::clone(&config)); // set log level
 
+    helper::create_results_dir(Arc::clone(&config)); // create results dir
+
     let mut global_stats = GlobalStatistics::new(Arc::clone(&config)); // init stats
 
     if config.get_str("workload").unwrap().as_str() == "acid" {

@@ -1,21 +1,14 @@
-use spaghetti::common::message::InternalResponse;
 use spaghetti::common::statistics::GlobalStatistics;
-use spaghetti::common::statistics::LocalStatistics;
-use spaghetti::embedded::generator::{self, Generator, InternalRequest};
-use spaghetti::embedded::logging::{self, Logger};
-use spaghetti::embedded::manager::{self, TransactionManager};
+use spaghetti::gpc::helper;
 use spaghetti::server::storage::datatype::SuccessMessage;
 use spaghetti::workloads::acid::ACID_SF_MAP;
-use spaghetti::workloads::Workload;
 
 use config::Config;
 use petgraph::algo;
 use petgraph::graph::Graph;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use std::fs::File;
 use std::io::{prelude::*, BufReader};
-use std::sync::mpsc::{Receiver, SyncSender};
+use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -29,59 +22,47 @@ pub fn setup_config(protocol: &str, anomaly: &str) -> Arc<Config> {
     Arc::new(c)
 }
 
-/// Run embedded mode.
+/// Run generator-per-core mode.
 pub fn run(config: Arc<Config>) {
-    let mut global_stats = GlobalStatistics::new(Arc::clone(&config)); // init global stats
+    helper::create_results_dir(Arc::clone(&config)); // create results dir
+    let mut global_stats = GlobalStatistics::new(Arc::clone(&config)); // init stats
 
-    // Workload
-    let dg_start = Instant::now();
-    let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
-    let mut rng: StdRng = SeedableRng::from_entropy();
-    workload.populate_tables(&mut rng).unwrap();
+    if config.get_str("workload").unwrap().as_str() == "acid" {
+        let anomaly = config.get_str("anomaly").unwrap();
+        let delay = config.get_int("delay").unwrap();
+        log::info!("ACID test: {}", anomaly);
+        log::info!("Aritifical operation delay (secs): {}", delay);
+    }
+
+    let dg_start = Instant::now(); // init database
+    let workload = helper::init_database(Arc::clone(&config));
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
+    let workers = config.get_int("workers").unwrap() as usize;
+    let scheduler = helper::init_scheduler(workload, workers); // init scheduler
+    let (tx, rx) = mpsc::channel(); // channel to send statistics
+
+    log::info!("Starting execution");
     global_stats.start();
+    helper::run(
+        workers,
+        Arc::clone(&scheduler),
+        Arc::clone(&config),
+        tx.clone(),
+    );
+    global_stats.end();
+    log::info!("Execution finished");
 
-    // Pipes
-    let (req_tx, req_rx): (SyncSender<InternalRequest>, Receiver<InternalRequest>) =
-        std::sync::mpsc::sync_channel(32);
-
-    let (resp_tx, resp_rx): (SyncSender<InternalResponse>, Receiver<InternalResponse>) =
-        std::sync::mpsc::sync_channel(32);
-
-    let (main_tx, main_rx): (SyncSender<LocalStatistics>, Receiver<LocalStatistics>) =
-        std::sync::mpsc::sync_channel(32);
-
-    let (next_tx, next_rx): (SyncSender<()>, Receiver<()>) = std::sync::mpsc::sync_channel(32);
-
-    // Generator
-    let g = Generator::new(req_tx, resp_tx, next_rx);
-    generator::run(g, Arc::clone(&config));
-
-    // Logger.
-    let protocol = config.get_str("protocol").unwrap();
-    let w = config.get_str("workload").unwrap();
-
-    if w.as_str() == "acid" {
-        let anomaly = config.get_str("anomaly").unwrap();
-        let delay = config.get_int("delay").unwrap();
-        tracing::info!("ACID test: {}", anomaly);
-        tracing::info!("Aritifical operation delay: {} (secs)", delay);
+    if config.get_str("workload").unwrap().as_str() == "acid" {
+        log::info!("Run recon queries");
+        helper::recon_run(scheduler, Arc::clone(&config), tx);
     }
 
-    let warmup = config.get_int("warmup").unwrap() as u32;
-    let stats = Some(LocalStatistics::new(1, &w, &protocol));
-    let logger = Logger::new(resp_rx, main_tx, stats, warmup);
-    logging::run(logger, Arc::clone(&config));
-
-    // Manager.
-    let tm = TransactionManager::new(Arc::clone(&workload), req_rx, next_tx);
-    manager::run(tm);
-
-    let local_stats = main_rx.recv().unwrap();
-    global_stats.merge_into(local_stats);
-    global_stats.end();
+    log::info!("Collecting statistics..");
+    while let Ok(local_stats) = rx.recv() {
+        global_stats.merge_into(local_stats);
+    }
     global_stats.write_to_file();
 }
 
@@ -89,17 +70,21 @@ pub fn run(config: Arc<Config>) {
 ///
 /// # Anomaly check
 ///
-/// For each Person pair in the test graph:
-/// (i) prune each versionHistory list to remove any version numbers that do not appear in all lists
-/// (ii) perform an element-wise comparison between versionHistory lists
-///  for each entity, (iii) if lists do not agree a G0 anomaly has occurred.
+/// For each person pair in the test graph:
+/// (i) TODO: prune each versionHistory list to remove any version numbers that do not appear in all lists,
+/// (ii) perform an element-wise comparison between versionHistory lists for each entity,
+/// (iii) If lists do not agree a G0 anomaly has occurred.
 pub fn g0(protocol: &str) {
     let anomaly = "g0";
     let config = setup_config(protocol, anomaly);
 
     run(config);
 
-    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
+    let fh = File::open(format!(
+        "./log/acid/{}/{}/thread-recon.json",
+        protocol, anomaly
+    ))
+    .unwrap();
     let reader = BufReader::new(fh);
 
     log::info!("Start {} anomaly check", anomaly);
@@ -136,29 +121,37 @@ fn string_to_vec64(mut s: String) -> Vec<u64> {
 ///
 /// # Anomaly check
 ///
-/// Transactions write version=2 but then abort.
-/// Each read should return version=1.
+/// Transactions write version = 2 but then abort.
+/// Each read should return version  = 1.
 /// Otherwise, a G1a anomaly has occurred.
 pub fn g1a(protocol: &str) {
     let anomaly = "g1a";
     let config = setup_config(protocol, anomaly);
+    let cores = config.get_int("workers").unwrap();
 
     run(config);
 
     log::info!("Starting {} anomaly check", anomaly);
-    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
-    let reader = BufReader::new(fh);
 
-    for line in reader.lines() {
-        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        let version = resp
-            .get_values()
-            .unwrap()
-            .get("version")
-            .unwrap()
-            .parse::<u64>()
-            .unwrap();
-        assert_eq!(version, 1, "expected: {}, actual: {}", 1, version);
+    for i in 0..cores {
+        let file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, i);
+        let fh = File::open(&file).unwrap();
+        log::info!("Checking file: {}", file);
+
+        let reader = BufReader::new(fh);
+
+        for line in reader.lines() {
+            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
+                let version = resp
+                    .get_values()
+                    .unwrap()
+                    .get("version")
+                    .unwrap()
+                    .parse::<u64>()
+                    .unwrap();
+                assert_eq!(version, 1, "expected: {}, actual: {}", 1, version);
+            }
+        }
     }
     log::info!("{} anomaly check complete", anomaly);
 }

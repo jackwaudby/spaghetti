@@ -13,7 +13,9 @@ use std::sync::Arc;
 use std::{thread, time};
 use tracing::debug;
 
-/// Dirty Write (G0) TW
+/// Dirty Write (G0) TW.
+///
+/// Append (unique) transaction id to person pair version history.
 pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let pk_p1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id));
     let pk_p2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
@@ -50,6 +52,8 @@ pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonF
 }
 
 /// Dirty Write (G0) TR
+///
+/// Return the version hisotry of person pair.
 pub fn g0_read(params: G0Read, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let person_columns: Vec<&str> = vec!["p_id", "version_history"];
     let knows_columns: Vec<&str> = vec!["p1_id", "p2_id", "version_history"];
