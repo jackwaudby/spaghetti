@@ -138,35 +138,28 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
 }
 
 /// Circular Information Flow (G1c) TRW
+///
+/// This transaction writes a version a person then read the value of another person, returning the version read.
+/// From this a WR dependency can be inferred and a dependency graph constructed.
 pub fn g1c_read_write(
     params: G1cReadWrite,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    // register transaction
-    let meta = protocol.scheduler.register().unwrap();
-
-    let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id));
+    let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // --- setup
     let pk2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
-
-    // update
     let columns: Vec<String> = vec!["version".to_string()];
+    let rcolumns: Vec<&str> = vec!["version"];
     let values = vec![Data::Int(params.transaction_id as i64)];
     let update = |columns: Vec<String>,
                   _current: Option<Vec<Data>>,
                   params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let value = match i64::try_from(params[0].clone()) {
-            Ok(value) => value,
-            Err(e) => {
-                protocol.scheduler.abort(meta.clone()).unwrap();
-                return Err(e);
-            }
-        }; // parse to i64 from spaghetti data type
-
-        let new_values = vec![value.to_string()]; // convert to string
-        Ok((columns, new_values)) // new values for columns
+        let value = i64::try_from(params[0].clone())?;
+        let new_values = vec![value.to_string()];
+        Ok((columns, new_values))
     };
 
+    let meta = protocol.scheduler.register().unwrap(); // --- register
     protocol.scheduler.update(
         "person",
         pk1,
@@ -175,22 +168,16 @@ pub fn g1c_read_write(
         values,
         &update,
         meta.clone(),
-    )?;
-
-    // read
-    let rcolumns: Vec<&str> = vec!["version"];
+    )?; // --- update
     let mut values = protocol
         .scheduler
-        .read("person", pk2, &rcolumns, meta.clone())?;
+        .read("person", pk2, &rcolumns, meta.clone())?; // --- read
+    protocol.scheduler.commit(meta.clone())?; // --- commit
 
-    // Commit transaction.
-    protocol.scheduler.commit(meta.clone())?;
-
-    values.push(Data::Int(params.transaction_id.into()));
-
+    values.push(Data::Int(params.transaction_id.into())); // --- result
     let frcolumns: Vec<&str> = vec!["version", "transaction_id"];
-
     let res = datatype::to_result(None, None, None, Some(&frcolumns), Some(&values)).unwrap();
+
     Ok(res)
 }
 

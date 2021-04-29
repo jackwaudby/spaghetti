@@ -139,7 +139,10 @@ impl AcidGenerator {
         )
     }
 
-    /// Get a transaction profile for g1a test.
+    /// Get the parameters for a Aborted Read (G1a) read/write transaction.
+    ///
+    /// Read transaction; selects a random person.
+    /// Write transaction; selects a random person and an even version number.
     fn get_g1a_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
         match n {
             x if x < 0.5 => {
@@ -170,23 +173,22 @@ impl AcidGenerator {
         }
     }
 
-    /// Get a transaction profile for g1c test.
+    /// Get the parameters for a Circular Info Flow (G1c) read-write transaction.
+    ///
+    /// Select two different person and unique transaction id.
     fn get_g1c_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
-        self.generated += 1; // person version starts at 1;
-        let p1_id = self.rng.gen_range(0..self.persons) as f64; // person1 id
-        let p1_id = p1_id / 2.0;
-        let rounded = (round::floor(p1_id, 0) * 4.0) as u64;
-        let p1_id = rounded;
-        let _p2_id = rounded + 1;
+        // --- transaction id
+        self.generated += 1;
+        let request_no = format!("{}{}", self.thread_id + 1, self.generated);
+        let transaction_id: u32 = request_no.parse().unwrap();
 
+        // --- person ids
+        let p1_id = self.rng.gen_range(0..self.persons); // person1 id
         let mut p2_id = p1_id;
-
         while p1_id == p2_id {
             p2_id = self.rng.gen_range(0..self.persons); // person2 id
         }
 
-        // unique tid; ok as transaction generation is single-threaded
-        let transaction_id = self.generated;
         let payload = G1cReadWrite {
             p1_id,
             p2_id,

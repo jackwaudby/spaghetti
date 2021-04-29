@@ -161,53 +161,55 @@ pub fn g1a(protocol: &str) {
 /// # Anomaly check
 ///
 /// From result tuples (transaction_id, version_read) build a dependency graph;
-/// Each tuple represents a directed wr edge (transaction_id) --> (version_read).
+/// Each tuple represents a directed wr edge: (version_read)  --> (transaction_id).
 /// The resulting graph should be acyclic.
 pub fn g1c(protocol: &str) {
     let anomaly = "g1c";
     let config = setup_config(protocol, anomaly);
+    let cores = config.get_int("workers").unwrap();
 
     run(config);
 
     log::info!("Starting {} anomaly check", anomaly);
-    let file = format!("./log/acid/{}/{}.json", protocol, anomaly);
-    let fh = match File::open(file.clone()) {
-        Ok(fh) => fh,
-        Err(_) => panic!("file: {} not found", file),
-    };
-    let reader = BufReader::new(fh);
 
+    log::info!("Initialise dependency graph");
     let mut graph = Graph::<u64, (), petgraph::Directed>::new(); // directed and unlabeled
 
-    for line in reader.lines() {
-        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        let values = resp.get_values().unwrap(); // (transaction_id, version_id) = (version_id/tb) --wr--> (transaction_id/ta)
-        let transaction_id = values
-            .get("transaction_id")
-            .unwrap()
-            .parse::<u64>()
-            .unwrap();
-        let version_read = values.get("version").unwrap().parse::<u64>().unwrap();
+    for i in 0..cores {
+        let file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, i);
+        let fh = File::open(&file).unwrap();
+        log::info!("Adding {} to graph", file);
+        let reader = BufReader::new(fh);
 
-        let a = match graph.node_indices().find(|i| graph[*i] == transaction_id) {
-            // ta already exists in the graph; get index
-            Some(node_index) => node_index,
-            // insert ta; get index
-            None => graph.add_node(transaction_id),
-        };
+        for line in reader.lines() {
+            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
+                let values = resp.get_values().unwrap(); // (transaction_id, version_id) = (version_id/tb) --wr--> (transaction_id/ta)
+                let transaction_id = values
+                    .get("transaction_id")
+                    .unwrap()
+                    .parse::<u64>()
+                    .unwrap();
+                let version_read = values.get("version").unwrap().parse::<u64>().unwrap();
 
-        match graph.node_indices().find(|i| graph[*i] == version_read) {
-            // tb already exists; add edge
-            Some(b) => {
-                graph.add_edge(b, a, ());
-            }
-            // insert tb; add edge
-            None => {
-                let b = graph.add_node(version_read);
-                graph.add_edge(b, a, ());
+                let a = match graph.node_indices().find(|i| graph[*i] == transaction_id) {
+                    Some(node_index) => node_index, // ta already exists in the graph; get index
+                    None => graph.add_node(transaction_id), // insert ta; get index
+                };
+
+                match graph.node_indices().find(|i| graph[*i] == version_read) {
+                    Some(b) => {
+                        graph.add_edge(b, a, ()); // tb already exists; add edge
+                    }
+
+                    None => {
+                        let b = graph.add_node(version_read);
+                        graph.add_edge(b, a, ()); // insert tb; add edge
+                    }
+                }
             }
         }
     }
+    log::info!("Checking for cycles...");
     assert_eq!(algo::is_cyclic_directed(&graph), false);
     log::info!("{} anomaly check complete", anomaly);
 }
