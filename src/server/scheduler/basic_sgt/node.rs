@@ -12,7 +12,7 @@ pub struct Node {
     id: usize,
 
     /// Transaction counter
-    counter: Mutex<u64>,
+    pub counter: Mutex<u64>,
 
     /// Node status
     state: Mutex<Option<State>>,
@@ -86,11 +86,6 @@ impl Node {
         let thread_id = self.id;
         let transaction_id = *self.counter.lock().unwrap();
         (thread_id, transaction_id)
-    }
-
-    /// A transaction has terminated if the current transaction has a larger id.
-    pub fn has_terminated(&self, id: u64) -> bool {
-        *self.counter.lock().unwrap() > id
     }
 
     /// Reset the fields of a `Node`.

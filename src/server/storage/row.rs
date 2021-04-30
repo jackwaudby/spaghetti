@@ -9,7 +9,7 @@ use crate::workloads::PrimaryKey;
 use std::fmt;
 use std::sync::Arc;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum State {
     Clean,
     Modified,
@@ -432,42 +432,29 @@ impl Row {
         self.state.clone()
     }
 
-    /// Returns true if there are delayed transactions
-    pub fn has_delayed(&self) -> bool {
+    /// Returns `true` if there are transactions delayed from operating on the row.
+    pub fn is_delayed(&self) -> bool {
         !self.delayed.is_empty()
     }
 
+    /// Returns a copy of the delayed transactions.
     pub fn get_delayed(&self) -> Vec<(usize, u64)> {
         self.delayed.clone()
     }
 
+    /// Removes a transaction from the the delayed queue.
     pub fn remove_delayed(&mut self, t: (usize, u64)) {
         self.delayed.retain(|&x| x != t);
     }
 
-    pub fn add_delayed(&mut self, t: (usize, u64)) -> (usize, u64) {
-        let wait = match self.delayed.last() {
-            Some(wait) => wait.clone(),
-            None => {
-                let access = self
-                    .access_history
-                    .as_ref()
-                    .unwrap()
-                    .iter()
-                    .filter(|&x| variant_eq(x, &Access::Write("xx".to_string())))
-                    .last()
-                    .unwrap();
-                if let Access::Write(id) = access {
-                    let wait = basic_sgt::parse_id(id.to_string());
-                    wait
-                } else {
-                    panic!("todo");
-                }
-            }
-        };
-
+    /// Append a transaction to the delayed queue.
+    pub fn append_delayed(&mut self, t: (usize, u64)) {
         self.delayed.push(t);
-        wait
+    }
+
+    /// Returns true if the transaction is the head of the delayed queue and the row is clean.
+    pub fn resume(&self, t: (usize, u64)) -> bool {
+        self.delayed[0] == t && self.state == State::Clean
     }
 }
 
@@ -491,7 +478,15 @@ impl OperationResult {
     }
 }
 
-// [row_id,pk,dirty,table_name,fields,access_history]
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self {
+            State::Clean => write!(f, "clean"),
+            State::Modified => write!(f, "dirty"),
+            State::Deleted => write!(f, "deleted"),
+        }
+    }
+}
 impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let table = Arc::clone(&self.table);

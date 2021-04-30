@@ -25,21 +25,25 @@ fn acid_basic_sgt_imp() {
 }
 
 #[test]
+#[ignore]
 fn acid_basic_sgt_otv() {
     common::otv(PROTOCOL);
 }
 
 #[test]
+#[ignore]
 fn acid_basic_sgt_fr() {
     common::fr(PROTOCOL);
 }
 
 #[test]
+#[ignore]
 fn acid_basic_sgt_lu() {
     common::lu(PROTOCOL);
 }
 
 #[test]
+#[ignore]
 fn acid_basic_sgt_g2item() {
     common::g2item(PROTOCOL);
 }
