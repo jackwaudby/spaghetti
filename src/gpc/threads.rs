@@ -114,6 +114,10 @@ impl Worker {
 
                         log_result(&mut fh, outcome.clone());
                         stats.record(transaction, outcome.clone(), latency); // record txn
+
+                        if sent % 1000 == 0 {
+                            tracing::info!("Worker {} sent: {}", id, sent);
+                        }
                         sent += 1;
                     }
                 }

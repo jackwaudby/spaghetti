@@ -370,9 +370,7 @@ impl LocalStatistics {
                                         tracing::info!("Other: {:?}", e);
                                     }
                                 }
-                                _ => {
-                                    tracing::info!("Other: {:?}", reason);
-                                }
+                                _ => {}
                             }
                         }
                         ProtocolAbortBreakdown::BasicSerializationGraph(ref mut metric) => {

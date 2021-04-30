@@ -201,11 +201,14 @@ impl AcidGenerator {
         )
     }
 
-    /// Get a transaction profile for IMP test.
+    /// Get the parameters for a Item-many-preceders (IMP) transaction.
+    ///
+    /// Read transaction; selects a random person and reads the version numbers.
+    /// Write transaction; selects a random person and incremenet version number.
     fn get_imp_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
+        let p_id = self.rng.gen_range(0..self.persons - 1);
         match n {
             x if x < 0.5 => {
-                let p_id = self.rng.gen_range(0..self.persons);
                 let payload = ImpRead {
                     p_id,
                     delay: self.delay,
@@ -217,7 +220,6 @@ impl AcidGenerator {
             }
 
             _ => {
-                let p_id = self.rng.gen_range(0..self.persons);
                 let payload = ImpWrite { p_id };
                 (
                     AcidTransaction::ImpWrite,

@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::server::scheduler::Protocol;
+use crate::server::storage::datatype::SuccessMessage;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::acid::keys::AcidPrimaryKey;
 use crate::workloads::acid::paramgen::{
@@ -181,64 +182,62 @@ pub fn g1c_read_write(
     Ok(res)
 }
 
-/// Item-Many-Preceders (IMP) TR
+/// Item-Many-Preceders (IMP) Read Transaction.
+///
+/// Returns the version of a given person.
 pub fn imp_read(params: ImpRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let columns: Vec<&str> = vec!["version"]; // columns to read
-    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // pk
+    let columns: Vec<&str> = vec!["version"]; // --- setup
+    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id));
 
-    let meta = protocol.scheduler.register().unwrap(); // register
-
+    let meta = protocol.scheduler.register().unwrap(); // --- register
     let mut read1 = protocol
         .scheduler
-        .read("person", pk.clone(), &columns, meta.clone())?; // read 1
-
-    thread::sleep(time::Duration::from_millis(params.delay)); // artifical delay
-
+        .read("person", pk.clone(), &columns, meta.clone())?; // --- read 1
+    thread::sleep(time::Duration::from_millis(params.delay)); // --- artifical delay
     let mut read2 = protocol
         .scheduler
-        .read("person", pk, &columns, meta.clone())?; // read 2
+        .read("person", pk, &columns, meta.clone())?; // --- read 2
+    protocol.scheduler.commit(meta.clone())?; // --- commit
 
-    protocol.scheduler.commit(meta.clone())?; // commit
-
-    // merge reads and rename
-    let columns: Vec<&str> = vec!["first_read", "second_read"];
+    let columns: Vec<&str> = vec!["first_read", "second_read"]; // --- result
     read1.append(&mut read2);
-
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&read1)).unwrap();
+
+    if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&res) {
+        if let Some(vals) = resp.get_values() {
+            let first = vals.get("first_read").unwrap().parse::<u64>().unwrap();
+            let second = vals.get("second_read").unwrap().parse::<u64>().unwrap();
+            assert_eq!(first, second, "first: {}, second: {}", first, second);
+        }
+    }
 
     Ok(res)
 }
 
-/// Item-Many-Preceders (IMP) TW
+/// Item-Many-Preceders (IMP) Write Transaction.
+///
+/// Increments the version of a person.
 pub fn imp_write(params: ImpWrite, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let meta = protocol.scheduler.register().unwrap(); // register
-    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // key
-    let columns: Vec<String> = vec!["version".to_string()]; // columns
+    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // --- setup
+    let columns: Vec<String> = vec!["version".to_string()];
+    let values = vec![Data::Int(params.p_id as i64)];
     let update = |columns: Vec<String>,
                   current: Option<Vec<Data>>,
                   _params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let current_value = match i64::try_from(current.unwrap()[0].clone()) {
-            Ok(value) => value,
-            Err(e) => {
-                protocol.scheduler.abort(meta.clone()).unwrap();
-                return Err(e);
-            }
-        }; // parse to i64 from spaghetti data type
-        let nv = current_value + 1; // increment current value
-        let new_values = vec![nv.to_string()]; // convert to string
-        Ok((columns, new_values)) // new values for columns
-    }; // update computation
+        let current_value = i64::try_from(current.unwrap()[0].clone())?;
+        let nv = current_value + 1;
+        let new_values = vec![nv.to_string()];
+        Ok((columns, new_values))
+    };
 
-    let values = vec![Data::Int(params.p_id as i64)]; // TODO: placeholder
-
+    let meta = protocol.scheduler.register().unwrap(); // --- register
     protocol
         .scheduler
-        .update("person", pk, columns, true, values, &update, meta.clone())?; //  update
+        .update("person", pk, columns, true, values, &update, meta.clone())?; //  ---  update
+    protocol.scheduler.commit(meta.clone())?; // --- commit
 
-    protocol.scheduler.commit(meta.clone())?; // commit
-
-    let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
+    let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // --- result
     Ok(res)
 }
 

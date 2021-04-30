@@ -238,15 +238,6 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
             Err(reason) => Outcome::Aborted { reason },
         };
 
-        // if let Some(m) = fh {
-        //     let fh = m.lock();
-
-        //     match outcome {
-        //         Outcome::Committed { value } => write!(fh, "{}\n", &value.unwrap()).unwrap(),
-        //         Outcome::Aborted { reason } => write!(fh, "{}\n", format!("{}", reason)).unwrap(),
-        //     }
-        // }
-
         let response = InternalResponse {
             request_no,
             transaction,

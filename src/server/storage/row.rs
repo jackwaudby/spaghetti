@@ -45,20 +45,17 @@ pub struct Row {
 }
 
 /// Represents the type of access made to row.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Access {
     Read(String),
     Write(String),
 }
 
-impl PartialEq for Access {
-    fn eq(&self, other: &Self) -> bool {
-        use Access::*;
-        match (self, other) {
-            (&Read(_), &Read(_)) => true,
-            (&Write(_), &Write(_)) => true,
-            _ => false,
-        }
+fn variant_eq(a: &Access, b: &Access) -> bool {
+    match (a, b) {
+        (&Access::Read(..), &Access::Read(..)) => true,
+        (&Access::Write(..), &Access::Write(..)) => true,
+        _ => false,
     }
 }
 
@@ -372,7 +369,7 @@ impl Row {
                     .iter()
                     .position(|a| a == &Access::Write(tid.to_string()))
                     .unwrap();
-                let new_ah = ah.split_off(ind + 1); // remove "old" access information
+                let new_ah = ah.split_off(ind); // remove "old" access information
                 self.access_history = Some(new_ah); // reset
             }
             _ => {}
@@ -457,7 +454,7 @@ impl Row {
                     .as_ref()
                     .unwrap()
                     .iter()
-                    .filter(|&x| x == &Access::Write("xx".to_string()))
+                    .filter(|&x| variant_eq(x, &Access::Write("xx".to_string())))
                     .last()
                     .unwrap();
                 if let Access::Write(id) = access {

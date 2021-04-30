@@ -57,3 +57,4 @@ test-env-log ={version = "0.2.7", features = ["log","trace"]}
 petgraph = "0.5.1"
 libmath = "0.2.1"
 parking_lot = "0.11"
+no_deadlocks = "1.2.0"

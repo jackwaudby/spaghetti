@@ -23,6 +23,9 @@ pub enum BasicSerializationGraphTestingError {
     /// Self edge
     SelfEdge,
 
+    /// Has incoming edges
+    HasIncomingEdges,
+
     /// Serializable error
     NonSerializable,
 
@@ -47,6 +50,7 @@ impl fmt::Display for BasicSerializationGraphTestingError {
             NoSpaceInGraph => "no nodes free in graph",
             TransactionIdAlreadySet => "transaction id field already set",
             EdgeAlreadyExists => "edge already exists between two nodes",
+            HasIncomingEdges => "node has incoming edges",
             SelfEdge => "attempted to insert self edge",
             NonSerializable => "Serializable error",
             TransactionIdNotSet => "transaction id not set",

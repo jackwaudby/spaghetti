@@ -209,34 +209,44 @@ pub fn g1c(protocol: &str) {
             }
         }
     }
+
+    log::info!("Added {} nodes", graph.node_count());
+    log::info!("Added {} edges", graph.edge_count());
     log::info!("Checking for cycles...");
     assert_eq!(algo::is_cyclic_directed(&graph), false);
+
     log::info!("{} anomaly check complete", anomaly);
 }
 
-/// IMP
+/// Item-many-preceders (IMP)
 ///
 /// # Anomaly check
 ///
-///
-///
-///
+/// The first version read of a data item should be equal to the second version read.
 pub fn imp(protocol: &str) {
     let anomaly = "imp";
     let config = setup_config(protocol, anomaly);
+    let cores = config.get_int("workers").unwrap();
 
     run(config);
 
     log::info!("Starting {} anomaly check", anomaly);
-    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
-    let reader = BufReader::new(fh);
 
-    for line in reader.lines() {
-        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        if let Some(vals) = resp.get_values() {
-            let first = vals.get("first_read").unwrap().parse::<u64>().unwrap();
-            let second = vals.get("second_read").unwrap().parse::<u64>().unwrap();
-            assert_eq!(first, second, "first: {}, second: {}", first, second);
+    for i in 0..cores {
+        let file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, i);
+        let fh = File::open(&file).unwrap();
+        log::info!("Checking file: {}", file);
+
+        let reader = BufReader::new(fh);
+
+        for line in reader.lines() {
+            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
+                if let Some(vals) = resp.get_values() {
+                    let first = vals.get("first_read").unwrap().parse::<u64>().unwrap();
+                    let second = vals.get("second_read").unwrap().parse::<u64>().unwrap();
+                    assert_eq!(first, second, "first: {}, second: {}", first, second);
+                }
+            }
         }
     }
     log::info!("{} anomaly check complete", anomaly);

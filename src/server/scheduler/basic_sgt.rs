@@ -4,11 +4,11 @@ use crate::server::scheduler::basic_sgt::node::{EdgeType, Node, OperationType, S
 use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{Access, Row, State as RowState};
+
 use crate::workloads::{PrimaryKey, Workload};
 
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::collections::HashSet;
-use std::fmt;
 use std::sync::Arc;
 use std::thread;
 use tracing::{debug, info};
@@ -25,18 +25,6 @@ pub struct BasicSerializationGraphTesting {
 
     /// Handle to storage layer.
     data: Arc<Workload>,
-}
-
-impl fmt::Display for BasicSerializationGraphTesting {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut res = String::new();
-
-        for node in &self.nodes {
-            res.push_str(&node.read().to_string());
-        }
-
-        write!(f, "{}", res)
-    }
 }
 
 impl BasicSerializationGraphTesting {
@@ -104,25 +92,17 @@ impl BasicSerializationGraphTesting {
         this_node: usize,
         access_history: Vec<Access>,
     ) -> Result<(), ProtocolError> {
-        debug!(
-            "Conflicts found by {}: {:?}",
-            this_node,
-            access_history.clone()
-        );
-
         for access in access_history {
             match access {
                 // WW conflict
                 Access::Write(tid) => {
                     let (from_node, _) = parse_id(tid);
                     self.add_edge(from_node, this_node, false)?;
-                    debug!("Add WW edge {} -> {}", from_node, this_node);
                 }
                 // RW conflict
                 Access::Read(tid) => {
                     let (from_node, _) = parse_id(tid);
                     self.add_edge(from_node, this_node, true)?;
-                    debug!("Add RW edge {} -> {}", from_node, this_node);
                 }
             }
         }
@@ -136,18 +116,12 @@ impl BasicSerializationGraphTesting {
         this_node: usize,
         access_history: Vec<Access>,
     ) -> Result<(), ProtocolError> {
-        debug!(
-            "Conflicts found by {}: {:?}",
-            this_node,
-            access_history.clone()
-        );
         for access in access_history {
             match access {
                 // WR conflict
                 Access::Write(tid) => {
                     let (from_node, _) = parse_id(tid);
                     self.add_edge(from_node, this_node, false)?;
-                    debug!("Add WR edge {} -> {}", from_node, this_node);
                 }
                 Access::Read(_) => {}
             }
@@ -166,14 +140,26 @@ impl BasicSerializationGraphTesting {
         Ok(())
     }
 
-    /// Returns `true` if node was committed.
-    pub fn commit_check(&self, id: usize) -> bool {
-        let node = self.get_exculsive_lock(id); // get exculsive lock
-        if !node.has_incoming() && node.get_state() == State::Active {
-            node.set_state(State::Committed);
-            return true;
-        }
-        false
+    /// Attempt to commit a transaction.
+    pub fn commit_check(&self, id: usize) -> Result<(), ProtocolError> {
+        let node = self.get_exculsive_lock(id);
+        let state = node.get_state();
+
+        let res = match state {
+            State::Active => {
+                let incoming = node.has_incoming();
+                if !incoming {
+                    node.set_state(State::Committed); // if active and no incoming edges
+                    Ok(())
+                } else {
+                    Err(ProtocolError::HasIncomingEdges)
+                }
+            }
+            State::Aborted => Err(ProtocolError::CascadingAbort),
+            State::Committed => unreachable!(),
+        };
+        drop(node);
+        res
     }
 
     /// Perform a reduced depth first search from `start` node.
@@ -188,7 +174,6 @@ impl BasicSerializationGraphTesting {
         // pop until no more nodes to visit
         while let Some(current) = stack.pop() {
             if current == start {
-                debug!("Node {} in a cycle", start);
                 return Err(ProtocolError::CycleFound); // cycle found
             }
 
@@ -202,7 +187,6 @@ impl BasicSerializationGraphTesting {
             if let State::Active = current_node.get_state() {
                 for child in current_node.get_outgoing() {
                     if child == start {
-                        debug!("Node {} in a cycle", start);
                         return Err(ProtocolError::CycleFound); // outgoing edge to start node -- cycle found
                     } else {
                         let child_node = self.get_shared_lock(child); // get read lock on child_node
@@ -222,8 +206,6 @@ impl BasicSerializationGraphTesting {
     /// If node with `id` aborted then abort outgoing nodes before removing edges.
     /// Else; node committed, remove outgoing edges.
     fn clean_up_graph(&self, id: usize) {
-        debug!("Starting clean up procedure for node {}", id);
-
         let this_node = self.get_shared_lock(id); // get shared lock on this_node
         let state = this_node.get_state(); // get state of this_node
         let outgoing_nodes = this_node.get_outgoing(); // get outgoing edges
@@ -237,7 +219,6 @@ impl BasicSerializationGraphTesting {
                     outgoing_node.set_state(State::Aborted); // cascading abort
                 }
             }
-            debug!("Remove edge {} -> {}", id, out);
 
             outgoing_node.delete_edge(id, EdgeType::Incoming); // remove incoming edge from out
             this_node.delete_edge(out, EdgeType::Outgoing); // remove outgoing edge from this_node
@@ -267,7 +248,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         node.set_state(State::Active); // set state to active
         let (node_id, txn_id) = node.get_transaction_id();
         let transaction_id = format!("{}-{}", node_id, txn_id); // create transaction id
-        debug!("Registered transaction {}", transaction_id);
+                                                                //        debug!("Registered transaction {}", transaction_id);
 
         Ok(TransactionInfo::new(Some(transaction_id), None))
     }
@@ -334,12 +315,6 @@ impl Scheduler for BasicSerializationGraphTesting {
         columns: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        debug!(
-            "Executing read operation for {} on {}",
-            meta.get_id().unwrap(),
-            key.clone()
-        );
-
         // -- setup
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
@@ -357,6 +332,12 @@ impl Scheduler for BasicSerializationGraphTesting {
         // --- get exculsive access on the row
         let mut mg = rh.lock().unwrap();
         let row = &mut *mg;
+
+        debug!(
+            "Executing read operation for {} on {}",
+            meta.get_id().unwrap(),
+            key.clone()
+        );
 
         // --- add edges
         let ah = row.get_access_history();
@@ -382,9 +363,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 node.add_key(&index.get_name(), key.clone(), OperationType::Read); // register operation
                 drop(node);
                 let vals = res.get_values().unwrap(); // get values
+                                                      // debug!("Row after read: {}", row);
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-                debug!("Graph after read: {}", &self);
+                          //                debug!("Graph after read: {}", &self);
+
                 return Ok(vals);
             }
             Err(e) => {
@@ -413,12 +396,6 @@ impl Scheduler for BasicSerializationGraphTesting {
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        debug!(
-            "Executing update operation for {} on {}",
-            meta.get_id().unwrap(),
-            key.clone()
-        );
-
         // --- setup
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
@@ -437,6 +414,12 @@ impl Scheduler for BasicSerializationGraphTesting {
         let mut mg = rh.lock().unwrap();
         let row = &mut *mg;
 
+        // debug!(
+        //     "Executing update operation for {} on {}",
+        //     meta.get_id().unwrap(),
+        //     key.clone()
+        // );
+
         if !row.has_delayed() {
             match row.get_state() {
                 RowState::Clean => {
@@ -453,6 +436,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                     let c: Vec<&str> = columns.iter().map(|s| s as &str).collect(); // convert to expected type
                     let current;
                     if read {
+                        // debug!("Read by {} on {}", meta.get_id().unwrap(), key.clone());
+
                         let res = match row.get_values(&c, "basic-sgt", &meta.get_id().unwrap()) {
                             Ok(res) => {
                                 let node = self.get_shared_lock(this_node);
@@ -487,13 +472,16 @@ impl Scheduler for BasicSerializationGraphTesting {
                     let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
                     row.set_values(&c, &nv, "sgt", &meta.get_id().unwrap())
                         .unwrap();
+                    // debug!("Write by {} on {}", meta.get_id().unwrap(), key.clone());
 
                     let node = self.get_shared_lock(this_node);
                     node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                     drop(node);
+                    // debug!("Row after update: {}", row);
                     drop(mg);
                     drop(rh);
-                    debug!("Graph after update: {}", &self);
+                    //                    debug!("Graph after update: {}", &self);
+
                     return Ok(());
                 }
                 // w-w conflict; delay operation
@@ -509,7 +497,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                     // --- delay and drop locks
                     let (wait_th, wait_t) = row.add_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
-
+                                                                                  // debug!("Delayed {} on {}", meta.get_id().unwrap(), key.clone());
                     drop(mg); // drop mutex on row
                     drop(rh); // drop read handle to row
 
@@ -528,6 +516,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             // --- exculsive access on the row
                             let mut mg = rh.lock().unwrap();
                             let row = &mut *mg;
+                            // debug!("Resumed {} on {}", meta.get_id().unwrap(), key.clone());
 
                             // -- remove this_node from delayed queye
                             row.remove_delayed((this_node, txn_id));
@@ -545,6 +534,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let c: Vec<&str> = columns.iter().map(|s| s as &str).collect(); // convert to expected type
                             let current;
                             if read {
+                                // debug!("Read by {} on {}", meta.get_id().unwrap(), key.clone());
+
                                 let res = match row.get_values(
                                     &c,
                                     "basic-sgt",
@@ -587,13 +578,17 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
                             row.set_values(&c, &nv, "sgt", &meta.get_id().unwrap())
                                 .unwrap();
+                            // debug!("Write by {} on {}", meta.get_id().unwrap(), key.clone());
 
                             let node = self.get_shared_lock(this_node);
                             node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                             drop(node);
+                            // debug!("Row after update: {}", row);
+
                             drop(mg);
                             drop(rh);
-                            debug!("Graph after update: {}", &self);
+                            //                            debug!("Graph after update: {}", &self);
+
                             return Ok(());
                         }
                     }
@@ -629,6 +624,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                     // --- delay and drop locks
                     let (wait_th, wait_t) = row.add_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
+                    debug!("Delayed {} on {}", meta.get_id().unwrap(), key.clone());
 
                     drop(mg); // drop mutex on row
                     drop(rh); // drop read handle to row
@@ -648,6 +644,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             // --- exculsive access on the row
                             let mut mg = rh.lock().unwrap();
                             let row = &mut *mg;
+                            debug!("Resumed {} on {}", meta.get_id().unwrap(), key.clone());
 
                             // -- remove this_node from delayed queye
                             row.remove_delayed((this_node, txn_id));
@@ -671,6 +668,12 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     &meta.get_id().unwrap(),
                                 ) {
                                     Ok(res) => {
+                                        debug!(
+                                            "Read by {} on {}",
+                                            meta.get_id().unwrap(),
+                                            key.clone()
+                                        );
+
                                         let node = self.get_shared_lock(this_node);
                                         node.add_key(
                                             &index.get_name(),
@@ -707,13 +710,16 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
                             row.set_values(&c, &nv, "sgt", &meta.get_id().unwrap())
                                 .unwrap();
-
+                            debug!("Write by {} on {}", meta.get_id().unwrap(), key.clone());
                             let node = self.get_shared_lock(this_node);
                             node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                             drop(node);
+                            debug!("Row after update: {}", row);
+
                             drop(mg);
                             drop(rh);
-                            debug!("Graph after update: {}", &self);
+                            //                            debug!("Graph after update: {}", &self);
+
                             return Ok(());
                         }
                     }
@@ -740,12 +746,10 @@ impl Scheduler for BasicSerializationGraphTesting {
         value: &str,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        // --- setup
         let (this_node, txn_id) = parse_id(meta.get_id().unwrap());
-        let table = self.get_table(table, meta.clone())?; // get table handle
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index handle
+        let table = self.get_table(table, meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        // --- get read handle to row in index
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
             Err(e) => {
@@ -754,44 +758,42 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
         };
 
-        // --- exculsive access on the row
-        let mut mg = rh.lock().unwrap(); // get mutex on row
-        let row = &mut *mg; // deref to row
+        let mut mg = rh.lock().unwrap();
+        let row = &mut *mg;
+        // debug!("{}: got lock on {}", meta.get_id().unwrap(), key.clone());
 
-        // if there are no delayed transactions;
-        //   if row is clean;
-        //      then insert edges, do cycle check, and do append
-        //   else if row is modified;
-        //      then insert edges, do cycle check, and delay
-        //   else row is deleted;
-        //      then abort
-        //
-        // else there are delayed transactions;
-        //   if row is clean;
-        //    then insert edges, do cycle check, and delay
-        //   else if row is modified;
-        //     then insert edges, do cycle check, and delay
-        //   else row is deleted;
-        //     then abort
+        // debug!("{}: {}", meta.get_id().unwrap(), row);
+
         if !row.has_delayed() {
+            // debug!(
+            //     "{}: {} has no delayed transactions",
+            //     meta.get_id().unwrap(),
+            //     key.clone()
+            // );
             match row.get_state() {
                 RowState::Clean => {
-                    // --- insert and check
-                    let ah = row.get_access_history(); // get access history
+                    // debug!("{}: {} is clean", meta.get_id().unwrap(), key.clone());
+                    let ah = row.get_access_history(); // insert and check
                     if let Err(e) = self.insert_and_check(this_node, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
-                        return Err(e.into()); // abort -- cascading abort or cycle found
+                        return Err(e.into()); // cascading abort or cycle found
                     }
+                    // debug!("{}: no cycle found", meta.get_id().unwrap());
 
-                    // --- execute append
                     row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
-                        .unwrap();
+                        .unwrap(); // execute append
 
                     let node = self.get_shared_lock(this_node);
-                    node.add_key(&index.get_name(), key, OperationType::Update); // register operation
+                    node.add_key(&index.get_name(), key.clone(), OperationType::Update); // register operation
                     drop(node);
+                    // debug!(
+                    //     "{}: execute append on {}",
+                    //     meta.get_id().unwrap(),
+                    //     key.clone()
+                    // );
+                    // debug!("{}: {}", meta.get_id().unwrap(), row);
                     drop(mg);
                     drop(rh);
 
@@ -799,60 +801,99 @@ impl Scheduler for BasicSerializationGraphTesting {
                 }
                 // w-w conflict; delay operation
                 RowState::Modified => {
-                    // --- detect conflicts
-                    let ah = row.get_access_history();
+                    // debug!("{}: {} is dirty", meta.get_id().unwrap(), key.clone());
+
+                    let ah = row.get_access_history(); // insert and check
                     if let Err(e) = self.insert_and_check(this_node, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
-                        return Err(e.into()); // abort -- cascading abort
+                        return Err(e.into()); // cascading abort or cycle found
                     }
+                    // debug!("{}: no cycle found", meta.get_id().unwrap());
 
-                    // --- delay and drop locks
-                    let (wait_th, wait_t) = row.add_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
+                    let (wait_th, wait_t) = row.add_delayed((this_node, txn_id)); // add to delayed queue
+                                                                                  // debug!(
+                                                                                  //     "{}: delayed, waiting on {}-{}",
+                                                                                  //     meta.get_id().unwrap(),
+                                                                                  //     wait_th,
+                                                                                  //     wait_t
+                                                                                  // );
+                                                                                  // debug!("{}: {}", meta.get_id().unwrap(), row);
 
-                    drop(mg); // drop mutex on row
-                    drop(rh); // drop read handle to row
+                    drop(mg);
+                    drop(rh);
 
                     loop {
-                        // if txn waiting on has finished
+                        let rh = match index.get_lock_on_row(key.clone()) {
+                            Ok(rg) => rg,
+                            Err(e) => {
+                                self.abort(meta.clone()).unwrap(); // row not found
+                                return Err(e);
+                            }
+                        };
+
+                        let mut mg = rh.lock().unwrap();
+                        let row = &mut *mg;
+
                         if self.get_shared_lock(wait_th).has_terminated(wait_t) {
-                            // --- get read handle to row in index
-                            let rh = match index.get_lock_on_row(key.clone()) {
-                                Ok(rg) => rg,
-                                Err(e) => {
-                                    self.abort(meta.clone()).unwrap(); // abort -- row not found
-                                    return Err(e);
-                                }
-                            };
-
-                            // --- exculsive access on the row
-                            let mut mg = rh.lock().unwrap();
-                            let row = &mut *mg;
-
-                            // -- remove this_node from delayed queye
                             row.remove_delayed((this_node, txn_id));
+                            // debug!(
+                            //     "{}: resumed and removed from delayed",
+                            //     meta.get_id().unwrap()
+                            // );
 
-                            // --- detect conflicts; if missed some reads
-                            let ah = row.get_access_history();
+                            let ah = row.get_access_history(); // insert and check
                             if let Err(e) = self.insert_and_check(this_node, ah) {
                                 drop(mg);
                                 drop(rh);
+                                // debug!("{}: cycle found", meta.get_id().unwrap());
                                 self.abort(meta.clone()).unwrap();
-                                return Err(e.into()); // abort -- cascading abort or cycle
+                                return Err(e.into()); // cascading abort or cycle found
                             }
+                            // debug!("{}: no cycle found", meta.get_id().unwrap());
 
-                            // --- execute append/ should never fails
                             row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
-                                .unwrap();
+                                .unwrap(); // execute append ( never fails )
 
                             let node = self.get_shared_lock(this_node);
-                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                            node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
                             drop(node);
+                            //  debug!(
+                            //     "{}: execute append on {}",
+                            //     meta.get_id().unwrap(),
+                            //     key.clone()
+                            // );
+                            // debug!("{}: {}", meta.get_id().unwrap(), row);
                             drop(mg); // drop mutex on row
                             drop(rh); // drop read handle to row
 
                             return Ok(());
+                        } else {
+                            // debug!(
+                            //     "{}: still delayed on {}-{} on {} (A)",
+                            //     meta.get_id().unwrap(),
+                            //     wait_th,
+                            //     wait_t,
+                            //     key.clone(),
+                            // );
+
+                            let ah = row.get_access_history();
+                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                                row.remove_delayed((this_node, txn_id));
+                                // debug!("{}: cycle found", meta.get_id().unwrap());
+                                // debug!("{}: {}", meta.get_id().unwrap(), row);
+
+                                drop(mg);
+                                drop(rh);
+
+                                self.abort(meta.clone()).unwrap();
+                                return Err(e.into()); // abort -- cascading abort or cycle
+                            }
+                            // debug!("{}: {}", meta.get_id().unwrap(), row);
+
+                            drop(mg);
+                            drop(rh);
                         }
                     }
                 }
@@ -869,7 +910,12 @@ impl Scheduler for BasicSerializationGraphTesting {
         } else {
             match row.get_state() {
                 RowState::Clean | RowState::Modified => {
-                    // --- detect conflicts
+                    // debug!(
+                    //     "{}: {} has delayed transactions",
+                    //     meta.get_id().unwrap(),
+                    //     key.clone()
+                    // );
+
                     let mut ah = row.get_access_history(); // get access history
                     let delayed = row.get_delayed(); // other delayed transactions; multiple w-w conflicts
                     for (node_id, txn_id) in delayed {
@@ -877,59 +923,93 @@ impl Scheduler for BasicSerializationGraphTesting {
                         ah.push(Access::Write(transaction_id));
                     }
 
-                    // --- insert and check
                     if let Err(e) = self.insert_and_check(this_node, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
-                        return Err(e.into()); // abort -- cascading abort
+                        return Err(e.into());
                     }
+                    // debug!("{}: no cycle found", meta.get_id().unwrap());
 
-                    // --- delay and drop locks
                     let (wait_th, wait_t) = row.add_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
-
+                                                                                  // debug!(
+                                                                                  //     "{}: delayed, waiting on {}-{}",
+                                                                                  //     meta.get_id().unwrap(),
+                                                                                  //     wait_th,
+                                                                                  //     wait_t,
+                                                                                  // );
+                                                                                  // debug!("{}: {}", meta.get_id().unwrap(), row);
                     drop(mg); // drop mutex on row
                     drop(rh); // drop read handle to row
 
                     loop {
-                        // if txn waiting on has finished
+                        let rh = match index.get_lock_on_row(key.clone()) {
+                            Ok(rg) => rg,
+                            Err(e) => {
+                                self.abort(meta.clone()).unwrap(); // abort -- row not found
+                                return Err(e);
+                            }
+                        };
+
+                        let mut mg = rh.lock().unwrap();
+                        let row = &mut *mg;
+
                         if self.get_shared_lock(wait_th).has_terminated(wait_t) {
-                            // --- get read handle to row in index
-                            let rh = match index.get_lock_on_row(key.clone()) {
-                                Ok(rg) => rg,
-                                Err(e) => {
-                                    self.abort(meta.clone()).unwrap(); // abort -- row not found
-                                    return Err(e);
-                                }
-                            };
-
-                            // --- exculsive access on the row
-                            let mut mg = rh.lock().unwrap();
-                            let row = &mut *mg;
-
-                            // -- remove this_node from delayed queye
                             row.remove_delayed((this_node, txn_id));
+                            // debug!(
+                            //     "{}: resumed and removed from delayed",
+                            //     meta.get_id().unwrap()
+                            // );
 
-                            // --- detect conflicts; if missed some reads
                             let ah = row.get_access_history();
                             if let Err(e) = self.insert_and_check(this_node, ah) {
+                                // debug!("{}: cycle found", meta.get_id().unwrap());
+
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
                                 return Err(e.into()); // abort -- cascading abort
                             }
-
-                            // --- execute append / should never fail
+                            // debug!("Row: {}", row);
                             row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
                                 .unwrap();
 
                             let node = self.get_shared_lock(this_node);
-                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                            node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
                             drop(node);
+                            // debug!(
+                            //     "{}: execute append on {}",
+                            //     meta.get_id().unwrap(),
+                            //     key.clone()
+                            // );
+                            // debug!("{}: {}", meta.get_id().unwrap(), row);
                             drop(mg); // drop mutex on row
                             drop(rh); // drop read handle to row
 
                             return Ok(());
+                        } else {
+                            // debug!(
+                            //     "{}: still delayed {}-{} on {} (B)",
+                            //     meta.get_id().unwrap(),
+                            //     wait_th,
+                            //     wait_t,
+                            //     key.clone(),
+                            // );
+
+                            let ah = row.get_access_history();
+                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                                row.remove_delayed((this_node, txn_id));
+                                // debug!("{}: cycle found", meta.get_id().unwrap());
+                                // debug!("{}: {}", meta.get_id().unwrap(), row);
+                                drop(mg);
+                                drop(rh);
+                                self.abort(meta.clone()).unwrap();
+                                return Err(e.into()); // abort -- cascading abort or cycle
+                            }
+                            // debug!("{}: {}", meta.get_id().unwrap(), row);
+
+                            drop(mg);
+                            drop(rh);
                         }
                     }
                 }
@@ -1046,9 +1126,13 @@ impl Scheduler for BasicSerializationGraphTesting {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
 
+                debug!("Delay: {}", meta.get_id().unwrap());
+
                 loop {
                     // if txn waiting on has finished
                     if !self.get_shared_lock(wait_th).has_terminated(wait_t) {
+                        debug!("Restart: {}", meta.get_id().unwrap());
+
                         // --- get read handle to row in index
                         let rh = match index.get_lock_on_row(key.clone()) {
                             Ok(rg) => rg,
@@ -1285,20 +1369,21 @@ impl Scheduler for BasicSerializationGraphTesting {
     /// # Panics
     /// - RWLock or Mutex error.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
-        debug!("Starting abort procedure for {}", meta.get_id().unwrap());
+        //  debug!("Starting abort procedure for {}", meta.get_id().unwrap());
         let (this_node_id, _) = parse_id(meta.get_id().unwrap());
 
         {
-            self.get_exculsive_lock(this_node_id)
-                .set_state(State::Aborted); // set state to aborted
+            let wlock = self.get_exculsive_lock(this_node_id);
+            wlock.set_state(State::Aborted); // set state to aborted
+            drop(wlock);
         }
 
-        let sl = self.get_shared_lock(this_node_id);
-        let inserts = sl.get_keys(OperationType::Insert);
-        let reads = sl.get_keys(OperationType::Read);
-        let updates = sl.get_keys(OperationType::Update);
-        let deletes = sl.get_keys(OperationType::Delete);
-        drop(sl);
+        let rlock = self.get_shared_lock(this_node_id);
+        let inserts = rlock.get_keys(OperationType::Insert);
+        let reads = rlock.get_keys(OperationType::Read);
+        let updates = rlock.get_keys(OperationType::Update);
+        let deletes = rlock.get_keys(OperationType::Delete);
+        drop(rlock);
 
         for (index, key) in &inserts {
             let index = self.data.get_internals().get_index(&index).unwrap();
@@ -1313,9 +1398,13 @@ impl Scheduler for BasicSerializationGraphTesting {
                 let mut mg = rh.lock().unwrap(); // acquire mutex on the row
                 let row = &mut *mg; // deref to row
                 row.revert_read(&meta.get_id().unwrap());
+                //    debug!("Row after read revert: {}", row);
+
                 drop(mg);
+                drop(rh);
             };
         }
+        //    info!("Reverting updates for {}", meta.get_id().unwrap());
 
         for (index, key) in &updates {
             let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
@@ -1327,10 +1416,13 @@ impl Scheduler for BasicSerializationGraphTesting {
                 let row = &mut *mg; // deref to row
 
                 row.revert("sgt", &meta.get_id().unwrap());
+                //     debug!("Row after update revert: {}", row);
 
                 drop(mg);
+                drop(rh);
             };
         }
+        // info!("Updates reverted for {}", meta.get_id().unwrap());
 
         for (index, key) in &deletes {
             let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
@@ -1341,52 +1433,46 @@ impl Scheduler for BasicSerializationGraphTesting {
                 let row = &mut *mg; // deref to row
                 row.revert("sgt", &meta.get_id().unwrap());
                 drop(mg);
+                drop(rh);
             };
         }
+        // info!("Clean up for {}", meta.get_id().unwrap());
+
         self.clean_up_graph(this_node_id); // abort outgoing nodes
-        self.get_exculsive_lock(this_node_id).reset(); // reset node information
-        debug!("Graph after aborting {}: {}", meta.get_id().unwrap(), &self);
+                                           //        info!("Cleaned up for {}", meta.get_id().unwrap());
+
+        {
+            self.get_exculsive_lock(this_node_id).reset(); // reset node information
+        }
+
+        //        debug!("Graph after aborting {}: {}", meta.get_id().unwrap(), &self);
 
         Ok(())
     }
 
     /// Commit a transaction.
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
+        //      debug!("Start commit for: {}", meta.get_id().unwrap());
+
         let (id, _) = parse_id(meta.get_id().unwrap());
 
-        debug!("Starting commit procedure for {}", meta.get_id().unwrap());
-
-        // While node is active keep cycle checking.
-        loop {
-            let sl = self.get_shared_lock(id); // get shared lock on this_node
-            let state = sl.get_state(); // get node state
-            drop(sl); // drop shared lock
-
-            if let State::Active = state {
-                let commit_check = self.commit_check(id);
-
-                if !commit_check {
-                    let cycle_check = self.reduced_depth_first_search(id);
-                    if let Err(ProtocolError::CycleFound) = cycle_check {
-                        let sl = self.get_shared_lock(id);
-                        sl.set_state(State::Aborted);
-                        drop(sl);
-                    }
-                }
-            } else {
-                break;
+        while let Err(ProtocolError::HasIncomingEdges) = self.commit_check(id) {
+            if let Err(ProtocolError::CycleFound) = self.reduced_depth_first_search(id) {
+                let rlock = self.get_shared_lock(id);
+                rlock.set_state(State::Aborted);
+                drop(rlock);
+                self.abort(meta.clone()).unwrap();
             }
         }
 
-        let sl = self.get_shared_lock(id); // take shared lock on this_node
-        let state = sl.get_state(); // get this_node state
-        drop(sl);
+        let rlock = self.get_shared_lock(id); // take shared lock on this_node
+        let state = rlock.get_state(); // get this_node state
+        drop(rlock);
 
         match state {
             State::Aborted => {
                 self.abort(meta.clone()).unwrap();
-                let e = ProtocolError::CascadingAbort;
-                return Err(e.into());
+                return Err(ProtocolError::CascadingAbort.into());
             }
             State::Committed => {
                 self.clean_up_graph(id); // remove outgoing edges
@@ -1404,6 +1490,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     let row = &mut *mg; // deref to row
                     row.commit("basic-sgt", &meta.get_id().unwrap()); // commit inserts
                     drop(mg);
+                    drop(rh);
                 }
 
                 for (index, key) in &reads {
@@ -1414,7 +1501,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let mut mg = rh.lock().unwrap(); // acquire mutex on the row
                         let row = &mut *mg; // deref to row
                         row.revert_read(&meta.get_id().unwrap());
+                        //      debug!("Row after read commit: {}", row);
+
                         drop(mg);
+                        drop(rh);
                     };
                 }
 
@@ -1424,8 +1514,9 @@ impl Scheduler for BasicSerializationGraphTesting {
                     let mut mg = rh.lock().unwrap(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
                     row.commit("basic-sgt", &meta.get_id().unwrap()); // commit inserts
-
+                                                                      //        debug!("Row after update commit: {}", row);
                     drop(mg);
+                    drop(rh);
                 }
 
                 for (index, key) in deletes {
@@ -1436,11 +1527,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 {
                     self.get_exculsive_lock(id).reset();
                 }
-                debug!(
-                    "Graph after committing {}: {}",
-                    meta.get_id().unwrap(),
-                    &self
-                );
+                // debug!(
+                //     "Graph after committing {}: {}",
+                //     meta.get_id().unwrap(),
+                //     &self
+                // );
             }
             State::Active => panic!("node should not be active"),
         }
