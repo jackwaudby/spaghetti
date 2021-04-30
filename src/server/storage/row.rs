@@ -1,5 +1,4 @@
 use crate::common::error::NonFatalError;
-use crate::server::scheduler::basic_sgt;
 use crate::server::storage::catalog::ColumnKind;
 use crate::server::storage::datatype::Data;
 use crate::server::storage::datatype::Field;
@@ -51,13 +50,13 @@ pub enum Access {
     Write(String),
 }
 
-fn variant_eq(a: &Access, b: &Access) -> bool {
-    match (a, b) {
-        (&Access::Read(..), &Access::Read(..)) => true,
-        (&Access::Write(..), &Access::Write(..)) => true,
-        _ => false,
-    }
-}
+// fn variant_eq(a: &Access, b: &Access) -> bool {
+//     match (a, b) {
+//         (&Access::Read(..), &Access::Read(..)) => true,
+//         (&Access::Write(..), &Access::Write(..)) => true,
+//         _ => false,
+//     }
+// }
 
 /// Represents the packet of information returned from a get/set operation on a row.
 #[derive(Debug)]
