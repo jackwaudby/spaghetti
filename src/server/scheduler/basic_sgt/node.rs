@@ -73,7 +73,7 @@ impl Node {
             counter: Mutex::new(0),
             outgoing: Mutex::new(Some(vec![])),
             incoming: Mutex::new(Some(vec![])),
-            state: Mutex::new(None),
+            state: Mutex::new(Some(State::Active)), // TODO: None to be when there is no transaction or Vacant type
             keys_inserted: Mutex::new(Some(vec![])),
             keys_read: Mutex::new(Some(vec![])),
             keys_updated: Mutex::new(Some(vec![])),
@@ -225,17 +225,29 @@ impl Node {
     }
 }
 
-// impl fmt::Display for Node {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         write!(
-//             f,
-//             "\n id: {} | incoming: {:?} | outgoing: {:?}",
-//             self.id,
-//             self.incoming.lock().as_ref().unwrap(),
-//             self.outgoing.lock().as_ref().unwrap()
-//         )
-//     }
-// }
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "id: {} | state: {} | incoming: {:?} | outgoing: {:?}",
+            self.id,
+            self.state.lock().as_ref().unwrap().as_ref().unwrap(),
+            self.incoming.lock().as_ref().unwrap(),
+            self.outgoing.lock().as_ref().unwrap()
+        )
+    }
+}
+
+impl fmt::Display for State {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use State::*;
+        match *self {
+            Committed => write!(f, "committed"),
+            Aborted => write!(f, "aborted"),
+            Active => write!(f, "active"),
+        }
+    }
+}
 
 impl fmt::Display for OperationType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -248,6 +260,7 @@ impl fmt::Display for OperationType {
         }
     }
 }
+
 #[cfg(test)]
 mod tests {
 

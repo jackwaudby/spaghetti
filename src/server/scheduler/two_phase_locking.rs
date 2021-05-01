@@ -11,7 +11,7 @@ use crate::workloads::Workload;
 
 use chashmap::CHashMap;
 use std::sync::{Arc, Condvar, Mutex};
-use std::thread;
+use std::{fmt, thread};
 
 use tracing::{debug, info};
 
@@ -22,6 +22,7 @@ pub mod lock_info;
 pub mod active_transaction;
 
 /// Represents a 2PL scheduler.
+#[derive(Debug)]
 pub struct TwoPhaseLocking {
     /// Transaction ID counter.
     id: Arc<Mutex<u64>>,
@@ -1634,4 +1635,10 @@ mod tests {
     //     // Commit Ta
     //     assert_eq!(tpl.commit(ta).unwrap(), ());
     // }
+}
+
+impl fmt::Display for TwoPhaseLocking {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "2PL")
+    }
 }

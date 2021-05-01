@@ -40,7 +40,7 @@ pub fn run(config: Arc<Config>) {
     global_stats.set_data_generation(dg_end);
 
     let workers = config.get_int("workers").unwrap() as usize;
-    let scheduler = helper::init_scheduler(workload, workers); // init scheduler
+    let scheduler = helper::init_scheduler(Arc::clone(&workload), workers); // init scheduler
     let (tx, rx) = mpsc::channel(); // channel to send statistics
 
     log::info!("Starting execution");
@@ -53,6 +53,9 @@ pub fn run(config: Arc<Config>) {
     );
     global_stats.end();
     log::info!("Execution finished");
+
+    //    log::info!("Data: {}", workload);
+    //    log::info!("Scheduler: {}", scheduler);
 
     if config.get_str("workload").unwrap().as_str() == "acid" {
         log::info!("Run recon queries");
@@ -339,44 +342,62 @@ pub fn fr(protocol: &str) {
 ///
 /// # Anomaly check
 ///
-/// The list of versions read should consistent within a transaction.
-/// Valid; 5, 5, 5, 5
-/// Invalid: 4, 4, 4, 5
-/// The first version should equal all versions.
+///
 pub fn lu(protocol: &str) {
     let anomaly = "lu";
     let config = setup_config(protocol, anomaly);
     let sf = config.get_int("scale_factor").unwrap() as u64;
+    let cores = config.get_int("workers").unwrap();
 
     run(config);
 
     log::info!("Starting {} anomaly check", anomaly);
 
-    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
-    let reader = BufReader::new(fh);
-
     let persons = *ACID_SF_MAP.get(&sf).unwrap();
 
-    let mut expected = vec![];
+    let mut expected = vec![]; // calculate expected number from # of commits
     for _ in 0..persons {
         expected.push(0);
     }
 
-    for line in reader.lines() {
-        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        if let Some(p_id) = resp.get_updated() {
-            expected[p_id as usize] += 1;
+    for i in 0..cores {
+        let file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, i);
+        let fh = File::open(&file).unwrap();
+        log::info!("Checking file: {}", file);
+
+        let reader = BufReader::new(fh);
+
+        for line in reader.lines() {
+            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
+                if let Some(p_id) = resp.get_updated() {
+                    expected[p_id as usize] += 1;
+                }
+            }
         }
+    }
 
-        if let Some(vals) = resp.get_values() {
-            let p_id = vals.get("p_id").unwrap().parse::<u64>().unwrap() as usize;
-            let nf = vals.get("num_friends").unwrap().parse::<u64>().unwrap();
+    let file = format!("./log/acid/{}/{}/thread-recon.json", protocol, anomaly);
+    log::info!("Checking file: {}", file);
+    let fh = File::open(&file).unwrap();
+    let reader = BufReader::new(fh);
+    for line in reader.lines() {
+        if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
+            if let Some(vals) = resp.get_values() {
+                let p_id = vals.get("p_id").unwrap().parse::<u64>().unwrap() as usize;
+                let nf = vals.get("num_friends").unwrap().parse::<u64>().unwrap();
+                log::info!(
+                    "person {}: expected: {}, actual: {}",
+                    p_id,
+                    expected[p_id],
+                    nf
+                );
 
-            assert_eq!(
-                expected[p_id], nf,
-                "expected: {}, actual: {}",
-                expected[p_id], nf
-            );
+                assert_eq!(
+                    expected[p_id], nf,
+                    "expected: {}, actual: {}",
+                    expected[p_id], nf
+                );
+            }
         }
     }
     log::info!("{} anomaly check complete", anomaly);
@@ -394,17 +415,21 @@ pub fn g2item(protocol: &str) {
 
     log::info!("Starting {} anomaly check", anomaly);
 
-    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
+    let file = format!("./log/acid/{}/{}/thread-recon.json", protocol, anomaly);
+    let fh = File::open(&file).unwrap();
+    log::info!("Checking file: {}", file);
+
     let reader = BufReader::new(fh);
 
     for line in reader.lines() {
-        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        // get read transaction responses
-        if let Some(vals) = resp.get_values() {
-            let p1 = vals.get("p1_value").unwrap().parse::<i64>().unwrap();
-            let p2 = vals.get("p2_value").unwrap().parse::<i64>().unwrap();
+        if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
+            // get read transaction responses
+            if let Some(vals) = resp.get_values() {
+                let p1 = vals.get("p1_value").unwrap().parse::<i64>().unwrap();
+                let p2 = vals.get("p2_value").unwrap().parse::<i64>().unwrap();
 
-            assert!(p1 + p2 > 0, "p1: {}, p2: {}", p1, p2);
+                assert!(p1 + p2 > 0, "p1: {}, p2: {}", p1, p2);
+            }
         }
     }
     log::info!("{} anomaly check complete", anomaly);

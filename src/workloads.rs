@@ -270,10 +270,22 @@ impl Internal {
     }
 }
 
+impl fmt::Display for Workload {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Workload::Acid(ref i) => write!(f, "{}", i),
+            _ => unimplemented!(),
+        }
+    }
+}
+
 // TODO: improve display.
 impl fmt::Display for Internal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#?}", self.tables)
+        for index in self.indexes.values() {
+            write!(f, "{}", index).unwrap();
+        }
+        Ok(())
     }
 }
 

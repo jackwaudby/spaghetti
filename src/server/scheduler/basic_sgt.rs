@@ -10,9 +10,8 @@ use crate::workloads::{PrimaryKey, Workload};
 //use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 //use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::collections::HashSet;
-use std::sync::Arc;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use std::thread;
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::{fmt, thread};
 use tracing::{debug, info};
 
 pub mod node;
@@ -20,6 +19,7 @@ pub mod node;
 pub mod error;
 
 /// Basic Serialization Graph Testing
+#[derive(Debug)]
 pub struct BasicSerializationGraphTesting {
     /// Graph.
     nodes: Vec<RwLock<Node>>,
@@ -159,7 +159,7 @@ impl BasicSerializationGraphTesting {
 
         let state = node.get_state();
 
-        let res = match state {
+        match state {
             State::Active => {
                 let incoming = node.has_incoming();
                 if !incoming {
@@ -183,7 +183,7 @@ impl BasicSerializationGraphTesting {
                 return Err(ProtocolError::CascadingAbort);
             }
             State::Committed => unreachable!(),
-        };
+        }
     }
 
     /// Perform a reduced depth first search from `start` node.
@@ -386,18 +386,26 @@ impl Scheduler for BasicSerializationGraphTesting {
 
         let mut mg = rh.lock().unwrap();
         let row = &mut *mg;
+        debug!(
+            "Transaction {}, read key: {}, row: {}",
+            meta.get_id().unwrap(),
+            key.clone(),
+            row
+        );
 
         let ah = row.get_access_history();
         if let Err(e) = self.detect_read_conflicts(this_node, ah) {
             drop(mg);
             drop(rh);
             self.abort(meta.clone()).unwrap();
+
             return Err(e.into()); // abort -- cascading abort
         }
 
         if let Err(e) = self.reduced_depth_first_search(this_node) {
             drop(mg);
             drop(rh);
+
             self.abort(meta.clone()).unwrap(); // abort -- cycle found
             return Err(e.into());
         }
@@ -823,6 +831,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let row = &mut *mg;
 
         if !row.is_delayed() {
+            // if no delayed transactions
             match row.get_state() {
                 RowState::Clean => {
                     let ah = row.get_access_history();
@@ -1523,6 +1532,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             this_node_id, this_node_id
         );
         wlock.reset(); // reset node information
+                       //wlock.set_state(State::Active);
         drop(wlock);
         debug!(
             "ABORT - {} drop exculsive lock on {}",
@@ -1642,6 +1652,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                 let wlock = self.get_exculsive_lock(id);
                 debug!("CO - {} got exculsive lock on {}", id, id);
                 wlock.reset();
+                //wlock.set_state(State::Active);
                 debug!("CO - {} drop exculsive lock on {}", id, id);
 
                 // debug!(
@@ -1659,5 +1670,16 @@ impl Scheduler for BasicSerializationGraphTesting {
 
     fn get_data(&self) -> Arc<Workload> {
         Arc::clone(&self.data)
+    }
+}
+
+impl fmt::Display for BasicSerializationGraphTesting {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\n").unwrap();
+
+        for node in &self.nodes {
+            write!(f, "{}\n", node.read().unwrap()).unwrap();
+        }
+        Ok(())
     }
 }

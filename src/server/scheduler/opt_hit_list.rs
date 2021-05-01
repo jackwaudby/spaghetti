@@ -12,7 +12,7 @@ use crate::workloads::Workload;
 
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::{fmt, thread};
 use tracing::{debug, info};
 
 pub mod epoch;
@@ -761,5 +761,11 @@ mod test {
     #[test]
     fn test_optimised_hit_list() {
         let _ohl = OptimisedHitList::new(5, Arc::clone(&WORKLOAD));
+    }
+}
+
+impl fmt::Display for OptimisedHitList {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "OPT_HIT")
     }
 }

@@ -3,6 +3,7 @@ use crate::workloads::PrimaryKey;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
+#[derive(Debug)]
 pub struct ActiveTransactionTracker {
     tracker: Arc<Vec<Mutex<Option<ActiveTransaction>>>>,
 }
@@ -95,6 +96,7 @@ pub enum Operation {
 }
 
 /// Holds the runtime information of transaction in the HIT protocol.
+#[derive(Debug)]
 pub struct ActiveTransaction {
     /// Transaction id.
     tid: u64,

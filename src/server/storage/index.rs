@@ -319,9 +319,9 @@ impl Index {
 }
 
 impl fmt::Display for Index {
-    /// Format: [name,num_rows].
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[{},{}]", self.name, self.get_map().len())
+        write!(f, "{:#?}", self.map).unwrap();
+        Ok(())
     }
 }
 

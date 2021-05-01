@@ -11,7 +11,7 @@ use crate::workloads::{PrimaryKey, Workload};
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::thread;
+use std::{fmt, thread};
 use tracing::{debug, info};
 
 pub mod node;
@@ -1012,4 +1012,10 @@ mod test {
     //     jh1.join().unwrap();
     //     jh2.unwrap().join().unwrap();
     // }
+}
+
+impl fmt::Display for SerializationGraphTesting {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.nodes)
+    }
 }

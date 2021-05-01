@@ -30,13 +30,11 @@ fn acid_basic_sgt_otv() {
 }
 
 #[test]
-#[ignore]
 fn acid_basic_sgt_fr() {
     common::fr(PROTOCOL);
 }
 
 #[test]
-#[ignore]
 fn acid_basic_sgt_lu() {
     common::lu(PROTOCOL);
 }

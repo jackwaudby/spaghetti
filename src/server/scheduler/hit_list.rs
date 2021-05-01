@@ -13,8 +13,8 @@ use crate::workloads::{PrimaryKey, Workload};
 
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
+use std::{fmt, thread};
 use tracing::{debug, info};
 
 pub mod shared;
@@ -26,6 +26,7 @@ pub mod error;
 pub mod active_transaction;
 
 /// HIT Scheduler.
+#[derive(Debug)]
 pub struct HitList {
     // /// Map of transaction ids to neccessary runtime information.
     // active_transactions: Arc<CHashMap<u64, ActiveTransaction>>,
@@ -52,6 +53,7 @@ pub struct HitList {
 }
 
 /// Garbage Collector.
+#[derive(Debug)]
 struct GarbageCollector {
     thread: Option<thread::JoinHandle<()>>,
 }
@@ -802,5 +804,11 @@ mod tests {
         });
 
         h.unwrap().join().unwrap();
+    }
+}
+
+impl fmt::Display for HitList {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "HIT")
     }
 }

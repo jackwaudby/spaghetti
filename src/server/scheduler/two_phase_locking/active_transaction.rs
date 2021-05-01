@@ -5,6 +5,7 @@ use crate::workloads::PrimaryKey;
 use std::sync::Arc;
 
 /// Represents the runtime information of a transaction.
+#[derive(Debug)]
 pub struct ActiveTransaction {
     /// Transaction ID.
     tid: String,

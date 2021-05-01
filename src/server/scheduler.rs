@@ -10,6 +10,7 @@ use crate::server::storage::table::Table;
 use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;
 
+use std::fmt;
 use std::sync::Arc;
 
 pub mod hit_list;
@@ -25,6 +26,7 @@ pub mod basic_sgt;
 /// A concurrency control protocol.
 ///
 /// Uses trait object for dynamic dispatch to switch between protocols.
+#[derive(Debug)]
 pub struct Protocol {
     /// Trait object pointing to scheduler.
     pub scheduler: Box<dyn Scheduler + Send + Sync + 'static>,
@@ -33,10 +35,10 @@ pub struct Protocol {
 /// Information about a transaction.
 #[derive(Debug, PartialEq, Clone)]
 pub struct TransactionInfo {
-    // Transaction ID.
+    /// Transaction ID.
     id: Option<String>,
 
-    // Timestamp used in deadlock detection.
+    /// Timestamp used in deadlock detection.
     ts: Option<u64>,
 }
 
@@ -93,7 +95,7 @@ impl TransactionInfo {
     }
 }
 
-pub trait Scheduler {
+pub trait Scheduler: fmt::Display + fmt::Debug {
     /// Register a transaction with the scheduler.
     fn register(&self) -> Result<TransactionInfo, NonFatalError>;
 
@@ -219,5 +221,11 @@ pub trait Scheduler {
                 Err(e)
             }
         }
+    }
+}
+
+impl fmt::Display for Protocol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.scheduler)
     }
 }
