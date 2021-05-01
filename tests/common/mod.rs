@@ -263,25 +263,30 @@ pub fn imp(protocol: &str) {
 pub fn otv(protocol: &str) {
     let anomaly = "otv";
     let config = setup_config(protocol, anomaly);
+    let cores = config.get_int("workers").unwrap();
 
     run(config);
 
-    log::info!("Starting {} anomaly check", anomaly);
-    let fh = File::open(format!("./log/acid/{}/{}.json", protocol, anomaly)).unwrap();
-    let reader = BufReader::new(fh);
+    for i in 0..cores {
+        let file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, i);
+        let fh = File::open(&file).unwrap();
+        log::info!("Checking file: {}", file);
 
-    for line in reader.lines() {
-        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
-        // get read transaction responses
-        if let Some(vals) = resp.get_values() {
-            let p1 = vals.get("p1_version").unwrap().parse::<u64>().unwrap();
-            let p2 = vals.get("p2_version").unwrap().parse::<u64>().unwrap();
-            let p3 = vals.get("p3_version").unwrap().parse::<u64>().unwrap();
-            let p4 = vals.get("p4_version").unwrap().parse::<u64>().unwrap();
-            let reads = vec![p1, p2, p3, p4];
+        let reader = BufReader::new(fh);
 
-            for i in 0..3 {
-                assert!(reads[i] <= reads[i + 1], "{} > {}", reads[i], reads[i + 1]);
+        for line in reader.lines() {
+            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
+                if let Some(vals) = resp.get_values() {
+                    let p1 = vals.get("p1_version").unwrap().parse::<u64>().unwrap();
+                    let p2 = vals.get("p2_version").unwrap().parse::<u64>().unwrap();
+                    let p3 = vals.get("p3_version").unwrap().parse::<u64>().unwrap();
+                    let p4 = vals.get("p4_version").unwrap().parse::<u64>().unwrap();
+                    let reads = vec![p1, p2, p3, p4];
+
+                    for i in 0..3 {
+                        assert!(reads[i] <= reads[i + 1], "{} > {}", reads[i], reads[i + 1]);
+                    }
+                }
             }
         }
     }

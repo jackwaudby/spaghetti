@@ -260,13 +260,7 @@ pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFata
                 current: Option<Vec<Data>>,
                 _params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let current_value = match i64::try_from(current.unwrap()[0].clone()) {
-            Ok(value) => value,
-            Err(e) => {
-                protocol.scheduler.abort(meta.clone()).unwrap();
-                return Err(e);
-            }
-        }; // parse to i64 from spaghetti data type
+        let current_value = i64::try_from(current.unwrap()[0].clone())?;
         let nv = current_value + 1; // increment current value
         let new_values = vec![nv.to_string()]; // convert to string
         Ok((columns, new_values)) // new values for columns
@@ -323,26 +317,25 @@ pub fn otv_read(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFatal
     Ok(res)
 }
 
+/// Lost Update (LU) Write Transaction.
+///
+/// TODO
 pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let meta = protocol.scheduler.register().unwrap(); // register
     let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // key
     let columns: Vec<String> = vec!["num_friends".to_string()]; // columns
     let update = |columns: Vec<String>,
                   current: Option<Vec<Data>>,
                   _params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let current_value = match i64::try_from(current.unwrap()[0].clone()) {
-            Ok(value) => value,
-            Err(e) => {
-                return Err(e);
-            }
-        }; // parse to i64 from spaghetti data type
+        let current_value = i64::try_from(current.unwrap()[0].clone())?;
         let nv = current_value + 1; // increment current value
         let new_values = vec![nv.to_string()]; // convert to string
         Ok((columns, new_values)) // new values for columns
     }; // update computation
 
     let values = vec![Data::Int(params.p_id as i64)]; // TODO: placeholder
+
+    let meta = protocol.scheduler.register().unwrap(); // register
 
     protocol
         .scheduler
@@ -355,6 +348,9 @@ pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<Stri
     Ok(res)
 }
 
+/// Lost Update (LU) Read Transaction.
+///
+/// TODO
 pub fn lu_read(params: LostUpdateRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let columns: Vec<&str> = vec!["p_id", "num_friends"]; // columns to read
     let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // pk
@@ -370,7 +366,7 @@ pub fn lu_read(params: LostUpdateRead, protocol: Arc<Protocol>) -> Result<String
     Ok(res)
 }
 
-/// G2-item/Write Skew Write Transaction.
+/// Write Skew (G2-item) Write Transaction.
 ///
 /// Selects a disjoint person pair, retrieves `value` properties, if sum >= 100; then decrement a person in the pair's
 /// value by 100.
@@ -396,25 +392,13 @@ pub fn g2_item_write(
                     current: Option<Vec<Data>>,
                     params: Vec<Data>|
          -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-            let current_value = match i64::try_from(current.unwrap()[0].clone()) {
-                Ok(value) => value,
-                Err(e) => {
-                    return Err(e);
-                }
-            };
+            let current_value = i64::try_from(current.unwrap()[0].clone())?;
 
-            let other_value = match i64::try_from(params[0].clone()) {
-                Ok(value) => value,
-                Err(e) => {
-                    return Err(e);
-                }
-            };
+            let other_value = i64::try_from(params[0].clone())?;
 
             if current_value + other_value < 100 {
                 return Err(NonFatalError::NonSerializable);
             }
-
-            // TODO: sleep
 
             let nv = current_value - 100;
             let new_values = vec![nv.to_string()]; // convert to string
@@ -440,19 +424,9 @@ pub fn g2_item_write(
                     current: Option<Vec<Data>>,
                     params: Vec<Data>|
          -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-            let current_value = match i64::try_from(current.unwrap()[0].clone()) {
-                Ok(value) => value,
-                Err(e) => {
-                    return Err(e);
-                }
-            };
+            let current_value = i64::try_from(current.unwrap()[0].clone())?;
 
-            let other_value = match i64::try_from(params[0].clone()) {
-                Ok(value) => value,
-                Err(e) => {
-                    return Err(e);
-                }
-            };
+            let other_value = i64::try_from(params[0].clone())?;
 
             if current_value + other_value < 100 {
                 return Err(NonFatalError::NonSerializable);
@@ -482,6 +456,9 @@ pub fn g2_item_write(
     Ok(res)
 }
 
+/// Write Skew (G2-item) Read Transaction.
+///
+/// TODO
 pub fn g2_item_read(params: G2itemRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let columns: Vec<&str> = vec!["value"]; // columns to read
     let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // pk

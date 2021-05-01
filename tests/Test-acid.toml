@@ -1,7 +1,7 @@
 log = "info"
 
-transactions = 10000000
-timeout = 1
+transactions = 100000
+timeout = 10
 warmup = 0
 set_seed = false
 

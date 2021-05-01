@@ -25,7 +25,6 @@ fn acid_basic_sgt_imp() {
 }
 
 #[test]
-#[ignore]
 fn acid_basic_sgt_otv() {
     common::otv(PROTOCOL);
 }

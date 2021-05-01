@@ -40,7 +40,7 @@ impl Worker {
         let p = config.get_str("protocol").unwrap();
         let w = config.get_str("workload").unwrap();
         let max_transactions = config.get_int("transactions").unwrap() as u32;
-        let x = (((max_transactions / 10) as f32) * 2.5) as u32;
+        let x = (((max_transactions / 10) as f32) * 1.0) as u32;
         let log_results = config.get_bool("log_results").unwrap();
 
         let mut stats = LocalStatistics::new(id as u32, &w, &p);
