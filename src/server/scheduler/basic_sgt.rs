@@ -831,17 +831,17 @@ impl Scheduler for BasicSerializationGraphTesting {
         let row = &mut *mg;
 
         if !row.is_delayed() {
+            let ah = row.get_access_history();
+            if let Err(e) = self.insert_and_check(this_node, ah) {
+                drop(mg);
+                drop(rh);
+                self.abort(meta.clone()).unwrap();
+                return Err(e.into()); // cascading abort or cycle found
+            }
+
             // if no delayed transactions
             match row.get_state() {
                 RowState::Clean => {
-                    let ah = row.get_access_history();
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
-                        drop(mg);
-                        drop(rh);
-                        self.abort(meta.clone()).unwrap();
-                        return Err(e.into()); // cascading abort or cycle found
-                    }
-
                     row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
                         .unwrap(); // execute append
 
@@ -855,14 +855,6 @@ impl Scheduler for BasicSerializationGraphTesting {
                 }
 
                 RowState::Modified => {
-                    let ah = row.get_access_history(); // insert and check
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
-                        drop(mg);
-                        drop(rh);
-                        self.abort(meta.clone()).unwrap();
-                        return Err(e.into()); // cascading abort or cycle found
-                    }
-
                     row.append_delayed((this_node, txn_id)); // add to delayed queue
 
                     drop(mg);
