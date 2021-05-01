@@ -40,7 +40,6 @@ fn acid_basic_sgt_lu() {
 }
 
 #[test]
-#[ignore]
 fn acid_basic_sgt_g2item() {
     common::g2item(PROTOCOL);
 }
