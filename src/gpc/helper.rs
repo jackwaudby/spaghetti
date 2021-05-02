@@ -88,7 +88,7 @@ pub fn run(
     let mut workers = Vec::with_capacity(cores); // worker per core
     let core_ids = core_affinity::get_core_ids().unwrap(); // error -- no cores found
 
-    for (id, core_id) in core_ids[..cores].into_iter().enumerate() {
+    for (id, core_id) in core_ids[..cores].iter().enumerate() {
         workers.push(Worker::new(
             id as usize,
             Some(*core_id),
@@ -238,14 +238,12 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
             Err(reason) => Outcome::Aborted { reason },
         };
 
-        let response = InternalResponse {
+        InternalResponse {
             request_no,
             transaction,
             outcome,
             latency,
-        };
-
-        response
+        }
     } else {
         panic!("expected message request");
     }

@@ -45,7 +45,7 @@ impl Worker {
 
         let mut stats = LocalStatistics::new(id as u32, &w, &p);
 
-        let builder = thread::Builder::new().name(id.to_string().into());
+        let builder = thread::Builder::new().name(id.to_string());
 
         let thread = builder
             .spawn(move || {
@@ -174,7 +174,7 @@ impl Recon {
         let persons = *ACID_SF_MAP.get(&sf).unwrap();
         let mut stats = LocalStatistics::new(0, &workload, &protocol);
 
-        let builder = thread::Builder::new().name("0".to_string().into()); // fix id - only thread running
+        let builder = thread::Builder::new().name("0".to_string()); // fix id - only thread running
 
         let thread = builder
             .spawn(move || {
@@ -298,7 +298,7 @@ impl Recon {
 
 fn log_result(fh: &mut Option<std::fs::File>, outcome: Outcome) {
     if let Some(ref mut fh) = fh {
-        match outcome.clone() {
+        match outcome {
             Outcome::Committed { value } => {
                 write!(fh, "{}\n", &value.unwrap()).unwrap();
             }

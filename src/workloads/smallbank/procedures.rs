@@ -27,9 +27,12 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
     let end = start.elapsed();
     add_reg_time(end.as_nanos());
 
+    let start = Instant::now();
     let read1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read 1 -- get customer ID
+    let end = start.elapsed();
+    add_read_time(end.as_nanos());
 
     let cust_id = match i64::try_from(read1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
@@ -41,13 +44,20 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
 
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id)); // keys
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
+    let start = Instant::now();
 
     let read2 = protocol
         .scheduler
         .read("savings", savings_pk, &other_cols, meta.clone())?; // read 2 -- get savings
+    let end = start.elapsed();
+    add_read_time(end.as_nanos());
+
+    let start = Instant::now();
     let read3 = protocol
         .scheduler
         .read("checking", checking_pk, &other_cols, meta.clone())?; // read 3 -- get checking
+    let end = start.elapsed();
+    add_read_time(end.as_nanos());
 
     let savings_balance = match f64::try_from(read2[0].clone()) {
         Ok(bal) => bal,
@@ -111,6 +121,7 @@ pub fn deposit_checking(
         let new_balance = vec![(balance + value).to_string()]; // create new balance
         Ok((columns, new_balance))
     };
+    let start = Instant::now(); // start timer
     protocol.scheduler.update(
         "checking",
         checking_pk,
@@ -120,6 +131,8 @@ pub fn deposit_checking(
         &update,
         meta.clone(),
     )?; // update -- set balance
+    let end = start.elapsed();
+    add_update_time(end.as_nanos());
 
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
@@ -146,9 +159,12 @@ pub fn transact_savings(
     let end = start.elapsed();
     add_reg_time(end.as_nanos());
 
+    let start = Instant::now();
     let res1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
+    let end = start.elapsed();
+    add_read_time(end.as_nanos());
 
     let cust_id = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
@@ -175,6 +191,7 @@ pub fn transact_savings(
         }
     };
 
+    let start = Instant::now();
     protocol.scheduler.update(
         "savings",
         savings_pk,
@@ -184,6 +201,8 @@ pub fn transact_savings(
         &update,
         meta.clone(),
     )?; // update -- set savings balance
+    let end = start.elapsed();
+    add_update_time(end.as_nanos());
 
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
@@ -206,9 +225,14 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name1));
+
+    let start = Instant::now();
     let res1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer1 ID
+    let end = start.elapsed();
+    add_read_time(end.as_nanos());
+
     let cust_id = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
@@ -260,6 +284,9 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let res1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
+    let end = start.elapsed();
+    add_read_time(end.as_nanos());
+
     let cust_id = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
@@ -280,6 +307,8 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         let new_balance = vec![(balance + value).to_string()];
         Ok((columns, new_balance))
     };
+
+    let start = Instant::now(); // start timer
     protocol.scheduler.update(
         "checking",
         checking_pk,
@@ -289,7 +318,10 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         &update,
         meta.clone(),
     )?; // update
-    let start = std::time::Instant::now(); // start timer
+    let end = start.elapsed();
+    add_update_time(end.as_nanos());
+
+    let start = Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
     add_commit_time(end.as_nanos());
@@ -316,7 +348,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
     let cust_id = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
+            protocol.scheduler.abort(meta).unwrap();
             return Err(e);
         }
     };
@@ -358,7 +390,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
     )?; // update
 
     let start = std::time::Instant::now(); // start timer
-    protocol.scheduler.commit(meta.clone())?; // commit
+    protocol.scheduler.commit(meta)?; // commit
     let end = start.elapsed();
     add_commit_time(end.as_nanos());
 
@@ -384,7 +416,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
     let cust_id1 = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
+            protocol.scheduler.abort(meta).unwrap();
             return Err(e);
         }
     };
@@ -397,7 +429,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
     let cust_id2 = match i64::try_from(res2[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
+            protocol.scheduler.abort(meta).unwrap();
             return Err(e);
         }
     };
