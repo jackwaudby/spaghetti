@@ -128,10 +128,7 @@ impl Worker {
                         sent += 1;
                     }
                 }
-                tracing::info!("gen: {}", format!("{:.3}", gen_cum / 1000000));
-                tracing::info!("ex: {} ", format!("{:.3}", ex_cum / 1000000));
-                tracing::info!("log: {} ", format!("{:.3}", log_cum / 1000000));
-                tracing::info!("record: {} ", format!("{:.3}", record_cum / 1000000));
+
                 tx.send(stats).unwrap();
                 tracing::debug!("Worker {} finished", id);
             })
