@@ -61,7 +61,7 @@ pub async fn run(mut consumer: Consumer) -> Result<()> {
                 .open("log/responses.txt")
                 .expect("cannot open file");
 
-            write!(file, "{}\n", message.to_string()).unwrap();
+            writeln!(file, "{}", message.to_string()).unwrap();
 
             if let Message::ConnectionClosed = message {
                 info!("Connection closed");

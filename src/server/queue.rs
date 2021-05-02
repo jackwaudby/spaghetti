@@ -28,7 +28,7 @@ impl WorkQueue {
 
     pub fn start<F>(&mut self, fun: F)
     where
-        F: 'static + Send + FnMut() -> (),
+        F: 'static + Send + FnMut(),
     {
         let shutdown = self.shutdown.clone();
         let channel = self.channel.clone();
@@ -38,13 +38,10 @@ impl WorkQueue {
             while !shutdown.load(Ordering::SeqCst) {
                 // Check if shutdown received.
                 let res = channel.lock().unwrap().try_recv();
-                match res {
-                    Ok(_) => {
-                        info!("Shutdown notification received");
-                        shutdown.store(true, Ordering::SeqCst);
-                        break;
-                    }
-                    _ => {}
+                if res.is_ok() {
+                    info!("Shutdown notification received");
+                    shutdown.store(true, Ordering::SeqCst);
+                    break;
                 }
 
                 fun();

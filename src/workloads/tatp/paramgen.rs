@@ -135,7 +135,7 @@ impl TatpGenerator {
             x if x < 0.96 => {
                 // UPDATE_LOCATION
                 let s_id = self.rng.gen_range(1..=self.subscribers);
-                let vlr_location = self.rng.gen_range(1..=2 ^ 32 - 1);
+                let vlr_location = self.rng.gen_range(1..(2 ^ 32));
                 let payload = UpdateLocationData { s_id, vlr_location };
                 (
                     TatpTransaction::UpdateLocationData,

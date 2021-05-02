@@ -42,14 +42,12 @@ impl BasicSerializationGraphTesting {
 
     /// Get shared lock on the node.
     fn get_shared_lock(&self, id: usize) -> RwLockReadGuard<NodeSet> {
-        let rg = self.nodes[id].read();
-        rg
+        self.nodes[id].read()
     }
 
     /// Get exculsive lock on the node.
     fn get_exculsive_lock(&self, id: usize) -> RwLockWriteGuard<NodeSet> {
-        let wg = self.nodes[id].write();
-        wg
+        self.nodes[id].write()
     }
 
     /// Insert an edge into the serialization graph `(from) --> (to)`.
@@ -181,19 +179,19 @@ impl BasicSerializationGraphTesting {
                     drop(wlock);
                     debug!("Commit - {:?} Drop exculsive lock on {:?}", id, id);
 
-                    return Ok(());
+                    Ok(())
                 } else {
                     debug!("commit check on {:?}: has incoming edges", id);
                     drop(wlock);
                     debug!("Commit - {:?} Drop exculsive lock on {:?}", id, id);
-                    return Err(ProtocolError::HasIncomingEdges);
+                    Err(ProtocolError::HasIncomingEdges)
                 }
             }
             State::Aborted => {
                 drop(wlock);
                 debug!("Commit - {:?} Drop exculsive lock on {:?}", id, id);
 
-                return Err(ProtocolError::CascadingAbort);
+                Err(ProtocolError::CascadingAbort)
             }
             State::Committed => unreachable!(),
         }
@@ -307,7 +305,7 @@ impl BasicSerializationGraphTesting {
 
 /// Split a transaction id into its thread id and thread-local transaction id.
 pub fn parse_id(joint: String) -> (usize, u64) {
-    let split = joint.split("-");
+    let split = joint.split('-');
     let vec: Vec<usize> = split.map(|x| x.parse::<usize>().unwrap()).collect();
     (vec[0], vec[1] as u64)
 }
@@ -321,15 +319,13 @@ impl Scheduler for BasicSerializationGraphTesting {
         let thread_id = th.name().unwrap(); // get thread id
         let node_id: usize = thread_id.parse().unwrap(); // get node id
 
-        //        debug!("REG - {} request exculsive lock on {}", node_id, node_id);
         let mut wlock = self.get_exculsive_lock(node_id); // get exculsive lock
-                                                          //        debug!("REG - {} got exculsive lock on {}", node_id, node_id);
+
         let (node_id, txn_id) = wlock.create_node();
 
         let transaction_id = format!("{}-{}", node_id, txn_id); // create transaction id
-        debug!("Registered transaction {}", transaction_id);
+
         drop(wlock);
-        //      debug!("REG - {} drop exculsive lock on {}", node_id, node_id);
 
         Ok(TransactionInfo::new(Some(transaction_id), None))
     }
@@ -357,8 +353,8 @@ impl Scheduler for BasicSerializationGraphTesting {
 
         // initialise each field
         for (i, column) in columns.iter().enumerate() {
-            if let Err(_) = row.init_value(column, &values[i].to_string()) {
-                self.abort(meta.clone()).unwrap(); // abort -- unable to initialise row
+            if row.init_value(column, &values[i].to_string()).is_err() {
+                self.abort(meta).unwrap(); // abort -- unable to initialise row
                 return Err(NonFatalError::UnableToInitialiseRow(
                     table.to_string(),
                     column.to_string(),
@@ -369,7 +365,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
         // set values in fields -- makes rows "dirty"
         if let Err(e) = row.set_values(columns, values, "basic-sgt", &meta.get_id().unwrap()) {
-            self.abort(meta.clone()).unwrap(); // abort -- unable to convert to datatype
+            self.abort(meta).unwrap(); // abort -- unable to convert to datatype
             return Err(e);
         }
 
@@ -377,12 +373,12 @@ impl Scheduler for BasicSerializationGraphTesting {
             Ok(_) => {
                 let rlock = self.get_shared_lock(thread_id); // get shared lock
                 let node = rlock.get_transaction(txn_id);
-                node.add_key(&index.get_name(), key.clone(), OperationType::Insert); // operation succeeded -- register
+                node.add_key(&index.get_name(), key, OperationType::Insert); // operation succeeded -- register
                 drop(rlock); // drop shared lock
             }
 
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort -- row already exists
+                self.abort(meta).unwrap(); // abort -- row already exists
                 return Err(e);
             }
         }
@@ -406,25 +402,19 @@ impl Scheduler for BasicSerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rh) => rh,
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort -- row does not exist
+                self.abort(meta).unwrap(); // abort -- row does not exist
                 return Err(e);
             }
         };
 
         let mut mg = rh.lock().unwrap();
         let row = &mut *mg;
-        debug!(
-            "Transaction {}, read key: {}, row: {}",
-            meta.get_id().unwrap(),
-            key.clone(),
-            row
-        );
 
         let ah = row.get_access_history();
         if let Err(e) = self.detect_read_conflicts(id, ah) {
             drop(mg);
             drop(rh);
-            self.abort(meta.clone()).unwrap();
+            self.abort(meta).unwrap();
 
             return Err(e.into()); // abort -- cascading abort
         }
@@ -433,7 +423,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             drop(mg);
             drop(rh);
 
-            self.abort(meta.clone()).unwrap(); // abort -- cycle found
+            self.abort(meta).unwrap(); // abort -- cycle found
             return Err(e.into());
         }
 
@@ -441,23 +431,19 @@ impl Scheduler for BasicSerializationGraphTesting {
             Ok(res) => {
                 let rlock = self.get_shared_lock(thread_id);
                 let node = rlock.get_transaction(txn_id);
-                node.add_key(&index.get_name(), key.clone(), OperationType::Read);
+                node.add_key(&index.get_name(), key, OperationType::Read);
                 drop(rlock);
                 let vals = res.get_values().unwrap();
                 drop(mg);
                 drop(rh);
-                debug!(
-                    "Transaction {} read key: {}",
-                    meta.get_id().unwrap(),
-                    key.clone(),
-                );
-                return Ok(vals);
+
+                Ok(vals)
             }
             Err(e) => {
                 drop(mg);
                 drop(rh);
-                self.abort(meta.clone()).unwrap(); // abort -- row marked for delete
-                return Err(e);
+                self.abort(meta).unwrap(); // abort -- row marked for delete
+                Err(e)
             }
         }
     }
@@ -487,7 +473,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort -- row not found
+                self.abort(meta).unwrap(); // abort -- row not found
                 return Err(e);
             }
         };
@@ -498,18 +484,11 @@ impl Scheduler for BasicSerializationGraphTesting {
         if !row.is_delayed() {
             match row.get_state() {
                 RowState::Clean => {
-                    debug!(
-                        "Transaction: {}, Key: {}, State: {}, others delayed: N",
-                        meta.get_id().unwrap(),
-                        key.clone(),
-                        row.get_state()
-                    );
-
                     let ah = row.get_access_history();
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into()); // abort -- cascading abort or cycle found
                     }
 
@@ -527,7 +506,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             Err(e) => {
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap(); // abort -- row marked for delete
+                                self.abort(meta).unwrap(); // abort -- row marked for delete
                                 return Err(e);
                             }
                         };
@@ -541,7 +520,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         Err(e) => {
                             drop(mg);
                             drop(rh);
-                            self.abort(meta.clone()).unwrap(); // abort -- due to integrity constraint
+                            self.abort(meta).unwrap(); // abort -- due to integrity constraint
                             return Err(e);
                         }
                     };
@@ -557,33 +536,20 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(mg);
                     drop(rh);
 
-                    return Ok(());
+                    Ok(())
                 }
 
                 RowState::Modified => {
-                    debug!(
-                        "Transaction: {}, Key: {}, State: {}, others delayed: N",
-                        meta.get_id().unwrap(),
-                        key.clone(),
-                        row.get_state()
-                    );
-
                     let ah = row.get_access_history();
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into()); // abort -- cascading abort
                     }
 
                     row.append_delayed(id); // add to delayed queue
 
-                    debug!(
-                        "Transaction: {} delayed on key {} --- Row: {}",
-                        meta.get_id().unwrap(),
-                        key.clone(),
-                        row
-                    );
                     drop(mg);
                     drop(rh);
 
@@ -591,7 +557,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let rh = match index.get_lock_on_row(key.clone()) {
                             Ok(rg) => rg,
                             Err(e) => {
-                                self.abort(meta.clone()).unwrap(); // row not found
+                                self.abort(meta).unwrap(); // row not found
                                 return Err(e);
                             }
                         };
@@ -600,18 +566,13 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let row = &mut *mg;
 
                         if row.resume(id) {
-                            debug!(
-                                "Transaction: {} resumed on key {}",
-                                meta.get_id().unwrap(),
-                                key.clone()
-                            );
                             row.remove_delayed(id); // remove from delayed queue
 
                             let ah = row.get_access_history();
                             if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort or cycle
                             }
 
@@ -637,7 +598,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     Err(e) => {
                                         drop(mg);
                                         drop(rh);
-                                        self.abort(meta.clone()).unwrap(); // abort -- row marked for delete
+                                        self.abort(meta).unwrap(); // abort -- row marked for delete
                                         return Err(e);
                                     }
                                 };
@@ -651,7 +612,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 Err(e) => {
                                     drop(mg);
                                     drop(rh);
-                                    self.abort(meta.clone()).unwrap(); // abort -- due to integrity constraint
+                                    self.abort(meta).unwrap(); // abort -- due to integrity constraint
                                     return Err(e);
                                 }
                             };
@@ -662,6 +623,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                             let rlock = self.get_shared_lock(thread_id);
                             let node = rlock.get_transaction(txn_id);
+
                             node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                             drop(rlock);
                             drop(mg);
@@ -673,7 +635,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort or cycle
                             }
 
@@ -685,22 +647,16 @@ impl Scheduler for BasicSerializationGraphTesting {
                 RowState::Deleted => {
                     drop(mg);
                     drop(rh);
-                    self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                    return Err(NonFatalError::RowDeleted(
-                        format!("{:?}", key.clone()),
+                    self.abort(meta).unwrap(); // abort -- cascading abort
+                    Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key),
                         table.to_string(),
-                    ));
+                    ))
                 }
             }
         } else {
             match row.get_state() {
                 RowState::Clean | RowState::Modified => {
-                    debug!(
-                        "Transaction: {}, Key: {}, State: {}, others delayed: Y",
-                        meta.get_id().unwrap(),
-                        key.clone(),
-                        row.get_state()
-                    );
                     let mut ah = row.get_access_history(); // get access history
                     let delayed = row.get_delayed(); // other delayed transactions; multiple w-w conflicts
                     for (node_id, txn_id) in delayed {
@@ -711,17 +667,12 @@ impl Scheduler for BasicSerializationGraphTesting {
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into()); // abort -- cascading abort
                     }
 
                     row.append_delayed(id); // add to delayed queue; returns wait on
-                    debug!(
-                        "Transaction: {} delayed on key {} --- Row: {}",
-                        meta.get_id().unwrap(),
-                        key.clone(),
-                        row
-                    );
+
                     drop(mg);
                     drop(rh);
 
@@ -729,7 +680,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let rh = match index.get_lock_on_row(key.clone()) {
                             Ok(rg) => rg,
                             Err(e) => {
-                                self.abort(meta.clone()).unwrap(); // abort -- row not found
+                                self.abort(meta).unwrap(); // abort -- row not found
                                 return Err(e);
                             }
                         };
@@ -738,29 +689,15 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let row = &mut *mg;
 
                         if row.resume(id) {
-                            debug!(
-                                "Transaction: {} resumed on key {}",
-                                meta.get_id().unwrap(),
-                                key.clone()
-                            );
-
                             row.remove_delayed(id);
 
                             let ah = row.get_access_history();
                             if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort
                             }
-
-                            assert_eq!(
-                                row.get_state(),
-                                RowState::Clean,
-                                "Transaction: {}, Row: {}",
-                                meta.get_id().unwrap(),
-                                row
-                            );
 
                             let c: Vec<&str> = columns.iter().map(|s| s as &str).collect(); // convert to expected type
                             let current;
@@ -784,7 +721,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     Err(e) => {
                                         drop(mg);
                                         drop(rh);
-                                        self.abort(meta.clone()).unwrap(); // abort -- row marked for delete
+                                        self.abort(meta).unwrap(); // abort -- row marked for delete
                                         return Err(e);
                                     }
                                 };
@@ -798,7 +735,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 Err(e) => {
                                     drop(mg);
                                     drop(rh);
-                                    self.abort(meta.clone()).unwrap(); // abort -- due to integrity constraint
+                                    self.abort(meta).unwrap(); // abort -- due to integrity constraint
                                     return Err(e);
                                 }
                             };
@@ -820,7 +757,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort or cycle
                             }
 
@@ -832,11 +769,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 RowState::Deleted => {
                     drop(mg);
                     drop(rh);
-                    self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                    return Err(NonFatalError::RowDeleted(
-                        format!("{:?}", key.clone()),
+                    self.abort(meta).unwrap(); // abort -- cascading abort
+                    Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key),
                         table.to_string(),
-                    ));
+                    ))
                 }
             }
         }
@@ -859,7 +796,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // row not found
+                self.abort(meta).unwrap(); // row not found
                 return Err(e);
             }
         };
@@ -872,7 +809,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             if let Err(e) = self.insert_and_check(id, ah) {
                 drop(mg);
                 drop(rh);
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 return Err(e.into()); // cascading abort or cycle found
             }
 
@@ -884,12 +821,12 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                     let rlock = self.get_shared_lock(thread_id);
                     let node = rlock.get_transaction(txn_id);
-                    node.add_key(&index.get_name(), key.clone(), OperationType::Update); // register operation
+                    node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                     drop(rlock);
                     drop(mg);
                     drop(rh);
 
-                    return Ok(());
+                    Ok(())
                 }
 
                 RowState::Modified => {
@@ -902,7 +839,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let rh = match index.get_lock_on_row(key.clone()) {
                             Ok(rg) => rg,
                             Err(e) => {
-                                self.abort(meta.clone()).unwrap(); // row not found
+                                self.abort(meta).unwrap(); // row not found
                                 return Err(e);
                             }
                         };
@@ -918,7 +855,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 drop(mg);
                                 drop(rh);
 
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // cascading abort or cycle found
                             }
 
@@ -927,7 +864,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                             let rlock = self.get_shared_lock(thread_id);
                             let node = rlock.get_transaction(txn_id);
-                            node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
+                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
                             drop(rlock);
                             drop(mg);
                             drop(rh);
@@ -938,7 +875,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort or cycle
                             }
 
@@ -950,11 +887,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 RowState::Deleted => {
                     drop(mg);
                     drop(rh);
-                    self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                    return Err(NonFatalError::RowDeleted(
-                        format!("{:?}", key.clone()),
+                    self.abort(meta).unwrap(); // abort -- cascading abort
+                    Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key),
                         table.to_string(),
-                    ));
+                    ))
                 }
             }
         } else {
@@ -970,7 +907,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into());
                     }
 
@@ -983,7 +920,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let rh = match index.get_lock_on_row(key.clone()) {
                             Ok(rg) => rg,
                             Err(e) => {
-                                self.abort(meta.clone()).unwrap(); // abort -- row not found
+                                self.abort(meta).unwrap(); // abort -- row not found
                                 return Err(e);
                             }
                         };
@@ -998,7 +935,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort
                             }
 
@@ -1007,7 +944,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                             let rlock = self.get_shared_lock(thread_id);
                             let node = rlock.get_transaction(txn_id);
-                            node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
+                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
                             drop(rlock);
                             drop(mg);
                             drop(rh);
@@ -1018,7 +955,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort or cycle
                             }
 
@@ -1030,11 +967,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 RowState::Deleted => {
                     drop(mg);
                     drop(rh);
-                    self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                    return Err(NonFatalError::RowDeleted(
-                        format!("{:?}", key.clone()),
+                    self.abort(meta).unwrap(); // abort -- cascading abort
+                    Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key),
                         table.to_string(),
-                    ));
+                    ))
                 }
             }
         }
@@ -1057,7 +994,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rh) => rh,
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort -- row not found.
+                self.abort(meta).unwrap(); // abort -- row not found.
                 return Err(e);
             }
         };
@@ -1072,7 +1009,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into()); // cascading abort or cycle found
                     }
 
@@ -1084,19 +1021,19 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                     let rlock = self.get_shared_lock(thread_id);
                     let node = rlock.get_transaction(txn_id);
-                    node.add_key(&index.get_name(), key.clone(), OperationType::Update); // register operation
+                    node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                     drop(rlock);
                     drop(mg);
                     drop(rh);
 
-                    return Ok(vals);
+                    Ok(vals)
                 }
                 RowState::Modified => {
                     let ah = row.get_access_history(); // insert and check
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into()); // cascading abort or cycle found
                     }
 
@@ -1109,7 +1046,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let rh = match index.get_lock_on_row(key.clone()) {
                             Ok(rg) => rg,
                             Err(e) => {
-                                self.abort(meta.clone()).unwrap(); // row not found
+                                self.abort(meta).unwrap(); // row not found
                                 return Err(e);
                             }
                         };
@@ -1125,7 +1062,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 drop(mg);
                                 drop(rh);
 
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // cascading abort or cycle found
                             }
 
@@ -1141,7 +1078,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                             let rlock = self.get_shared_lock(thread_id);
                             let node = rlock.get_transaction(txn_id);
-                            node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
+                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
                             drop(rlock);
                             drop(mg);
                             drop(rh);
@@ -1152,7 +1089,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort or cycle
                             }
 
@@ -1164,11 +1101,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 RowState::Deleted => {
                     drop(mg);
                     drop(rh);
-                    self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                    return Err(NonFatalError::RowDeleted(
-                        format!("{:?}", key.clone()),
+                    self.abort(meta).unwrap(); // abort -- cascading abort
+                    Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key),
                         table.to_string(),
-                    ));
+                    ))
                 }
             }
         } else {
@@ -1184,7 +1121,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into());
                     }
 
@@ -1197,7 +1134,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let rh = match index.get_lock_on_row(key.clone()) {
                             Ok(rg) => rg,
                             Err(e) => {
-                                self.abort(meta.clone()).unwrap(); // abort -- row not found
+                                self.abort(meta).unwrap(); // abort -- row not found
                                 return Err(e);
                             }
                         };
@@ -1212,7 +1149,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort
                             }
 
@@ -1228,7 +1165,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                             let rlock = self.get_shared_lock(thread_id);
                             let node = rlock.get_transaction(txn_id);
-                            node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
+                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
                             drop(rlock);
                             drop(mg);
                             drop(rh);
@@ -1239,7 +1176,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort or cycle
                             }
 
@@ -1251,11 +1188,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 RowState::Deleted => {
                     drop(mg);
                     drop(rh);
-                    self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                    return Err(NonFatalError::RowDeleted(
-                        format!("{:?}", key.clone()),
+                    self.abort(meta).unwrap(); // abort -- cascading abort
+                    Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key),
                         table.to_string(),
-                    ));
+                    ))
                 }
             }
         }
@@ -1276,7 +1213,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rh) => rh,
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort - row not found
+                self.abort(meta).unwrap(); // abort - row not found
                 return Err(e);
             }
         };
@@ -1291,19 +1228,19 @@ impl Scheduler for BasicSerializationGraphTesting {
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into()); // cascading abort or cycle found
                     }
                     row.delete("basic-sgt").unwrap();
 
                     let rlock = self.get_shared_lock(thread_id);
                     let node = rlock.get_transaction(txn_id);
-                    node.add_key(&index.get_name(), key.clone(), OperationType::Update); // register operation
+                    node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                     drop(rlock);
                     drop(mg);
                     drop(rh);
 
-                    return Ok(());
+                    Ok(())
                 }
 
                 RowState::Modified => {
@@ -1311,7 +1248,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into()); // cascading abort or cycle found
                     }
 
@@ -1324,7 +1261,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let rh = match index.get_lock_on_row(key.clone()) {
                             Ok(rg) => rg,
                             Err(e) => {
-                                self.abort(meta.clone()).unwrap(); // row not found
+                                self.abort(meta).unwrap(); // row not found
                                 return Err(e);
                             }
                         };
@@ -1340,14 +1277,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 drop(mg);
                                 drop(rh);
 
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // cascading abort or cycle found
                             }
                             row.delete("basic-sgt").unwrap();
 
                             let rlock = self.get_shared_lock(thread_id);
                             let node = rlock.get_transaction(txn_id);
-                            node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
+                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
                             drop(rlock);
                             drop(mg);
                             drop(rh);
@@ -1358,7 +1295,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort or cycle
                             }
 
@@ -1370,11 +1307,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 RowState::Deleted => {
                     drop(mg);
                     drop(rh);
-                    self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                    return Err(NonFatalError::RowDeleted(
-                        format!("{:?}", key.clone()),
+                    self.abort(meta).unwrap(); // abort -- cascading abort
+                    Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key),
                         table.to_string(),
-                    ));
+                    ))
                 }
             }
         } else {
@@ -1390,7 +1327,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
-                        self.abort(meta.clone()).unwrap();
+                        self.abort(meta).unwrap();
                         return Err(e.into());
                     }
 
@@ -1403,7 +1340,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let rh = match index.get_lock_on_row(key.clone()) {
                             Ok(rg) => rg,
                             Err(e) => {
-                                self.abort(meta.clone()).unwrap(); // abort -- row not found
+                                self.abort(meta).unwrap(); // abort -- row not found
                                 return Err(e);
                             }
                         };
@@ -1418,7 +1355,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort
                             }
 
@@ -1426,7 +1363,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                             let rlock = self.get_shared_lock(thread_id);
                             let node = rlock.get_transaction(txn_id);
-                            node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
+                            node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
                             drop(rlock);
                             drop(mg);
                             drop(rh);
@@ -1437,7 +1374,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into()); // abort -- cascading abort or cycle
                             }
 
@@ -1449,11 +1386,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 RowState::Deleted => {
                     drop(mg);
                     drop(rh);
-                    self.abort(meta.clone()).unwrap(); // abort -- cascading abort
-                    return Err(NonFatalError::RowDeleted(
-                        format!("{:?}", key.clone()),
+                    self.abort(meta).unwrap(); // abort -- cascading abort
+                    Err(NonFatalError::RowDeleted(
+                        format!("{:?}", key),
                         table.to_string(),
-                    ));
+                    ))
                 }
             }
         }
@@ -1626,7 +1563,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
         match state {
             State::Aborted => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 return Err(ProtocolError::CascadingAbort.into());
             }
             State::Committed => {
@@ -1719,10 +1656,10 @@ impl Scheduler for BasicSerializationGraphTesting {
 
 impl fmt::Display for BasicSerializationGraphTesting {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\n").unwrap();
+        writeln!(f, " ").unwrap();
 
         for node in &self.nodes {
-            write!(f, "{}\n", node.read()).unwrap();
+            writeln!(f, "{}", node.read()).unwrap();
         }
         Ok(())
     }

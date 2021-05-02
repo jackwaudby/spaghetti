@@ -57,7 +57,7 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
     let anomaly = data.config.get_str("anomaly")?;
 
     if anomaly.as_str() == "otv" || anomaly.as_str() == "fr" || anomaly.as_str() == "g2item" {
-        persons = persons * 4;
+        persons *= 4;
     }
 
     info!("Populating person table: {}", persons);

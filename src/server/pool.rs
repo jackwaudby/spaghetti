@@ -205,11 +205,9 @@ impl Drop for ThreadPool {
 
 impl Drop for Sentinel {
     fn drop(&mut self) {
-        if self.active {
-            if thread::panicking() {
-                debug!("Send panic notification");
-                self.panic_notify.send(()).unwrap();
-            }
+        if self.active && thread::panicking() {
+            debug!("Send panic notification");
+            self.panic_notify.send(()).unwrap();
         }
     }
 }
@@ -237,7 +235,7 @@ impl Worker {
         panic_receiver: mpsc::Sender<()>,
     ) -> Worker {
         // Set thread name to id.
-        let builder = thread::Builder::new().name(id.to_string().into());
+        let builder = thread::Builder::new().name(id.to_string());
 
         let thread = builder
             .spawn(move || -> Result<()> {

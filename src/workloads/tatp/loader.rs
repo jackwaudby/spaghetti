@@ -234,8 +234,8 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
                 &rng.gen_range(0..=255).to_string(),
             )?;
         }
-        row.init_value("msc_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
-        row.init_value("vlr_location", &rng.gen_range(1..=2 ^ 32 - 1).to_string())?;
+        row.init_value("msc_location", &rng.gen_range(1..(2 ^ 32)).to_string())?;
+        row.init_value("vlr_location", &rng.gen_range(1..(2 ^ 32)).to_string())?;
 
         i.insert(pk, row)?;
     }

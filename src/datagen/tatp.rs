@@ -227,8 +227,8 @@ impl Subscriber {
             byte_2_8: rng.gen_range(0..=255).to_string(),
             byte_2_9: rng.gen_range(0..=255).to_string(),
             byte_2_10: rng.gen_range(0..=255).to_string(),
-            msc_location: rng.gen_range(1..=2 ^ 32 - 1).to_string(),
-            vlr_location: rng.gen_range(1..=2 ^ 32 - 1).to_string(),
+            msc_location: rng.gen_range(1..(2 ^ 32)).to_string(),
+            vlr_location: rng.gen_range(1..(2 ^ 32)).to_string(),
         }
     }
 }

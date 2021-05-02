@@ -76,14 +76,13 @@ impl Index {
         key: PrimaryKey,
         protocol: &str,
     ) -> Result<OperationResult, NonFatalError> {
-        // Attempt to get read guard.
-        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
-            format!("{}", key),
-            self.get_name(),
-        ))?;
-        // Deref to row.
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
+
         let row = &mut *read_guard.lock().unwrap();
-        // Execute delete operation.
+
         let res = row.delete(protocol)?;
         Ok(res)
     }
@@ -100,12 +99,10 @@ impl Index {
         let row = self.map.remove(&key);
         match row {
             Some(row) => Ok(row.into_inner().unwrap()),
-            None => {
-                return Err(NonFatalError::RowNotFound(
-                    format!("{}", key),
-                    self.get_name(),
-                ))
-            }
+            None => Err(NonFatalError::RowNotFound(
+                format!("{}", key),
+                self.get_name(),
+            )),
         }
     }
 
@@ -118,18 +115,17 @@ impl Index {
     pub fn read(
         &self,
         key: PrimaryKey,
-        columns: &Vec<&str>,
+        columns: &[&str],
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
-        // Attempt to get read guard.
-        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
-            format!("{}", key),
-            self.get_name(),
-        ))?;
-        // Deref to row.
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
+
         let row = &mut *read_guard.lock().unwrap();
-        // Execute read operation.
+
         let res = row.get_values(columns, protocol, tid)?;
         Ok(res)
     }
@@ -139,10 +135,9 @@ impl Index {
         &self,
         key: PrimaryKey,
     ) -> Result<ReadGuard<PrimaryKey, Mutex<Row>>, NonFatalError> {
-        self.map.get(&key).ok_or(NonFatalError::RowNotFound(
-            format!("{}", key),
-            self.get_name(),
-        ))
+        self.map
+            .get(&key)
+            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))
     }
 
     /// Write `values` to `columns` in a `Row` with the given `key`.
@@ -169,13 +164,12 @@ impl Index {
             Vec<Data>,
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
     {
-        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
-            format!("{}", key),
-            self.get_name(),
-        ))?; // attempt to get read guard on row
-        let row = &mut *read_guard.lock().unwrap(); // deref to row
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
+        let row = &mut *read_guard.lock().unwrap();
 
-        // If needed, get current values of columns.
         let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
         let current;
         if read {
@@ -185,10 +179,10 @@ impl Index {
             current = None;
         }
 
-        let (_, new_values) = f(columns.clone(), current, params)?; // compute new values
+        let (_, new_values) = f(columns.clone(), current, params)?;
         let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
 
-        let res = row.set_values(&c, &nv, protocol, tid)?; // execute write operation
+        let res = row.set_values(&c, &nv, protocol, tid)?;
         Ok(res)
     }
 
@@ -205,10 +199,10 @@ impl Index {
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
-        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
-            format!("{}", key),
-            self.get_name(),
-        ))?; //  attempt to get read guard
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?; //  attempt to get read guard
         let row = &mut *read_guard.lock().unwrap(); // deref to row
         let res = row.append_value(column, value, protocol, tid)?; // execute append
         Ok(res)
@@ -224,19 +218,18 @@ impl Index {
     pub fn read_and_update(
         &self,
         key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        columns: &[&str],
+        values: &[&str],
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
-        // Attempt to get read guard.
-        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
-            format!("{}", key),
-            self.get_name(),
-        ))?;
-        // Deref to row.
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
+
         let row = &mut *read_guard.lock().unwrap();
-        // Execute get/set operation.
+
         let res = row.get_and_set_values(columns, values, protocol, tid)?;
         Ok(res)
     }
@@ -250,28 +243,24 @@ impl Index {
     ///
     /// - Row does not exist with `key`.
     pub fn commit(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<(), NonFatalError> {
-        // Check to be deleted
         let row_state = self
             .map
             .get(&key)
-            .expect(&format!("No entry for {}", key))
+            .unwrap_or_else(|| panic!("No entry for {}", key))
             .lock()
             .unwrap()
             .get_state();
 
         if let RowState::Deleted = row_state {
-            self.remove(key).unwrap(); // Remove row.
+            self.remove(key).unwrap();
         } else {
-            // Commit changes
-            // Attempt to get read guard.
-            let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
-                format!("{}", key),
-                self.get_name(),
-            ))?;
+            let read_guard = self
+                .map
+                .get(&key)
+                .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
 
-            // Deref to row.
             let row = &mut *read_guard.lock().unwrap();
-            // Commit changes.
+
             row.commit(protocol, tid);
         }
         Ok(())
@@ -286,10 +275,10 @@ impl Index {
     /// - Row does not exist with `key`.
     pub fn revert(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<(), NonFatalError> {
         // attempt to get read guard
-        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
-            format!("{}", key),
-            self.get_name(),
-        ))?;
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
 
         let row = &mut *read_guard.lock().unwrap(); // Deref to row.
         row.revert(protocol, tid); // Revert changes.
@@ -304,15 +293,13 @@ impl Index {
     ///
     /// - Row does not exist with `key`.
     pub fn revert_read(&self, key: PrimaryKey, tid: &str) -> Result<(), NonFatalError> {
-        // Attempt to get read guard.
-        let read_guard = self.map.get(&key).ok_or(NonFatalError::RowNotFound(
-            format!("{}", key),
-            self.get_name(),
-        ))?;
+        let read_guard = self
+            .map
+            .get(&key)
+            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
 
-        // Deref to row.
         let row = &mut *read_guard.lock().unwrap();
-        // Revert read.
+
         row.revert_read(tid);
         Ok(())
     }

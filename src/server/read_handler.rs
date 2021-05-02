@@ -99,7 +99,8 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
             };
 
             // Check if socket unexpectedly closed.
-            let frame = maybe_frame.ok_or(Box::new(FatalError::ReadSocketUnexpectedlyClosed))?;
+            let frame =
+                maybe_frame.ok_or_else(|| Box::new(FatalError::ReadSocketUnexpectedlyClosed))?;
 
             // Decode message.
             let decoded: Message = bincode::deserialize(&frame.get_payload())?;
@@ -126,7 +127,7 @@ impl<R: AsyncRead + Unpin> ReadHandler<R> {
             self.requests += 1;
 
             // Attempt to send to transaction manager.
-            if let Err(_) = self.work_tx.send(request) {
+            if self.work_tx.send(request).is_err() {
                 return Err(Box::new(FatalError::ThreadPoolClosed));
             };
         }

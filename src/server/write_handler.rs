@@ -91,7 +91,7 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                                     }
 
                                     // Inc. response sent.
-                                    self.responses_sent = self.responses_sent + 1;
+                                    self.responses_sent += 1;
 
                                     // If warmup complete switch to execution phase.
                                     if self.responses_sent == warmup {
@@ -131,47 +131,43 @@ impl<R: AsyncWrite + Unpin> WriteHandler<R> {
                 Err(_) => {
                     // Normal operation
                     let response = self.response_rx.recv().await;
-                    match response {
-                        Some(response) => {
-                            // Destructure of internal response.
-                            let InternalResponse {
-                                request_no,
+                    if let Some(response) = response {
+                        // Destructure of internal response.
+                        let InternalResponse {
+                            request_no,
+                            transaction,
+                            outcome,
+                            latency,
+                        } = response;
+
+                        // If in execution phase record statistics.
+                        if let BenchmarkPhase::Execution = self.benchmark_phase {
+                            // Call record form stats.
+                            self.stats.as_mut().unwrap().record(
                                 transaction,
-                                outcome,
+                                outcome.clone(),
                                 latency,
-                            } = response;
-
-                            // If in execution phase record statistics.
-                            if let BenchmarkPhase::Execution = self.benchmark_phase {
-                                // Call record form stats.
-                                self.stats.as_mut().unwrap().record(
-                                    transaction,
-                                    outcome.clone(),
-                                    latency,
-                                );
-                            }
-
-                            // Inc. response sent.
-                            self.responses_sent = self.responses_sent + 1;
-
-                            // If warmup complete switch to execution phase.
-                            if self.responses_sent == warmup {
-                                self.benchmark_phase = BenchmarkPhase::Execution;
-                                info!("Client {} warmup phase complete", self.id);
-                            }
-
-                            // Convert to external response.
-                            let ex_response = Message::Response {
-                                request_no,
-                                outcome,
-                            };
-
-                            // Convert to frame and send to client.
-                            let f = ex_response.into_frame();
-                            self.connection.write_frame(&f).await?;
+                            );
                         }
 
-                        None => {}
+                        // Inc. response sent.
+                        self.responses_sent += 1;
+
+                        // If warmup complete switch to execution phase.
+                        if self.responses_sent == warmup {
+                            self.benchmark_phase = BenchmarkPhase::Execution;
+                            info!("Client {} warmup phase complete", self.id);
+                        }
+
+                        // Convert to external response.
+                        let ex_response = Message::Response {
+                            request_no,
+                            outcome,
+                        };
+
+                        // Convert to frame and send to client.
+                        let f = ex_response.into_frame();
+                        self.connection.write_frame(&f).await?;
                     }
                 }
             }
@@ -183,11 +179,10 @@ impl<R: AsyncWrite + Unpin> Drop for WriteHandler<R> {
     fn drop(&mut self) {
         debug!("Drop write handler");
 
-        let res = self.notify_listener_tx.send(self.stats.take().unwrap());
-        match res {
-            Ok(_) => {}
-            Err(_) => {}
-        }
+        self.notify_listener_tx
+            .send(self.stats.take().unwrap())
+            .unwrap();
+
         debug!("Sent {} to client", self.responses_sent);
     }
 }

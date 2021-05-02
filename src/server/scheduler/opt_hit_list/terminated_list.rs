@@ -20,7 +20,7 @@ impl TerminatedList {
     /// Get position in the terminated list of transaction with `id`.
     pub fn get_index(&self, id: u64) -> usize {
         if self.removed == 0 {
-            return id as usize;
+            id as usize
         } else {
             assert!(
                 id >= self.removed,
@@ -30,7 +30,7 @@ impl TerminatedList {
             );
 
             let offset = id - self.removed;
-            return offset as usize;
+            offset as usize
         }
     }
 }

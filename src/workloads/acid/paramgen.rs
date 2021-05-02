@@ -121,10 +121,11 @@ impl AcidGenerator {
         }
 
         if n < 0.5 {
+            std::mem::swap(&mut p1_id, &mut p2_id)
             // flip so they get accessed in different orders
-            let temp = p1_id;
-            p1_id = p2_id;
-            p2_id = temp;
+            // let temp = p1_id;
+            // p1_id = p2_id;
+            // p2_id = temp;
         }
 
         let payload = G0Write {

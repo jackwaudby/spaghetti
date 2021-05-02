@@ -85,7 +85,7 @@ pub fn last_name(c_id: u64, rng: &mut StdRng) -> String {
     let f = match num.len() {
         1 => format!("00{}", num),
         2 => format!("0{}", num),
-        3 => format!("{}", num),
+        3 => num,
         _ => panic!("generated too big of a number: {}, c_id: {}", num, c_id),
     };
     let mut result = String::new();

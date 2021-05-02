@@ -204,10 +204,8 @@ pub fn run(mut tm: TransactionManager) {
             if let Err(err) = tm._notify_wh_tx.send(State::ThreadPoolPanicked) {
                 error!("{}", err);
             }
-        } else {
-            if let Err(err) = tm._notify_wh_tx.send(State::GracefullyShutdown) {
-                error!("{}", err);
-            }
+        } else if let Err(err) = tm._notify_wh_tx.send(State::GracefullyShutdown) {
+            error!("{}", err);
         }
     });
 

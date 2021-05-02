@@ -19,7 +19,7 @@ impl GarbageCollector {
         sleep: u64,
         threads: usize,
     ) -> GarbageCollector {
-        let builder = thread::Builder::new().name("garbage_collector".to_string().into()); // thread name
+        let builder = thread::Builder::new().name("garbage_collector".to_string()); // thread name
         let thread = builder
             .spawn(move || {
                 debug!("Starting garbage collector");

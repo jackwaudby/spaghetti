@@ -143,7 +143,7 @@ impl Row {
     /// Get the values of `columns` in a row.
     pub fn get_values(
         &mut self,
-        columns: &Vec<&str>,
+        columns: &[&str],
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
@@ -185,18 +185,14 @@ impl Row {
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
-            State::Modified => {
-                return Err(NonFatalError::RowDirty(
-                    format!("{:?}", self.primary_key),
-                    self.table.get_table_name(),
-                ));
-            }
-            State::Deleted => {
-                return Err(NonFatalError::RowDeleted(
-                    format!("{:?}", self.primary_key),
-                    self.table.get_table_name(),
-                ));
-            }
+            State::Modified => Err(NonFatalError::RowDirty(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            )),
+            State::Deleted => Err(NonFatalError::RowDeleted(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            )),
             State::Clean => {
                 let access_history = match protocol {
                     "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
@@ -233,7 +229,7 @@ impl Row {
                 self.state = State::Modified; // set state
                 let res = OperationResult::new(None, access_history); // create return result
 
-                return Ok(res);
+                Ok(res)
             }
         }
     }
@@ -241,24 +237,20 @@ impl Row {
     /// Set the values of a field in a row.
     pub fn set_values(
         &mut self,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        columns: &[&str],
+        values: &[&str],
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
-            State::Modified => {
-                return Err(NonFatalError::RowDirty(
-                    format!("{:?}", self.primary_key),
-                    self.table.get_table_name(),
-                ));
-            }
-            State::Deleted => {
-                return Err(NonFatalError::RowDeleted(
-                    format!("{:?}", self.primary_key),
-                    self.table.get_table_name(),
-                ));
-            }
+            State::Modified => Err(NonFatalError::RowDirty(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            )),
+            State::Deleted => Err(NonFatalError::RowDeleted(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            )),
             State::Clean => {
                 let access_history = match protocol {
                     "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
@@ -313,8 +305,8 @@ impl Row {
     /// Get and set
     pub fn get_and_set_values(
         &mut self,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        columns: &[&str],
+        values: &[&str],
         protocol: &str,
         tid: &str,
     ) -> Result<OperationResult, NonFatalError> {
@@ -326,18 +318,14 @@ impl Row {
     /// Mark row as deleted.
     pub fn delete(&mut self, protocol: &str) -> Result<OperationResult, NonFatalError> {
         match self.state {
-            State::Modified => {
-                return Err(NonFatalError::RowDirty(
-                    format!("{:?}", self.primary_key),
-                    self.table.get_table_name(),
-                ));
-            }
-            State::Deleted => {
-                return Err(NonFatalError::RowDeleted(
-                    format!("{:?}", self.primary_key),
-                    self.table.get_table_name(),
-                ));
-            }
+            State::Modified => Err(NonFatalError::RowDirty(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            )),
+            State::Deleted => Err(NonFatalError::RowDeleted(
+                format!("{:?}", self.primary_key),
+                self.table.get_table_name(),
+            )),
             State::Clean => {
                 self.state = State::Deleted; // set state
                 let access_history = match protocol {
@@ -348,7 +336,7 @@ impl Row {
                     _ => None,
                 };
                 let res = OperationResult::new(None, access_history);
-                return Ok(res);
+                Ok(res)
             }
         }
     }

@@ -133,7 +133,7 @@ impl Scheduler for HitList {
             match row.init_value(column, &values[i].to_string()) {
                 Ok(_) => {}
                 Err(e) => {
-                    self.abort(meta.clone()).unwrap();
+                    self.abort(meta).unwrap();
                     return Err(e);
                 }
             }
@@ -145,7 +145,7 @@ impl Scheduler for HitList {
         match row.set_values(columns, values, "hit", &meta.get_id().unwrap()) {
             Ok(_) => {}
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 return Err(e);
             }
         }
@@ -158,7 +158,7 @@ impl Scheduler for HitList {
         match index.insert(key, row) {
             Ok(_) => Ok(()),
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 Err(e)
             }
         }
@@ -198,7 +198,7 @@ impl Scheduler for HitList {
                     }
                 }
 
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.active_transactions
                     .add_key(worker_id, pair, Operation::Read);
 
@@ -207,8 +207,8 @@ impl Scheduler for HitList {
                 Ok(vals)
             }
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
-                return Err(e);
+                self.abort(meta).unwrap();
+                Err(e)
             }
         }
     }
@@ -259,7 +259,7 @@ impl Scheduler for HitList {
                         }
                     }
                 }
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.active_transactions
                     .add_key(worker_id, pair, Operation::Update);
                 // TODO: register as read as well?
@@ -270,7 +270,7 @@ impl Scheduler for HitList {
             }
             Err(e) => {
                 self.abort(meta).unwrap();
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -333,14 +333,14 @@ impl Scheduler for HitList {
                         }
                     }
                 }
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.active_transactions
                     .add_key(worker_id, pair, Operation::Update);
                 Ok(())
             }
             Err(e) => {
                 self.abort(meta).unwrap();
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -388,14 +388,14 @@ impl Scheduler for HitList {
                         }
                     }
                 }
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.active_transactions
                     .add_key(worker_id, pair, Operation::Update);
                 Ok(())
             }
             Err(e) => {
                 self.abort(meta).unwrap();
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -441,7 +441,7 @@ impl Scheduler for HitList {
                         }
                     }
                 }
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.active_transactions
                     .add_key(worker_id, pair, Operation::Delete);
 
@@ -635,13 +635,13 @@ impl Scheduler for HitList {
             self.active_transactions.clear(worker_id);
             drop(lock);
             debug!("Thread {} dropped lock", handle.name().unwrap());
-            return Ok(());
+            Ok(())
         } else {
             debug!("Thread {} in hit list", handle.name().unwrap());
             drop(lock);
             debug!("Thread {} dropped lock", handle.name().unwrap());
             self.abort(meta).unwrap();
-            return Err(HitListError::TransactionInHitList(id).into());
+            Err(HitListError::TransactionInHitList(id).into())
         }
     }
 
@@ -693,7 +693,7 @@ impl GarbageCollector {
         receiver: mpsc::Receiver<()>,
         sleep: u64,
     ) -> GarbageCollector {
-        let builder = thread::Builder::new().name("garbage_collector".to_string().into()); // thread name
+        let builder = thread::Builder::new().name("garbage_collector".to_string()); // thread name
         let thread = builder
             .spawn(move || {
                 debug!("Starting garbage collector");

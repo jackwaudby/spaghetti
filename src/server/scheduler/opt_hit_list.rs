@@ -94,7 +94,7 @@ impl Scheduler for OptimisedHitList {
             match row.init_value(column, &values[i].to_string()) {
                 Ok(_) => {}
                 Err(e) => {
-                    self.abort(meta.clone()).unwrap();
+                    self.abort(meta).unwrap();
                     return Err(e);
                 }
             }
@@ -106,7 +106,7 @@ impl Scheduler for OptimisedHitList {
         match row.set_values(columns, values, "hit", &meta.get_id().unwrap()) {
             Ok(_) => {}
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 return Err(e);
             }
         }
@@ -114,13 +114,13 @@ impl Scheduler for OptimisedHitList {
         // attempt to insert row
         match index.insert(key.clone(), row) {
             Ok(_) => {
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.thread_states[thread_id].add_key(seq_num, pair, Operation::Create); // register
 
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 Err(e)
             }
         }
@@ -164,14 +164,14 @@ impl Scheduler for OptimisedHitList {
                         }
                     }
                 }
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.thread_states[thread_id].add_key(seq_num, pair, Operation::Read); // register operation; used to clean up.
                 let vals = res.get_values().unwrap(); // get the values
                 Ok(vals)
             }
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
-                return Err(e);
+                self.abort(meta).unwrap();
+                Err(e)
             }
         }
     }
@@ -226,14 +226,14 @@ impl Scheduler for OptimisedHitList {
                 }
 
                 // TODO: register read operation as well
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.thread_states[thread_id].add_key(seq_num, pair, Operation::Update); // register operation; used to clean up.
                 let vals = res.get_values().unwrap(); // get vals
                 Ok(vals)
             }
             Err(e) => {
                 self.abort(meta).unwrap();
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -303,13 +303,13 @@ impl Scheduler for OptimisedHitList {
                         }
                     }
                 }
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.thread_states[thread_id].add_key(seq_num, pair, Operation::Update);
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
-                return Err(e);
+                self.abort(meta).unwrap();
+                Err(e)
             }
         }
     }
@@ -364,13 +364,13 @@ impl Scheduler for OptimisedHitList {
                         }
                     }
                 }
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.thread_states[thread_id].add_key(seq_num, pair, Operation::Update);
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
-                return Err(e);
+                self.abort(meta).unwrap();
+                Err(e)
             }
         }
     }
@@ -415,12 +415,12 @@ impl Scheduler for OptimisedHitList {
                         }
                     }
                 }
-                let pair = (index.get_name(), key.clone());
+                let pair = (index.get_name(), key);
                 self.thread_states[thread_id].add_key(seq_num, pair, Operation::Delete);
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 Err(e)
             }
         }
@@ -428,33 +428,9 @@ impl Scheduler for OptimisedHitList {
 
     /// Abort a transaction.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
-        let handle = thread::current();
-
         let transaction_id = meta.get_id().unwrap(); // get transaction id
-        debug!(
-            "Thread {}: abort {}",
-            handle.name().unwrap(),
-            transaction_id.clone()
-        );
-
-        let (thread_id, seq_num) = parse_id(transaction_id.clone()); // split into thread id + seq
-        debug!(
-            "Thread {}: set state to abort {}",
-            handle.name().unwrap(),
-            transaction_id.clone()
-        );
+        let (thread_id, seq_num) = parse_id(transaction_id); // split into thread id + seq
         self.thread_states[thread_id].set_state(seq_num, TransactionState::Aborted); // set state.
-        debug!(
-            "Thread {}: state set to abort {}",
-            handle.name().unwrap(),
-            transaction_id.clone()
-        );
-
-        debug!(
-            "Thread {}: get keys {}",
-            handle.name().unwrap(),
-            transaction_id.clone()
-        );
 
         let rg = &self.thread_states[thread_id];
         let x = rg.get_transaction_id(seq_num);
@@ -493,24 +469,9 @@ impl Scheduler for OptimisedHitList {
                 .unwrap();
         }
 
-        debug!(
-            "Thread {}: got keys {}",
-            handle.name().unwrap(),
-            transaction_id.clone()
-        );
-
-        debug!(
-            "Thread {}: add terminated {}",
-            handle.name().unwrap(),
-            transaction_id.clone()
-        );
         let se = rg.get_start_epoch(seq_num);
         rg.get_epoch_tracker().add_terminated(seq_num, se);
-        debug!(
-            "Thread {}:  terminated added{}",
-            handle.name().unwrap(),
-            transaction_id.clone()
-        );
+
         Ok(())
     }
 
@@ -518,20 +479,11 @@ impl Scheduler for OptimisedHitList {
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         let handle = thread::current();
         let transaction_id = meta.get_id().unwrap(); // get transaction id
-        debug!(
-            "Thread {}: commit {}",
-            handle.name().unwrap(),
-            transaction_id.clone()
-        );
 
-        let (thread_id, seq_num) = parse_id(transaction_id.clone()); // split into thread id + seq
+        let (thread_id, seq_num) = parse_id(transaction_id); // split into thread id + seq
 
         // CHECK //
-        debug!(
-            "Thread {}: check {}",
-            handle.name().unwrap(),
-            transaction_id.clone()
-        );
+
         if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
             self.abort(meta.clone()).unwrap(); // abort txn
             return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
@@ -651,8 +603,8 @@ impl Scheduler for OptimisedHitList {
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort txn
-                return Err(e);
+                self.abort(meta).unwrap(); // abort txn
+                Err(e)
             }
         }
     }
@@ -725,7 +677,7 @@ impl Drop for OptimisedHitList {
 }
 
 fn parse_id(joint: String) -> (usize, u64) {
-    let split = joint.split("-");
+    let split = joint.split('-');
     let vec: Vec<usize> = split.map(|x| x.parse::<usize>().unwrap()).collect();
     (vec[0], vec[1] as u64)
 }

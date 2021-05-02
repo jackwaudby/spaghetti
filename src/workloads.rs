@@ -122,14 +122,7 @@ impl Workload {
                 info!("Generator set seed: {}", set_seed);
                 info!("Generator nurand: {}", use_nurand);
             }
-            Tpcc(ref i) => {
-                if self.get_internals().get_config().get_bool("load")? {
-                    // TODO
-                    tpcc::loader::populate_tables(i, rng)?
-                } else {
-                    tpcc::loader::populate_tables(i, rng)?
-                }
-            }
+            Tpcc(_) => unimplemented!(),
             SmallBank(ref i) => {
                 let config = self.get_internals().get_config();
                 let sf = config.get_int("scale_factor")?;
@@ -201,7 +194,7 @@ impl Internal {
                     if line.is_empty() {
                         break;
                     }
-                    let column: Vec<&str> = line.split(",").collect();
+                    let column: Vec<&str> = line.split(',').collect();
                     let c_name: String = column[2].to_lowercase();
                     let c_type: &str = column[1];
 
@@ -218,7 +211,7 @@ impl Internal {
                 };
 
                 let attributes: Vec<&str> = match lines.next() {
-                    Some(a) => a.split(",").collect(),
+                    Some(a) => a.split(',').collect(),
                     None => break,
                 };
 

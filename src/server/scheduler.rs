@@ -91,7 +91,7 @@ impl TransactionInfo {
 
     /// Get the timestamp of a transaction.
     pub fn get_ts(&self) -> Option<u64> {
-        self.ts.clone()
+        self.ts
     }
 }
 
@@ -181,7 +181,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
         match res {
             Ok(table) => Ok(table),
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 Err(e)
             }
         }
@@ -197,7 +197,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
         match res {
             Ok(index_name) => Ok(index_name),
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 Err(e)
             }
         }
@@ -209,15 +209,13 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
         table: Arc<Table>,
         meta: TransactionInfo,
     ) -> Result<Arc<Index>, NonFatalError> {
-        // Get index name.
         let index_name = self.get_index_name(table, meta.clone())?;
 
-        // Get index for this key's table.
         let res = self.get_data().get_internals().get_index(&index_name);
         match res {
             Ok(index) => Ok(index),
             Err(e) => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 Err(e)
             }
         }

@@ -54,8 +54,7 @@ impl SerializationGraphTesting {
     ///
     /// Acquiring `RwLock` fails.
     fn get_shared_lock(&self, id: usize) -> RwLockReadGuard<Node> {
-        let rg = self.nodes[id].read();
-        rg
+        self.nodes[id].read()
     }
 
     /// Get exculsive lock on the node.
@@ -64,8 +63,7 @@ impl SerializationGraphTesting {
     ///
     /// Acquiring `RwLock` fails.
     fn get_exculsive_lock(&self, id: usize) -> RwLockWriteGuard<Node> {
-        let wg = self.nodes[id].write();
-        wg
+        self.nodes[id].write()
     }
 
     /// Insert an edge into the serialization graph `(from) --> (to)`.
@@ -248,8 +246,8 @@ impl Scheduler for SerializationGraphTesting {
 
         // initialise each field
         for (i, column) in columns.iter().enumerate() {
-            if let Err(_) = row.init_value(column, &values[i].to_string()) {
-                self.abort(meta.clone()).unwrap(); // abort -- unable to initialise row
+            if row.init_value(column, &values[i].to_string()).is_err() {
+                self.abort(meta).unwrap(); // abort -- unable to initialise row
                 return Err(NonFatalError::UnableToInitialiseRow(
                     table.to_string(),
                     column.to_string(),
@@ -260,7 +258,7 @@ impl Scheduler for SerializationGraphTesting {
 
         // set values in fields -- makes rows "dirty"
         if let Err(e) = row.set_values(columns, values, "sgt", &meta.get_id().unwrap()) {
-            self.abort(meta.clone()).unwrap(); // abort -- unable to convert to datatype
+            self.abort(meta).unwrap(); // abort -- unable to convert to datatype
             return Err(e);
         }
 
@@ -268,12 +266,12 @@ impl Scheduler for SerializationGraphTesting {
             Ok(_) => {
                 let id = meta.get_id().unwrap().parse::<usize>().unwrap(); // get position in graph
                 let node = self.get_shared_lock(id); // get shared lock
-                node.add_key(&index.get_name(), key.clone(), OperationType::Insert); // operation succeeded -- register
+                node.add_key(&index.get_name(), key, OperationType::Insert); // operation succeeded -- register
                 drop(node); // drop shared lock
             }
 
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort -- row already exists
+                self.abort(meta).unwrap(); // abort -- row already exists
                 return Err(e);
             }
         }
@@ -301,7 +299,7 @@ impl Scheduler for SerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rh) => rh,
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort -- row does not exist in index
+                self.abort(meta).unwrap(); // abort -- row does not exist in index
                 return Err(e);
             }
         };
@@ -311,7 +309,7 @@ impl Scheduler for SerializationGraphTesting {
             Ok(res) => {
                 let this_node = meta.get_id().unwrap().parse::<usize>().unwrap(); // get this_node position in sgt
                 let node = self.get_shared_lock(this_node); // take shared lock on this_node
-                node.add_key(&index.get_name(), key.clone(), OperationType::Read); // operation succeeded -- register
+                node.add_key(&index.get_name(), key, OperationType::Read); // operation succeeded -- register
                 drop(node); // drop shared lock on node
                 let access_history = res.get_access_history(); // get access history
 
@@ -325,7 +323,7 @@ impl Scheduler for SerializationGraphTesting {
                         if let Err(e) = self.add_edge(from_node, this_node, false) {
                             drop(mg); // drop mutex on row
                             drop(rh); // drop read handle to row
-                            self.abort(meta.clone()).unwrap(); // abort -- from_node aborted
+                            self.abort(meta).unwrap(); // abort -- from_node aborted
                             return Err(e.into());
                         }
                     }
@@ -341,8 +339,9 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-                self.abort(meta.clone()).unwrap(); // abort -- row deleted
-                return Err(e);
+                self.abort(meta).unwrap(); // abort -- row deleted
+
+                Err(e)
             }
         }
     }
@@ -375,7 +374,7 @@ impl Scheduler for SerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort -- row not found
+                self.abort(meta).unwrap(); // abort -- row not found
                 return Err(e);
             }
         };
@@ -398,7 +397,7 @@ impl Scheduler for SerializationGraphTesting {
                 Err(e) => {
                     drop(mg); // drop mutex on row
                     drop(rh); // drop read handle to row
-                    self.abort(meta.clone()).unwrap(); // abort -- row not found
+                    self.abort(meta).unwrap(); // abort -- row not found
                     return Err(e);
                 }
             };
@@ -413,7 +412,7 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-                self.abort(meta.clone()).unwrap(); // abort -- row not found
+                self.abort(meta).unwrap(); // abort -- row not found
                 return Err(e);
             }
         };
@@ -423,7 +422,7 @@ impl Scheduler for SerializationGraphTesting {
             Ok(res) => {
                 let this_node = meta.get_id().unwrap().parse::<usize>().unwrap(); // get position in graph
                 let node = self.get_shared_lock(this_node); // get shared lock on this node
-                node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded register
+                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded register
                 drop(node);
 
                 let access_history = res.get_access_history(); // get access history
@@ -439,7 +438,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta.clone()).unwrap(); // abort -- from_node aborted
+                                self.abort(meta).unwrap(); // abort -- from_node aborted
                                 return Err(e.into());
                             }
                         }
@@ -451,7 +450,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta.clone()).unwrap(); // abort -- from_node aborted
+                                self.abort(meta).unwrap(); // abort -- from_node aborted
                                 return Err(e.into());
                             }
                         }
@@ -466,7 +465,7 @@ impl Scheduler for SerializationGraphTesting {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
                 self.abort(meta).unwrap(); // abort -- row deleted or dirty
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -492,7 +491,7 @@ impl Scheduler for SerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rh) => rh, // get handle to row
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort -- RowNotFound.
+                self.abort(meta).unwrap(); // abort -- RowNotFound.
                 return Err(e);
             }
         };
@@ -519,7 +518,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta.clone()).unwrap(); // abort -- parent aborted
+                                self.abort(meta).unwrap(); // abort -- parent aborted
                                 return Err(e.into());
                             }
                         }
@@ -529,7 +528,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta.clone()).unwrap(); // abort -- parent aborted
+                                self.abort(meta).unwrap(); // abort -- parent aborted
                                 return Err(e.into());
                             }
                         }
@@ -543,7 +542,7 @@ impl Scheduler for SerializationGraphTesting {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
                 self.abort(meta).unwrap(); // abort -- row deleted or row dirty
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -571,7 +570,7 @@ impl Scheduler for SerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rh) => rh,
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort -- row not found.
+                self.abort(meta).unwrap(); // abort -- row not found.
                 return Err(e);
             }
         };
@@ -584,7 +583,7 @@ impl Scheduler for SerializationGraphTesting {
             Ok(res) => {
                 let this_node = meta.get_id().unwrap().parse::<usize>().unwrap(); // Get position of this transaction in the graph.
                 let node = self.get_shared_lock(this_node); // get shared lock
-                node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
+                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
                 drop(node);
 
                 let access_history = res.get_access_history(); // get access history
@@ -599,7 +598,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta.clone()).unwrap(); // abort -- parent aborted.
+                                self.abort(meta).unwrap(); // abort -- parent aborted.
                                 return Err(e.into());
                             }
                         }
@@ -611,7 +610,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta.clone()).unwrap(); // abort -- parent aborted.
+                                self.abort(meta).unwrap(); // abort -- parent aborted.
                                 return Err(e.into());
                             }
                         }
@@ -624,7 +623,7 @@ impl Scheduler for SerializationGraphTesting {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
                 self.abort(meta).unwrap(); // abort - row deleted or row dirty
-                return Err(e);
+                Err(e)
             }
         }
     }
@@ -649,7 +648,7 @@ impl Scheduler for SerializationGraphTesting {
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rh) => rh,
             Err(e) => {
-                self.abort(meta.clone()).unwrap(); // abort - row not found
+                self.abort(meta).unwrap(); // abort - row not found
                 return Err(e);
             }
         };
@@ -675,7 +674,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into());
                             }
                         }
@@ -685,7 +684,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta.clone()).unwrap();
+                                self.abort(meta).unwrap();
                                 return Err(e.into());
                             }
                         }
@@ -808,7 +807,7 @@ impl Scheduler for SerializationGraphTesting {
 
         match state {
             State::Aborted => {
-                self.abort(meta.clone()).unwrap();
+                self.abort(meta).unwrap();
                 let e = SerializationGraphTestingError::ParentAborted;
                 return Err(e.into());
             }

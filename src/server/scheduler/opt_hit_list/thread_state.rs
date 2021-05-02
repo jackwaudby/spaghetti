@@ -159,7 +159,7 @@ impl ThreadState {
 
     /// Remove transaction with `id`.
     pub fn remove_transactions(&self, transactions: Vec<u64>) {
-        if transactions.len() > 0 {
+        if !transactions.is_empty() {
             let mut wlock = self.terminated_list.write().unwrap(); // take write lock on terminated list
 
             let num_to_remove = transactions.len() as u64;

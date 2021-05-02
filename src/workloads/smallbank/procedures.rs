@@ -1,5 +1,5 @@
 use crate::common::error::NonFatalError;
-use crate::common::statistics::{add_commit_time, add_read_time, add_reg_time, add_update_time};
+use crate::common::statistics::{add_read_time, add_reg_time, add_update_time};
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::smallbank::error::SmallBankError;
@@ -18,69 +18,34 @@ use std::time::Instant;
 /// Sum the balances of a customer's checking and savings accounts.
 pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let accounts_cols: Vec<&str> = vec!["customer_id"]; // columns
-    let other_cols: Vec<&str> = vec!["balance"];
-
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
 
-    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
-    let end = start.elapsed();
-    add_reg_time(end.as_nanos());
 
-    let start = Instant::now();
     let read1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read 1 -- get customer ID
-    let end = start.elapsed();
-    add_read_time(end.as_nanos());
 
-    let cust_id = match i64::try_from(read1[0].clone()) {
-        Ok(cust_id) => cust_id as u64,
-        Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
-            return Err(e);
-        }
-    }; // convert to u64
-
+    let other_cols: Vec<&str> = vec!["balance"];
+    let cust_id = i64::try_from(read1[0].clone()).unwrap() as u64;
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id)); // keys
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
-    let start = Instant::now();
 
     let read2 = protocol
         .scheduler
         .read("savings", savings_pk, &other_cols, meta.clone())?; // read 2 -- get savings
-    let end = start.elapsed();
-    add_read_time(end.as_nanos());
 
-    let start = Instant::now();
     let read3 = protocol
         .scheduler
         .read("checking", checking_pk, &other_cols, meta.clone())?; // read 3 -- get checking
-    let end = start.elapsed();
-    add_read_time(end.as_nanos());
 
-    let savings_balance = match f64::try_from(read2[0].clone()) {
-        Ok(bal) => bal,
-        Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
-            return Err(e);
-        }
-    }; // convert to u64
+    protocol.scheduler.commit(meta)?; // commit
 
-    let checking_balance = match f64::try_from(read3[0].clone()) {
-        Ok(bal) => bal,
-        Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
-            return Err(e);
-        }
-    }; // convert to u64
-    let start = std::time::Instant::now(); // start timer
-    protocol.scheduler.commit(meta.clone())?; // commit
-    let end = start.elapsed();
-    add_commit_time(end.as_nanos());
-
-    let res_cols = vec!["total_balance"];
+    let savings_balance = f64::try_from(read2[0].clone()).unwrap();
+    let checking_balance = f64::try_from(read3[0].clone()).unwrap();
     let total_balance = vec![Data::Double(savings_balance + checking_balance)]; // calculate total balance
+    let res_cols = vec!["total_balance"];
+
     let res = datatype::to_result(None, None, None, Some(&res_cols), Some(&total_balance)).unwrap(); // convert
 
     Ok(res)
@@ -91,23 +56,14 @@ pub fn deposit_checking(
     params: DepositChecking,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
-    let end = start.elapsed();
-    add_reg_time(end.as_nanos());
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
     let res1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
-    let cust_id = match i64::try_from(res1[0].clone()) {
-        Ok(cust_id) => cust_id as u64,
-        Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
-            return Err(e);
-        }
-    };
+    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
 
     let checking_cols: Vec<String> = vec!["balance".to_string()];
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
@@ -121,7 +77,7 @@ pub fn deposit_checking(
         let new_balance = vec![(balance + value).to_string()]; // create new balance
         Ok((columns, new_balance))
     };
-    let start = Instant::now(); // start timer
+
     protocol.scheduler.update(
         "checking",
         checking_pk,
@@ -131,13 +87,8 @@ pub fn deposit_checking(
         &update,
         meta.clone(),
     )?; // update -- set balance
-    let end = start.elapsed();
-    add_update_time(end.as_nanos());
 
-    let start = std::time::Instant::now(); // start timer
-    protocol.scheduler.commit(meta.clone())?; // commit
-    let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    protocol.scheduler.commit(meta)?; // commit
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -154,25 +105,13 @@ pub fn transact_savings(
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
 
-    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
-    let end = start.elapsed();
-    add_reg_time(end.as_nanos());
 
-    let start = Instant::now();
     let res1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
-    let end = start.elapsed();
-    add_read_time(end.as_nanos());
 
-    let cust_id = match i64::try_from(res1[0].clone()) {
-        Ok(cust_id) => cust_id as u64,
-        Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
-            return Err(e);
-        }
-    }; // convert to u64
+    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
 
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let savings_cols: Vec<String> = vec!["balance".to_string()];
@@ -181,8 +120,8 @@ pub fn transact_savings(
                   current: Option<Vec<Data>>,
                   params: Vec<Data>|
      -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let balance = f64::try_from(current.unwrap()[0].clone())?; // get current balance
-        let value = f64::try_from(params[0].clone())?; // get value
+        let balance = f64::try_from(current.unwrap()[0].clone()).unwrap(); // get current balance
+        let value = f64::try_from(params[0].clone()).unwrap(); // get value
         if balance - value > 0.0 {
             let new_balance = vec![(balance - value).to_string()]; // create new balance
             Ok((columns, new_balance))
@@ -191,7 +130,6 @@ pub fn transact_savings(
         }
     };
 
-    let start = Instant::now();
     protocol.scheduler.update(
         "savings",
         savings_pk,
@@ -201,13 +139,8 @@ pub fn transact_savings(
         &update,
         meta.clone(),
     )?; // update -- set savings balance
-    let end = start.elapsed();
-    add_update_time(end.as_nanos());
 
-    let start = std::time::Instant::now(); // start timer
-    protocol.scheduler.commit(meta.clone())?; // commit
-    let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    protocol.scheduler.commit(meta)?; // commit
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -233,14 +166,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let end = start.elapsed();
     add_read_time(end.as_nanos());
 
-    let cust_id = match i64::try_from(res1[0].clone()) {
-        Ok(cust_id) => cust_id as u64,
-        Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
-            return Err(e);
-        }
-    };
-
+    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
     let other_cols: Vec<&str> = vec!["balance"];
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
@@ -252,7 +178,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         &other_cols,
         &values,
         meta.clone(),
-    )?; // get and set savings
+    )?; // clone and set savings
     let res3 = protocol.scheduler.read_and_update(
         "checking",
         checking_pk,
@@ -261,22 +187,8 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         meta.clone(),
     )?; // get and set checking
 
-    let a = match f64::try_from(res2[0].clone()) {
-        Ok(balance) => balance,
-        Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
-            return Err(e);
-        }
-    };
-
-    let b = match f64::try_from(res3[0].clone()) {
-        Ok(balance) => balance,
-        Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
-            return Err(e);
-        }
-    };
-
+    let a = f64::try_from(res2[0].clone()).unwrap();
+    let b = f64::try_from(res3[0].clone()).unwrap();
     let total = a + b; // create balance
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
@@ -290,7 +202,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let cust_id = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
-            protocol.scheduler.abort(meta.clone()).unwrap();
+            protocol.scheduler.abort(meta).unwrap();
             return Err(e);
         }
     };
@@ -321,10 +233,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let end = start.elapsed();
     add_update_time(end.as_nanos());
 
-    let start = Instant::now(); // start timer
-    protocol.scheduler.commit(meta.clone())?; // commit
-    let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    protocol.scheduler.commit(meta)?; // commit
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
@@ -389,10 +298,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
         meta.clone(),
     )?; // update
 
-    let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta)?; // commit
-    let end = start.elapsed();
-    add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
@@ -461,7 +367,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         params.clone(),
         &update,
         meta.clone(),
-    )?; // update
+    )?;
 
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id2));
     let checking_cols: Vec<String> = vec!["balance".to_string()];
@@ -483,12 +389,9 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         params,
         &update,
         meta.clone(),
-    )?; // update
+    )?;
 
-    let start = std::time::Instant::now(); // start timer
-    protocol.scheduler.commit(meta.clone())?; // commit
-    let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    protocol.scheduler.commit(meta)?;
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 

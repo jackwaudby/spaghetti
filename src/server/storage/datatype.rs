@@ -112,11 +112,11 @@ pub fn to_result(
     values: Option<&Vec<Data>>,
 ) -> crate::Result<String> {
     let mut vals;
-    if let Some(_) = columns {
+    if columns.is_some() {
         vals = Some(BTreeMap::new());
 
         for (i, column) in columns.unwrap().iter().enumerate() {
-            let key = format!("{}", column);
+            let key = column.to_string();
             let val = format!("{}", values.unwrap()[i]);
             vals.as_mut().unwrap().insert(key, val);
         }
@@ -160,7 +160,7 @@ impl SuccessMessage {
     }
 
     pub fn get_updated(&self) -> Option<u64> {
-        self.updated.clone()
+        self.updated
     }
 }
 

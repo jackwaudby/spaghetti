@@ -73,7 +73,7 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
                                     // Notify producer.
                                     debug!("Notify producer");
 
-                                    if let Err(_) = rh.received_tx.send(()).await {
+                                    if rh.received_tx.send(()).await.is_err() {
                                         debug!("Producer's received dropped");
                                     }
 
@@ -109,10 +109,10 @@ pub async fn run<R: AsyncRead + Unpin + Send + 'static>(mut rh: ReadHandler<R>) 
     // Return () or error.
     match value {
         Ok(res) => match res {
-            Ok(_) => return Ok(()),
-            Err(e) => return Err(Box::new(e)),
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e)),
         },
-        Err(e) => return Err(Box::new(e)),
+        Err(e) => Err(Box::new(e)),
     }
 }
 
