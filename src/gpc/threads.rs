@@ -140,12 +140,11 @@ impl Worker {
                         // }
                         sent += 1;
                     }
-                    tracing::info!("gen: {}", gen_cum);
-                    tracing::info!("ex: {} ", ex_cum);
-                    tracing::info!("log: {} ", log_cum);
-                    tracing::info!("record: {} ", record_cum);
                 }
-
+                tracing::info!("gen: {}", gen_cum);
+                tracing::info!("ex: {} ", ex_cum);
+                tracing::info!("log: {} ", log_cum);
+                tracing::info!("record: {} ", record_cum);
                 tx.send(stats).unwrap();
                 tracing::debug!("Worker {} finished", id);
             })
