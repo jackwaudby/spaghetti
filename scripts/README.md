@@ -1,6 +1,6 @@
 ## Utilities
 
-### Report Generation 
+### Report Generation
 Reports are produced per workload using:
 ```
 ./generate-report.sh <workload>
@@ -23,11 +23,34 @@ cargo build --release
 
 Fix permissions and ssh into machine.
 ```
-sudo chmod 600 ~/.ssh-keys/<key>.pem
-ssh -i ~/.ssh-keys/<key>.pem azureuser@<pubic-ip>
+sudo chmod 600 ./ssh_keys/<key>.pem
+ssh -i ./ssh_keys/<key>.pem azureuser@<pubic-ip>
 ```
 
 Copy results from VM to local machine.
 ```
 scp -r -i ./ssh_keys/<key>.pem azureuser@<pubic-ip>:~/spaghetti/results ./
+```
+
+### NFN Setup
+```
+git clone https://github.com/durner/No-False-Negatives.git &&
+wget https://github.com/oneapi-src/oneTBB/releases/download/2018/tbb2018_20170726oss_lin.tgz &&
+tar -xzvf tbb2018_20170726oss_lin.tgz &&
+sudo mv tbb2018_20170726oss/include/ /usr/local/include/ &&
+git clone https://github.com/viktorleis/perfevent.git &&
+sudo mv perfevent/ /usr/local/include/ &&
+yes | sudo apt  install cmake &&
+git clone https://github.com/jemalloc/jemalloc.git &&
+yes | sudo apt-get update &&
+yes | sudo apt-get install autoconf &&
+cd jemalloc/ &&
+./autogen.sh &&
+sudo make &&
+sudo make install &&
+cd ~ &&
+yes |sudo apt install libtbb-dev &&
+cd No-False-Negatives/ &&
+rm -rf build && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release ../ && make -j16 &&
+./bin/db svcc_tatp NoFalseNegatives 100 100000 4
 ```
