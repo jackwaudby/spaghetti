@@ -280,10 +280,10 @@ impl GlobalStatistics {
             "throughput": format!("{:.3}", throughput),
             "abort_rate": format!("{:.3}", abort_rate),
             "mean": format!("{:.3}", mean),
-            "register time (ms)":  format!("{:.3}", *REG_TIME.lock()/100000),
-            "read time (ms)":  format!("{:.3}", *READ_TIME.lock()/100000),
-            "update time (ms)":  format!("{:.3}", *UPDATE_TIME.lock()/100000),
-            "commit time (ms)":  format!("{:.3}", *COMMIT_TIME.lock()/100000),
+            "register time (ms)":  format!("{:.3}", *REG_TIME.lock()/1000000),
+            "read time (ms)":  format!("{:.3}", *READ_TIME.lock()/1000000),
+            "update time (ms)":  format!("{:.3}", *UPDATE_TIME.lock()/1000000),
+            "commit time (ms)":  format!("{:.3}", *COMMIT_TIME.lock()/1000000),
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
     }
