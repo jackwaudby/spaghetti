@@ -1,5 +1,5 @@
 use crate::common::error::NonFatalError;
-//use crate::common::statistics::add_commit_time;
+use crate::common::statistics::{add_commit_time, add_read_time, add_reg_time, add_update_time};
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::smallbank::error::SmallBankError;
@@ -11,6 +11,7 @@ use crate::workloads::PrimaryKey;
 
 use std::convert::TryFrom;
 use std::sync::Arc;
+use std::time::Instant;
 
 /// Balance transaction.
 ///
@@ -21,7 +22,10 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
 
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
 
+    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
+    let end = start.elapsed();
+    add_reg_time(end.as_nanos());
 
     let read1 = protocol
         .scheduler
@@ -63,7 +67,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    // add_commit_time(end.as_nanos());
+    add_commit_time(end.as_nanos());
 
     let res_cols = vec!["total_balance"];
     let total_balance = vec![Data::Double(savings_balance + checking_balance)]; // calculate total balance
@@ -77,7 +81,10 @@ pub fn deposit_checking(
     params: DepositChecking,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
+    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
+    let end = start.elapsed();
+    add_reg_time(end.as_nanos());
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
@@ -117,7 +124,7 @@ pub fn deposit_checking(
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    // add_commit_time(end.as_nanos());
+    add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -134,7 +141,10 @@ pub fn transact_savings(
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
 
+    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
+    let end = start.elapsed();
+    add_reg_time(end.as_nanos());
 
     let res1 = protocol
         .scheduler
@@ -178,7 +188,7 @@ pub fn transact_savings(
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    // add_commit_time(end.as_nanos());
+    add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -189,7 +199,10 @@ pub fn transact_savings(
 ///
 /// Move all the funds from one customer to another.
 pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
+    let end = start.elapsed();
+    add_reg_time(end.as_nanos());
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name1));
@@ -279,7 +292,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    // add_commit_time(end.as_nanos());
+    add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
@@ -290,7 +303,10 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 ///
 /// Write a check against an account taking funds from checking; applying overdraft charge if needed.
 pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
+    let end = start.elapsed();
+    add_reg_time(end.as_nanos());
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
@@ -344,7 +360,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    // add_commit_time(end.as_nanos());
+    add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
@@ -355,7 +371,10 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 ///
 /// Transfer money between accounts; if there is sufficient funds in the checking account.
 pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
+    let end = start.elapsed();
+    add_reg_time(end.as_nanos());
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name1));
@@ -437,7 +456,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    // add_commit_time(end.as_nanos());
+    add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
