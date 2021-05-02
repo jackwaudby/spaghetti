@@ -127,7 +127,9 @@ impl Worker {
                         } = ir;
 
                         let log_st = Instant::now();
-                        log_result(&mut fh, outcome.clone()); // 3. log
+                        if log_results {
+                            log_result(&mut fh, outcome.clone()); // 3. log
+                        }
                         let log_end = log_st.elapsed().as_nanos();
                         log_cum += log_end;
 
