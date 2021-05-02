@@ -92,10 +92,6 @@ impl Worker {
                 }
 
                 let mut sent = 0; // txns sent
-                let mut gen_cum = 0;
-                let mut ex_cum = 0;
-                let mut log_cum = 0;
-                let mut record_cum = 0;
 
                 let st = Instant::now();
                 let runtime = Duration::new(timeout * 60, 0);
@@ -109,15 +105,9 @@ impl Worker {
                         tracing::info!("Timeout reached: {} minute(s)", timeout);
                         break;
                     } else {
-                        let gen_st = Instant::now();
                         let txn = generator.get_next(); // 1. get txn
-                        let gen_end = gen_st.elapsed().as_nanos();
-                        gen_cum += gen_end;
 
-                        let ex_st = Instant::now();
                         let ir = helper::execute(txn, Arc::clone(&scheduler)); // 2. execute txn
-                        let ex_end = ex_st.elapsed().as_nanos();
-                        ex_cum += ex_end;
 
                         let InternalResponse {
                             transaction,
@@ -126,17 +116,12 @@ impl Worker {
                             ..
                         } = ir;
 
-                        let log_st = Instant::now();
                         if log_results {
                             log_result(&mut fh, outcome.clone()); // 3. log
                         }
-                        let log_end = log_st.elapsed().as_nanos();
-                        log_cum += log_end;
 
-                        let record_st = Instant::now();
                         stats.record(transaction, outcome.clone(), latency); // 4. record
-                        let record_end = record_st.elapsed().as_nanos();
-                        record_cum += record_end;
+
                         // if sent % x == 0 {
                         //     tracing::info!("Worker {} sent: {}", id, sent);
                         // }
