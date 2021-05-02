@@ -1,29 +1,62 @@
 use crate::workloads::PrimaryKey;
 
+use std::collections::HashMap;
 use std::fmt;
 use std::sync::Mutex;
+
+#[derive(Debug)]
+pub struct NodeSet {
+    id: usize,
+    counter: u64,
+    transactions: HashMap<u64, Node>,
+}
+
+impl NodeSet {
+    /// Create a new `NodeSet`.
+    pub fn new(id: usize) -> Self {
+        NodeSet {
+            id,
+            counter: 0,
+            transactions: HashMap::new(),
+        }
+    }
+
+    /// Get a shared reference to a Node in the set of Node's on this thread.
+    pub fn get_transaction(&self, id: u64) -> &Node {
+        self.transactions.get(&id).unwrap()
+    }
+
+    pub fn create_node(&mut self) -> (usize, u64) {
+        let thread_id = self.id;
+        let txn_id = self.counter;
+        self.counter += 1;
+        let node = Node::new(thread_id, txn_id);
+        self.transactions.insert(txn_id, node);
+        (thread_id, txn_id)
+    }
+}
 
 /// A `Node` represents a transaction in the serialization graph.
 ///
 /// At creation each node is assigned to a thread.
 #[derive(Debug)]
 pub struct Node {
-    /// Node's position in the graph.
-    id: usize,
+    /// Thread id
+    thread_id: usize,
 
-    /// Transaction counter
-    pub counter: Mutex<u64>,
+    /// Node's position in the graph.
+    id: u64,
 
     /// Node status
     state: Mutex<Option<State>>,
 
     /// List of outgoing edges.
     /// (this_node) --> (other_node)
-    outgoing: Mutex<Option<Vec<usize>>>,
+    outgoing: Mutex<Option<Vec<(usize, u64)>>>,
 
     /// List of incoming edges.
     /// (other_node) --> (this_node)
-    incoming: Mutex<Option<Vec<usize>>>,
+    incoming: Mutex<Option<Vec<(usize, u64)>>>,
 
     /// Keys inserted
     keys_inserted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
@@ -67,10 +100,10 @@ pub enum OperationType {
 
 impl Node {
     /// Create a new `Node`.
-    pub fn new(id: usize) -> Node {
+    pub fn new(thread_id: usize, id: u64) -> Node {
         Node {
+            thread_id,
             id,
-            counter: Mutex::new(0),
             outgoing: Mutex::new(Some(vec![])),
             incoming: Mutex::new(Some(vec![])),
             state: Mutex::new(Some(State::Active)), // TODO: None to be when there is no transaction or Vacant type
@@ -82,15 +115,12 @@ impl Node {
     }
 
     /// Get transaction id
-    pub fn get_transaction_id(&self) -> (usize, u64) {
-        let thread_id = self.id;
-        let transaction_id = *self.counter.lock().unwrap();
-        (thread_id, transaction_id)
+    pub fn get_transaction_id(&self) -> u64 {
+        self.id
     }
 
     /// Reset the fields of a `Node`.
     pub fn reset(&self) {
-        let mut counter = self.counter.lock().unwrap();
         let mut outgoing = self.outgoing.lock().unwrap();
         let mut incoming = self.incoming.lock().unwrap();
         let mut inserted = self.keys_inserted.lock().unwrap();
@@ -98,7 +128,6 @@ impl Node {
         let mut updated = self.keys_updated.lock().unwrap();
         let mut deleted = self.keys_deleted.lock().unwrap();
 
-        *counter += 1;
         *outgoing = Some(vec![]);
         *incoming = Some(vec![]);
         *inserted = Some(vec![]);
@@ -110,7 +139,7 @@ impl Node {
     /// Insert edge into a `Node`.
     ///
     /// No duplicate edges are inserted.
-    pub fn insert_edge(&self, id: usize, edge_type: EdgeType) {
+    pub fn insert_edge(&self, id: (usize, u64), edge_type: EdgeType) {
         match edge_type {
             EdgeType::Incoming => {
                 if let Some(incoming) = self.incoming.lock().unwrap().as_mut() {
@@ -130,7 +159,7 @@ impl Node {
     }
 
     /// Remove edge from `Node`.
-    pub fn delete_edge(&self, id: usize, edge_type: EdgeType) {
+    pub fn delete_edge(&self, id: (usize, u64), edge_type: EdgeType) {
         match edge_type {
             EdgeType::Incoming => {
                 self.incoming
@@ -152,24 +181,25 @@ impl Node {
     }
 
     /// Clones the incoming edges from a `Node` leaving a `None`.
-    pub fn get_incoming(&self) -> Vec<usize> {
+    pub fn get_incoming(&self) -> Vec<(usize, u64)> {
         self.incoming.lock().unwrap().clone().unwrap()
     }
 
     /// Clones the outgoing edges from a `Node` leaving a `None`.
-    pub fn get_outgoing(&self) -> Vec<usize> {
+    pub fn get_outgoing(&self) -> Vec<(usize, u64)> {
         self.outgoing.lock().unwrap().clone().unwrap()
     }
 
     /// Takes the list of keys inserted/read/updated/deleted by the transaction in the node.
     pub fn get_keys(&self, operation_type: OperationType) -> Vec<(String, PrimaryKey)> {
+        //        tracing::info!("Called on: {}-{}", &self.thread_id, &self.id);
+
         use OperationType::*;
         match operation_type {
-            Insert => {
-                let mut data = self.keys_inserted.lock().unwrap();
-                data.take().unwrap()
-            }
-
+            Insert => match self.keys_inserted.lock().unwrap().take() {
+                Some(vec) => vec,
+                None => panic!("{:?}", &self),
+            },
             Read => self.keys_read.lock().unwrap().take().unwrap(),
             Update => self.keys_updated.lock().unwrap().take().unwrap(),
             Delete => self.keys_deleted.lock().unwrap().take().unwrap(),
@@ -225,6 +255,12 @@ impl Node {
     }
 }
 
+impl fmt::Display for NodeSet {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self.transactions)
+    }
+}
+
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -233,7 +269,7 @@ impl fmt::Display for Node {
             self.id,
             self.state.lock().as_ref().unwrap().as_ref().unwrap(),
             self.incoming.lock().as_ref().unwrap(),
-            self.outgoing.lock().as_ref().unwrap()
+            self.outgoing.lock().as_ref().unwrap(),
         )
     }
 }
@@ -261,55 +297,55 @@ impl fmt::Display for OperationType {
     }
 }
 
-#[cfg(test)]
-mod tests {
+// #[cfg(test)]
+// mod tests {
 
-    use super::*;
-    use crate::workloads::tatp::keys::TatpPrimaryKey;
+//     use super::*;
+//     use crate::workloads::tatp::keys::TatpPrimaryKey;
 
-    #[test]
-    fn node_test() {
-        // Create node.
-        let n = Node::new(0);
+//     #[test]
+//     fn node_test() {
+//         // Create node.
+//         let n = Node::new(0);
 
-        // Set state
-        assert_eq!(n.set_state(State::Active), ());
-        assert_eq!(n.get_state(), State::Active);
+//         // Set state
+//         assert_eq!(n.set_state(State::Active), ());
+//         assert_eq!(n.get_state(), State::Active);
 
-        // Insert outgoing edges.
-        assert_eq!(n.insert_edge(1, EdgeType::Outgoing), ());
-        assert_eq!(n.insert_edge(2, EdgeType::Outgoing), ());
+//         // Insert outgoing edges.
+//         assert_eq!(n.insert_edge(1, EdgeType::Outgoing), ());
+//         assert_eq!(n.insert_edge(2, EdgeType::Outgoing), ());
 
-        // Check incoming
-        //    assert_eq!(n.has_incoming(), false, "{:?}", n);
-        assert_eq!(n.insert_edge(2, EdgeType::Incoming), ());
-        assert_eq!(n.has_incoming(), true);
-        assert_eq!(n.delete_edge(2, EdgeType::Incoming), ());
-        assert_eq!(n.has_incoming(), false);
+//         // Check incoming
+//         //    assert_eq!(n.has_incoming(), false, "{:?}", n);
+//         assert_eq!(n.insert_edge(2, EdgeType::Incoming), ());
+//         assert_eq!(n.has_incoming(), true);
+//         assert_eq!(n.delete_edge(2, EdgeType::Incoming), ());
+//         assert_eq!(n.has_incoming(), false);
 
-        // Take outgoing.
-        assert_eq!(n.delete_edge(1, EdgeType::Outgoing), ());
-        assert_eq!(n.get_outgoing(), vec![2]);
+//         // Take outgoing.
+//         assert_eq!(n.delete_edge(1, EdgeType::Outgoing), ());
+//         assert_eq!(n.get_outgoing(), vec![2]);
 
-        // Set state
-        n.set_state(State::Committed);
-        assert_eq!(n.get_state(), State::Committed);
-        n.set_state(State::Aborted);
-        assert_eq!(n.get_state(), State::Aborted);
+//         // Set state
+//         n.set_state(State::Committed);
+//         assert_eq!(n.get_state(), State::Committed);
+//         n.set_state(State::Aborted);
+//         assert_eq!(n.get_state(), State::Aborted);
 
-        // Add key
-        n.add_key(
-            "test",
-            PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
-            OperationType::Read,
-        );
+//         // Add key
+//         n.add_key(
+//             "test",
+//             PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+//             OperationType::Read,
+//         );
 
-        assert_eq!(
-            n.get_keys(OperationType::Read),
-            vec![(
-                "test".to_string(),
-                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1))
-            )]
-        );
-    }
-}
+//         assert_eq!(
+//             n.get_keys(OperationType::Read),
+//             vec![(
+//                 "test".to_string(),
+//                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1))
+//             )]
+//         );
+//     }
+// }

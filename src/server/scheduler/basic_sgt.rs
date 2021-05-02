@@ -1,6 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::server::scheduler::basic_sgt::error::BasicSerializationGraphTestingError as ProtocolError;
-use crate::server::scheduler::basic_sgt::node::{EdgeType, Node, OperationType, State};
+use crate::server::scheduler::basic_sgt::node::{EdgeType, NodeSet, OperationType, State};
 use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{Access, Row, State as RowState};
@@ -22,7 +22,7 @@ pub mod error;
 #[derive(Debug)]
 pub struct BasicSerializationGraphTesting {
     /// Graph.
-    nodes: Vec<RwLock<Node>>,
+    nodes: Vec<RwLock<NodeSet>>,
 
     /// Handle to storage layer.
     data: Arc<Workload>,
@@ -34,20 +34,20 @@ impl BasicSerializationGraphTesting {
         info!("Initialise basic serialization graph with {} nodes", size);
         let mut nodes = vec![];
         for i in 0..size {
-            let node = RwLock::new(Node::new(i as usize));
+            let node = RwLock::new(NodeSet::new(i as usize));
             nodes.push(node);
         }
         BasicSerializationGraphTesting { nodes, data }
     }
 
     /// Get shared lock on the node.
-    fn get_shared_lock(&self, id: usize) -> RwLockReadGuard<Node> {
+    fn get_shared_lock(&self, id: usize) -> RwLockReadGuard<NodeSet> {
         let rg = self.nodes[id].read().unwrap();
         rg
     }
 
     /// Get exculsive lock on the node.
-    fn get_exculsive_lock(&self, id: usize) -> RwLockWriteGuard<Node> {
+    fn get_exculsive_lock(&self, id: usize) -> RwLockWriteGuard<NodeSet> {
         let wg = self.nodes[id].write().unwrap();
         wg
     }
@@ -59,39 +59,51 @@ impl BasicSerializationGraphTesting {
     /// # Errors
     ///
     /// The operation fails if the parent node (from) is already aborted; a cascading abort.
-    pub fn add_edge(&self, from: usize, to: usize, rw_edge: bool) -> Result<(), ProtocolError> {
+    pub fn add_edge(
+        &self,
+        from: (usize, u64),
+        to: (usize, u64),
+        rw_edge: bool,
+    ) -> Result<(), ProtocolError> {
+        let (from_thread, from_txn_id) = from;
+        let (to_thread, to_txn_id) = to;
+
         if from == to {
             return Ok(()); // don't add self edges
         }
-        debug!("ADD - {} request for shared lock on {}", to, from);
-        let from_node = self.get_shared_lock(from); // get shared locks
-        debug!("ADD - {} got shared lock on {}", to, from);
+        debug!("ADD - {:?} request for shared lock on {:?}", to, from);
+        let from_node = self.get_shared_lock(from_thread); // get shared locks
+        debug!("ADD - {:?} got shared lock on {:?}", to, from);
 
-        debug!("ADD - {} request for shared lock on {}", to, to);
-        let to_node = self.get_shared_lock(to);
-        debug!("ADD - {} got shared lock on {}", to, to);
+        debug!("ADD - {:?} request for shared lock on {:?}", to, to);
+        let to_node = self.get_shared_lock(to_thread);
+        debug!("ADD - {:?} got shared lock on {:?}", to, to);
 
-        match from_node.get_state() {
+        match from_node.get_transaction(from_txn_id).get_state() {
             State::Aborted => {
                 if !rw_edge {
                     drop(from_node); // drop shared locks
-                    debug!("ADD - {} drop shared lock on {}", to, from);
+                    debug!("ADD - {:?} drop shared lock on {:?}", to, from);
                     drop(to_node);
-                    debug!("ADD - {} drop shared lock on {}", to, to);
+                    debug!("ADD - {:?} drop shared lock on {:?}", to, to);
                     return Err(ProtocolError::CascadingAbort); // w-w/w-r; cascading abort
                 }
             }
             State::Active => {
-                from_node.insert_edge(to, EdgeType::Outgoing); // insert edge
-                to_node.insert_edge(from, EdgeType::Incoming);
+                from_node
+                    .get_transaction(from_txn_id)
+                    .insert_edge(to, EdgeType::Outgoing); // insert edge
+                to_node
+                    .get_transaction(to_txn_id)
+                    .insert_edge(from, EdgeType::Incoming);
             }
             State::Committed => {}
         }
 
         drop(from_node); // drop shared locks
-        debug!("ADD - {} drop shared lock on {}", to, from);
+        debug!("ADD - {:?} drop shared lock on {:?}", to, from);
         drop(to_node);
-        debug!("ADD - {} drop shared lock on {}", to, to);
+        debug!("ADD - {:?} drop shared lock on {:?}", to, to);
 
         Ok(())
     }
@@ -100,19 +112,19 @@ impl BasicSerializationGraphTesting {
     /// for transaction residing in `this_node`.
     pub fn detect_write_conflicts(
         &self,
-        this_node: usize,
+        this_node: (usize, u64),
         access_history: Vec<Access>,
     ) -> Result<(), ProtocolError> {
         for access in access_history {
             match access {
                 // WW conflict
                 Access::Write(tid) => {
-                    let (from_node, _) = parse_id(tid);
+                    let from_node = parse_id(tid);
                     self.add_edge(from_node, this_node, false)?;
                 }
                 // RW conflict
                 Access::Read(tid) => {
-                    let (from_node, _) = parse_id(tid);
+                    let from_node = parse_id(tid);
                     self.add_edge(from_node, this_node, true)?;
                 }
             }
@@ -124,14 +136,14 @@ impl BasicSerializationGraphTesting {
     /// for transaction residing in `this_node`.
     pub fn detect_read_conflicts(
         &self,
-        this_node: usize,
+        this_node: (usize, u64),
         access_history: Vec<Access>,
     ) -> Result<(), ProtocolError> {
         for access in access_history {
             match access {
                 // WR conflict
                 Access::Write(tid) => {
-                    let (from_node, _) = parse_id(tid);
+                    let from_node = parse_id(tid);
                     self.add_edge(from_node, this_node, false)?;
                 }
                 Access::Read(_) => {}
@@ -143,7 +155,7 @@ impl BasicSerializationGraphTesting {
     /// Detect conflicts, insert edges, and do cycle check.
     pub fn insert_and_check(
         &self,
-        this_node: usize,
+        this_node: (usize, u64),
         access_history: Vec<Access>,
     ) -> Result<(), ProtocolError> {
         self.detect_write_conflicts(this_node, access_history)?;
@@ -152,11 +164,12 @@ impl BasicSerializationGraphTesting {
     }
 
     /// Attempt to commit a transaction.
-    pub fn commit_check(&self, id: usize) -> Result<(), ProtocolError> {
-        debug!("Commit - {} Request for exculsive lock on {}", id, id);
-        let node = self.get_exculsive_lock(id);
-        debug!("Commit - {} Got exculsive lock on {}", id, id);
-
+    pub fn commit_check(&self, id: (usize, u64)) -> Result<(), ProtocolError> {
+        let (thread_id, txn_id) = id;
+        debug!("Commit - {:?} Request for exculsive lock on {:?}", id, id);
+        let wlock = self.get_exculsive_lock(thread_id);
+        debug!("Commit - {:?} Got exculsive lock on {:?}", id, id);
+        let node = wlock.get_transaction(txn_id);
         let state = node.get_state();
 
         match state {
@@ -164,21 +177,21 @@ impl BasicSerializationGraphTesting {
                 let incoming = node.has_incoming();
                 if !incoming {
                     node.set_state(State::Committed); // if active and no incoming edges
-                    debug!("commit check on {}: committed", id);
-                    drop(node);
-                    debug!("Commit - {} Drop exculsive lock on {}", id, id);
+                    debug!("commit check on {:?}: committed", id);
+                    drop(wlock);
+                    debug!("Commit - {:?} Drop exculsive lock on {:?}", id, id);
 
                     return Ok(());
                 } else {
-                    debug!("commit check on {}: has incoming edges", id);
-                    drop(node);
-                    debug!("Commit - {} Drop exculsive lock on {}", id, id);
+                    debug!("commit check on {:?}: has incoming edges", id);
+                    drop(wlock);
+                    debug!("Commit - {:?} Drop exculsive lock on {:?}", id, id);
                     return Err(ProtocolError::HasIncomingEdges);
                 }
             }
             State::Aborted => {
-                drop(node);
-                debug!("Commit - {} Drop exculsive lock on {}", id, id);
+                drop(wlock);
+                debug!("Commit - {:?} Drop exculsive lock on {:?}", id, id);
 
                 return Err(ProtocolError::CascadingAbort);
             }
@@ -187,24 +200,25 @@ impl BasicSerializationGraphTesting {
     }
 
     /// Perform a reduced depth first search from `start` node.
-    pub fn reduced_depth_first_search(&self, start: usize) -> Result<(), ProtocolError> {
-        debug!("DFS - {} start", start);
+    pub fn reduced_depth_first_search(&self, start: (usize, u64)) -> Result<(), ProtocolError> {
+        let (thread_id, txn_id) = start;
+        //      debug!("DFS - {} start", start);
 
         let mut stack = Vec::new(); // nodes to visit
         let mut visited = HashSet::new(); // nodes visited
 
-        debug!("DFS - {} request for shared lock on {}", start, start);
-        let start_node = self.get_shared_lock(start); // get shared lock on start node
-        debug!("DFS - {} got shared lock on {}", start, start);
-
+        //        debug!("DFS - {} request for shared lock on {}", start, start);
+        let rlock = self.get_shared_lock(thread_id); // get shared lock on start node
+                                                     //        debug!("DFS - {} got shared lock on {}", start, start);
+        let start_node = rlock.get_transaction(txn_id);
         stack.append(&mut start_node.get_outgoing()); // push outgoing to stack
-        drop(start_node); // drop shared lock
-        debug!("DFS - {} drop for shared lock on {}", start, start);
+        drop(rlock); // drop shared lock
+                     //        debug!("DFS - {} drop for shared lock on {}", start, start);
 
         // pop until no more nodes to visit
         while let Some(current) = stack.pop() {
             if current == start {
-                debug!("DFS - {} finish", start);
+                //                debug!("DFS - {} finish", start);
 
                 return Err(ProtocolError::CycleFound); // cycle found
             }
@@ -214,34 +228,39 @@ impl BasicSerializationGraphTesting {
             }
 
             visited.insert(current); // mark as visited
-            debug!("DFS - {} request shared lock on {}", start, current);
-            let current_node = self.get_shared_lock(current); // get shared lock on current_node.
-            debug!("DFS - {} got shared lock on {}", start, current);
+                                     //            debug!("DFS - {} request shared lock on {}", start, current);
+            let (thread_id, txn_id) = current;
+            let rlock = self.get_shared_lock(thread_id); // get shared lock on current_node.
+            let current_node = rlock.get_transaction(txn_id);
+            //          debug!("DFS - {} got shared lock on {}", start, current);
             let cs = current_node.get_state();
             let cc = current_node.get_outgoing();
-            drop(current_node);
+            drop(rlock);
             if let State::Active = cs {
                 for child in cc {
                     if child == start {
-                        debug!("DFS - {} drop shared lock on {}", start, current);
-                        debug!("DFS - {} finish", start);
+                        //         debug!("DFS - {} drop shared lock on {}", start, current);
+                        //                        debug!("DFS - {} finish", start);
                         return Err(ProtocolError::CycleFound); // outgoing edge to start node -- cycle found
                     } else {
-                        debug!("DFS - {} request shared lock on {}", start, child);
-                        let child_node = self.get_shared_lock(child); // get read lock on child_node
-                        debug!("DFS - {} got shared lock on {}", start, child);
+                        //       debug!("DFS - {} request shared lock on {}", start, child);
+                        let (thread_id, txn_id) = child;
+
+                        let rlock = self.get_shared_lock(thread_id); // get read lock on child_node
+                        let child_node = rlock.get_transaction(txn_id);
+                        //         debug!("DFS - {} got shared lock on {}", start, child);
 
                         visited.insert(child); // mark as visited
                         stack.append(&mut child_node.get_outgoing()); // add outgoing to stack
-                        drop(child_node);
-                        debug!("DFS - {} drop shared lock on {}", start, child);
+                        drop(rlock);
+                        //         debug!("DFS - {} drop shared lock on {}", start, child);
                     }
                 }
             }
 
-            debug!("DFS - {} drop shared lock on {}", start, current);
+            //      debug!("DFS - {} drop shared lock on {}", start, current);
         }
-        debug!("DFS - {} finish", start);
+        //    debug!("DFS - {} finish", start);
 
         Ok(()) // no cycle found
     }
@@ -250,18 +269,23 @@ impl BasicSerializationGraphTesting {
     ///
     /// If node with `id` aborted then abort outgoing nodes before removing edges.
     /// Else; node committed, remove outgoing edges.
-    fn clean_up_graph(&self, id: usize) {
-        debug!("CLEAN - {} request shared lock on {}", id, id);
-        let this_node = self.get_shared_lock(id); // get shared lock on this_node
-        debug!("CLEAN - {} got shared lock on {}", id, id);
+    fn clean_up_graph(&self, id: (usize, u64)) {
+        //        debug!("CLEAN - {} request shared lock on {}", id, id);
+        let (thread_id, txn_id) = id;
+        let rlock1 = self.get_shared_lock(thread_id); // get shared lock on this_node
+        let this_node = rlock1.get_transaction(txn_id);
+        //        debug!("CLEAN - {} got shared lock on {}", id, id);
 
         let state = this_node.get_state(); // get state of this_node
         let outgoing_nodes = this_node.get_outgoing(); // get outgoing edges
 
         for out in outgoing_nodes {
-            debug!("CLEAN - {} request shared lock on {}", id, out);
-            let outgoing_node = self.get_shared_lock(out); // get shared lock on outgoing node
-            debug!("CLEAN - {} got shared lock on {}", id, out);
+            //            debug!("CLEAN - {} request shared lock on {}", id, out);
+            let (thread_id, txn_id) = out;
+
+            let rlock2 = self.get_shared_lock(thread_id); // get shared lock on outgoing node
+            let outgoing_node = rlock2.get_transaction(txn_id);
+            //          debug!("CLEAN - {} got shared lock on {}", id, out);
 
             // if node aborted; then abort children
             if let State::Aborted = state {
@@ -273,11 +297,11 @@ impl BasicSerializationGraphTesting {
             outgoing_node.delete_edge(id, EdgeType::Incoming); // remove incoming edge from out
             this_node.delete_edge(out, EdgeType::Outgoing); // remove outgoing edge from this_node
 
-            drop(outgoing_node); // drop shared lock on outgoing node
-            debug!("CLEAN - {} drop shared lock on {}", id, out);
+            drop(rlock2); // drop shared lock on outgoing node
+                          //            debug!("CLEAN - {} drop shared lock on {}", id, out);
         }
-        drop(this_node); // drop shared lock on this_node
-        debug!("CLEAN - {} drop shared lock on {}", id, id);
+        drop(rlock1); // drop shared lock on this_node
+                      //      debug!("CLEAN - {} drop shared lock on {}", id, id);
     }
 }
 
@@ -297,15 +321,15 @@ impl Scheduler for BasicSerializationGraphTesting {
         let thread_id = th.name().unwrap(); // get thread id
         let node_id: usize = thread_id.parse().unwrap(); // get node id
 
-        debug!("REG - {} request exculsive lock on {}", node_id, node_id);
-        let node = self.get_exculsive_lock(node_id); // get exculsive lock
-        debug!("REG - {} got exculsive lock on {}", node_id, node_id);
-        node.set_state(State::Active); // set state to active
-        let (node_id, txn_id) = node.get_transaction_id();
+        //        debug!("REG - {} request exculsive lock on {}", node_id, node_id);
+        let mut wlock = self.get_exculsive_lock(node_id); // get exculsive lock
+                                                          //        debug!("REG - {} got exculsive lock on {}", node_id, node_id);
+        let (node_id, txn_id) = wlock.create_node();
+
         let transaction_id = format!("{}-{}", node_id, txn_id); // create transaction id
         debug!("Registered transaction {}", transaction_id);
-        drop(node);
-        debug!("REG - {} drop exculsive lock on {}", node_id, node_id);
+        drop(wlock);
+        //      debug!("REG - {} drop exculsive lock on {}", node_id, node_id);
 
         Ok(TransactionInfo::new(Some(transaction_id), None))
     }
@@ -328,6 +352,8 @@ impl Scheduler for BasicSerializationGraphTesting {
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get handle to index
         let mut row = Row::new(Arc::clone(&table), "basic-sgt"); // create new row
         row.set_primary_key(key.clone()); // set pk
+        let id = parse_id(meta.get_id().unwrap());
+        let (thread_id, txn_id) = id;
 
         // initialise each field
         for (i, column) in columns.iter().enumerate() {
@@ -349,10 +375,10 @@ impl Scheduler for BasicSerializationGraphTesting {
 
         match index.insert(key.clone(), row) {
             Ok(_) => {
-                let id = meta.get_id().unwrap().parse::<usize>().unwrap(); // get position in graph
-                let node = self.get_shared_lock(id); // get shared lock
+                let rlock = self.get_shared_lock(thread_id); // get shared lock
+                let node = rlock.get_transaction(txn_id);
                 node.add_key(&index.get_name(), key.clone(), OperationType::Insert); // operation succeeded -- register
-                drop(node); // drop shared lock
+                drop(rlock); // drop shared lock
             }
 
             Err(e) => {
@@ -374,7 +400,8 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<Vec<Data>, NonFatalError> {
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
-        let (this_node, _) = parse_id(meta.get_id().unwrap());
+        let id = parse_id(meta.get_id().unwrap());
+        let (thread_id, txn_id) = id;
 
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rh) => rh,
@@ -394,7 +421,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         );
 
         let ah = row.get_access_history();
-        if let Err(e) = self.detect_read_conflicts(this_node, ah) {
+        if let Err(e) = self.detect_read_conflicts(id, ah) {
             drop(mg);
             drop(rh);
             self.abort(meta.clone()).unwrap();
@@ -402,7 +429,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             return Err(e.into()); // abort -- cascading abort
         }
 
-        if let Err(e) = self.reduced_depth_first_search(this_node) {
+        if let Err(e) = self.reduced_depth_first_search(id) {
             drop(mg);
             drop(rh);
 
@@ -412,9 +439,10 @@ impl Scheduler for BasicSerializationGraphTesting {
 
         match row.get_values(columns, "basic-sgt", &meta.get_id().unwrap()) {
             Ok(res) => {
-                let node = self.get_shared_lock(this_node);
+                let rlock = self.get_shared_lock(thread_id);
+                let node = rlock.get_transaction(txn_id);
                 node.add_key(&index.get_name(), key.clone(), OperationType::Read);
-                drop(node);
+                drop(rlock);
                 let vals = res.get_values().unwrap();
                 drop(mg);
                 drop(rh);
@@ -453,7 +481,8 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<(), NonFatalError> {
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
-        let (this_node, txn_id) = parse_id(meta.get_id().unwrap());
+        let id = parse_id(meta.get_id().unwrap());
+        let (thread_id, txn_id) = id;
 
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
@@ -477,7 +506,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     );
 
                     let ah = row.get_access_history();
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
@@ -489,9 +518,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                     if read {
                         let res = match row.get_values(&c, "basic-sgt", &meta.get_id().unwrap()) {
                             Ok(res) => {
-                                let node = self.get_shared_lock(this_node);
+                                let rlock = self.get_shared_lock(thread_id);
+                                let node = rlock.get_transaction(txn_id);
                                 node.add_key(&index.get_name(), key.clone(), OperationType::Read); // register operation
-                                drop(node);
+                                drop(rlock);
                                 res
                             }
                             Err(e) => {
@@ -520,9 +550,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                     row.set_values(&c, &nv, "basic-sgt", &meta.get_id().unwrap())
                         .unwrap();
 
-                    let node = self.get_shared_lock(this_node);
+                    let rlock = self.get_shared_lock(thread_id);
+                    let node = rlock.get_transaction(txn_id);
                     node.add_key(&index.get_name(), key, OperationType::Update); // register operation
-                    drop(node);
+                    drop(rlock);
                     drop(mg);
                     drop(rh);
 
@@ -538,14 +569,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                     );
 
                     let ah = row.get_access_history();
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
                         return Err(e.into()); // abort -- cascading abort
                     }
 
-                    row.append_delayed((this_node, txn_id)); // add to delayed queue
+                    row.append_delayed(id); // add to delayed queue
 
                     debug!(
                         "Transaction: {} delayed on key {} --- Row: {}",
@@ -568,16 +599,16 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let mut mg = rh.lock().unwrap();
                         let row = &mut *mg;
 
-                        if row.resume((this_node, txn_id)) {
+                        if row.resume(id) {
                             debug!(
                                 "Transaction: {} resumed on key {}",
                                 meta.get_id().unwrap(),
                                 key.clone()
                             );
-                            row.remove_delayed((this_node, txn_id)); // remove from delayed queue
+                            row.remove_delayed(id); // remove from delayed queue
 
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                            if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -593,13 +624,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     &meta.get_id().unwrap(),
                                 ) {
                                     Ok(res) => {
-                                        let node = self.get_shared_lock(this_node);
+                                        let rlock = self.get_shared_lock(thread_id);
+                                        let node = rlock.get_transaction(txn_id);
                                         node.add_key(
                                             &index.get_name(),
                                             key.clone(),
                                             OperationType::Read,
                                         ); // register operation
-                                        drop(node);
+                                        drop(rlock);
                                         res
                                     }
                                     Err(e) => {
@@ -628,16 +660,17 @@ impl Scheduler for BasicSerializationGraphTesting {
                             row.set_values(&c, &nv, "basic-sgt", &meta.get_id().unwrap())
                                 .unwrap();
 
-                            let node = self.get_shared_lock(this_node);
+                            let rlock = self.get_shared_lock(thread_id);
+                            let node = rlock.get_transaction(txn_id);
                             node.add_key(&index.get_name(), key, OperationType::Update); // register operation
-                            drop(node);
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             return Ok(());
                         } else {
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
-                                row.remove_delayed((this_node, txn_id));
+                            if let Err(e) = self.insert_and_check(id, ah) {
+                                row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -675,14 +708,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                         ah.push(Access::Write(transaction_id));
                     }
 
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
                         return Err(e.into()); // abort -- cascading abort
                     }
 
-                    row.append_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
+                    row.append_delayed(id); // add to delayed queue; returns wait on
                     debug!(
                         "Transaction: {} delayed on key {} --- Row: {}",
                         meta.get_id().unwrap(),
@@ -704,17 +737,17 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let mut mg = rh.lock().unwrap();
                         let row = &mut *mg;
 
-                        if row.resume((this_node, txn_id)) {
+                        if row.resume(id) {
                             debug!(
                                 "Transaction: {} resumed on key {}",
                                 meta.get_id().unwrap(),
                                 key.clone()
                             );
 
-                            row.remove_delayed((this_node, txn_id));
+                            row.remove_delayed(id);
 
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                            if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -738,13 +771,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     &meta.get_id().unwrap(),
                                 ) {
                                     Ok(res) => {
-                                        let node = self.get_shared_lock(this_node);
+                                        let rlock = self.get_shared_lock(thread_id);
+                                        let node = rlock.get_transaction(txn_id);
                                         node.add_key(
                                             &index.get_name(),
                                             key.clone(),
                                             OperationType::Read,
                                         ); // register operation
-                                        drop(node);
+                                        drop(rlock);
                                         res
                                     }
                                     Err(e) => {
@@ -772,16 +806,18 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
                             row.set_values(&c, &nv, "basic-sgt", &meta.get_id().unwrap())
                                 .unwrap();
-                            let node = self.get_shared_lock(this_node);
+
+                            let rlock = self.get_shared_lock(thread_id);
+                            let node = rlock.get_transaction(txn_id);
                             node.add_key(&index.get_name(), key, OperationType::Update); // register operation
-                            drop(node);
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             return Ok(());
                         } else {
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
-                                row.remove_delayed((this_node, txn_id));
+                            if let Err(e) = self.insert_and_check(id, ah) {
+                                row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -815,7 +851,8 @@ impl Scheduler for BasicSerializationGraphTesting {
         value: &str,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let (this_node, txn_id) = parse_id(meta.get_id().unwrap());
+        let id = parse_id(meta.get_id().unwrap());
+        let (thread_id, txn_id) = id;
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
@@ -832,7 +869,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
         if !row.is_delayed() {
             let ah = row.get_access_history();
-            if let Err(e) = self.insert_and_check(this_node, ah) {
+            if let Err(e) = self.insert_and_check(id, ah) {
                 drop(mg);
                 drop(rh);
                 self.abort(meta.clone()).unwrap();
@@ -845,9 +882,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                     row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
                         .unwrap(); // execute append
 
-                    let node = self.get_shared_lock(this_node);
+                    let rlock = self.get_shared_lock(thread_id);
+                    let node = rlock.get_transaction(txn_id);
                     node.add_key(&index.get_name(), key.clone(), OperationType::Update); // register operation
-                    drop(node);
+                    drop(rlock);
                     drop(mg);
                     drop(rh);
 
@@ -855,7 +893,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                 }
 
                 RowState::Modified => {
-                    row.append_delayed((this_node, txn_id)); // add to delayed queue
+                    row.append_delayed(id); // add to delayed queue
 
                     drop(mg);
                     drop(rh);
@@ -872,11 +910,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let mut mg = rh.lock().unwrap();
                         let row = &mut *mg;
 
-                        if row.resume((this_node, txn_id)) {
-                            row.remove_delayed((this_node, txn_id));
+                        if row.resume(id) {
+                            row.remove_delayed(id);
 
                             let ah = row.get_access_history(); // insert and check
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                            if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
 
@@ -887,16 +925,17 @@ impl Scheduler for BasicSerializationGraphTesting {
                             row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
                                 .unwrap(); // execute append ( never fails )
 
-                            let node = self.get_shared_lock(this_node);
+                            let rlock = self.get_shared_lock(thread_id);
+                            let node = rlock.get_transaction(txn_id);
                             node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
-                            drop(node);
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             return Ok(());
                         } else {
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
-                                row.remove_delayed((this_node, txn_id));
+                            if let Err(e) = self.insert_and_check(id, ah) {
+                                row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -928,14 +967,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                         ah.push(Access::Write(transaction_id));
                     }
 
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
                         return Err(e.into());
                     }
 
-                    row.append_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
+                    row.append_delayed(id); // add to delayed queue; returns wait on
 
                     drop(mg);
                     drop(rh);
@@ -952,11 +991,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let mut mg = rh.lock().unwrap();
                         let row = &mut *mg;
 
-                        if row.resume((this_node, txn_id)) {
-                            row.remove_delayed((this_node, txn_id));
+                        if row.resume(id) {
+                            row.remove_delayed(id);
 
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                            if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -966,16 +1005,17 @@ impl Scheduler for BasicSerializationGraphTesting {
                             row.append_value(column, value, "basic-sgt", &meta.get_id().unwrap())
                                 .unwrap();
 
-                            let node = self.get_shared_lock(this_node);
+                            let rlock = self.get_shared_lock(thread_id);
+                            let node = rlock.get_transaction(txn_id);
                             node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
-                            drop(node);
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             return Ok(());
                         } else {
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
-                                row.remove_delayed((this_node, txn_id));
+                            if let Err(e) = self.insert_and_check(id, ah) {
+                                row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -1009,7 +1049,8 @@ impl Scheduler for BasicSerializationGraphTesting {
         values: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        let (this_node, txn_id) = parse_id(meta.get_id().unwrap());
+        let id = parse_id(meta.get_id().unwrap());
+        let (thread_id, txn_id) = id;
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
 
@@ -1028,7 +1069,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             match row.get_state() {
                 RowState::Clean => {
                     let ah = row.get_access_history();
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
@@ -1041,9 +1082,10 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                     let vals = res.get_values().unwrap(); // get values
 
-                    let node = self.get_shared_lock(this_node);
+                    let rlock = self.get_shared_lock(thread_id);
+                    let node = rlock.get_transaction(txn_id);
                     node.add_key(&index.get_name(), key.clone(), OperationType::Update); // register operation
-                    drop(node);
+                    drop(rlock);
                     drop(mg);
                     drop(rh);
 
@@ -1051,14 +1093,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                 }
                 RowState::Modified => {
                     let ah = row.get_access_history(); // insert and check
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
                         return Err(e.into()); // cascading abort or cycle found
                     }
 
-                    row.append_delayed((this_node, txn_id)); // add to delayed queue
+                    row.append_delayed(id); // add to delayed queue
 
                     drop(mg);
                     drop(rh);
@@ -1075,11 +1117,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let mut mg = rh.lock().unwrap();
                         let row = &mut *mg;
 
-                        if row.resume((this_node, txn_id)) {
-                            row.remove_delayed((this_node, txn_id));
+                        if row.resume(id) {
+                            row.remove_delayed(id);
 
                             let ah = row.get_access_history(); // insert and check
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                            if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
 
@@ -1097,16 +1139,17 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 .unwrap();
                             let vals = res.get_values().unwrap(); // get values
 
-                            let node = self.get_shared_lock(this_node);
+                            let rlock = self.get_shared_lock(thread_id);
+                            let node = rlock.get_transaction(txn_id);
                             node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
-                            drop(node);
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             return Ok(vals);
                         } else {
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
-                                row.remove_delayed((this_node, txn_id));
+                            if let Err(e) = self.insert_and_check(id, ah) {
+                                row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -1138,14 +1181,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                         ah.push(Access::Write(transaction_id));
                     }
 
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
                         return Err(e.into());
                     }
 
-                    row.append_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
+                    row.append_delayed(id); // add to delayed queue; returns wait on
 
                     drop(mg);
                     drop(rh);
@@ -1162,11 +1205,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let mut mg = rh.lock().unwrap();
                         let row = &mut *mg;
 
-                        if row.resume((this_node, txn_id)) {
-                            row.remove_delayed((this_node, txn_id));
+                        if row.resume(id) {
+                            row.remove_delayed(id);
 
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                            if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -1183,16 +1226,17 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 .unwrap();
                             let vals = res.get_values().unwrap(); // get values
 
-                            let node = self.get_shared_lock(this_node);
+                            let rlock = self.get_shared_lock(thread_id);
+                            let node = rlock.get_transaction(txn_id);
                             node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
-                            drop(node);
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             return Ok(vals);
                         } else {
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
-                                row.remove_delayed((this_node, txn_id));
+                            if let Err(e) = self.insert_and_check(id, ah) {
+                                row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -1224,7 +1268,8 @@ impl Scheduler for BasicSerializationGraphTesting {
         key: PrimaryKey,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let (this_node, txn_id) = parse_id(meta.get_id().unwrap());
+        let id = parse_id(meta.get_id().unwrap());
+        let (thread_id, txn_id) = id;
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
@@ -1243,7 +1288,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             match row.get_state() {
                 RowState::Clean => {
                     let ah = row.get_access_history();
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
@@ -1251,9 +1296,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                     }
                     row.delete("basic-sgt").unwrap();
 
-                    let node = self.get_shared_lock(this_node);
+                    let rlock = self.get_shared_lock(thread_id);
+                    let node = rlock.get_transaction(txn_id);
                     node.add_key(&index.get_name(), key.clone(), OperationType::Update); // register operation
-                    drop(node);
+                    drop(rlock);
                     drop(mg);
                     drop(rh);
 
@@ -1262,14 +1308,14 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                 RowState::Modified => {
                     let ah = row.get_access_history(); // insert and check
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
                         return Err(e.into()); // cascading abort or cycle found
                     }
 
-                    row.append_delayed((this_node, txn_id)); // add to delayed queue
+                    row.append_delayed(id); // add to delayed queue
 
                     drop(mg);
                     drop(rh);
@@ -1286,11 +1332,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let mut mg = rh.lock().unwrap();
                         let row = &mut *mg;
 
-                        if row.resume((this_node, txn_id)) {
-                            row.remove_delayed((this_node, txn_id));
+                        if row.resume(id) {
+                            row.remove_delayed(id);
 
                             let ah = row.get_access_history(); // insert and check
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                            if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
 
@@ -1299,16 +1345,17 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                             row.delete("basic-sgt").unwrap();
 
-                            let node = self.get_shared_lock(this_node);
+                            let rlock = self.get_shared_lock(thread_id);
+                            let node = rlock.get_transaction(txn_id);
                             node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
-                            drop(node);
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             return Ok(());
                         } else {
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
-                                row.remove_delayed((this_node, txn_id));
+                            if let Err(e) = self.insert_and_check(id, ah) {
+                                row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -1340,14 +1387,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                         ah.push(Access::Write(transaction_id));
                     }
 
-                    if let Err(e) = self.insert_and_check(this_node, ah) {
+                    if let Err(e) = self.insert_and_check(id, ah) {
                         drop(mg);
                         drop(rh);
                         self.abort(meta.clone()).unwrap();
                         return Err(e.into());
                     }
 
-                    row.append_delayed((this_node, txn_id)); // add to delayed queue; returns wait on
+                    row.append_delayed(id); // add to delayed queue; returns wait on
 
                     drop(mg);
                     drop(rh);
@@ -1364,11 +1411,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let mut mg = rh.lock().unwrap();
                         let row = &mut *mg;
 
-                        if row.resume((this_node, txn_id)) {
-                            row.remove_delayed((this_node, txn_id));
+                        if row.resume(id) {
+                            row.remove_delayed(id);
 
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
+                            if let Err(e) = self.insert_and_check(id, ah) {
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -1377,16 +1424,17 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                             row.delete("basic-sgt").unwrap();
 
-                            let node = self.get_shared_lock(this_node);
+                            let rlock = self.get_shared_lock(thread_id);
+                            let node = rlock.get_transaction(txn_id);
                             node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
-                            drop(node);
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             return Ok(());
                         } else {
                             let ah = row.get_access_history();
-                            if let Err(e) = self.insert_and_check(this_node, ah) {
-                                row.remove_delayed((this_node, txn_id));
+                            if let Err(e) = self.insert_and_check(id, ah) {
+                                row.remove_delayed(id);
                                 drop(mg);
                                 drop(rh);
                                 self.abort(meta.clone()).unwrap();
@@ -1417,46 +1465,49 @@ impl Scheduler for BasicSerializationGraphTesting {
     /// - RWLock or Mutex error.
     fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
         debug!("Starting abort for {}", meta.get_id().unwrap());
-        let (this_node_id, _) = parse_id(meta.get_id().unwrap());
+        let id = parse_id(meta.get_id().unwrap());
+        let (thread_id, txn_id) = id;
 
-        debug!(
-            "ABORT - {} request exculsive lock on {}",
-            this_node_id, this_node_id
-        );
-        let wlock = self.get_exculsive_lock(this_node_id);
-        debug!(
-            "ABORT - {} get exculsive lock on {}",
-            this_node_id, this_node_id
-        );
-        wlock.set_state(State::Aborted); // set state to aborted
+        // debug!(
+        //     "ABORT - {} request exculsive lock on {}",
+        //     this_node_id, this_node_id
+        // );
+        let wlock = self.get_exculsive_lock(thread_id);
+        // debug!(
+        //     "ABORT - {} get exculsive lock on {}",
+        //     this_node_id, this_node_id
+        // );
+        let node = wlock.get_transaction(txn_id);
+        node.set_state(State::Aborted); // set state to aborted
         drop(wlock);
-        debug!(
-            "ABORT - {} drop exculsive lock on {}",
-            this_node_id, this_node_id
-        );
+        // debug!(
+        //     "ABORT - {} drop exculsive lock on {}",
+        //     this_node_id, this_node_id
+        // );
 
-        debug!("Abort set complete for {}", meta.get_id().unwrap());
+        // debug!("Abort set complete for {}", meta.get_id().unwrap());
 
-        debug!(
-            "ABORT - {} request shared lock on {}",
-            this_node_id, this_node_id
-        );
+        // debug!(
+        //     "ABORT - {} request shared lock on {}",
+        //     this_node_id, this_node_id
+        // );
 
-        let rlock = self.get_shared_lock(this_node_id);
-        debug!(
-            "ABORT - {} got shared lock on {}",
-            this_node_id, this_node_id
-        );
+        let rlock = self.get_shared_lock(thread_id);
+        let node = rlock.get_transaction(txn_id);
+        // debug!(
+        //     "ABORT - {} got shared lock on {}",
+        //     this_node_id, this_node_id
+        // );
 
-        let inserts = rlock.get_keys(OperationType::Insert);
-        let reads = rlock.get_keys(OperationType::Read);
-        let updates = rlock.get_keys(OperationType::Update);
-        let deletes = rlock.get_keys(OperationType::Delete);
+        let inserts = node.get_keys(OperationType::Insert);
+        let reads = node.get_keys(OperationType::Read);
+        let updates = node.get_keys(OperationType::Update);
+        let deletes = node.get_keys(OperationType::Delete);
         drop(rlock);
-        debug!(
-            "ABORT - {} drop shared lock on {}",
-            this_node_id, this_node_id
-        );
+        // debug!(
+        //     "ABORT - {} drop shared lock on {}",
+        //     this_node_id, this_node_id
+        // );
 
         for (index, key) in &inserts {
             let index = self.data.get_internals().get_index(&index).unwrap();
@@ -1511,25 +1562,25 @@ impl Scheduler for BasicSerializationGraphTesting {
         }
         // info!("Clean up for {}", meta.get_id().unwrap());
 
-        self.clean_up_graph(this_node_id); // abort outgoing nodes
-                                           //        info!("Cleaned up for {}", meta.get_id().unwrap());
+        self.clean_up_graph(id); // abort outgoing nodes
+                                 //        info!("Cleaned up for {}", meta.get_id().unwrap());
 
-        debug!(
-            "ABORT - {} request exculsive lock on {}",
-            this_node_id, this_node_id
-        );
-        let wlock = self.get_exculsive_lock(this_node_id);
-        debug!(
-            "ABORT - {} got exculsive lock on {}",
-            this_node_id, this_node_id
-        );
-        wlock.reset(); // reset node information
-                       //wlock.set_state(State::Active);
-        drop(wlock);
-        debug!(
-            "ABORT - {} drop exculsive lock on {}",
-            this_node_id, this_node_id
-        );
+        // debug!(
+        //     "ABORT - {} request exculsive lock on {}",
+        //     this_node_id, this_node_id
+        // );
+        // let wlock = self.get_exculsive_lock(this_node_id);
+        // debug!(
+        //     "ABORT - {} got exculsive lock on {}",
+        //     this_node_id, this_node_id
+        // );
+        // wlock.reset(); // reset node information
+        //                //wlock.set_state(State::Active);
+        // drop(wlock);
+        // debug!(
+        //     "ABORT - {} drop exculsive lock on {}",
+        //     this_node_id, this_node_id
+        // );
 
         //        debug!("Graph after aborting {}: {}", meta.get_id().unwrap(), &self);
         debug!("Transaction {} terminated (abort)", meta.get_id().unwrap());
@@ -1540,37 +1591,38 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
         debug!("Start commit for: {}", meta.get_id().unwrap());
 
-        let (id, _) = parse_id(meta.get_id().unwrap());
+        let id = parse_id(meta.get_id().unwrap());
+        let (thread_id, txn_id) = id;
 
         while let Err(ProtocolError::HasIncomingEdges) = self.commit_check(id) {
             if let Err(ProtocolError::CycleFound) = self.reduced_depth_first_search(id) {
-                debug!("Transaction {} found cycle", meta.get_id().unwrap());
+                // debug!("Transaction {} found cycle", meta.get_id().unwrap());
 
-                debug!("CO - {} request shared lock on {}", id, id);
-                let rlock = self.get_shared_lock(id);
-                debug!("CO - {} got shared lock on {}", id, id);
-                rlock.set_state(State::Aborted);
+                // debug!("CO - {} request shared lock on {}", id, id);
+                let rlock = self.get_shared_lock(thread_id);
+                //                debug!("CO - {} got shared lock on {}", id, id);
+                let node = rlock.get_transaction(txn_id);
+                node.set_state(State::Aborted);
                 drop(rlock);
-                debug!("CO - {} drop shared lock on {}", id, id);
-
-                self.abort(meta.clone()).unwrap();
+            //                debug!("CO - {} drop shared lock on {}", id, id);
             } else {
-                debug!("Transaction {} has incoming", meta.get_id().unwrap());
+                //                debug!("Transaction {} has incoming", meta.get_id().unwrap());
             }
         }
 
-        debug!(
-            "Commit cycle check complete for: {}",
-            meta.get_id().unwrap()
-        );
-        debug!("CO - {} request shared lock on {}", id, id);
+        // debug!(
+        //     "Commit cycle check complete for: {}",
+        //     meta.get_id().unwrap()
+        // );
+        //        debug!("CO - {} request shared lock on {}", id, id);
 
-        let rlock = self.get_shared_lock(id); // take shared lock on this_node
-        debug!("CO - {} got shared lock on {}", id, id);
+        let rlock = self.get_shared_lock(thread_id); // take shared lock on this_node
+                                                     //      debug!("CO - {} got shared lock on {}", id, id);
+        let node = rlock.get_transaction(txn_id);
 
-        let state = rlock.get_state(); // get this_node state
+        let state = node.get_state(); // get this_node state
         drop(rlock);
-        debug!("CO - {} drop shared lock on {}", id, id);
+        //    debug!("CO - {} drop shared lock on {}", id, id);
 
         match state {
             State::Aborted => {
@@ -1579,18 +1631,18 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
             State::Committed => {
                 self.clean_up_graph(id); // remove outgoing edges
-                debug!("CO - {} request shared lock on {}", id, id);
+                                         //                debug!("CO - {} request shared lock on {}", id, id);
 
-                let sl = self.get_shared_lock(id); // get shared lock
-                debug!("CO - {} got shared lock on {}", id, id);
+                let rlock = self.get_shared_lock(thread_id); // get shared lock
+                                                             //              debug!("CO - {} got shared lock on {}", id, id);
+                let node = rlock.get_transaction(txn_id);
+                let inserts = node.get_keys(OperationType::Insert);
+                let reads = node.get_keys(OperationType::Read);
+                let updates = node.get_keys(OperationType::Update);
+                let deletes = node.get_keys(OperationType::Delete);
+                drop(rlock); // drop shared lock
 
-                let inserts = sl.get_keys(OperationType::Insert);
-                let reads = sl.get_keys(OperationType::Read);
-                let updates = sl.get_keys(OperationType::Update);
-                let deletes = sl.get_keys(OperationType::Delete);
-                drop(sl); // drop shared lock
-
-                debug!("CO - {} drop shared lock on {}", id, id);
+                //            debug!("CO - {} drop shared lock on {}", id, id);
 
                 for (index, key) in inserts {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
@@ -1602,7 +1654,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(rh);
                 }
 
-                debug!("Committing reads: {}", meta.get_id().unwrap());
+                //                debug!("Committing reads: {}", meta.get_id().unwrap());
 
                 for (index, key) in &reads {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
@@ -1618,9 +1670,9 @@ impl Scheduler for BasicSerializationGraphTesting {
                         drop(rh);
                     };
                 }
-                debug!("Read commited: {}", meta.get_id().unwrap());
+                //                debug!("Read commited: {}", meta.get_id().unwrap());
 
-                debug!("Committing updates: {}", meta.get_id().unwrap());
+                //              debug!("Committing updates: {}", meta.get_id().unwrap());
 
                 for (index, key) in updates {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
@@ -1632,20 +1684,20 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(mg);
                     drop(rh);
                 }
-                debug!("Updates commited: {}", meta.get_id().unwrap());
+                //                debug!("Updates commited: {}", meta.get_id().unwrap());
 
                 for (index, key) in deletes {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
                     index.get_map().remove(&key); // Remove the row from the map.
                 }
 
-                debug!("CO - {} request exculsive lock on {}", id, id);
+                //              debug!("CO - {} request exculsive lock on {}", id, id);
 
-                let wlock = self.get_exculsive_lock(id);
-                debug!("CO - {} got exculsive lock on {}", id, id);
-                wlock.reset();
-                //wlock.set_state(State::Active);
-                debug!("CO - {} drop exculsive lock on {}", id, id);
+                // let wlock = self.get_exculsive_lock(id);
+                // debug!("CO - {} got exculsive lock on {}", id, id);
+                // wlock.reset();
+                // //wlock.set_state(State::Active);
+                // debug!("CO - {} drop exculsive lock on {}", id, id);
 
                 // debug!(
                 //     "Graph after committing {}: {}",
@@ -1655,7 +1707,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
             State::Active => panic!("node should not be active"),
         }
-        debug!("Transaction {} terminated (commit)", meta.get_id().unwrap());
+        //        debug!("Transaction {} terminated (commit)", meta.get_id().unwrap());
 
         Ok(())
     }
