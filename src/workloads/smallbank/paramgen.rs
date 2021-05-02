@@ -275,6 +275,11 @@ impl SmallBankGenerator {
 
     /// Get customer name.
     pub fn get_name(&mut self) -> String {
+        if self.accounts == 10 {
+            let id = self.rng.gen_range(0..self.accounts);
+            return format!("cust{}", id);
+        }
+
         if self.accounts == 100 {
             let id = self.rng.gen_range(0..self.accounts);
             return format!("cust{}", id);
