@@ -1,5 +1,4 @@
 use crate::common::error::NonFatalError;
-use crate::common::statistics::{add_read_time, add_reg_time, add_update_time};
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::smallbank::error::SmallBankError;
@@ -11,7 +10,6 @@ use crate::workloads::PrimaryKey;
 
 use std::convert::TryFrom;
 use std::sync::Arc;
-use std::time::Instant;
 
 /// Balance transaction.
 ///
@@ -151,20 +149,14 @@ pub fn transact_savings(
 ///
 /// Move all the funds from one customer to another.
 pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
-    let end = start.elapsed();
-    add_reg_time(end.as_nanos());
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name1));
 
-    let start = Instant::now();
     let res1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer1 ID
-    let end = start.elapsed();
-    add_read_time(end.as_nanos());
 
     let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
     let other_cols: Vec<&str> = vec!["balance"];
@@ -196,8 +188,6 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let res1 = protocol
         .scheduler
         .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
-    let end = start.elapsed();
-    add_read_time(end.as_nanos());
 
     let cust_id = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
@@ -220,7 +210,6 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         Ok((columns, new_balance))
     };
 
-    let start = Instant::now(); // start timer
     protocol.scheduler.update(
         "checking",
         checking_pk,
@@ -230,8 +219,6 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         &update,
         meta.clone(),
     )?; // update
-    let end = start.elapsed();
-    add_update_time(end.as_nanos());
 
     protocol.scheduler.commit(meta)?; // commit
 
@@ -244,10 +231,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 ///
 /// Write a check against an account taking funds from checking; applying overdraft charge if needed.
 pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
-    let end = start.elapsed();
-    add_reg_time(end.as_nanos());
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
@@ -309,10 +293,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 ///
 /// Transfer money between accounts; if there is sufficient funds in the checking account.
 pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let start = Instant::now();
     let meta = protocol.scheduler.register()?; // register
-    let end = start.elapsed();
-    add_reg_time(end.as_nanos());
 
     let accounts_cols: Vec<&str> = vec!["customer_id"];
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name1));

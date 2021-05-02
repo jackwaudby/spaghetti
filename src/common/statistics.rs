@@ -10,7 +10,6 @@ use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::TatpTransaction;
 
 use config::Config;
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use statrs::statistics::OrderStatistics;
@@ -21,29 +20,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use strum::IntoEnumIterator;
-
-lazy_static! {
-    pub static ref REG_TIME: parking_lot::Mutex<u128> = parking_lot::Mutex::new(0);
-    pub static ref READ_TIME: parking_lot::Mutex<u128> = parking_lot::Mutex::new(0);
-    pub static ref UPDATE_TIME: parking_lot::Mutex<u128> = parking_lot::Mutex::new(0);
-    pub static ref COMMIT_TIME: parking_lot::Mutex<u128> = parking_lot::Mutex::new(0);
-}
-
-pub fn add_reg_time(time: u128) {
-    *REG_TIME.lock() += time;
-}
-
-pub fn add_read_time(time: u128) {
-    *READ_TIME.lock() += time;
-}
-
-pub fn add_update_time(time: u128) {
-    *UPDATE_TIME.lock() += time;
-}
-
-pub fn add_commit_time(time: u128) {
-    *COMMIT_TIME.lock() += time;
-}
 
 /// Each write handler track statistics in its own instance of `LocalStatisitics`.
 /// After the benchmark has completed the statisitics are merged into `GlobalStatistics`.
@@ -280,10 +256,6 @@ impl GlobalStatistics {
             "throughput": format!("{:.3}", throughput),
             "abort_rate": format!("{:.3}", abort_rate),
             "mean": format!("{:.3}", mean),
-            "register time (ms)":  format!("{:.3}", *REG_TIME.lock()/1000000),
-            "read time (ms)":  format!("{:.3}", *READ_TIME.lock()/1000000),
-            "update time (ms)":  format!("{:.3}", *UPDATE_TIME.lock()/1000000),
-            "commit time (ms)":  format!("{:.3}", *COMMIT_TIME.lock()/1000000),
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
     }
