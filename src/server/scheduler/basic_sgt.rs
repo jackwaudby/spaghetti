@@ -407,7 +407,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
         };
 
-        let mut mg = rh.lock().unwrap();
+        let mut mg = rh.lock();
         let row = &mut *mg;
 
         let ah = row.get_access_history();
@@ -478,7 +478,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
         };
 
-        let mut mg = rh.lock().unwrap();
+        let mut mg = rh.lock();
         let row = &mut *mg;
 
         if !row.is_delayed() {
@@ -562,7 +562,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let mut mg = rh.lock().unwrap();
+                        let mut mg = rh.lock();
                         let row = &mut *mg;
 
                         if row.resume(id) {
@@ -685,7 +685,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let mut mg = rh.lock().unwrap();
+                        let mut mg = rh.lock();
                         let row = &mut *mg;
 
                         if row.resume(id) {
@@ -801,7 +801,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
         };
 
-        let mut mg = rh.lock().unwrap();
+        let mut mg = rh.lock();
         let row = &mut *mg;
 
         if !row.is_delayed() {
@@ -844,7 +844,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let mut mg = rh.lock().unwrap();
+                        let mut mg = rh.lock();
                         let row = &mut *mg;
 
                         if row.resume(id) {
@@ -925,7 +925,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let mut mg = rh.lock().unwrap();
+                        let mut mg = rh.lock();
                         let row = &mut *mg;
 
                         if row.resume(id) {
@@ -999,7 +999,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
         };
 
-        let mut mg = rh.lock().unwrap(); // get mutex on row
+        let mut mg = rh.lock(); // get mutex on row
         let row = &mut *mg; // deref to row
 
         if !row.is_delayed() {
@@ -1051,7 +1051,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let mut mg = rh.lock().unwrap();
+                        let mut mg = rh.lock();
                         let row = &mut *mg;
 
                         if row.resume(id) {
@@ -1139,7 +1139,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let mut mg = rh.lock().unwrap();
+                        let mut mg = rh.lock();
                         let row = &mut *mg;
 
                         if row.resume(id) {
@@ -1218,7 +1218,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
         };
 
-        let mut mg = rh.lock().unwrap(); // get mutex on row
+        let mut mg = rh.lock(); // get mutex on row
         let row = &mut *mg; // deref to row
 
         if !row.is_delayed() {
@@ -1266,7 +1266,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let mut mg = rh.lock().unwrap();
+                        let mut mg = rh.lock();
                         let row = &mut *mg;
 
                         if row.resume(id) {
@@ -1345,7 +1345,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let mut mg = rh.lock().unwrap();
+                        let mut mg = rh.lock();
                         let row = &mut *mg;
 
                         if row.resume(id) {
@@ -1456,7 +1456,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             // get read handle to row
             if let Ok(rh) = index.get_lock_on_row(key.clone()) {
-                let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                let mut mg = rh.lock(); // acquire mutex on the row
                 let row = &mut *mg; // deref to row
                 row.revert_read(&meta.get_id().unwrap());
                 //    debug!("Row after read revert: {}", row);
@@ -1472,7 +1472,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             // get read handle to row
             if let Ok(rh) = index.get_lock_on_row(key.clone()) {
-                let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                let mut mg = rh.lock(); // acquire mutex on the row
 
                 let row = &mut *mg; // deref to row
 
@@ -1490,7 +1490,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             // get read handle to row
             if let Ok(rh) = index.get_lock_on_row(key.clone()) {
-                let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                let mut mg = rh.lock(); // acquire mutex on the row
                 let row = &mut *mg; // deref to row
                 row.revert("sgt", &meta.get_id().unwrap());
                 drop(mg);
@@ -1584,7 +1584,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                 for (index, key) in inserts {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
                     let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
-                    let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                    let mut mg = rh.lock(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
                     row.commit("basic-sgt", &meta.get_id().unwrap()); // commit inserts
                     drop(mg);
@@ -1598,7 +1598,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                     // get read handle to row
                     if let Ok(rh) = index.get_lock_on_row(key.clone()) {
-                        let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                        let mut mg = rh.lock(); // acquire mutex on the row
                         let row = &mut *mg; // deref to row
                         row.revert_read(&meta.get_id().unwrap());
                         //      debug!("Row after read commit: {}", row);
@@ -1614,7 +1614,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                 for (index, key) in updates {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
                     let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
-                    let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                    let mut mg = rh.lock(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
                     row.commit("basic-sgt", &meta.get_id().unwrap()); // commit inserts
 

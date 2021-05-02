@@ -4,8 +4,8 @@ use crate::server::storage::row::{OperationResult, Row, State as RowState};
 use crate::workloads::PrimaryKey;
 
 use chashmap::{CHashMap, ReadGuard};
+use parking_lot::Mutex;
 use std::fmt;
-use std::sync::Mutex;
 
 /// An `Index` is used to access data.
 ///
@@ -81,7 +81,7 @@ impl Index {
             .get(&key)
             .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
 
-        let row = &mut *read_guard.lock().unwrap();
+        let row = &mut *read_guard.lock();
 
         let res = row.delete(protocol)?;
         Ok(res)
@@ -98,7 +98,7 @@ impl Index {
         // Remove the row from the map.
         let row = self.map.remove(&key);
         match row {
-            Some(row) => Ok(row.into_inner().unwrap()),
+            Some(row) => Ok(row.into_inner()),
             None => Err(NonFatalError::RowNotFound(
                 format!("{}", key),
                 self.get_name(),
@@ -124,7 +124,7 @@ impl Index {
             .get(&key)
             .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
 
-        let row = &mut *read_guard.lock().unwrap();
+        let row = &mut *read_guard.lock();
 
         let res = row.get_values(columns, protocol, tid)?;
         Ok(res)
@@ -168,7 +168,7 @@ impl Index {
             .map
             .get(&key)
             .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
-        let row = &mut *read_guard.lock().unwrap();
+        let row = &mut *read_guard.lock();
 
         let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
         let current;
@@ -203,7 +203,7 @@ impl Index {
             .map
             .get(&key)
             .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?; //  attempt to get read guard
-        let row = &mut *read_guard.lock().unwrap(); // deref to row
+        let row = &mut *read_guard.lock(); // deref to row
         let res = row.append_value(column, value, protocol, tid)?; // execute append
         Ok(res)
     }
@@ -228,7 +228,7 @@ impl Index {
             .get(&key)
             .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
 
-        let row = &mut *read_guard.lock().unwrap();
+        let row = &mut *read_guard.lock();
 
         let res = row.get_and_set_values(columns, values, protocol, tid)?;
         Ok(res)
@@ -248,7 +248,6 @@ impl Index {
             .get(&key)
             .unwrap_or_else(|| panic!("No entry for {}", key))
             .lock()
-            .unwrap()
             .get_state();
 
         if let RowState::Deleted = row_state {
@@ -259,7 +258,7 @@ impl Index {
                 .get(&key)
                 .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
 
-            let row = &mut *read_guard.lock().unwrap();
+            let row = &mut *read_guard.lock();
 
             row.commit(protocol, tid);
         }
@@ -280,7 +279,7 @@ impl Index {
             .get(&key)
             .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
 
-        let row = &mut *read_guard.lock().unwrap(); // Deref to row.
+        let row = &mut *read_guard.lock(); // Deref to row.
         row.revert(protocol, tid); // Revert changes.
         Ok(())
     }
@@ -298,7 +297,7 @@ impl Index {
             .get(&key)
             .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
 
-        let row = &mut *read_guard.lock().unwrap();
+        let row = &mut *read_guard.lock();
 
         row.revert_read(tid);
         Ok(())

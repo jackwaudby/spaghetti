@@ -303,7 +303,7 @@ impl Scheduler for SerializationGraphTesting {
                 return Err(e);
             }
         };
-        let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+        let mut mg = rh.lock(); // acquire mutex on the row
         let row = &mut *mg; // deref to row
         match row.get_values(columns, "sgt", &meta.get_id().unwrap()) {
             Ok(res) => {
@@ -379,7 +379,7 @@ impl Scheduler for SerializationGraphTesting {
             }
         };
 
-        let mut mg = rh.lock().unwrap(); // get mutex on row
+        let mut mg = rh.lock(); // get mutex on row
         let row = &mut *mg; // deref to row
 
         // read current values (optional)
@@ -496,7 +496,7 @@ impl Scheduler for SerializationGraphTesting {
             }
         };
 
-        let mut mg = rh.lock().unwrap(); // get mutex on row
+        let mut mg = rh.lock(); // get mutex on row
         let row = &mut *mg; // deref to row
 
         match row.append_value(column, value, "sgt", &meta.get_id().unwrap()) {
@@ -575,7 +575,7 @@ impl Scheduler for SerializationGraphTesting {
             }
         };
 
-        let mut mg = rh.lock().unwrap(); // get mutex on row
+        let mut mg = rh.lock(); // get mutex on row
         let row = &mut *mg; // deref to row
 
         // get and set values
@@ -653,7 +653,7 @@ impl Scheduler for SerializationGraphTesting {
             }
         };
 
-        let mut mg = rh.lock().unwrap(); // get mutex on row
+        let mut mg = rh.lock(); // get mutex on row
         let row = &mut *mg; // deref to row
 
         match row.delete("sgt") {
@@ -735,7 +735,7 @@ impl Scheduler for SerializationGraphTesting {
 
             // get read handle to row
             if let Ok(rh) = index.get_lock_on_row(key.clone()) {
-                let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                let mut mg = rh.lock(); // acquire mutex on the row
                 let row = &mut *mg; // deref to row
                 row.revert_read(&meta.get_id().unwrap());
                 drop(mg);
@@ -747,7 +747,7 @@ impl Scheduler for SerializationGraphTesting {
 
             // get read handle to row
             if let Ok(rh) = index.get_lock_on_row(key.clone()) {
-                let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                let mut mg = rh.lock(); // acquire mutex on the row
 
                 let row = &mut *mg; // deref to row
                 row.revert("sgt", &meta.get_id().unwrap());
@@ -760,7 +760,7 @@ impl Scheduler for SerializationGraphTesting {
 
             // get read handle to row
             if let Ok(rh) = index.get_lock_on_row(key.clone()) {
-                let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                let mut mg = rh.lock(); // acquire mutex on the row
                 let row = &mut *mg; // deref to row
                 row.revert("sgt", &meta.get_id().unwrap());
                 drop(mg);
@@ -822,7 +822,7 @@ impl Scheduler for SerializationGraphTesting {
                 for (index, key) in inserts {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
                     let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
-                    let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                    let mut mg = rh.lock(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
                     row.commit("sgt", &id.to_string()); // commit inserts
                     drop(mg);
@@ -831,7 +831,7 @@ impl Scheduler for SerializationGraphTesting {
                 for (index, key) in updates {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
                     let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
-                    let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                    let mut mg = rh.lock(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
                     row.commit("sgt", &id.to_string()); // commit updates
                     drop(mg);
@@ -842,7 +842,7 @@ impl Scheduler for SerializationGraphTesting {
                     index.get_map().remove(&key); // Remove the row from the map.
 
                     // let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
-                    // let mut mg = rh.lock().unwrap(); // acquire mutex on the row
+                    // let mut mg = rh.lock(); // acquire mutex on the row
                     // let row = &mut *mg; // deref to row
                     // row.delete("sgt").unwrap(); // commit delete
                     // drop(mg);
