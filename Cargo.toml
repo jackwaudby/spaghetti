@@ -21,10 +21,6 @@ name = "spag-gen"
 path = "src/bin/datagen.rs"
 
 [[bin]]
-name = "spag-em"
-path = "src/bin/embedded.rs"
-
-[[bin]]
 name = "spag-gpc"
 path = "src/bin/gpc.rs"
 
