@@ -118,7 +118,7 @@ impl SmallBankGenerator {
     fn uniform_mix(&mut self, n: f32) -> (SmallBankTransaction, SmallBankTransactionProfile) {
         match n {
             // BALANCE
-            x if x < 0.1667 => {
+            x if x < 0.15 => {
                 let name = self.get_name();
                 let payload = Balance { name };
 
@@ -128,7 +128,7 @@ impl SmallBankGenerator {
                 )
             }
             // DEPOSIT_CHECKING
-            x if x < 0.3333 => {
+            x if x < 0.30 => {
                 let name = self.get_name();
 
                 let payload = DepositChecking {
@@ -141,7 +141,7 @@ impl SmallBankGenerator {
                 )
             }
             // TRANSACT_SAVING
-            x if x < 0.50 => {
+            x if x < 0.45 => {
                 let name = self.get_name();
 
                 let payload = TransactSaving {
@@ -154,7 +154,7 @@ impl SmallBankGenerator {
                 )
             }
             // AMALGAMATE
-            x if x < 0.6667 => {
+            x if x < 0.60 => {
                 let (name1, name2) = self.get_names();
 
                 let payload = Amalgamate { name1, name2 };
@@ -164,7 +164,7 @@ impl SmallBankGenerator {
                 )
             }
             // WRITE_CHECK
-            x if x < 0.8333 => {
+            x if x < 0.75 => {
                 let name = self.get_name();
 
                 let payload = WriteCheck {
