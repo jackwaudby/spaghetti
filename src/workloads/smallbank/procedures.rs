@@ -1,5 +1,5 @@
 use crate::common::error::NonFatalError;
-use crate::common::statistics::add_commit_time;
+//use crate::common::statistics::add_commit_time;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
 use crate::workloads::smallbank::error::SmallBankError;
@@ -63,7 +63,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    // add_commit_time(end.as_nanos());
 
     let res_cols = vec!["total_balance"];
     let total_balance = vec![Data::Double(savings_balance + checking_balance)]; // calculate total balance
@@ -117,7 +117,7 @@ pub fn deposit_checking(
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    // add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -178,7 +178,7 @@ pub fn transact_savings(
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    // add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -279,7 +279,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    // add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
@@ -344,7 +344,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    // add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
@@ -437,7 +437,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
     let start = std::time::Instant::now(); // start timer
     protocol.scheduler.commit(meta.clone())?; // commit
     let end = start.elapsed();
-    add_commit_time(end.as_nanos());
+    // add_commit_time(end.as_nanos());
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 

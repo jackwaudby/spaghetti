@@ -22,13 +22,13 @@ use std::time::Duration;
 use std::time::Instant;
 use strum::IntoEnumIterator;
 
-lazy_static! {
-    pub static ref COMMIT_TIME: parking_lot::Mutex<u128> = parking_lot::Mutex::new(0);
-}
+// lazy_static! {
+//     pub static ref COMMIT_TIME: parking_lot::Mutex<u128> = parking_lot::Mutex::new(0);
+// }
 
-pub fn add_commit_time(time: u128) {
-    *COMMIT_TIME.lock() += time;
-}
+// pub fn add_commit_time(time: u128) {
+//     *COMMIT_TIME.lock() += time;
+// }
 
 /// Each write handler track statistics in its own instance of `LocalStatisitics`.
 /// After the benchmark has completed the statisitics are merged into `GlobalStatistics`.
@@ -265,9 +265,8 @@ impl GlobalStatistics {
             "throughput": format!("{:.3}", throughput),
             "abort_rate": format!("{:.3}", abort_rate),
             "mean": format!("{:.3}", mean),
-            "commit time (ms)":  format!("{:.3}", *COMMIT_TIME.lock()/1000),
         });
-
+        //            "commit time (ms)":  format!("{:.3}", *COMMIT_TIME.lock()/1000),
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
     }
 }

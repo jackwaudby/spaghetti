@@ -7,10 +7,10 @@ use crate::server::storage::row::{Access, Row, State as RowState};
 
 use crate::workloads::{PrimaryKey, Workload};
 
-//use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 //use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::collections::HashSet;
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::Arc; //, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::{fmt, thread};
 use tracing::{debug, info};
 
@@ -42,13 +42,13 @@ impl BasicSerializationGraphTesting {
 
     /// Get shared lock on the node.
     fn get_shared_lock(&self, id: usize) -> RwLockReadGuard<NodeSet> {
-        let rg = self.nodes[id].read().unwrap();
+        let rg = self.nodes[id].read();
         rg
     }
 
     /// Get exculsive lock on the node.
     fn get_exculsive_lock(&self, id: usize) -> RwLockWriteGuard<NodeSet> {
-        let wg = self.nodes[id].write().unwrap();
+        let wg = self.nodes[id].write();
         wg
     }
 
@@ -1722,7 +1722,7 @@ impl fmt::Display for BasicSerializationGraphTesting {
         write!(f, "\n").unwrap();
 
         for node in &self.nodes {
-            write!(f, "{}\n", node.read().unwrap()).unwrap();
+            write!(f, "{}\n", node.read()).unwrap();
         }
         Ok(())
     }
