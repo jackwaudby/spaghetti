@@ -63,45 +63,35 @@ impl BasicSerializationGraphTesting {
         to: (usize, u64),
         rw_edge: bool,
     ) -> Result<(), ProtocolError> {
-        let (from_thread, from_txn_id) = from;
-        let (to_thread, to_txn_id) = to;
-
         if from == to {
             return Ok(()); // don't add self edges
         }
-        debug!("ADD - {:?} request for shared lock on {:?}", to, from);
+        let (from_thread, from_txn_id) = from;
+
         let from_node = self.get_shared_lock(from_thread); // get shared locks
-        debug!("ADD - {:?} got shared lock on {:?}", to, from);
-
-        debug!("ADD - {:?} request for shared lock on {:?}", to, to);
-        let to_node = self.get_shared_lock(to_thread);
-        debug!("ADD - {:?} got shared lock on {:?}", to, to);
-
         match from_node.get_transaction(from_txn_id).get_state() {
             State::Aborted => {
                 if !rw_edge {
                     drop(from_node); // drop shared locks
-                    debug!("ADD - {:?} drop shared lock on {:?}", to, from);
-                    drop(to_node);
-                    debug!("ADD - {:?} drop shared lock on {:?}", to, to);
                     return Err(ProtocolError::CascadingAbort); // w-w/w-r; cascading abort
                 }
             }
             State::Active => {
+                let (to_thread, to_txn_id) = to;
+                let to_node = self.get_shared_lock(to_thread);
+
                 from_node
                     .get_transaction(from_txn_id)
                     .insert_edge(to, EdgeType::Outgoing); // insert edge
                 to_node
                     .get_transaction(to_txn_id)
                     .insert_edge(from, EdgeType::Incoming);
+
+                drop(to_node);
             }
             State::Committed => {}
         }
-
         drop(from_node); // drop shared locks
-        debug!("ADD - {:?} drop shared lock on {:?}", to, from);
-        drop(to_node);
-        debug!("ADD - {:?} drop shared lock on {:?}", to, to);
 
         Ok(())
     }
