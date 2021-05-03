@@ -8,6 +8,9 @@ description = """
 A concurrency control evaluation framework.
 """
 
+[profile.release]
+debug = true
+
 [[bin]]
 name = "spag-client"
 path = "src/bin/client.rs"
