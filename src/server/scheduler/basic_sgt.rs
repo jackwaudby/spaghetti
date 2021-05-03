@@ -96,6 +96,19 @@ impl BasicSerializationGraphTesting {
         Ok(())
     }
 
+    pub fn abort_check(&self, thread_id: usize, txn_id: u64) -> Result<(), ProtocolError> {
+        let rlock = self.get_shared_lock(thread_id);
+        let state = rlock.get_transaction(txn_id).get_state();
+        if let State::Aborted = state {
+            drop(rlock);
+            Err(ProtocolError::CascadingAbort)
+        } else {
+            drop(rlock); // drop shared locks
+
+            Ok(())
+        }
+    }
+
     /// Given an access history, detect conflicts with a write operation, and insert edges into the graph
     /// for transaction residing in `this_node`.
     pub fn detect_write_conflicts(
@@ -384,10 +397,17 @@ impl Scheduler for BasicSerializationGraphTesting {
         columns: &Vec<&str>,
         meta: TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        let table = self.get_table(table, meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
         let id = parse_id(meta.get_id().unwrap());
         let (thread_id, txn_id) = id;
+
+        if let Err(e) = self.abort_check(thread_id, txn_id) {
+            self.abort(meta).unwrap();
+
+            return Err(e.into()); // abort -- cascading abort
+        }
+
+        let table = self.get_table(table, meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rh) => rh,
@@ -455,11 +475,17 @@ impl Scheduler for BasicSerializationGraphTesting {
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
         meta: TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let table = self.get_table(table, meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
         let id = parse_id(meta.get_id().unwrap());
         let (thread_id, txn_id) = id;
 
+        if let Err(e) = self.abort_check(thread_id, txn_id) {
+            self.abort(meta).unwrap();
+
+            return Err(e.into()); // abort -- cascading abort
+        }
+
+        let table = self.get_table(table, meta.clone())?;
+        let index = self.get_index(Arc::clone(&table), meta.clone())?;
         let rh = match index.get_lock_on_row(key.clone()) {
             Ok(rg) => rg,
             Err(e) => {
@@ -780,6 +806,12 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<(), NonFatalError> {
         let id = parse_id(meta.get_id().unwrap());
         let (thread_id, txn_id) = id;
+
+        if let Err(e) = self.abort_check(thread_id, txn_id) {
+            self.abort(meta).unwrap();
+
+            return Err(e.into()); // abort -- cascading abort
+        }
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
