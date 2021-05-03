@@ -8,9 +8,8 @@ use crate::server::storage::row::{Access, Row, State as RowState};
 use crate::workloads::{PrimaryKey, Workload};
 
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-//use no_deadlocks::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::collections::HashSet;
-use std::sync::Arc; //, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::Arc;
 use std::{fmt, thread};
 use tracing::{debug, info};
 
@@ -167,9 +166,9 @@ impl BasicSerializationGraphTesting {
     /// Attempt to commit a transaction.
     pub fn commit_check(&self, id: (usize, u64)) -> Result<(), ProtocolError> {
         let (thread_id, txn_id) = id;
-        debug!("Commit - {:?} Request for exculsive lock on {:?}", id, id);
+
         let wlock = self.get_exculsive_lock(thread_id);
-        debug!("Commit - {:?} Got exculsive lock on {:?}", id, id);
+
         let node = wlock.get_transaction(txn_id);
         let state = node.get_state();
 
@@ -409,7 +408,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        let rh = match index.get_lock_on_row(key.clone()) {
+        let rh = match index.get_lock_on_row(&key) {
             Ok(rh) => rh,
             Err(e) => {
                 self.abort(meta).unwrap(); // abort -- row does not exist
@@ -486,7 +485,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
-        let rh = match index.get_lock_on_row(key.clone()) {
+        let rh = match index.get_lock_on_row(&key) {
             Ok(rg) => rg,
             Err(e) => {
                 self.abort(meta).unwrap(); // abort -- row not found
@@ -570,7 +569,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(rh);
 
                     loop {
-                        let rh = match index.get_lock_on_row(key.clone()) {
+                        let rh = match index.get_lock_on_row(&key) {
                             Ok(rg) => rg,
                             Err(e) => {
                                 self.abort(meta).unwrap(); // row not found
@@ -693,7 +692,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(rh);
 
                     loop {
-                        let rh = match index.get_lock_on_row(key.clone()) {
+                        let rh = match index.get_lock_on_row(&key) {
                             Ok(rg) => rg,
                             Err(e) => {
                                 self.abort(meta).unwrap(); // abort -- row not found
@@ -815,7 +814,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        let rh = match index.get_lock_on_row(key.clone()) {
+        let rh = match index.get_lock_on_row(&key) {
             Ok(rg) => rg,
             Err(e) => {
                 self.abort(meta).unwrap(); // row not found
@@ -858,7 +857,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(rh);
 
                     loop {
-                        let rh = match index.get_lock_on_row(key.clone()) {
+                        let rh = match index.get_lock_on_row(&key) {
                             Ok(rg) => rg,
                             Err(e) => {
                                 self.abort(meta).unwrap(); // row not found
@@ -939,7 +938,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(rh);
 
                     loop {
-                        let rh = match index.get_lock_on_row(key.clone()) {
+                        let rh = match index.get_lock_on_row(&key) {
                             Ok(rg) => rg,
                             Err(e) => {
                                 self.abort(meta).unwrap(); // abort -- row not found
@@ -1013,7 +1012,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let table = self.get_table(table, meta.clone())?; // get table
         let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
 
-        let rh = match index.get_lock_on_row(key.clone()) {
+        let rh = match index.get_lock_on_row(&key) {
             Ok(rh) => rh,
             Err(e) => {
                 self.abort(meta).unwrap(); // abort -- row not found.
@@ -1065,7 +1064,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(rh);
 
                     loop {
-                        let rh = match index.get_lock_on_row(key.clone()) {
+                        let rh = match index.get_lock_on_row(&key) {
                             Ok(rg) => rg,
                             Err(e) => {
                                 self.abort(meta).unwrap(); // row not found
@@ -1153,7 +1152,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(rh);
 
                     loop {
-                        let rh = match index.get_lock_on_row(key.clone()) {
+                        let rh = match index.get_lock_on_row(&key) {
                             Ok(rg) => rg,
                             Err(e) => {
                                 self.abort(meta).unwrap(); // abort -- row not found
@@ -1232,7 +1231,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         let table = self.get_table(table, meta.clone())?;
         let index = self.get_index(Arc::clone(&table), meta.clone())?;
 
-        let rh = match index.get_lock_on_row(key.clone()) {
+        let rh = match index.get_lock_on_row(&key) {
             Ok(rh) => rh,
             Err(e) => {
                 self.abort(meta).unwrap(); // abort - row not found
@@ -1280,7 +1279,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(rh);
 
                     loop {
-                        let rh = match index.get_lock_on_row(key.clone()) {
+                        let rh = match index.get_lock_on_row(&key) {
                             Ok(rg) => rg,
                             Err(e) => {
                                 self.abort(meta).unwrap(); // row not found
@@ -1359,7 +1358,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(rh);
 
                     loop {
-                        let rh = match index.get_lock_on_row(key.clone()) {
+                        let rh = match index.get_lock_on_row(&key) {
                             Ok(rg) => rg,
                             Err(e) => {
                                 self.abort(meta).unwrap(); // abort -- row not found
@@ -1477,7 +1476,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
 
             // get read handle to row
-            if let Ok(rh) = index.get_lock_on_row(key.clone()) {
+            if let Ok(rh) = index.get_lock_on_row(&key) {
                 let mut mg = rh.lock(); // acquire mutex on the row
                 let row = &mut *mg; // deref to row
                 row.revert_read(&meta.get_id().unwrap());
@@ -1493,7 +1492,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
 
             // get read handle to row
-            if let Ok(rh) = index.get_lock_on_row(key.clone()) {
+            if let Ok(rh) = index.get_lock_on_row(&key) {
                 let mut mg = rh.lock(); // acquire mutex on the row
 
                 let row = &mut *mg; // deref to row
@@ -1511,7 +1510,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
 
             // get read handle to row
-            if let Ok(rh) = index.get_lock_on_row(key.clone()) {
+            if let Ok(rh) = index.get_lock_on_row(&key) {
                 let mut mg = rh.lock(); // acquire mutex on the row
                 let row = &mut *mg; // deref to row
                 row.revert("sgt", &meta.get_id().unwrap());
@@ -1524,24 +1523,6 @@ impl Scheduler for BasicSerializationGraphTesting {
         self.clean_up_graph(id); // abort outgoing nodes
                                  //        info!("Cleaned up for {}", meta.get_id().unwrap());
 
-        // debug!(
-        //     "ABORT - {} request exculsive lock on {}",
-        //     this_node_id, this_node_id
-        // );
-        // let wlock = self.get_exculsive_lock(this_node_id);
-        // debug!(
-        //     "ABORT - {} got exculsive lock on {}",
-        //     this_node_id, this_node_id
-        // );
-        // wlock.reset(); // reset node information
-        //                //wlock.set_state(State::Active);
-        // drop(wlock);
-        // debug!(
-        //     "ABORT - {} drop exculsive lock on {}",
-        //     this_node_id, this_node_id
-        // );
-
-        //        debug!("Graph after aborting {}: {}", meta.get_id().unwrap(), &self);
         debug!("Transaction {} terminated (abort)", meta.get_id().unwrap());
         Ok(())
     }
@@ -1605,7 +1586,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                 for (index, key) in inserts {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
-                    let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
+                    let rh = index.get_lock_on_row(&key).unwrap(); // get read handle to row
                     let mut mg = rh.lock(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
                     row.commit("basic-sgt", &meta.get_id().unwrap()); // commit inserts
@@ -1619,7 +1600,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
 
                     // get read handle to row
-                    if let Ok(rh) = index.get_lock_on_row(key.clone()) {
+                    if let Ok(rh) = index.get_lock_on_row(&key) {
                         let mut mg = rh.lock(); // acquire mutex on the row
                         let row = &mut *mg; // deref to row
                         row.revert_read(&meta.get_id().unwrap());
@@ -1635,7 +1616,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                 for (index, key) in updates {
                     let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
-                    let rh = index.get_lock_on_row(key.clone()).unwrap(); // get read handle to row
+                    let rh = index.get_lock_on_row(&key).unwrap(); // get read handle to row
                     let mut mg = rh.lock(); // acquire mutex on the row
                     let row = &mut *mg; // deref to row
                     row.commit("basic-sgt", &meta.get_id().unwrap()); // commit inserts

@@ -137,10 +137,10 @@ impl Index {
     /// Attempt to get a read handle to a row with `key`.
     pub fn get_lock_on_row(
         &self,
-        key: PrimaryKey,
+        key: &PrimaryKey,
     ) -> Result<Ref<PrimaryKey, Mutex<Row>>, NonFatalError> {
         self.map
-            .get(&key)
+            .get(key)
             .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))
     }
 
