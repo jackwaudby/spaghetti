@@ -3,7 +3,9 @@ use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{OperationResult, Row, State as RowState};
 use crate::workloads::PrimaryKey;
 
-use chashmap::{CHashMap, ReadGuard};
+//use chashmap::{CHashMap, ReadGuard};
+use dashmap::mapref::one::Ref;
+use dashmap::DashMap;
 use parking_lot::Mutex;
 use std::fmt;
 
@@ -14,8 +16,10 @@ use std::fmt;
 pub struct Index {
     /// Index name.
     name: String,
+
     /// Concurrrent hashmap.
-    map: CHashMap<PrimaryKey, Mutex<Row>>,
+    // map: CHashMap<PrimaryKey, Mutex<Row>>,
+    map: DashMap<PrimaryKey, Mutex<Row>>,
 }
 
 impl Index {
@@ -23,7 +27,7 @@ impl Index {
     pub fn init(name: &str) -> Self {
         Index {
             name: String::from(name),
-            map: CHashMap::new(),
+            map: DashMap::new(),
         }
     }
 
@@ -33,7 +37,7 @@ impl Index {
     }
 
     /// Get shared reference to map.
-    pub fn get_map(&self) -> &CHashMap<PrimaryKey, Mutex<Row>> {
+    pub fn get_map(&self) -> &DashMap<PrimaryKey, Mutex<Row>> {
         &self.map
     }
 
@@ -98,7 +102,7 @@ impl Index {
         // Remove the row from the map.
         let row = self.map.remove(&key);
         match row {
-            Some(row) => Ok(row.into_inner()),
+            Some((_, row)) => Ok(row.into_inner()),
             None => Err(NonFatalError::RowNotFound(
                 format!("{}", key),
                 self.get_name(),
@@ -134,7 +138,7 @@ impl Index {
     pub fn get_lock_on_row(
         &self,
         key: PrimaryKey,
-    ) -> Result<ReadGuard<PrimaryKey, Mutex<Row>>, NonFatalError> {
+    ) -> Result<Ref<PrimaryKey, Mutex<Row>>, NonFatalError> {
         self.map
             .get(&key)
             .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))
