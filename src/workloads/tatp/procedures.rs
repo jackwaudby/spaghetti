@@ -381,7 +381,7 @@ mod tests {
         ///////////////////////////////////////
         assert_eq!(
             get_subscriber_data(GetSubscriberData { s_id: 1 }, Arc::clone(&protocol)).unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"0\",\"bit_10\":\"0\",\"bit_2\":\"1\",\"bit_3\":\"0\",\"bit_4\":\"1\",\"bit_5\":\"1\",\"bit_6\":\"1\",\"bit_7\":\"0\",\"bit_8\":\"0\",\"bit_9\":\"1\",\"byte_2_1\":\"222\",\"byte_2_10\":\"52\",\"byte_2_2\":\"248\",\"byte_2_3\":\"210\",\"byte_2_4\":\"100\",\"byte_2_5\":\"205\",\"byte_2_6\":\"163\",\"byte_2_7\":\"118\",\"byte_2_8\":\"127\",\"byte_2_9\":\"77\",\"hex_1\":\"8\",\"hex_10\":\"9\",\"hex_2\":\"6\",\"hex_3\":\"10\",\"hex_4\":\"8\",\"hex_5\":\"2\",\"hex_6\":\"13\",\"hex_7\":\"8\",\"hex_8\":\"10\",\"hex_9\":\"1\",\"msc_location\":\"16\",\"s_id\":\"1\",\"sub_nbr\":\"000000000000001\"}}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"0\",\"bit_10\":\"0\",\"bit_2\":\"1\",\"bit_3\":\"0\",\"bit_4\":\"1\",\"bit_5\":\"1\",\"bit_6\":\"1\",\"bit_7\":\"0\",\"bit_8\":\"0\",\"bit_9\":\"1\",\"byte_2_1\":\"222\",\"byte_2_10\":\"52\",\"byte_2_2\":\"248\",\"byte_2_3\":\"210\",\"byte_2_4\":\"100\",\"byte_2_5\":\"205\",\"byte_2_6\":\"163\",\"byte_2_7\":\"118\",\"byte_2_8\":\"127\",\"byte_2_9\":\"77\",\"hex_1\":\"8\",\"hex_10\":\"9\",\"hex_2\":\"6\",\"hex_3\":\"10\",\"hex_4\":\"8\",\"hex_5\":\"2\",\"hex_6\":\"13\",\"hex_7\":\"8\",\"hex_8\":\"10\",\"hex_9\":\"1\",\"msc_location\":\"18\",\"s_id\":\"1\",\"sub_nbr\":\"000000000000001\"}}"
         );
 
         assert_eq!(
@@ -439,7 +439,7 @@ mod tests {
                 Arc::clone(&protocol)
             )
                 .unwrap(),
-"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"data_1\":\"150\",\"data_2\":\"113\",\"data_3\":\"VDO\",\"data_4\":\"TQMST\"}}"
+            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"data_1\":\"24\",\"data_2\":\"188\",\"data_3\":\"NRL\",\"data_4\":\"CWBOF\"}}"
         );
 
         assert_eq!(
@@ -619,7 +619,7 @@ mod tests {
             Some(&values_sb.get_values().unwrap()),
         )
         .unwrap();
-        assert_eq!(res_sb,"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"vlr_location\":\"12\"}}");
+        assert_eq!(res_sb,"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"vlr_location\":\"14\"}}");
 
         assert_eq!(
             update_location(

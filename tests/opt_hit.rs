@@ -4,6 +4,50 @@ use test_env_log::test;
 use tokio::time::{sleep, Duration};
 use tracing::info;
 
+const PROTOCOL: &str = "opt-hit";
+
+mod common;
+
+#[test]
+fn acid_opt_hit_g0() {
+    common::g0(PROTOCOL);
+}
+
+#[test]
+fn acid_opt_hit_g1a() {
+    common::g1a(PROTOCOL);
+}
+
+#[test]
+fn acid_opt_hit_g1c() {
+    common::g1c(PROTOCOL);
+}
+
+#[test]
+fn acid_opt_hit_imp() {
+    common::imp(PROTOCOL);
+}
+
+#[test]
+fn acid_opt_hit_otv() {
+    common::otv(PROTOCOL);
+}
+
+#[test]
+fn acid_opt_hit_fr() {
+    common::fr(PROTOCOL);
+}
+
+#[test]
+fn acid_opt_hit_lu() {
+    common::lu(PROTOCOL);
+}
+
+#[test]
+fn acid_opt_hit_g2item() {
+    common::g2item(PROTOCOL);
+}
+
 fn setup_config() -> Arc<Config> {
     let mut c = Config::default();
     c.merge(config::File::with_name("./tests/Test-opt-hit.toml"))

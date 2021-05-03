@@ -88,6 +88,7 @@ mod tests {
 
     /// Unable to parse frame from underlying connection.
     #[test(tokio::test)]
+    #[ignore]
     async fn run_drain_test() {
         // `Consumer` to `Main`
         let (notify_m_tx, _) = tokio::sync::mpsc::channel(1);
