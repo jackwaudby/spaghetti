@@ -201,7 +201,7 @@ impl Internal {
                     catalog.add_column((&c_name, c_type))?;
                 }
                 let table = Table::init(catalog);
-                let table = Arc::new(table);
+                //      let table = Arc::new(table);
                 debug!("Initialise table: {}", table.get_table_name());
                 tables.insert(table_name, table);
             } else if line.starts_with("INDEX") {
@@ -217,26 +217,36 @@ impl Internal {
 
                 let table_name: String = attributes[0].trim().to_lowercase();
 
-                let table: Arc<Table> = match tables.get(&table_name) {
-                    Some(t) => Arc::clone(&t),
+                match tables.get_mut(&table_name) {
+                    Some(table) => table.set_primary_index(&index_name),
                     None => panic!("table does not exist: {:?}", &table_name),
-                };
-
-                match table.get_primary_index() {
-                    Ok(_) => table.set_secondary_index(&index_name),
-                    Err(_) => table.set_primary_index(&index_name),
                 }
 
-                let index = Arc::new(Index::init(&index_name));
+                // match table.get_primary_index() {
+                //     Ok(_) => table.set_secondary_index(&index_name),
+                //     Err(_) => table.set_primary_index(&index_name),
+                // }
+
+                //                let index = Arc::new(Index::init(&index_name));
+                let index = Index::init(&index_name);
                 debug!("Initialise index: {}", index);
 
                 indexes.insert(index_name, index);
             }
         }
+        let mut atomic_tables = HashMap::new();
+        for (key, val) in tables.drain() {
+            atomic_tables.insert(key, Arc::new(val));
+        }
+
+        let mut atomic_indexes = HashMap::new();
+        for (key, val) in indexes.drain() {
+            atomic_indexes.insert(key, Arc::new(val));
+        }
 
         Ok(Internal {
-            tables: Arc::new(tables),
-            indexes: Arc::new(indexes),
+            tables: Arc::new(atomic_tables),
+            indexes: Arc::new(atomic_indexes),
             config,
         })
     }

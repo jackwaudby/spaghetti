@@ -8,10 +8,13 @@ use std::sync::Mutex;
 pub struct Table {
     /// Table schema.
     schema: Catalog,
+
     /// Next valid row id.
     next_row_id: Mutex<u64>,
+
     /// Primary index.
-    primary_index: Mutex<Option<String>>,
+    primary_index: Option<String>,
+
     /// Seconday index.
     secondary_index: Mutex<Option<String>>,
 }
@@ -22,7 +25,7 @@ impl Table {
         Table {
             schema,
             next_row_id: Mutex::new(0),
-            primary_index: Mutex::new(None),
+            primary_index: None,
             secondary_index: Mutex::new(None),
         }
     }
@@ -58,18 +61,13 @@ impl Table {
     }
 
     /// Set the primary index for a table
-    pub fn set_primary_index(&self, index_name: &str) {
-        let mut lock = self.primary_index.lock().unwrap();
-        *lock = Some(String::from(index_name));
+    pub fn set_primary_index(&mut self, index_name: &str) {
+        self.primary_index = Some(String::from(index_name));
     }
 
     /// Get the primary index for a table
     pub fn get_primary_index(&self) -> Result<String, NonFatalError> {
-        let lock = self.primary_index.lock().unwrap();
-        match &*lock {
-            Some(pi) => Ok(pi.clone()),
-            None => Err(NonFatalError::NoPrimaryIndex(self.get_table_name())),
-        }
+        Ok(self.primary_index.as_ref().unwrap().clone())
     }
 
     /// Set the secondary index for a table
