@@ -22,7 +22,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
 
     let read1 = protocol
         .scheduler
-        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read 1 -- get customer ID
+        .read("accounts", accounts_pk, &accounts_cols, &meta)?; // read 1 -- get customer ID
 
     let other_cols: Vec<&str> = vec!["balance"];
     let cust_id = i64::try_from(read1[0].clone()).unwrap() as u64;
@@ -31,13 +31,13 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
 
     let read2 = protocol
         .scheduler
-        .read("savings", savings_pk, &other_cols, meta.clone())?; // read 2 -- get savings
+        .read("savings", savings_pk, &other_cols, &meta)?; // read 2 -- get savings
 
     let read3 = protocol
         .scheduler
-        .read("checking", checking_pk, &other_cols, meta.clone())?; // read 3 -- get checking
+        .read("checking", checking_pk, &other_cols, &meta)?; // read 3 -- get checking
 
-    protocol.scheduler.commit(meta)?; // commit
+    protocol.scheduler.commit(&meta)?; // commit
 
     let savings_balance = f64::try_from(read2[0].clone()).unwrap();
     let checking_balance = f64::try_from(read3[0].clone()).unwrap();
@@ -60,7 +60,7 @@ pub fn deposit_checking(
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
     let res1 = protocol
         .scheduler
-        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
+        .read("accounts", accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
     let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
 
     let checking_cols: Vec<String> = vec!["balance".to_string()];
@@ -83,10 +83,10 @@ pub fn deposit_checking(
         true,
         params,
         &update,
-        meta.clone(),
+        &meta,
     )?; // update -- set balance
 
-    protocol.scheduler.commit(meta)?; // commit
+    protocol.scheduler.commit(&meta)?; // commit
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -107,7 +107,7 @@ pub fn transact_savings(
 
     let res1 = protocol
         .scheduler
-        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
+        .read("accounts", accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
 
     let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
 
@@ -135,10 +135,10 @@ pub fn transact_savings(
         true,
         params,
         &update,
-        meta.clone(),
+        &meta,
     )?; // update -- set savings balance
 
-    protocol.scheduler.commit(meta)?; // commit
+    protocol.scheduler.commit(&meta)?; // commit
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -156,7 +156,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 
     let res1 = protocol
         .scheduler
-        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer1 ID
+        .read("accounts", accounts_pk, &accounts_cols, &meta)?; // read -- get customer1 ID
 
     let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
     let other_cols: Vec<&str> = vec!["balance"];
@@ -164,20 +164,14 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
     let values = vec!["0".to_string()];
     let values: Vec<&str> = values.iter().map(|s| s as &str).collect();
-    let res2 = protocol.scheduler.read_and_update(
-        "savings",
-        savings_pk,
-        &other_cols,
-        &values,
-        meta.clone(),
-    )?; // clone and set savings
-    let res3 = protocol.scheduler.read_and_update(
-        "checking",
-        checking_pk,
-        &other_cols,
-        &values,
-        meta.clone(),
-    )?; // get and set checking
+    let res2 =
+        protocol
+            .scheduler
+            .read_and_update("savings", savings_pk, &other_cols, &values, &meta)?; // clone and set savings
+    let res3 =
+        protocol
+            .scheduler
+            .read_and_update("checking", checking_pk, &other_cols, &values, &meta)?; // get and set checking
 
     let a = f64::try_from(res2[0].clone()).unwrap();
     let b = f64::try_from(res3[0].clone()).unwrap();
@@ -187,12 +181,12 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name2));
     let res1 = protocol
         .scheduler
-        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID
+        .read("accounts", accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
 
     let cust_id = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
-            protocol.scheduler.abort(meta).unwrap();
+            protocol.scheduler.abort(&meta).unwrap();
             return Err(e);
         }
     };
@@ -217,10 +211,10 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         true,
         params,
         &update,
-        meta.clone(),
+        &meta,
     )?; // update
 
-    protocol.scheduler.commit(meta)?; // commit
+    protocol.scheduler.commit(&meta)?; // commit
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
@@ -237,11 +231,11 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
     let res1 = protocol
         .scheduler
-        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?;
+        .read("accounts", accounts_pk, &accounts_cols, &meta)?;
     let cust_id = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
-            protocol.scheduler.abort(meta).unwrap();
+            protocol.scheduler.abort(&meta).unwrap();
             return Err(e);
         }
     };
@@ -250,7 +244,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let res2 = protocol
         .scheduler
-        .read("savings", savings_pk, &other_cols, meta.clone())?; // read
+        .read("savings", savings_pk, &other_cols, &meta)?; // read
 
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
     let checking_cols: Vec<String> = vec!["balance".to_string()];
@@ -279,10 +273,10 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
         true,
         params,
         &update,
-        meta.clone(),
+        &meta,
     )?; // update
 
-    protocol.scheduler.commit(meta)?; // commit
+    protocol.scheduler.commit(&meta)?; // commit
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
@@ -299,11 +293,11 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name1));
     let res1 = protocol
         .scheduler
-        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID 1
+        .read("accounts", accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID 1
     let cust_id1 = match i64::try_from(res1[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
-            protocol.scheduler.abort(meta).unwrap();
+            protocol.scheduler.abort(&meta).unwrap();
             return Err(e);
         }
     };
@@ -312,11 +306,11 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name2));
     let res2 = protocol
         .scheduler
-        .read("accounts", accounts_pk, &accounts_cols, meta.clone())?; // read -- get customer ID 2
+        .read("accounts", accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID 2
     let cust_id2 = match i64::try_from(res2[0].clone()) {
         Ok(cust_id) => cust_id as u64,
         Err(e) => {
-            protocol.scheduler.abort(meta).unwrap();
+            protocol.scheduler.abort(&meta).unwrap();
             return Err(e);
         }
     };
@@ -347,7 +341,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         true,
         params.clone(),
         &update,
-        meta.clone(),
+        &meta,
     )?;
 
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id2));
@@ -369,10 +363,10 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         true,
         params,
         &update,
-        meta.clone(),
+        &meta,
     )?;
 
-    protocol.scheduler.commit(meta)?;
+    protocol.scheduler.commit(&meta)?;
 
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 

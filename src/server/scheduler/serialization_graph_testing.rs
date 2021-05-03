@@ -233,21 +233,21 @@ impl Scheduler for SerializationGraphTesting {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let th = thread::current(); // get handle to thread
         let thread_id = th.name().unwrap(); // get thread id
         debug!("Thread {}: Executing create operation", thread_id);
 
-        let table = self.get_table(table, meta.clone())?; // get handle to table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get handle to index
+        let table = self.get_table(table, &meta)?; // get handle to table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get handle to index
         let mut row = Row::new(Arc::clone(&table), "sgt"); // create new row
         row.set_primary_key(key.clone()); // set pk
 
         // initialise each field
         for (i, column) in columns.iter().enumerate() {
             if row.init_value(column, &values[i].to_string()).is_err() {
-                self.abort(meta).unwrap(); // abort -- unable to initialise row
+                self.abort(&meta).unwrap(); // abort -- unable to initialise row
                 return Err(NonFatalError::UnableToInitialiseRow(
                     table.to_string(),
                     column.to_string(),
@@ -258,7 +258,7 @@ impl Scheduler for SerializationGraphTesting {
 
         // set values in fields -- makes rows "dirty"
         if let Err(e) = row.set_values(columns, values, "sgt", &meta.get_id().unwrap()) {
-            self.abort(meta).unwrap(); // abort -- unable to convert to datatype
+            self.abort(&meta).unwrap(); // abort -- unable to convert to datatype
             return Err(e);
         }
 
@@ -271,7 +271,7 @@ impl Scheduler for SerializationGraphTesting {
             }
 
             Err(e) => {
-                self.abort(meta).unwrap(); // abort -- row already exists
+                self.abort(&meta).unwrap(); // abort -- row already exists
                 return Err(e);
             }
         }
@@ -287,19 +287,19 @@ impl Scheduler for SerializationGraphTesting {
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         let th = thread::current(); // get handle to thread
         let thread_id = th.name().unwrap(); // get thread id
         debug!("Thread {}: Executing read operation", thread_id);
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         // get read handle to row in index
         let rh = match index.get_lock_on_row(&key) {
             Ok(rh) => rh,
             Err(e) => {
-                self.abort(meta).unwrap(); // abort -- row does not exist in index
+                self.abort(&meta).unwrap(); // abort -- row does not exist in index
                 return Err(e);
             }
         };
@@ -323,7 +323,7 @@ impl Scheduler for SerializationGraphTesting {
                         if let Err(e) = self.add_edge(from_node, this_node, false) {
                             drop(mg); // drop mutex on row
                             drop(rh); // drop read handle to row
-                            self.abort(meta).unwrap(); // abort -- from_node aborted
+                            self.abort(&meta).unwrap(); // abort -- from_node aborted
                             return Err(e.into());
                         }
                     }
@@ -339,7 +339,7 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-                self.abort(meta).unwrap(); // abort -- row deleted
+                self.abort(&meta).unwrap(); // abort -- row deleted
 
                 Err(e)
             }
@@ -361,20 +361,20 @@ impl Scheduler for SerializationGraphTesting {
             Option<Vec<Data>>,
             Vec<Data>,
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let th = thread::current();
         let thread_id = th.name().unwrap(); // get thread id
         debug!("Thread {}: Executing update operation", thread_id);
 
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         // get read handle to row in index
         let rh = match index.get_lock_on_row(&key) {
             Ok(rg) => rg,
             Err(e) => {
-                self.abort(meta).unwrap(); // abort -- row not found
+                self.abort(&meta).unwrap(); // abort -- row not found
                 return Err(e);
             }
         };
@@ -397,7 +397,7 @@ impl Scheduler for SerializationGraphTesting {
                 Err(e) => {
                     drop(mg); // drop mutex on row
                     drop(rh); // drop read handle to row
-                    self.abort(meta).unwrap(); // abort -- row not found
+                    self.abort(&meta).unwrap(); // abort -- row not found
                     return Err(e);
                 }
             };
@@ -412,7 +412,7 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-                self.abort(meta).unwrap(); // abort -- row not found
+                self.abort(&meta).unwrap(); // abort -- row not found
                 return Err(e);
             }
         };
@@ -438,7 +438,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta).unwrap(); // abort -- from_node aborted
+                                self.abort(&meta).unwrap(); // abort -- from_node aborted
                                 return Err(e.into());
                             }
                         }
@@ -450,7 +450,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta).unwrap(); // abort -- from_node aborted
+                                self.abort(&meta).unwrap(); // abort -- from_node aborted
                                 return Err(e.into());
                             }
                         }
@@ -464,7 +464,7 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-                self.abort(meta).unwrap(); // abort -- row deleted or dirty
+                self.abort(&meta).unwrap(); // abort -- row deleted or dirty
                 Err(e)
             }
         }
@@ -479,19 +479,19 @@ impl Scheduler for SerializationGraphTesting {
         key: PrimaryKey,
         column: &str,
         value: &str,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let th = thread::current();
         let thread_id = th.name().unwrap(); // get thread id
         debug!("Thread {}: Executing append operation", thread_id);
 
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         let rh = match index.get_lock_on_row(&key) {
             Ok(rh) => rh, // get handle to row
             Err(e) => {
-                self.abort(meta).unwrap(); // abort -- RowNotFound.
+                self.abort(&meta).unwrap(); // abort -- RowNotFound.
                 return Err(e);
             }
         };
@@ -518,7 +518,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta).unwrap(); // abort -- parent aborted
+                                self.abort(&meta).unwrap(); // abort -- parent aborted
                                 return Err(e.into());
                             }
                         }
@@ -528,7 +528,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta).unwrap(); // abort -- parent aborted
+                                self.abort(&meta).unwrap(); // abort -- parent aborted
                                 return Err(e.into());
                             }
                         }
@@ -541,7 +541,7 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-                self.abort(meta).unwrap(); // abort -- row deleted or row dirty
+                self.abort(&meta).unwrap(); // abort -- row deleted or row dirty
                 Err(e)
             }
         }
@@ -556,7 +556,7 @@ impl Scheduler for SerializationGraphTesting {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         let handle = thread::current();
         debug!(
@@ -564,13 +564,13 @@ impl Scheduler for SerializationGraphTesting {
             handle.name().unwrap()
         );
 
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         let rh = match index.get_lock_on_row(&key) {
             Ok(rh) => rh,
             Err(e) => {
-                self.abort(meta).unwrap(); // abort -- row not found.
+                self.abort(&meta).unwrap(); // abort -- row not found.
                 return Err(e);
             }
         };
@@ -598,7 +598,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta).unwrap(); // abort -- parent aborted.
+                                self.abort(&meta).unwrap(); // abort -- parent aborted.
                                 return Err(e.into());
                             }
                         }
@@ -610,7 +610,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta).unwrap(); // abort -- parent aborted.
+                                self.abort(&meta).unwrap(); // abort -- parent aborted.
                                 return Err(e.into());
                             }
                         }
@@ -622,7 +622,7 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-                self.abort(meta).unwrap(); // abort - row deleted or row dirty
+                self.abort(&meta).unwrap(); // abort - row deleted or row dirty
                 Err(e)
             }
         }
@@ -633,7 +633,7 @@ impl Scheduler for SerializationGraphTesting {
         &self,
         table: &str,
         key: PrimaryKey,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let handle = thread::current();
         debug!(
@@ -641,14 +641,14 @@ impl Scheduler for SerializationGraphTesting {
             handle.name().unwrap()
         );
 
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         // get read handle to row in index
         let rh = match index.get_lock_on_row(&key) {
             Ok(rh) => rh,
             Err(e) => {
-                self.abort(meta).unwrap(); // abort - row not found
+                self.abort(&meta).unwrap(); // abort - row not found
                 return Err(e);
             }
         };
@@ -674,7 +674,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, false) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta).unwrap();
+                                self.abort(&meta).unwrap();
                                 return Err(e.into());
                             }
                         }
@@ -684,7 +684,7 @@ impl Scheduler for SerializationGraphTesting {
                             if let Err(e) = self.add_edge(from_node, this_node, true) {
                                 drop(mg); // drop mutex on row
                                 drop(rh); // drop read handle to row
-                                self.abort(meta).unwrap();
+                                self.abort(&meta).unwrap();
                                 return Err(e.into());
                             }
                         }
@@ -696,7 +696,7 @@ impl Scheduler for SerializationGraphTesting {
             Err(e) => {
                 drop(mg); // drop mutex on row
                 drop(rh); // drop read handle to row
-                self.abort(meta).unwrap(); // abort -- row deleted or row dirty
+                self.abort(&meta).unwrap(); // abort -- row deleted or row dirty
                 Err(e)
             }
         }
@@ -706,7 +706,7 @@ impl Scheduler for SerializationGraphTesting {
     ///
     /// # Panics
     /// - RWLock or Mutex error.
-    fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
+    fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
         let th = thread::current();
         let thread_id = th.name().unwrap(); // get thread id
         debug!("Thread {}: Starting abort procedure", thread_id);
@@ -774,7 +774,7 @@ impl Scheduler for SerializationGraphTesting {
     }
 
     /// Commit a transaction.
-    fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
+    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
         let th = thread::current();
         let thread_id = th.name().unwrap(); // get thread id
         let id = meta.get_id().unwrap().parse::<usize>().unwrap(); // get this_node id
@@ -807,7 +807,7 @@ impl Scheduler for SerializationGraphTesting {
 
         match state {
             State::Aborted => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 let e = SerializationGraphTestingError::ParentAborted;
                 return Err(e.into());
             }
@@ -954,7 +954,7 @@ mod test {
     //                 let value = match i64::try_from(params[0].clone()) {
     //                     Ok(value) => value,
     //                     Err(e) => {
-    //                         sg1.abort(meta.clone()).unwrap();
+    //                         sg1.abort(&meta).unwrap();
     //                         return Err(e);
     //                     }
     //                 };
@@ -972,7 +972,7 @@ mod test {
     //                 false,
     //                 params,
     //                 &update,
-    //                 meta.clone(),
+    //                 &meta,
     //             )
     //             .unwrap();
 
@@ -984,7 +984,7 @@ mod test {
     //             // assert_eq!(sg.get_shared_lock(0).get_outgoing(), vec![1]);
     //             // assert_eq!(sg.get_shared_lock(1).get_incoming(), vec![0]);
 
-    //             assert_eq!(sg1.abort(meta).unwrap(), ());
+    //             assert_eq!(sg1.abort(&meta).unwrap(), ());
     //         })
     //         .unwrap();
 
@@ -999,9 +999,9 @@ mod test {
     //         let table = "access_info"; // table name
     //         let key = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1)); // primary key
     //         let columns: Vec<&str> = vec!["data_1"]; // columns to write
-    //         let _values = sg2.read(table, key, &columns, meta.clone()).unwrap();
+    //         let _values = sg2.read(table, key, &columns, &meta).unwrap();
     //         assert_eq!(
-    //             sg2.commit(meta.clone()),
+    //             sg2.commit(&meta),
     //             Err(NonFatalError::SerializationGraphTesting(
     //                 SerializationGraphTestingError::NonSerializable
     //             ))

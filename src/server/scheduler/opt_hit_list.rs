@@ -80,12 +80,12 @@ impl Scheduler for OptimisedHitList {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap()); // split
         debug!("Create: {}-{}", thread_id, seq_num);
 
-        let table = self.get_table(table, meta.clone())?; // get table
+        let table = self.get_table(table, &meta)?; // get table
         let mut row = Row::new(Arc::clone(&table), "hit"); // create new row
         row.set_primary_key(key.clone()); // set pk
 
@@ -94,19 +94,19 @@ impl Scheduler for OptimisedHitList {
             match row.init_value(column, &values[i].to_string()) {
                 Ok(_) => {}
                 Err(e) => {
-                    self.abort(meta).unwrap();
+                    self.abort(&meta).unwrap();
                     return Err(e);
                 }
             }
         }
 
-        let index = self.get_index(table, meta.clone())?; // get index
+        let index = self.get_index(table, &meta)?; // get index
 
         // Set values - Needed to make the row "dirty"
         match row.set_values(columns, values, "hit", &meta.get_id().unwrap()) {
             Ok(_) => {}
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 return Err(e);
             }
         }
@@ -120,7 +120,7 @@ impl Scheduler for OptimisedHitList {
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -136,13 +136,13 @@ impl Scheduler for OptimisedHitList {
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap()); // split transaction_id
         debug!("Read: {}-{}", thread_id, seq_num);
 
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         match index.read(key.clone(), columns, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
@@ -170,7 +170,7 @@ impl Scheduler for OptimisedHitList {
                 Ok(vals)
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -183,11 +183,11 @@ impl Scheduler for OptimisedHitList {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap()); // transaction_id
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         match index.read_and_update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
@@ -232,7 +232,7 @@ impl Scheduler for OptimisedHitList {
                 Ok(vals)
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -252,13 +252,13 @@ impl Scheduler for OptimisedHitList {
             Option<Vec<Data>>,
             Vec<Data>,
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap());
         debug!("Update: {}-{}", thread_id, seq_num);
 
-        let table = self.get_table(table, meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+        let table = self.get_table(table, &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?;
 
         match index.update(
             key.clone(),
@@ -308,7 +308,7 @@ impl Scheduler for OptimisedHitList {
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -321,13 +321,13 @@ impl Scheduler for OptimisedHitList {
         key: PrimaryKey,
         column: &str,
         value: &str,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap());
         debug!("Update: {}-{}", thread_id, seq_num);
 
-        let table = self.get_table(table, meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+        let table = self.get_table(table, &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?;
 
         match index.append(key.clone(), column, value, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
@@ -369,7 +369,7 @@ impl Scheduler for OptimisedHitList {
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -380,13 +380,13 @@ impl Scheduler for OptimisedHitList {
         &self,
         table: &str,
         key: PrimaryKey,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let (thread_id, seq_num) = parse_id(meta.get_id().unwrap());
         debug!("Delete: {}-{}", thread_id, seq_num);
 
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         match index.delete(key.clone(), "hit") {
             Ok(res) => {
@@ -420,14 +420,14 @@ impl Scheduler for OptimisedHitList {
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
     }
 
     /// Abort a transaction.
-    fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
+    fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
         let transaction_id = meta.get_id().unwrap(); // get transaction id
         let (thread_id, seq_num) = parse_id(transaction_id); // split into thread id + seq
         self.thread_states[thread_id].set_state(seq_num, TransactionState::Aborted); // set state.
@@ -476,7 +476,7 @@ impl Scheduler for OptimisedHitList {
     }
 
     /// Commit a transaction.
-    fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
+    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
         let handle = thread::current();
         let transaction_id = meta.get_id().unwrap(); // get transaction id
 
@@ -485,7 +485,7 @@ impl Scheduler for OptimisedHitList {
         // CHECK //
 
         if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
-            self.abort(meta.clone()).unwrap(); // abort txn
+            self.abort(&meta).unwrap(); // abort txn
             return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
         }
 
@@ -506,7 +506,7 @@ impl Scheduler for OptimisedHitList {
 
         // CHECK //
         if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
-            self.abort(meta.clone()).unwrap(); // abort txn
+            self.abort(&meta).unwrap(); // abort txn
             return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
         }
 
@@ -527,14 +527,14 @@ impl Scheduler for OptimisedHitList {
 
             match self.thread_states[p_thread_id].get_state(p_seq_num) {
                 TransactionState::Active => {
-                    self.abort(meta.clone()).unwrap(); // abort txn
+                    self.abort(&meta).unwrap(); // abort txn
 
                     return Err(
                         OptimisedHitListError::PredecessorActive(meta.get_id().unwrap()).into(),
                     );
                 }
                 TransactionState::Aborted => {
-                    self.abort(meta.clone()).unwrap(); // abort txn
+                    self.abort(&meta).unwrap(); // abort txn
 
                     return Err(
                         OptimisedHitListError::PredecessorAborted(meta.get_id().unwrap()).into(),
@@ -547,7 +547,7 @@ impl Scheduler for OptimisedHitList {
 
         // CHECK //
         if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
-            self.abort(meta.clone()).unwrap(); // abort txn
+            self.abort(&meta).unwrap(); // abort txn
             return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
         }
 
@@ -603,7 +603,7 @@ impl Scheduler for OptimisedHitList {
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta).unwrap(); // abort txn
+                self.abort(&meta).unwrap(); // abort txn
                 Err(e)
             }
         }

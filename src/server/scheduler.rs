@@ -100,10 +100,10 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn register(&self) -> Result<TransactionInfo, NonFatalError>;
 
     /// Attempt to commit a transaction.
-    fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError>;
+    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError>;
 
     /// Abort a transaction.
-    fn abort(&self, meta: TransactionInfo) -> crate::Result<()>;
+    fn abort(&self, meta: &TransactionInfo) -> crate::Result<()>;
 
     /// Insert a new row in a table.
     fn create(
@@ -112,7 +112,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;
 
     /// Read some values from a row.
@@ -121,7 +121,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError>;
 
     /// Update and return old values. (Get and set equivalent).
@@ -131,7 +131,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError>;
 
     /// List data type only.
@@ -143,7 +143,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
         key: PrimaryKey,
         column: &str,
         value: &str,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;
 
     /// Update columns with values in a row.
@@ -160,7 +160,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
             Option<Vec<Data>>,
             Vec<Data>,
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;
 
     /// Delete a row from a table.
@@ -168,14 +168,14 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
         &self,
         table: &str,
         key: PrimaryKey,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;
 
     /// Get atomic shared reference to underlying data.
     fn get_data(&self) -> Arc<Workload>;
 
     /// Get shared reference to a table.
-    fn get_table(&self, table: &str, meta: TransactionInfo) -> Result<Arc<Table>, NonFatalError> {
+    fn get_table(&self, table: &str, meta: &TransactionInfo) -> Result<Arc<Table>, NonFatalError> {
         // Get table.
         let res = self.get_data().get_internals().get_table(table);
         match res {
@@ -191,7 +191,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn get_index_name(
         &self,
         table: Arc<Table>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<String, NonFatalError> {
         let res = table.get_primary_index();
         match res {
@@ -207,9 +207,9 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn get_index(
         &self,
         table: Arc<Table>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Arc<Index>, NonFatalError> {
-        let index_name = self.get_index_name(table, meta.clone())?;
+        let index_name = self.get_index_name(table, meta)?;
 
         let res = self.get_data().get_internals().get_index(&index_name);
         match res {

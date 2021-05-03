@@ -35,15 +35,15 @@ pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonF
 
     protocol
         .scheduler
-        .append("person", pk_p1, "version_history", &value, meta.clone())?; // --- append
+        .append("person", pk_p1, "version_history", &value, &meta)?; // --- append
     protocol
         .scheduler
-        .append("person", pk_p2, "version_history", &value, meta.clone())?; // --- append
+        .append("person", pk_p2, "version_history", &value, &meta)?; // --- append
     protocol
         .scheduler
-        .append("knows", pk_knows, "version_history", &value, meta.clone())?; // --- append
+        .append("knows", pk_knows, "version_history", &value, &meta)?; // --- append
 
-    protocol.scheduler.commit(meta)?; // --- commit
+    protocol.scheduler.commit(&meta)?; // --- commit
 
     let res = datatype::to_result(None, Some(3), None, None, None).unwrap();
 
@@ -65,15 +65,15 @@ pub fn g0_read(params: G0Read, protocol: Arc<Protocol>) -> Result<String, NonFat
 
     let mut r1 = protocol
         .scheduler
-        .read("person", pk_p1, &person_columns, meta.clone())?; // --- read
+        .read("person", pk_p1, &person_columns, &meta)?; // --- read
     let mut r2 = protocol
         .scheduler
-        .read("person", pk_p2, &person_columns, meta.clone())?; // --- read
+        .read("person", pk_p2, &person_columns, &meta)?; // --- read
     let mut r3 = protocol
         .scheduler
-        .read("knows", pk_knows, &knows_columns, meta.clone())?; // --- read
+        .read("knows", pk_knows, &knows_columns, &meta)?; // --- read
 
-    protocol.scheduler.commit(meta)?; // --- commit
+    protocol.scheduler.commit(&meta)?; // --- commit
 
     let columns: Vec<&str> = vec![
         "p1_id",
@@ -100,10 +100,8 @@ pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonF
     let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id));
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
-    let values = protocol
-        .scheduler
-        .read("person", pk, &columns, meta.clone())?; // --- read
-    protocol.scheduler.commit(meta)?; // --- commit
+    let values = protocol.scheduler.read("person", pk, &columns, &meta)?; // --- read
+    protocol.scheduler.commit(&meta)?; // --- commit
 
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
 
@@ -130,9 +128,9 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
     let meta = protocol.scheduler.register().unwrap(); // --- register
     protocol
         .scheduler
-        .update("person", pk, columns, false, params, &update, meta.clone())?; // --- update
+        .update("person", pk, columns, false, params, &update, &meta)?; // --- update
     thread::sleep(time::Duration::from_millis(delay)); // --- artifical delay
-    protocol.scheduler.abort(meta).unwrap(); // --- abort
+    protocol.scheduler.abort(&meta).unwrap(); // --- abort
 
     Err(NonFatalError::NonSerializable)
 }
@@ -162,11 +160,9 @@ pub fn g1c_read_write(
     let meta = protocol.scheduler.register().unwrap(); // --- register
     protocol
         .scheduler
-        .update("person", pk1, columns, false, values, &update, meta.clone())?; // --- update
-    let mut values = protocol
-        .scheduler
-        .read("person", pk2, &rcolumns, meta.clone())?; // --- read
-    protocol.scheduler.commit(meta)?; // --- commit
+        .update("person", pk1, columns, false, values, &update, &meta)?; // --- update
+    let mut values = protocol.scheduler.read("person", pk2, &rcolumns, &meta)?; // --- read
+    protocol.scheduler.commit(&meta)?; // --- commit
 
     values.push(Data::Int(params.transaction_id.into())); // --- result
     let frcolumns: Vec<&str> = vec!["version", "transaction_id"];
@@ -185,13 +181,11 @@ pub fn imp_read(params: ImpRead, protocol: Arc<Protocol>) -> Result<String, NonF
     let meta = protocol.scheduler.register().unwrap(); // --- register
     let mut read1 = protocol
         .scheduler
-        .read("person", pk.clone(), &columns, meta.clone())?; // --- read 1
+        .read("person", pk.clone(), &columns, &meta)?; // --- read 1
     thread::sleep(time::Duration::from_millis(params.delay)); // --- artifical delay
-    let mut read2 = protocol
-        .scheduler
-        .read("person", pk, &columns, meta.clone())?; // --- read 2
+    let mut read2 = protocol.scheduler.read("person", pk, &columns, &meta)?; // --- read 2
 
-    protocol.scheduler.commit(meta)?; // --- commit
+    protocol.scheduler.commit(&meta)?; // --- commit
 
     let columns: Vec<&str> = vec!["first_read", "second_read"]; // --- result
     read1.append(&mut read2);
@@ -220,8 +214,8 @@ pub fn imp_write(params: ImpWrite, protocol: Arc<Protocol>) -> Result<String, No
     let meta = protocol.scheduler.register().unwrap(); // --- register
     protocol
         .scheduler
-        .update("person", pk, columns, true, values, &update, meta.clone())?; //  ---  update
-    protocol.scheduler.commit(meta)?; // --- commit
+        .update("person", pk, columns, true, values, &update, &meta)?; //  ---  update
+    protocol.scheduler.commit(&meta)?; // --- commit
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // --- result
     Ok(res)
@@ -263,10 +257,10 @@ pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFata
             true,
             params.clone(),
             &calc,
-            meta.clone(),
+            &meta,
         )?;
     }
-    protocol.scheduler.commit(meta)?; // commit
+    protocol.scheduler.commit(&meta)?; // commit
 
     let res = datatype::to_result(None, Some(4), None, None, None).unwrap();
     Ok(res)
@@ -292,10 +286,10 @@ pub fn otv_read(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFatal
     for key in keys {
         let mut read = protocol
             .scheduler
-            .read("person", key.clone(), &column, meta.clone())?; // read
+            .read("person", key.clone(), &column, &meta)?; // read
         reads.append(&mut read);
     }
-    protocol.scheduler.commit(meta)?; // commit
+    protocol.scheduler.commit(&meta)?; // commit
 
     let columns: Vec<&str> = vec!["p1_version", "p2_version", "p3_version", "p4_version"];
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&reads)).unwrap();
@@ -325,9 +319,9 @@ pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<Stri
 
     protocol
         .scheduler
-        .update("person", pk, columns, true, values, &update, meta.clone())?; //  update
+        .update("person", pk, columns, true, values, &update, &meta)?; //  update
 
-    protocol.scheduler.commit(meta)?; // commit
+    protocol.scheduler.commit(&meta)?; // commit
 
     // Note; the person id is needed for the anomaly check so embedding it in the updated field as a workaround
     let res = datatype::to_result(None, Some(params.p_id), None, None, None).unwrap();
@@ -342,10 +336,8 @@ pub fn lu_read(params: LostUpdateRead, protocol: Arc<Protocol>) -> Result<String
     let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // pk
 
     let meta = protocol.scheduler.register().unwrap(); // register
-    let read = protocol
-        .scheduler
-        .read("person", pk, &columns, meta.clone())?; // read
-    protocol.scheduler.commit(meta)?; // commit
+    let read = protocol.scheduler.read("person", pk, &columns, &meta)?; // read
+    protocol.scheduler.commit(&meta)?; // commit
 
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&read)).unwrap();
 
@@ -371,7 +363,7 @@ pub fn g2_item_write(
         // read p2 for value
         let read = protocol
             .scheduler
-            .read("person", pk2, &read_column, meta.clone())?; // read 1
+            .read("person", pk2, &read_column, &meta)?; // read 1
 
         // takes in current value of p1 and value of p2 via params
         let calc = |columns: Vec<String>,
@@ -393,11 +385,11 @@ pub fn g2_item_write(
 
         protocol
             .scheduler
-            .update("person", pk1, write_column, true, read, &calc, meta.clone())?;
+            .update("person", pk1, write_column, true, read, &calc, &meta)?;
     } else {
         let read = protocol
             .scheduler
-            .read("person", pk1, &read_column, meta.clone())?; // read 1
+            .read("person", pk1, &read_column, &meta)?; // read 1
 
         // takes in current value of p1 and value of p2 via params
         let calc = |columns: Vec<String>,
@@ -421,10 +413,10 @@ pub fn g2_item_write(
 
         protocol
             .scheduler
-            .update("person", pk2, write_column, true, read, &calc, meta.clone())?;
+            .update("person", pk2, write_column, true, read, &calc, &meta)?;
     }
 
-    protocol.scheduler.commit(meta)?; // commit
+    protocol.scheduler.commit(&meta)?; // commit
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
     Ok(res)
@@ -439,13 +431,9 @@ pub fn g2_item_read(params: G2itemRead, protocol: Arc<Protocol>) -> Result<Strin
     let pk2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id)); // pk
 
     let meta = protocol.scheduler.register().unwrap(); // register
-    let mut read1 = protocol
-        .scheduler
-        .read("person", pk1, &columns, meta.clone())?; // read
-    let mut read2 = protocol
-        .scheduler
-        .read("person", pk2, &columns, meta.clone())?; // read
-    protocol.scheduler.commit(meta)?; // commit
+    let mut read1 = protocol.scheduler.read("person", pk1, &columns, &meta)?; // read
+    let mut read2 = protocol.scheduler.read("person", pk2, &columns, &meta)?; // read
+    protocol.scheduler.commit(&meta)?; // commit
 
     read1.append(&mut read2);
 

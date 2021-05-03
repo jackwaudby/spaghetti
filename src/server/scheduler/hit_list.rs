@@ -116,7 +116,7 @@ impl Scheduler for HitList {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let tname = thread::current().name().unwrap().to_string();
         let worker_id = tname.parse::<usize>().unwrap();
@@ -124,7 +124,7 @@ impl Scheduler for HitList {
         let handle = thread::current();
         debug!("Thread {} executing create", handle.name().unwrap());
 
-        let table = self.get_table(table, meta.clone())?; // get table
+        let table = self.get_table(table, &meta)?; // get table
         let mut row = Row::new(Arc::clone(&table), "hit"); // create new row
         row.set_primary_key(key.clone()); // set pk
 
@@ -133,19 +133,19 @@ impl Scheduler for HitList {
             match row.init_value(column, &values[i].to_string()) {
                 Ok(_) => {}
                 Err(e) => {
-                    self.abort(meta).unwrap();
+                    self.abort(&meta).unwrap();
                     return Err(e);
                 }
             }
         }
 
-        let index = self.get_index(table, meta.clone())?; // get index
+        let index = self.get_index(table, &meta)?; // get index
 
         // Set values - Needed to make the row "dirty"
         match row.set_values(columns, values, "hit", &meta.get_id().unwrap()) {
             Ok(_) => {}
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 return Err(e);
             }
         }
@@ -158,7 +158,7 @@ impl Scheduler for HitList {
         match index.insert(key, row) {
             Ok(_) => Ok(()),
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -174,7 +174,7 @@ impl Scheduler for HitList {
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         let tname = thread::current().name().unwrap().to_string();
         let worker_id = tname.parse::<usize>().unwrap();
@@ -182,8 +182,8 @@ impl Scheduler for HitList {
         let handle = thread::current();
         debug!("Thread {} executing read", handle.name().unwrap());
 
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         // execute read
         match index.read(key.clone(), columns, "hit", &meta.get_id().unwrap()) {
@@ -207,7 +207,7 @@ impl Scheduler for HitList {
                 Ok(vals)
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -220,7 +220,7 @@ impl Scheduler for HitList {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         let tname = thread::current().name().unwrap().to_string();
         let worker_id = tname.parse::<usize>().unwrap();
@@ -230,8 +230,8 @@ impl Scheduler for HitList {
             "Thread {} executing read and update",
             handle.name().unwrap()
         );
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         // execute read and update
         match index.read_and_update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
@@ -269,7 +269,7 @@ impl Scheduler for HitList {
                 Ok(vals)
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -289,7 +289,7 @@ impl Scheduler for HitList {
             Option<Vec<Data>>,
             Vec<Data>,
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let tname = thread::current().name().unwrap().to_string();
         let worker_id = tname.parse::<usize>().unwrap();
@@ -297,8 +297,8 @@ impl Scheduler for HitList {
         let handle = thread::current();
         debug!("Thread {} executing  update", handle.name().unwrap());
 
-        let table = self.get_table(table, meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+        let table = self.get_table(table, &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?;
 
         match index.update(
             key.clone(),
@@ -339,7 +339,7 @@ impl Scheduler for HitList {
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -352,7 +352,7 @@ impl Scheduler for HitList {
         key: PrimaryKey,
         column: &str,
         value: &str,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let tname = thread::current().name().unwrap().to_string();
         let worker_id = tname.parse::<usize>().unwrap();
@@ -360,8 +360,8 @@ impl Scheduler for HitList {
         let handle = thread::current();
         debug!("Thread {} executing update", handle.name().unwrap());
 
-        let table = self.get_table(table, meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+        let table = self.get_table(table, &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?;
 
         match index.append(key.clone(), column, value, "hit", &meta.get_id().unwrap()) {
             Ok(res) => {
@@ -394,7 +394,7 @@ impl Scheduler for HitList {
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -405,7 +405,7 @@ impl Scheduler for HitList {
         &self,
         table: &str,
         key: PrimaryKey,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let tname = thread::current().name().unwrap().to_string();
         let worker_id = tname.parse::<usize>().unwrap();
@@ -413,8 +413,8 @@ impl Scheduler for HitList {
         let handle = thread::current();
         debug!("Thread {} executing delete", handle.name().unwrap());
 
-        let table = self.get_table(table, meta.clone())?; // get table
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get index
+        let table = self.get_table(table, &meta)?; // get table
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
         match index.delete(key.clone(), "hit") {
             Ok(res) => {
@@ -448,7 +448,7 @@ impl Scheduler for HitList {
                 Ok(())
             }
             Err(e) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(e)
             }
         }
@@ -458,7 +458,7 @@ impl Scheduler for HitList {
     ///
     /// # Panics
     /// - RWLock or Mutex error.
-    fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
+    fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
         let tname = thread::current().name().unwrap().to_string();
         let worker_id = tname.parse::<usize>().unwrap();
 
@@ -523,7 +523,7 @@ impl Scheduler for HitList {
     /// There are two-phases to the commit procedure:
     /// 1) Wait-phase; for each predecessor upon read; abort if active or aborted.
     /// 2) Hit-phase; for each predecessor upon write; if in hit list then abort; else hit predecessors if they are active
-    fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
+    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
         let tname = thread::current().name().unwrap().to_string();
         let worker_id = tname.parse::<usize>().unwrap();
 
@@ -562,14 +562,14 @@ impl Scheduler for HitList {
                 if lock.get_terminated_outcome(predecessor) == TransactionOutcome::Aborted {
                     drop(lock); // drop lock on shared resources
                     debug!("Thread {} dropped lock", handle.name().unwrap());
-                    self.abort(meta).unwrap(); // abort txn
+                    self.abort(&meta).unwrap(); // abort txn
                     return Err(HitListError::PredecessorAborted(id).into());
                 } // else; terminated and committed, continue
             } else {
                 // if not terminated and committed; then abort
                 drop(lock); // drop lock on shared resources
                 debug!("Thread {} dropped lock", handle.name().unwrap());
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 return Err(HitListError::PredecessorActive(id).into());
             }
         }
@@ -640,7 +640,7 @@ impl Scheduler for HitList {
             debug!("Thread {} in hit list", handle.name().unwrap());
             drop(lock);
             debug!("Thread {} dropped lock", handle.name().unwrap());
-            self.abort(meta).unwrap();
+            self.abort(&meta).unwrap();
             Err(HitListError::TransactionInHitList(id).into())
         }
     }

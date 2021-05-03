@@ -56,11 +56,9 @@ pub fn get_subscriber_data(
 
     let meta = protocol.scheduler.register()?;
 
-    let values = protocol
-        .scheduler
-        .read("subscriber", pk, &columns, meta.clone())?;
+    let values = protocol.scheduler.read("subscriber", pk, &columns, &meta)?;
 
-    protocol.scheduler.commit(meta)?;
+    protocol.scheduler.commit(&meta)?;
 
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
 
@@ -87,36 +85,34 @@ pub fn get_new_destination(
 
     let meta = protocol.scheduler.register().unwrap();
 
-    let sf_res =
-        protocol
-            .scheduler
-            .read("special_facility", sf_pk.clone(), &sf_columns, meta.clone())?;
+    let sf_res = protocol
+        .scheduler
+        .read("special_facility", sf_pk.clone(), &sf_columns, &meta)?;
 
     let val = i64::try_from(sf_res[2].clone()).unwrap();
 
     if val != 1 {
-        protocol.scheduler.abort(meta).unwrap();
+        protocol.scheduler.abort(&meta).unwrap();
         return Err(NonFatalError::RowNotFound(
             format!("{}", sf_pk),
             "special_facility".to_string(),
         ));
     }
 
-    let cf_res =
-        protocol
-            .scheduler
-            .read("call_forwarding", cf_pk.clone(), &cf_columns, meta.clone())?;
+    let cf_res = protocol
+        .scheduler
+        .read("call_forwarding", cf_pk.clone(), &cf_columns, &meta)?;
     let val = i64::try_from(cf_res[3].clone()).unwrap();
 
     if params.end_time as i64 >= val {
-        protocol.scheduler.abort(meta).unwrap();
+        protocol.scheduler.abort(&meta).unwrap();
         return Err(NonFatalError::RowNotFound(
             format!("{}", cf_pk),
             "call_forwarding".to_string(),
         ));
     }
 
-    protocol.scheduler.commit(meta)?;
+    protocol.scheduler.commit(&meta)?;
 
     let res = datatype::to_result(
         None,
@@ -145,9 +141,9 @@ pub fn get_access_data(
 
     let values = protocol
         .scheduler
-        .read("access_info", pk, &columns, meta.clone())?;
+        .read("access_info", pk, &columns, &meta)?;
 
-    protocol.scheduler.commit(meta)?;
+    protocol.scheduler.commit(&meta)?;
 
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
 
@@ -181,7 +177,7 @@ pub fn update_subscriber_data(
         false,
         values_sb,
         &update,
-        meta.clone(),
+        &meta,
     )?;
 
     let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
@@ -206,10 +202,10 @@ pub fn update_subscriber_data(
         false,
         values_sp,
         &update_sp,
-        meta.clone(),
+        &meta,
     )?;
 
-    protocol.scheduler.commit(meta)?;
+    protocol.scheduler.commit(&meta)?;
     let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
     Ok(res)
@@ -242,10 +238,10 @@ pub fn update_location(
         false,
         values_sb,
         &update,
-        meta.clone(),
+        &meta,
     )?;
 
-    protocol.scheduler.commit(meta)?;
+    protocol.scheduler.commit(&meta)?;
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
 
     Ok(res)
@@ -287,12 +283,12 @@ pub fn insert_call_forwarding(
     let columns_sb: Vec<&str> = vec!["s_id"];
     protocol
         .scheduler
-        .read("subscriber", pk_sb, &columns_sb, meta.clone())?;
+        .read("subscriber", pk_sb, &columns_sb, &meta)?;
     // Get record from special facility.
     let columns_sf: Vec<&str> = vec!["sf_type"];
     protocol
         .scheduler
-        .read("special_facility", pk_sf, &columns_sf, meta.clone())?;
+        .read("special_facility", pk_sf, &columns_sf, &meta)?;
 
     // Insert into call forwarding.
     // Calculate primary key
@@ -316,10 +312,10 @@ pub fn insert_call_forwarding(
     // Execute insert operation.
     protocol
         .scheduler
-        .create(cf_name, pk_cf, &columns_cf, &values_cf, meta.clone())?;
+        .create(cf_name, pk_cf, &columns_cf, &values_cf, &meta)?;
 
     // Commit transaction.
-    protocol.scheduler.commit(meta)?;
+    protocol.scheduler.commit(&meta)?;
     let res = datatype::to_result(Some(1), None, None, None, None).unwrap();
 
     Ok(res)
@@ -330,20 +326,6 @@ pub fn delete_call_forwarding(
     params: DeleteCallForwarding,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    // debug!(
-    //     "SELECT <s_id bind subid s_id>
-    //      FROM Subscriber
-    //      WHERE sub_nbr = {};
-    //    DELETE FROM Call_Forwarding
-    //      WHERE s_id = <s_id value subid>
-    //      AND sf_type = {}
-    //      AND start_time = {};",
-    //     helper::to_sub_nbr(params.s_id.into()),
-    //     params.sf_type,
-    //     params.start_time,
-    // );
-
-    // Construct primary keys.
     let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
     let pk_cf = PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(
         params.s_id,
@@ -351,21 +333,13 @@ pub fn delete_call_forwarding(
         params.start_time.into(),
     ));
 
-    // Register with scheduler.
     let meta = protocol.scheduler.register().unwrap();
-    // Get record from subscriber table.
-    let columns_sb: Vec<&str> = vec!["s_id"];
-    protocol
-        .scheduler
-        .read("subscriber", pk_sb, &columns_sb, meta.clone())?;
 
-    // Delete from call forwarding.
-    protocol
-        .scheduler
-        .delete("call_forwarding", pk_cf, meta.clone())?;
+    let cols: Vec<&str> = vec!["s_id"];
+    protocol.scheduler.read("subscriber", pk_sb, &cols, &meta)?;
+    protocol.scheduler.delete("call_forwarding", pk_cf, &meta)?;
 
-    // Commit transaction.
-    protocol.scheduler.commit(meta)?;
+    protocol.scheduler.commit(&meta)?;
     let res = datatype::to_result(None, None, Some(1), None, None).unwrap();
 
     Ok(res)

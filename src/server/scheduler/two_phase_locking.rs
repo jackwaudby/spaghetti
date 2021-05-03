@@ -86,17 +86,17 @@ impl Scheduler for TwoPhaseLocking {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let table = self.get_table(table, meta.clone())?; // get handle to table
-        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get handle to index
+        let table = self.get_table(table, &meta)?; // get handle to table
+        let index_name = self.get_index_name(Arc::clone(&table), &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get handle to index
 
         let lock_info = self.lock_table.get_mut(&key); // get lock for the new record
         match lock_info {
             // lock exists for proposed new record, hence the record already exists
             Some(_) => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 return Err(NonFatalError::RowAlreadyExists(
                     format!("{}", key),
                     table.to_string(),
@@ -141,14 +141,14 @@ impl Scheduler for TwoPhaseLocking {
 
         for (i, column) in columns.iter().enumerate() {
             if let Err(e) = row.init_value(column, &values[i].to_string()) {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 return Err(e); // abort -- initalise error
             }
         }
 
         // make rows dirty
         if let Err(e) = row.set_values(columns, values, "2pl", &meta.get_id().unwrap()) {
-            self.abort(meta).unwrap();
+            self.abort(&meta).unwrap();
             return Err(e);
         }
 
@@ -175,11 +175,11 @@ impl Scheduler for TwoPhaseLocking {
         table: &str,
         key: PrimaryKey,
         columns: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        let table = self.get_table(table, meta.clone())?; // get handle to table
-        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get handle to index
+        let table = self.get_table(table, &meta)?; // get handle to table
+        let index_name = self.get_index_name(Arc::clone(&table), &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get handle to index
 
         let request = self.request_lock(
             &index_name,
@@ -202,7 +202,7 @@ impl Scheduler for TwoPhaseLocking {
                         Ok(vals)
                     }
                     Err(e) => {
-                        self.abort(meta).unwrap();
+                        self.abort(&meta).unwrap();
                         Err(e) // abort -- ???
                     }
                 }
@@ -226,14 +226,14 @@ impl Scheduler for TwoPhaseLocking {
                         Ok(vals)
                     }
                     Err(e) => {
-                        self.abort(meta).unwrap();
+                        self.abort(&meta).unwrap();
                         Err(e)
                     }
                 }
             }
 
             LockRequest::Denied => {
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(TwoPhaseLockingError::ReadLockRequestDenied(format!("{}", key)).into())
             }
         }
@@ -261,11 +261,11 @@ impl Scheduler for TwoPhaseLocking {
             Option<Vec<Data>>,
             Vec<Data>,
         ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let table = self.get_table(table, meta.clone())?; // get handle to table
-        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?; // get handle to index
+        let table = self.get_table(table, &meta)?; // get handle to table
+        let index_name = self.get_index_name(Arc::clone(&table), &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?; // get handle to index
 
         let request = self.request_lock(
             &index_name,
@@ -291,7 +291,7 @@ impl Scheduler for TwoPhaseLocking {
                     "2pl",
                     &meta.get_id().unwrap(),
                 ) {
-                    self.abort(meta).unwrap();
+                    self.abort(&meta).unwrap();
                     return Err(e);
                 }
                 Ok(())
@@ -317,14 +317,14 @@ impl Scheduler for TwoPhaseLocking {
                     "2pl",
                     &meta.get_id().unwrap(),
                 ) {
-                    self.abort(meta).unwrap();
+                    self.abort(&meta).unwrap();
                     return Err(e);
                 }
                 Ok(())
             }
             LockRequest::Denied => {
                 let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key));
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(err.into())
             }
         }
@@ -346,11 +346,11 @@ impl Scheduler for TwoPhaseLocking {
         key: PrimaryKey,
         column: &str,
         value: &str,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let table = self.get_table(table, meta.clone())?;
-        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+        let table = self.get_table(table, &meta)?;
+        let index_name = self.get_index_name(Arc::clone(&table), &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?;
 
         let request = self.request_lock(
             &index_name,
@@ -368,7 +368,7 @@ impl Scheduler for TwoPhaseLocking {
                     .add_lock(key.clone()); // register lock
 
                 if let Err(e) = index.append(key, column, value, "2pl", &meta.get_id().unwrap()) {
-                    self.abort(meta).unwrap();
+                    self.abort(&meta).unwrap();
                     return Err(e);
                 }
 
@@ -386,14 +386,14 @@ impl Scheduler for TwoPhaseLocking {
                     .unwrap()
                     .add_lock(key.clone()); // Register lock.
                 if let Err(e) = index.append(key, column, value, "2pl", &meta.get_id().unwrap()) {
-                    self.abort(meta).unwrap();
+                    self.abort(&meta).unwrap();
                     return Err(e);
                 }
                 Ok(())
             }
             LockRequest::Denied => {
                 let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key));
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(err.into())
             }
         }
@@ -415,11 +415,11 @@ impl Scheduler for TwoPhaseLocking {
         key: PrimaryKey,
         columns: &Vec<&str>,
         values: &Vec<&str>,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        let table = self.get_table(table, meta.clone())?;
-        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+        let table = self.get_table(table, &meta)?;
+        let index_name = self.get_index_name(Arc::clone(&table), &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?;
 
         let request = self.request_lock(
             &index_name,
@@ -442,7 +442,7 @@ impl Scheduler for TwoPhaseLocking {
                         Ok(vals)
                     }
                     Err(e) => {
-                        self.abort(meta).unwrap();
+                        self.abort(&meta).unwrap();
                         Err(e)
                     }
                 }
@@ -467,14 +467,14 @@ impl Scheduler for TwoPhaseLocking {
                         Ok(vals)
                     }
                     Err(e) => {
-                        self.abort(meta).unwrap();
+                        self.abort(&meta).unwrap();
                         Err(e)
                     }
                 }
             }
             LockRequest::Denied => {
                 let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key));
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(err.into())
             }
         }
@@ -492,11 +492,11 @@ impl Scheduler for TwoPhaseLocking {
         &self,
         table: &str,
         key: PrimaryKey,
-        meta: TransactionInfo,
+        meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let table = self.get_table(table, meta.clone())?;
-        let index_name = self.get_index_name(Arc::clone(&table), meta.clone())?;
-        let index = self.get_index(Arc::clone(&table), meta.clone())?;
+        let table = self.get_table(table, &meta)?;
+        let index_name = self.get_index_name(Arc::clone(&table), &meta)?;
+        let index = self.get_index(Arc::clone(&table), &meta)?;
 
         let request = self.request_lock(
             &index_name,
@@ -514,7 +514,7 @@ impl Scheduler for TwoPhaseLocking {
                     .add_lock(key.clone());
 
                 if let Err(e) = index.delete(key, "2pl") {
-                    self.abort(meta).unwrap();
+                    self.abort(&meta).unwrap();
                     return Err(e);
                 }
                 Ok(())
@@ -532,21 +532,21 @@ impl Scheduler for TwoPhaseLocking {
                     .add_lock(key.clone());
 
                 if let Err(e) = index.delete(key, "2pl") {
-                    self.abort(meta).unwrap();
+                    self.abort(&meta).unwrap();
                     return Err(e);
                 }
                 Ok(())
             }
             LockRequest::Denied => {
                 let err = TwoPhaseLockingError::WriteLockRequestDenied(format!("{}", key));
-                self.abort(meta).unwrap();
+                self.abort(&meta).unwrap();
                 Err(err.into())
             }
         }
     }
 
     /// Commit a transaction.
-    fn commit(&self, meta: TransactionInfo) -> Result<(), NonFatalError> {
+    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
         let rows = self
             .active_transactions
             .get_mut(&meta.get_id().unwrap())
@@ -585,7 +585,7 @@ impl Scheduler for TwoPhaseLocking {
     }
 
     /// Abort a transaction.
-    fn abort(&self, meta: TransactionInfo) -> crate::Result<()> {
+    fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
         debug!("Abort transaction {:?}", meta.get_id().unwrap());
         //  Remove from active transactions.
         let at = self
