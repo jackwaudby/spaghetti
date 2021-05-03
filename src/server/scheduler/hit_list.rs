@@ -792,14 +792,14 @@ mod tests {
             let columns: Vec<&str> = vec!["bit_1"];
 
             let values = scheduler
-                .read("subscriber", pk.clone(), &columns, txn.clone())
+                .read("subscriber", pk.clone(), &columns, &txn)
                 .unwrap();
             let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
             assert_eq!(
                 res,
                 "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"0\"}}"
             );
-            scheduler.commit(txn).unwrap();
+            scheduler.commit(&txn).unwrap();
             drop(scheduler);
         });
 
