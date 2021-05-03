@@ -4,6 +4,9 @@ use test_env_log::test;
 use tokio::time::{sleep, Duration};
 use tracing::info;
 
+const PROTOCOL: &str = "hit";
+
+mod common;
 fn setup_config() -> Arc<Config> {
     let mut c = Config::default();
     c.merge(config::File::with_name("./tests/Test-hit.toml"))
@@ -38,4 +41,44 @@ async fn hit_list_integration_test() {
 
     assert_eq!(server.await.unwrap(), ());
     info!("Finished hit-list integration test");
+}
+
+#[test]
+fn acid_hit_g0() {
+    common::g0(PROTOCOL);
+}
+
+#[test]
+fn acid_hit_g1a() {
+    common::g1a(PROTOCOL);
+}
+
+#[test]
+fn acid_hit_g1c() {
+    common::g1c(PROTOCOL);
+}
+
+#[test]
+fn acid_hit_imp() {
+    common::imp(PROTOCOL);
+}
+
+#[test]
+fn acid_hit_otv() {
+    common::otv(PROTOCOL);
+}
+
+#[test]
+fn acid_hit_fr() {
+    common::fr(PROTOCOL);
+}
+
+#[test]
+fn acid_hit_lu() {
+    common::lu(PROTOCOL);
+}
+
+#[test]
+fn acid_hit_g2item() {
+    common::g2item(PROTOCOL);
 }
