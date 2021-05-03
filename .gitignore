@@ -9,4 +9,4 @@ ssh_keys/
 .Rhistory
 reports/
 Embedded.toml
-.svg
+*.svg
