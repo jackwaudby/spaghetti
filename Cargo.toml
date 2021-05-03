@@ -11,14 +11,6 @@ A concurrency control evaluation framework.
 [profile.release]
 debug = true
 
-# [[bin]]
-# name = "spag-client"
-# path = "src/bin/client.rs"
-
-# [[bin]]
-# name = "spag-server"
-# path = "src/bin/server.rs"
-
 [[bin]]
 name = "spag-gen"
 path = "src/bin/datagen.rs"
@@ -27,12 +19,12 @@ path = "src/bin/datagen.rs"
 name = "spag-gpc"
 path = "src/bin/gpc.rs"
 
-[dev-dependencies]
-criterion = "0.3"
-
 [[bench]]
 name = "my_benchmark"
 harness = false
+
+[dev-dependencies]
+criterion = "0.3"
 
 [dependencies]
 chashmap = "2.2.2"
