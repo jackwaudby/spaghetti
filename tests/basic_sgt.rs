@@ -6,6 +6,10 @@ use std::sync::Arc;
 use std::time::Instant;
 use test_env_log::test;
 
+const PROTOCOL: &str = "basic-sgt";
+
+mod common;
+
 fn setup_config() -> Arc<Config> {
     let mut c = Config::default();
     c.merge(config::File::with_name("./tests/Test-basic-sgt.toml"))
@@ -39,4 +43,44 @@ fn basic_sgt_integration_test() {
         global_stats.merge_into(local_stats);
     }
     global_stats.write_to_file();
+}
+
+#[test]
+fn acid_basic_sgt_g0() {
+    common::g0(PROTOCOL);
+}
+
+#[test]
+fn acid_basic_sgt_g1a() {
+    common::g1a(PROTOCOL);
+}
+
+#[test]
+fn acid_basic_sgt_g1c() {
+    common::g1c(PROTOCOL);
+}
+
+#[test]
+fn acid_basic_sgt_imp() {
+    common::imp(PROTOCOL);
+}
+
+#[test]
+fn acid_basic_sgt_otv() {
+    common::otv(PROTOCOL);
+}
+
+#[test]
+fn acid_basic_sgt_fr() {
+    common::fr(PROTOCOL);
+}
+
+#[test]
+fn acid_basic_sgt_lu() {
+    common::lu(PROTOCOL);
+}
+
+#[test]
+fn acid_basic_sgt_g2item() {
+    common::g2item(PROTOCOL);
 }

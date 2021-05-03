@@ -591,7 +591,7 @@ mod tests {
 
         assert_eq!(
             format!("{}", row),
-            "[0, None, false, cars, el camino, 2019, 53.2, null, None]"
+            "[0, None, Clean, cars, el camino, 2019, 53.2, null, None, []]"
         );
     }
 
@@ -679,7 +679,7 @@ mod tests {
 
         assert_eq!(
             format!("{}", row),
-            "[0, None, false, cars, null, null, null, [1678], None]"
+            "[0, None, Clean, cars, null, null, null, [1678], None, []]"
         );
     }
 
@@ -817,7 +817,7 @@ mod tests {
 
         assert_eq!(
             format!("{}", row),
-            "[0, None, false, cars, el camino, 2019, 53.2, Some([Read(\"t3\")])]"
+            "[0, None, Clean, cars, el camino, 2019, 53.2, Some([Read(\"t3\")]), []]"
         );
     }
 

@@ -379,12 +379,6 @@ mod tests {
             false
         );
 
-        // 4. Test format.
-        assert_eq!(
-            format!("{}", workload.get_internals().get_index("sub_idx").unwrap()),
-            "[sub_idx,10]"
-        );
-
         // 5. Successful read of entry.
         let cols = vec!["bit_4", "byte_2_5"];
         assert_eq!(
