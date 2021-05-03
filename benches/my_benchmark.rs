@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use spaghetti::common::statistics::GlobalStatistics;
 use spaghetti::gpc::helper;
 
@@ -22,7 +22,7 @@ fn my_func(cores: usize) {
     global_stats.set_data_generation(dg_end);
 
     let scheduler = helper::init_scheduler(Arc::clone(&workload), cores); // init scheduler
-    let (tx, rx) = mpsc::channel(); // channel to send statistics
+    let (tx, _) = mpsc::channel(); // channel to send statistics
 
     global_stats.start();
     helper::run(
