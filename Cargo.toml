@@ -27,6 +27,13 @@ path = "src/bin/datagen.rs"
 name = "spag-gpc"
 path = "src/bin/gpc.rs"
 
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "my_benchmark"
+harness = false
+
 [dependencies]
 chashmap = "2.2.2"
 rand = "0.8.0"
