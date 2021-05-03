@@ -1,4 +1,5 @@
 log = "info"
+record = false
 log_results = false
 transactions = 100000
 timeout = 10

@@ -40,7 +40,7 @@ impl Worker {
         let p = config.get_str("protocol").unwrap();
         let w = config.get_str("workload").unwrap();
         let max_transactions = config.get_int("transactions").unwrap() as u32;
-
+        let record = config.get_bool("record").unwrap();
         let log_results = config.get_bool("log_results").unwrap();
 
         let mut stats = LocalStatistics::new(id as u32, &w, &p);
@@ -91,11 +91,10 @@ impl Worker {
                     fh = None;
                 }
 
-                let mut sent = 0; // txns sent
+                let mut sent = 0;
 
                 let st = Instant::now();
                 let runtime = Duration::new(timeout * 60, 0);
-
                 let et = st + runtime; // timeout
                 loop {
                     if sent == max_transactions {
@@ -120,16 +119,15 @@ impl Worker {
                             log_result(&mut fh, outcome.clone()); // 3. log
                         }
 
-                        stats.record(transaction, outcome.clone(), latency); // 4. record
+                        stats.record(transaction, outcome.clone(), latency);
 
-                        // if sent % x == 0 {
-                        //     tracing::info!("Worker {} sent: {}", id, sent);
-                        // }
                         sent += 1;
                     }
                 }
 
-                tx.send(stats).unwrap();
+                if record {
+                    tx.send(stats).unwrap();
+                }
                 tracing::debug!("Worker {} finished", id);
             })
             .unwrap();
