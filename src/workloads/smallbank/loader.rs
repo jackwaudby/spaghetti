@@ -6,104 +6,113 @@ use crate::workloads::{Internal, PrimaryKey};
 use crate::Result;
 
 use rand::rngs::StdRng;
-//use rand::seq::IteratorRandom;
 use rand::Rng;
-
 use std::sync::Arc;
 use tracing::info;
 
-//////////////////////////////
-/// Table Loaders. ///
-//////////////////////////////
-
 pub fn load_account_table(data: &Internal) -> Result<()> {
     info!("Loading account table");
-    let table_name = "accounts";
-    let t = data.get_table(table_name)?;
-    let index_name = t.get_primary_index()?;
-    let i = data.get_index(&index_name)?;
+    let table = data.get_table("accounts")?;
+    let index_name = table.get_primary_index()?;
+    let index = data.get_index(&index_name)?;
     let protocol = data.config.get_str("protocol")?;
     let sf = data.config.get_int("scale_factor")?;
     let path = format!("./data/smallbank/sf-{}/accounts.csv", sf);
 
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
-        // Deserialise.
-        let s: Account = result?;
-        // Initialise empty row.
-        let mut row = Row::new(Arc::clone(&t), &protocol);
-        // Calculate primary key
-        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(s.name.clone()));
+        let s: Account = result?; // deserialise
+        let mut row = Row::new(Arc::clone(&table), track_access, track_delayed); // initialise empty row
+        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(s.name.clone())); // calculate primary key
         row.set_primary_key(pk.clone());
         row.init_value("name", &s.name)?;
         row.init_value("customer_id", &s.customer_id.to_string())?;
 
-        i.insert(pk, row)?;
+        index.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into account", t.get_num_rows());
+    info!("Loaded {} rows into account", table.get_num_rows());
     Ok(())
 }
 
 pub fn load_savings_table(data: &Internal) -> Result<()> {
     info!("Loading savings table");
-    let table_name = "savings";
-    let t = data.get_table(table_name)?;
-    let index_name = t.get_primary_index()?;
-    let i = data.get_index(&index_name)?;
+    let table = data.get_table("savings")?;
+    let index_name = table.get_primary_index()?;
+    let index = data.get_index(&index_name)?;
     let protocol = data.config.get_str("protocol")?;
     let sf = data.config.get_int("scale_factor")?;
     let path = format!("./data/smallbank/sf-{}/savings.csv", sf);
 
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
-        // Deserialise.
-        let s: Savings = result?;
-        // Initialise empty row.
-        let mut row = Row::new(Arc::clone(&t), &protocol);
-        // Calculate primary key
-        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(s.customer_id));
+        let s: Savings = result?; // deserialise
+        let mut row = Row::new(Arc::clone(&table), track_access, track_delayed); // initialise empty row
+        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(s.customer_id)); // calculate primary key
         row.set_primary_key(pk.clone());
 
         row.init_value("customer_id", &s.customer_id.to_string())?;
         row.init_value("balance", &s.balance.to_string())?;
 
-        i.insert(pk, row)?;
+        index.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into savings", t.get_num_rows());
+    info!("Loaded {} rows into savings", table.get_num_rows());
     Ok(())
 }
 
 pub fn load_checking_table(data: &Internal) -> Result<()> {
     info!("Loading checking table");
-    let table_name = "checking";
-    let t = data.get_table(table_name)?;
-    let index_name = t.get_primary_index()?;
-    let i = data.get_index(&index_name)?;
+    let table = data.get_table("checking")?;
+    let index_name = table.get_primary_index()?;
+    let index = data.get_index(&index_name)?;
     let protocol = data.config.get_str("protocol")?;
     let sf = data.config.get_int("scale_factor")?;
     let path = format!("./data/smallbank/sf-{}/checking.csv", sf);
 
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
-        // Deserialise.
-        let s: Checking = result?;
-        // Initialise empty row.
-        let mut row = Row::new(Arc::clone(&t), &protocol);
-        // Calculate primary key
-        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(s.customer_id));
+        let s: Checking = result?; // deserialise
+        let mut row = Row::new(Arc::clone(&table), track_access, track_delayed); // initialise empty row
+        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(s.customer_id)); // calculate primary key
         row.set_primary_key(pk.clone());
 
         row.init_value("customer_id", &s.customer_id.to_string())?;
         row.init_value("balance", &s.balance.to_string())?;
 
-        i.insert(pk, row)?;
+        index.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into checking", t.get_num_rows());
+    info!("Loaded {} rows into checking", table.get_num_rows());
     Ok(())
 }
-///////////////////////////////////////////////
-/// Table Generate and Load. ///
-///////////////////////////////////////////////
 
 /// Populate tables.
 pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
@@ -115,66 +124,77 @@ pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
 
 /// Populate the `Account` table.
 pub fn populate_account(data: &Internal) -> Result<()> {
-    let table_name = "accounts";
-    let t = data.get_table(table_name)?; // get handle to table
-    let index_name = t.get_primary_index()?;
-    let i = data.get_index(&index_name)?; // get handle to index
+    let accounts = data.get_table("accounts")?; // get handle to table
+    let accounts_idx = data.get_index(&accounts.get_primary_index()?)?; // get handle to index
 
     let protocol = data.config.get_str("protocol")?; // get protocol
     let sf = data.config.get_int("scale_factor")? as u64; // get sf
-    let accounts = *SB_SF_MAP.get(&sf).unwrap(); // get accounts
+    let n_accounts = *SB_SF_MAP.get(&sf).unwrap(); // get accounts
 
-    info!("Populating accounts table: {}", accounts);
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
 
-    for a_id in 0..accounts {
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
+    for a_id in 0..n_accounts {
         let name = format!("cust{}", a_id);
-        let mut row = Row::new(Arc::clone(&t), &protocol);
+        let mut row = Row::new(Arc::clone(&accounts), track_access, track_delayed);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(name.clone()));
         row.set_primary_key(pk.clone());
         row.init_value("name", &name)?;
         row.init_value("customer_id", &a_id.to_string())?;
-        i.insert(pk, row)?;
+        accounts_idx.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into account", t.get_num_rows());
+    info!("Loaded {} rows into account", accounts.get_num_rows());
 
     Ok(())
 }
 
 /// Populate the `Savings` table.
 pub fn populate_savings(data: &Internal, rng: &mut StdRng) -> Result<()> {
-    info!("Populating savings table");
-    let t = data.get_table("savings")?;
-    let index_name = t.get_primary_index()?;
-    let i = data.get_index(&index_name)?;
+    let savings = data.get_table("savings")?;
+    let savings_idx = data.get_index(&savings.get_primary_index()?)?;
+
     let protocol = data.config.get_str("protocol")?;
     let sf = data.config.get_int("scale_factor")? as u64;
+
     let accounts = *SB_SF_MAP.get(&sf).unwrap();
     let min_bal = MIN_BALANCE;
     let max_bal = MAX_BALANCE;
 
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
     for customer_id in 0..accounts {
-        let mut row = Row::new(Arc::clone(&t), &protocol);
+        let mut row = Row::new(Arc::clone(&savings), track_access, track_delayed);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(customer_id));
         row.set_primary_key(pk.clone());
         row.init_value("customer_id", &customer_id.to_string())?;
         let balance = rng.gen_range(min_bal..=max_bal) as f64;
         row.init_value("balance", &balance.to_string())?;
-        i.insert(pk, row)?;
+        savings_idx.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into savings", t.get_num_rows());
+    info!("Loaded {} rows into savings", savings.get_num_rows());
     Ok(())
 }
 
 /// Populate the `Checking` table.
 pub fn populate_checking(data: &Internal, rng: &mut StdRng) -> Result<()> {
-    info!("Populating checking table");
-    // Get handle to `Table` and `Index`.
-    let table_name = "checking";
-    let t = data.get_table(table_name)?;
-    let index_name = t.get_primary_index()?;
-    let i = data.get_index(&index_name)?;
+    let checking = data.get_table("checking")?;
+    let checking_idx = data.get_index(&checking.get_primary_index()?)?;
 
-    // Get protocol.
     let protocol = data.config.get_str("protocol")?;
     let sf = data.config.get_int("scale_factor")? as u64;
 
@@ -182,16 +202,26 @@ pub fn populate_checking(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let min_bal = MIN_BALANCE;
     let max_bal = MAX_BALANCE;
 
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
     for customer_id in 0..accounts {
-        let mut row = Row::new(Arc::clone(&t), &protocol);
+        let mut row = Row::new(Arc::clone(&checking), track_access, track_delayed);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(customer_id));
         row.set_primary_key(pk.clone());
         row.init_value("customer_id", &customer_id.to_string())?;
         let balance = rng.gen_range(min_bal..=max_bal) as f64;
         row.init_value("balance", &balance.to_string())?;
-        i.insert(pk, row)?;
+        checking_idx.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into savings", t.get_num_rows());
+    info!("Loaded {} rows into savings", checking.get_num_rows());
     Ok(())
 }
 

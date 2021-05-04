@@ -14,10 +14,11 @@ pub struct Field {
 /// Represents spaghetti's fundamental datatype.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Data {
+    Uint(u64),
     Int(i64),
     VarChar(String),
     Double(f64),
-    List(Vec<u64>), // TODO: make generic
+    List(Vec<Data>),
     Null,
 }
 
@@ -36,24 +37,45 @@ impl Field {
     pub fn set(&mut self, data: Data) {
         self.data = data;
     }
+
+    /// Append data to list.
+    pub fn append(&mut self, data: Data) {
+        if let Data::List(mut list) = self.0 {
+            list.push(data);
+        }
+    }
 }
 
 impl fmt::Display for Field {
-    /// Format: value.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.data)
     }
 }
 
 impl fmt::Display for Data {
-    /// Format: value.
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
+            Data::Uint(val) => write!(f, "{}", val.to_string()),
             Data::Int(val) => write!(f, "{}", val.to_string()),
             Data::VarChar(ref val) => write!(f, "{}", val),
             Data::Double(val) => write!(f, "{}", val.to_string()),
             Data::List(val) => write!(f, "{:?}", val),
             Data::Null => write!(f, "null"),
+        }
+    }
+}
+
+impl TryFrom<Data> for u64 {
+    type Error = NonFatalError;
+
+    fn try_from(value: Data) -> Result<Self, Self::Error> {
+        if let Data::Uint(int) = value {
+            Ok(int)
+        } else {
+            Err(NonFatalError::UnableToConvertFromDataType(
+                value.to_string(),
+                "u64".to_string(),
+            ))
         }
     }
 }

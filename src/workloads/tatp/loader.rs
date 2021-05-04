@@ -13,27 +13,29 @@ use rand::Rng;
 use std::sync::Arc;
 use tracing::{debug, info};
 
-//////////////////////////////
-/// Table Loaders. ///
-//////////////////////////////
-
+/// Load subscriber table from csv files.
 pub fn load_sub_table(data: &Internal) -> Result<()> {
-    info!("Loading subscriber table");
-    let s_name = "subscriber";
-    let t = data.get_table(s_name)?;
-    let i_name = t.get_primary_index()?;
-    let i = data.get_index(&i_name)?;
-    let protocol = data.config.get_str("protocol")?;
-    let sf = data.config.get_int("scale_factor")?;
+    let config = data.get_config();
+    let subscriber = data.get_table("subscriber")?;
+    let sub_idx = data.get_index(&subscriber.get_primary_index()?)?;
+    let protocol = config.get_str("protocol")?;
+    let sf = config.get_int("scale_factor")?;
     let path = format!("./data/tatp/sf-{}/subscribers.csv", sf); // dir
+
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
 
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
-        // Deserialise.
         let s: Subscriber = result?;
-        // Initialise empty row.
-        let mut row = Row::new(Arc::clone(&t), &protocol);
-        // Calculate primary key
+        let mut row = Row::new(Arc::clone(&subscriber), track_access, track_delayed);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s.s_id.parse::<u64>()?));
         row.set_primary_key(pk.clone());
         row.init_value("s_id", &s.s_id)?;
@@ -74,30 +76,38 @@ pub fn load_sub_table(data: &Internal) -> Result<()> {
         row.init_value("msc_location", &s.msc_location)?;
         row.init_value("vlr_location", &s.vlr_location)?;
 
-        i.insert(pk, row)?;
+        sub_idx.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into subscriber", t.get_num_rows());
+    info!("Loaded {} rows into subscriber", subscriber.get_num_rows());
+
     Ok(())
 }
 
+/// Load access_info table from csv files.
 pub fn load_access_info_table(data: &Internal) -> Result<()> {
-    info!("Loading access_info table");
-    // Get handle to `Table` and `Index`.
-    let ai_name = "access_info";
-    let t = data.get_table(ai_name)?;
-    let i_name = t.get_primary_index()?;
-    let i = data.get_index(&i_name)?;
-    let protocol = data.config.get_str("protocol")?;
-    let sf = data.config.get_int("scale_factor")?;
+    let config = data.get_config();
+    let access_info = data.get_table("access_info")?;
+    let access_idx = data.get_index(&access_info.get_primary_index()?)?;
+    let protocol = config.get_str("protocol")?;
+    let sf = config.get_int("scale_factor")?;
     let path = format!("./data/tatp/sf-{}/access_info.csv", sf); // dir
+
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
 
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
-        // Deserialise.
         let ai: AccessInfo = result?;
-        // Initialise empty row.
-        let mut row = Row::new(Arc::clone(&t), &protocol);
-        // Calculate primary key
+
+        let mut row = Row::new(Arc::clone(&access_info), track_access, track_delayed);
+
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(
             ai.s_id.parse::<u64>()?,
             ai.ai_type.parse::<u64>()?,
@@ -110,30 +120,38 @@ pub fn load_access_info_table(data: &Internal) -> Result<()> {
         row.init_value("data_3", &ai.data_3)?;
         row.init_value("data_4", &ai.data_4)?;
 
-        i.insert(pk, row)?;
+        access_idx.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into access_info", t.get_num_rows());
+    info!(
+        "Loaded {} rows into access_info",
+        access_info.get_num_rows()
+    );
     Ok(())
 }
 
+/// Load call_forwarding table from csv files.
 pub fn load_call_forwarding_table(data: &Internal) -> Result<()> {
-    info!("Loading call_forwarding table");
-    // Get handle to `Table` and `Index`.
-    let cf_name = "call_forwarding";
-    let t = data.get_table(cf_name)?;
-    let i_name = t.get_primary_index()?;
-    let i = data.get_index(&i_name)?;
-    let protocol = data.config.get_str("protocol")?;
-    let sf = data.config.get_int("scale_factor")?;
-    let path = format!("./data/tatp/sf-{}/call_forwarding.csv", sf); // dir
+    let config = data.get_config();
+    let call_forwarding = data.get_table("call_forwarding")?;
+    let call_idx = data.get_index(&call_forwarding.get_primary_index()?)?;
+    let protocol = config.get_str("protocol")?;
+    let sf = config.get_int("scale_factor")?;
+    let path = format!("./data/tatp/sf-{}/call_forwarding.csv", sf);
+
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
 
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
-        // Deserialise.
         let cf: CallForwarding = result?;
-        // Initialise empty row.
-        let mut row = Row::new(Arc::clone(&t), &protocol);
-        // Calculate primary key
+        let mut row = Row::new(Arc::clone(&call_forwarding), track_access, track_delayed);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(
             cf.s_id.parse::<u64>()?,
             cf.sf_type.parse::<u64>()?,
@@ -146,30 +164,39 @@ pub fn load_call_forwarding_table(data: &Internal) -> Result<()> {
         row.init_value("end_time", &cf.end_time)?;
         row.init_value("number_x", &cf.number_x)?;
 
-        i.insert(pk, row)?;
+        call_idx.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into call_forwarding", t.get_num_rows());
+    info!(
+        "Loaded {} rows into call_forwarding",
+        call_forwarding.get_num_rows()
+    );
     Ok(())
 }
 
+/// Load special_facility table from csv files.
 pub fn load_special_facility_table(data: &Internal) -> Result<()> {
-    info!("Loading special_facility table");
-    // Get handle to `Table` and `Index`.
-    let sf_name = "special_facility";
-    let t = data.get_table(sf_name)?;
-    let i_name = t.get_primary_index()?;
-    let i = data.get_index(&i_name)?;
+    let special_facility = data.get_table("special_facility")?;
+    let special_idx = data.get_index(&special_facility.get_primary_index()?)?;
+
     let protocol = data.config.get_str("protocol")?;
     let sf = data.config.get_int("scale_factor")?;
+
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
     let path = format!("./data/tatp/sf-{}/special_facility.csv", sf); // dir
 
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
-        // Deserialise.
         let sf: SpecialFacility = result?;
-        // Initialise empty row.
-        let mut row = Row::new(Arc::clone(&t), &protocol);
-        // Calculate primary key
+        let mut row = Row::new(Arc::clone(&special_facility), track_access, track_delayed);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
             sf.s_id.parse::<u64>()?,
             sf.sf_type.parse::<u64>()?,
@@ -182,15 +209,14 @@ pub fn load_special_facility_table(data: &Internal) -> Result<()> {
         row.init_value("data_a", &sf.data_a)?;
         row.init_value("data_b", &sf.data_b)?;
 
-        i.insert(pk, row)?;
+        special_idx.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into special_facility", t.get_num_rows());
+    info!(
+        "Loaded {} rows into special_facility",
+        special_facility.get_num_rows()
+    );
     Ok(())
 }
-
-///////////////////////////////////////////////
-/// Table Generate and Load. ///
-///////////////////////////////////////////////
 
 /// Populate tables.
 pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
@@ -201,21 +227,28 @@ pub fn populate_tables(data: &Internal, rng: &mut StdRng) -> Result<()> {
 }
 
 /// Populate the `Subscriber` table.
-///
-/// Schema:
-/// Primary key: s_id
 pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
-    let s_name = "subscriber";
-    let t = data.get_table(s_name)?;
-    let i_name = t.get_primary_index()?;
-    let i = data.get_index(&i_name)?;
-    let protocol = data.config.get_str("protocol")?;
-    let sf = data.config.get_int("scale_factor")? as u64;
+    let config = data.get_config();
+
+    let subscriber = data.get_table("subscriber")?;
+    let sub_idx = data.get_index(&subscriber.get_primary_index()?)?;
+
+    let protocol = config.get_str("protocol")?;
+    let sf = config.get_int("scale_factor")? as u64;
     let subs = *TATP_SF_MAP.get(&sf).unwrap();
 
-    debug!("Populating subscriber table: {}", subs);
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
     for s_id in 1..=subs {
-        let mut row = Row::new(Arc::clone(&t), &protocol);
+        let mut row = Row::new(Arc::clone(&subscriber), track_access, track_delayed);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
         row.set_primary_key(pk.clone());
         row.init_value("s_id", &s_id.to_string())?;
@@ -237,40 +270,41 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
         row.init_value("msc_location", &rng.gen_range(1..(2 ^ 32)).to_string())?;
         row.init_value("vlr_location", &rng.gen_range(1..(2 ^ 32)).to_string())?;
 
-        i.insert(pk, row)?;
+        sub_idx.insert(&pk, row)?;
     }
-    info!("Loaded {} rows into subscriber", t.get_num_rows());
+    info!("Loaded {} rows into subscriber", subscriber.get_num_rows());
 
     Ok(())
 }
 
 /// Populate the `AccessInfo` table.
-///
-/// Schema: (int,s_id) (int,ai_type) (int,data_1) (int,data_2) (string,data_3) (string,data_4)
-/// Primary key: (s_id, ai_type)
 pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
-    debug!("Populating access_info table");
-    // Get handle to `Table` and `Index`.
-    let ai_name = "access_info";
-    let t = data.get_table(ai_name)?;
-    let i_name = t.get_primary_index()?;
-    let i = data.get_index(&i_name)?;
-    let protocol = data.config.get_str("protocol")?;
-    let sf = data.config.get_int("scale_factor")? as u64;
+    let config = data.get_config();
+    let access_info = data.get_table("access_info")?;
+    let access_idx = data.get_index(&access_info.get_primary_index()?)?;
+
+    let protocol = config.get_str("protocol")?;
+    let sf = config.get_int("scale_factor")? as u64;
     let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
 
-    // Range of values for ai_type records.
-    let ai_type_values = vec![1, 2, 3, 4];
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
+    let ai_type_values = vec![1, 2, 3, 4]; // range of values for ai_type records
 
     for s_id in 1..=subscribers {
-        // Generate number of records for a given s_id.
-        let n_ai = rng.gen_range(1..=4);
-        // Randomly sample w.o. replacement from range of ai_type values.
-        let sample = ai_type_values.iter().choose_multiple(rng, n_ai);
+        let n_ai = rng.gen_range(1..=4); // generate number of records for a given s_id
+
+        let sample = ai_type_values.iter().choose_multiple(rng, n_ai); // randomly sample w.o. replacement from range of ai_type values
         for record in 1..=n_ai {
-            // Initialise empty row.
-            let mut row = Row::new(Arc::clone(&t), &protocol);
-            // Calculate primary key
+            let mut row = Row::new(Arc::clone(&access_info), track_access, track_delayed);
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(s_id, record as u64));
             row.set_primary_key(pk.clone());
             row.init_value("s_id", &s_id.to_string())?;
@@ -280,62 +314,55 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
             row.init_value("data_3", &helper::get_data_x(3, rng))?;
             row.init_value("data_4", &helper::get_data_x(5, rng))?;
 
-            i.insert(pk, row)?;
+            access_idx.insert(&pk, row)?;
         }
     }
-    info!("Loaded {} rows into access_info", t.get_num_rows());
+
+    info!(
+        "Loaded {} rows into access_info",
+        access_info.get_num_rows()
+    );
+
     Ok(())
 }
 
 /// Populate the `SpecialFacility` table and `CallForwarding` table.
-///
-/// SpecialFacility
-///
-/// Schema: (int,s_id) (int,sf_type) (int,is_active) (int,error_cntrl) (string,data_a) (string,data_b)
-/// Primary key: (s_id, sf_type,is_active)
-///
-/// CallForwarding
-///
-/// Schema:
-///
-/// Primary key:
 pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdRng) -> Result<()> {
     debug!("Populating special_facility table");
     debug!("Populating call_forwarding table");
-    // Get handle to `Table` and `Index`.
-    let sf_name = "special_facility";
-    let t = data.get_table(sf_name)?;
-    let i_name = t.get_primary_index()?;
-    let i = data.get_index(&i_name)?;
-    let protocol = data.config.get_str("protocol")?;
+    let config = data.get_config();
+    let protocol = config.get_str("protocol")?;
 
-    // Get handle to `CallForwarding` and `Index`.
-    let cf_name = "call_forwarding";
-    let cf_t = data.get_table(cf_name)?;
-    let cf_i_name = cf_t.get_primary_index()?;
-    let cf_i = data.get_index(&cf_i_name)?;
+    let special_facility = data.get_table("special_facility")?;
+    let special_idx = data.get_index(&special_facility.get_primary_index()?)?;
 
-    // Range of values for ai_type records.
-    let sf_type_values = vec![1, 2, 3, 4];
+    let call_forwarding = data.get_table("call_forwarding")?;
+    let call_idx = data.get_index(&call_forwarding.get_primary_index()?)?;
 
-    // Range of values for start_time.
-    let start_time_values = vec![0, 8, 16];
+    let sf_type_values = vec![1, 2, 3, 4]; // range of values for ai_type records
+    let start_time_values = vec![0, 8, 16]; // range of values for start_time
 
-    let sf = data.config.get_int("scale_factor")? as u64;
+    let sf = config.get_int("scale_factor")? as u64;
     let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
 
+    let track_access = match protocol.as_str() {
+        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
+        _ => false,
+    };
+
+    let track_delayed = match protocol.as_str() {
+        "basic-sgt" => true,
+        _ => false,
+    };
+
     for s_id in 1..=subscribers {
-        // Generate number of records for a given s_id.
-        let n_sf = rng.gen_range(1..=4);
-        // Randomly sample w.o. replacement from range of ai_type values.
-        let sample = sf_type_values.iter().choose_multiple(rng, n_sf);
+        let n_sf = rng.gen_range(1..=4); // generate number of records for a given s_id
+        let sample = sf_type_values.iter().choose_multiple(rng, n_sf); // randomly sample w.o. replacement from range of ai_type values
+
         for record in 1..=n_sf {
-            // Initialise empty row.
-            let mut row = Row::new(Arc::clone(&t), &protocol);
-            // Calculate is_active
-            let is_active = helper::is_active(rng);
-            // Calculate primary key
-            let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(s_id, record as u64));
+            let mut row = Row::new(Arc::clone(&special_facility), track_access, track_delayed); // initialise empty row
+            let is_active = helper::is_active(rng); // calculate is_active
+            let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(s_id, record as u64)); // calculate primary key
             row.set_primary_key(pk.clone());
             row.init_value("s_id", &s_id.to_string())?;
             row.init_value("sf_type", &sample[record - 1].to_string())?;
@@ -344,13 +371,11 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
             row.init_value("data_a", &rng.gen_range(0..=255).to_string())?;
             row.init_value("data_b", &helper::get_data_x(5, rng))?;
 
-            i.insert(pk, row)?;
+            special_idx.insert(&pk, row)?;
 
-            // For each row, insert [0,3] into call forwarding table
-            // Generate the number to insert
-            let n_cf = rng.gen_range(0..=3);
-            // Randomly sample w.o. replacement from range of ai_type values.
-            let start_times = start_time_values.iter().choose_multiple(rng, n_cf);
+            // for each row, insert [0,3] into call forwarding table
+            let n_cf = rng.gen_range(0..=3); // generate the number to insert
+            let start_times = start_time_values.iter().choose_multiple(rng, n_cf); // randomly sample w.o. replacement from range of ai_type values
             if n_cf != 0 {
                 for i in 1..=n_cf {
                     // s_id from above
@@ -358,11 +383,12 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                     let st = *start_times[i - 1];
                     let et = st + rng.gen_range(1..=8);
                     let nx = helper::get_number_x(rng);
-                    // Calculate primary key
+
                     let pk =
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(s_id, record as u64, st));
-                    // Initialise empty row.
-                    let mut row = Row::new(Arc::clone(&cf_t), &protocol);
+
+                    let mut row =
+                        Row::new(Arc::clone(&call_forwarding), track_access, track_delayed);
                     row.set_primary_key(pk.clone());
                     row.init_value("s_id", &s_id.to_string())?;
                     row.init_value("sf_type", &sample[record - 1].to_string())?;
@@ -370,13 +396,19 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                     row.init_value("end_time", &et.to_string())?;
                     row.init_value("number_x", &nx)?;
 
-                    cf_i.insert(pk, row)?;
+                    call_idx.insert(&pk, row)?;
                 }
             }
         }
     }
-    info!("Loaded {} rows into special facility", t.get_num_rows());
-    info!("Loaded {} rows into call_forwarding", cf_t.get_num_rows());
+    info!(
+        "Loaded {} rows into special facility",
+        special_facility.get_num_rows()
+    );
+    info!(
+        "Loaded {} rows into call_forwarding",
+        call_forwarding.get_num_rows()
+    );
     Ok(())
 }
 

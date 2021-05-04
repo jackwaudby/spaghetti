@@ -36,7 +36,7 @@ impl Table {
     }
 
     /// Returns a shared reference to the table schema.
-    pub fn schema(&self) -> &Catalog {
+    pub fn get_schema(&self) -> &Catalog {
         &self.schema
     }
 

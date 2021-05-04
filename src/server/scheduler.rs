@@ -32,14 +32,13 @@ pub struct Protocol {
     pub scheduler: Box<dyn Scheduler + Send + Sync + 'static>,
 }
 
-/// Information about a transaction.
-#[derive(Debug, PartialEq, Clone)]
-pub struct TransactionInfo {
-    /// Transaction ID.
-    id: Option<String>,
-
-    /// Timestamp used in deadlock detection.
-    ts: Option<u64>,
+#[derive(Debug, Clone, PartialEq)] // TODO: Clone or Copy
+pub enum TransactionInfo {
+    BasicSerializationGraph { thread_id: usize, txn_id: u64 },
+    OptimisticSerializationGraph { thread_id: usize, txn_id: u64 },
+    HitList { txn_id: u64 },
+    OptimisticHitList { thread_id: usize, txn_id: u64 },
+    TwoPhaseLocking { txn_id: String, timestamp: u64 },
 }
 
 impl Protocol {
@@ -78,23 +77,6 @@ impl Protocol {
     }
 }
 
-impl TransactionInfo {
-    /// Create new holder for a transaction's info.
-    pub fn new(id: Option<String>, ts: Option<u64>) -> TransactionInfo {
-        TransactionInfo { id, ts }
-    }
-
-    /// Get the ID of a transaction.
-    pub fn get_id(&self) -> Option<String> {
-        self.id.clone()
-    }
-
-    /// Get the timestamp of a transaction.
-    pub fn get_ts(&self) -> Option<u64> {
-        self.ts
-    }
-}
-
 pub trait Scheduler: fmt::Display + fmt::Debug {
     /// Register a transaction with the scheduler.
     fn register(&self) -> Result<TransactionInfo, NonFatalError>;
@@ -109,9 +91,9 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn create(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;
 
@@ -119,8 +101,8 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn read(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError>;
 
@@ -128,9 +110,9 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn read_and_update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError>;
 
@@ -140,9 +122,9 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn append(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         column: &str,
-        value: &str,
+        value: Data,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;
 
@@ -150,16 +132,15 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: Vec<String>,
+        key: &PrimaryKey,
+        columns: &[&str],
         read: bool,
-        params: Vec<Data>,
-        // (columns, current_values, parameters) -> (columns,new_values)
+        params: Option<&[Data]>,
         f: &dyn Fn(
-            Vec<String>,
-            Option<Vec<Data>>,
-            Vec<Data>,
-        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
+            &[&str],           // columns
+            Option<Vec<Data>>, // current values
+            Option<&[Data]>,   // parameters
+        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;
 
@@ -167,7 +148,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn delete(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;
 
@@ -176,7 +157,6 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
 
     /// Get shared reference to a table.
     fn get_table(&self, table: &str, meta: &TransactionInfo) -> Result<Arc<Table>, NonFatalError> {
-        // Get table.
         let res = self.get_data().get_internals().get_table(table);
         match res {
             Ok(table) => Ok(table),

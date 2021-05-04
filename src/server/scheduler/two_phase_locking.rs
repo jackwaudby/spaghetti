@@ -611,7 +611,7 @@ impl Scheduler for TwoPhaseLocking {
 
 impl TwoPhaseLocking {
     /// Creates a new scheduler with an empty lock table.
-    pub fn new(workload: Arc<Workload>) -> TwoPhaseLocking {
+    pub fn new(workload: Arc<Workload>) -> Self {
         let workers = workload
             .get_internals()
             .get_config()

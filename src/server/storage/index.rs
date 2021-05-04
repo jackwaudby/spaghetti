@@ -1,9 +1,9 @@
 use crate::common::error::NonFatalError;
+use crate::server::scheduler::TransactionInfo;
 use crate::server::storage::datatype::Data;
 use crate::server::storage::row::{OperationResult, Row, State as RowState};
 use crate::workloads::PrimaryKey;
 
-//use chashmap::{CHashMap, ReadGuard};
 use dashmap::mapref::one::Ref;
 use dashmap::DashMap;
 use parking_lot::Mutex;
@@ -18,7 +18,6 @@ pub struct Index {
     name: String,
 
     /// Concurrrent hashmap.
-    // map: CHashMap<PrimaryKey, Mutex<Row>>,
     map: DashMap<PrimaryKey, Mutex<Row>>,
 }
 
@@ -46,20 +45,15 @@ impl Index {
         self.map.contains_key(&key)
     }
 
-    /// Insert a `Row` into the index.
-    ///
-    /// # Errors
-    ///
-    /// - Row already exists with `key`.
-    pub fn insert(&self, key: PrimaryKey, row: Row) -> Result<(), NonFatalError> {
+    /// Insert a row with key into the index.
+    pub fn insert(&self, key: &PrimaryKey, row: Row) -> Result<(), NonFatalError> {
         let res = self.map.insert(key.clone(), Mutex::new(row));
 
         match res {
             Some(existing_row) => {
-                // A row already existed for this key, which has now been overwritten, put back.
-                self.map.insert(key.clone(), existing_row);
+                self.map.insert(key.clone(), existing_row); // row exists for key so put back
                 Err(NonFatalError::RowAlreadyExists(
-                    format!("{}", key),
+                    key.to_string(),
                     self.get_name(),
                 ))
             }
@@ -67,242 +61,171 @@ impl Index {
         }
     }
 
-    /// Delete a `Row` in the index.
-    ///
-    /// Note, this does not delete anything, merely marking the `Row` as to be deleted.
-    ///
-    /// # Errors
-    ///
-    /// - Row does not exist with `key`.
-    /// - Row already dirty or marked for delete.
+    /// Mark row as deleted in the index.
     pub fn delete(
         &self,
-        key: PrimaryKey,
-        protocol: &str,
+        key: &PrimaryKey,
+        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
-        let read_guard = self
+        let rh = self
             .map
-            .get(&key)
-            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
-
-        let row = &mut *read_guard.lock();
-
-        let res = row.delete(protocol)?;
+            .get(key)
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let row = &mut *rh.lock();
+        let res = row.delete(tid)?;
         Ok(res)
     }
 
     /// Remove a `Row` from the index.
     ///
     /// Called at commit time, removing the row from the index.
-    ///
-    /// # Errors
-    ///
-    /// - Row does not exist with `key`.
-    pub fn remove(&self, key: PrimaryKey) -> Result<Row, NonFatalError> {
-        // Remove the row from the map.
-        let row = self.map.remove(&key);
+    pub fn remove(&self, key: &PrimaryKey) -> Result<Row, NonFatalError> {
+        let row = self.map.remove(key);
         match row {
             Some((_, row)) => Ok(row.into_inner()),
-            None => Err(NonFatalError::RowNotFound(
-                format!("{}", key),
-                self.get_name(),
-            )),
+            None => Err(NonFatalError::RowNotFound(key.to_string(), self.get_name())),
         }
     }
 
-    /// Read `columns` from a `Row` with the given `key`.
-    ///
-    /// # Errors
-    ///
-    /// - Row does not exist with `key`.
-    /// - The row is marked for delete.
+    /// Read columns from a row with the given key.
     pub fn read(
         &self,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         columns: &[&str],
-        protocol: &str,
-        tid: &str,
+        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
-        let read_guard = self
+        let rh = self
             .map
-            .get(&key)
-            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
+            .get(key)
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
 
-        let row = &mut *read_guard.lock();
-
-        let res = row.get_values(columns, protocol, tid)?;
+        let row = &mut *rh.lock();
+        let res = row.get_values(columns, tid)?;
         Ok(res)
     }
 
-    /// Attempt to get a read handle to a row with `key`.
+    /// Get a handle to row with key.
     pub fn get_lock_on_row(
         &self,
         key: &PrimaryKey,
     ) -> Result<Ref<PrimaryKey, Mutex<Row>>, NonFatalError> {
         self.map
             .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
     }
 
-    /// Write `values` to `columns` in a `Row` with the given `key`.
-    ///
-    /// # Errors
-    ///
-    /// - Row does not exist with `key`.
-    /// - The row is already dirty.
-    /// - The row is marked for delete.
+    /// Write values to columns in a row with the given key.
     pub fn update<F>(
         &self,
-        key: PrimaryKey,
-        columns: Vec<String>,
+        key: &PrimaryKey,
+        columns: &[&str],
         read: bool,
-        params: Vec<Data>,
+        params: Option<&[Data]>,
         f: F,
-        protocol: &str,
-        tid: &str,
+        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError>
     where
         F: Fn(
-            Vec<String>,
+            &[&str],
             Option<Vec<Data>>,
-            Vec<Data>,
-        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
+            Option<&[Data]>,
+        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
     {
-        let read_guard = self
+        let rh = self
             .map
-            .get(&key)
-            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
-        let row = &mut *read_guard.lock();
+            .get(key)
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let row = &mut *rh.lock();
 
-        let c: Vec<&str> = columns.iter().map(|s| s as &str).collect();
-        let current;
+        let current_values;
         if read {
-            let res = row.get_values(&c, protocol, tid)?;
-            current = res.get_values();
+            let res = row.get_values(columns, tid)?;
+            current_values = Some(res.get_values());
         } else {
-            current = None;
+            current_values = None;
         }
 
-        let (_, new_values) = f(columns.clone(), current, params)?;
-        let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
+        let (new_columns, new_values) = f(columns, current_values, params)?;
 
-        let res = row.set_values(&c, &nv, protocol, tid)?;
+        let res = row.set_values(&new_columns, &new_values, tid)?;
         Ok(res)
     }
 
-    /// Append `value` to `column` in a `Row` with the given `key`.
-    ///
-    /// # NonFatalErrors
-    ///
-    /// (i) Row does not exist with `key`, (ii) row is dirty, or (iii) row is marked for delete
+    /// Append value to column in a row with the given key.
     pub fn append(
         &self,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         column: &str,
-        value: &str,
-        protocol: &str,
-        tid: &str,
+        value: Data,
+        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
-        let read_guard = self
+        let rh = self
             .map
-            .get(&key)
-            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?; //  attempt to get read guard
-        let row = &mut *read_guard.lock(); // deref to row
-        let res = row.append_value(column, value, protocol, tid)?; // execute append
+            .get(key)
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let row = &mut *rh.lock();
+        let res = row.append_value(column, value, tid)?;
         Ok(res)
     }
 
-    /// Set `values` in `columns` in a `Row` with the given `key`, returning the old values.
-    ///
-    /// # Errors
-    ///
-    /// - Row does not exist with `key`.
-    /// - The row is already dirty.
-    /// - The row is marked for delete.
+    /// Set values in columns in a row with the given key, returning the old values.
     pub fn read_and_update(
         &self,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         columns: &[&str],
-        values: &[&str],
-        protocol: &str,
-        tid: &str,
+        values: &[Data],
+        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
-        let read_guard = self
+        let rh = self
             .map
-            .get(&key)
-            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
-
-        let row = &mut *read_guard.lock();
-
-        let res = row.get_and_set_values(columns, values, protocol, tid)?;
+            .get(key)
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let row = &mut *rh.lock();
+        let res = row.get_and_set_values(columns, values, tid)?;
         Ok(res)
     }
 
-    /// Commit modifications to a `Row`.
-    ///
-    /// If the row was marked for deletion it is removed.
-    /// Else it was updated and these changes are made permanent.
-    ///
-    /// # Errors
-    ///
-    /// - Row does not exist with `key`.
-    pub fn commit(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<(), NonFatalError> {
-        let row_state = self
+    /// Commit modifications to a row - rows marked for delete are removed.
+    pub fn commit(&self, key: &PrimaryKey, tid: &TransactionInfo) -> Result<(), NonFatalError> {
+        let rh = self
             .map
-            .get(&key)
-            .unwrap_or_else(|| panic!("No entry for {}", key))
-            .lock()
-            .get_state();
+            .get(key)
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+
+        let row_state = rh.lock().get_state();
 
         if let RowState::Deleted = row_state {
-            self.remove(key).unwrap();
+            drop(rh); // drop handle
+            self.remove(key).unwrap(); // remove
         } else {
-            let read_guard = self
-                .map
-                .get(&key)
-                .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
-
-            let row = &mut *read_guard.lock();
-
-            row.commit(protocol, tid);
+            let row = &mut *rh.lock(); // lock row
+            row.commit(tid); // commit
         }
         Ok(())
     }
 
-    /// Revert modifications to a `Row`.
-    ///
-    /// This is handled at the row level.
-    ///
-    /// # Errors
-    ///
-    /// - Row does not exist with `key`.
-    pub fn revert(&self, key: PrimaryKey, protocol: &str, tid: &str) -> Result<(), NonFatalError> {
-        // attempt to get read guard
-        let read_guard = self
+    /// Revert modifications to a row.
+    pub fn revert(&self, key: &PrimaryKey, tid: &TransactionInfo) -> Result<(), NonFatalError> {
+        let rh = self
             .map
-            .get(&key)
-            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
-
-        let row = &mut *read_guard.lock(); // Deref to row.
-        row.revert(protocol, tid); // Revert changes.
+            .get(key)
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let row = &mut *rh.lock();
+        row.revert(tid);
         Ok(())
     }
 
     /// Revert reads to a `Row`.
-    ///
-    /// SGT only.
-    ///
-    /// # Errors
-    ///
-    /// - Row does not exist with `key`.
-    pub fn revert_read(&self, key: PrimaryKey, tid: &str) -> Result<(), NonFatalError> {
-        let read_guard = self
+    pub fn revert_read(
+        &self,
+        key: &PrimaryKey,
+        tid: &TransactionInfo,
+    ) -> Result<(), NonFatalError> {
+        let rh = self
             .map
-            .get(&key)
-            .ok_or_else(|| NonFatalError::RowNotFound(format!("{}", key), self.get_name()))?;
-
-        let row = &mut *read_guard.lock();
-
+            .get(key)
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let row = &mut *rh.lock();
         row.revert_read(tid);
         Ok(())
     }

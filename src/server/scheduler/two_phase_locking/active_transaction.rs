@@ -22,7 +22,7 @@ pub struct ActiveTransaction {
 
 impl ActiveTransaction {
     /// Create new runtime information tracker for a transaction.
-    pub fn new(tid: &str) -> ActiveTransaction {
+    pub fn new(tid: &str) -> Self {
         ActiveTransaction {
             tid: tid.to_string(),
             locks_held: vec![],

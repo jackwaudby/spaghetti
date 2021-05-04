@@ -39,7 +39,7 @@ fn populate_item_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let protocol = data.config.get_str("protocol")?;
 
     for i_id in 0..max_items + 1 {
-        let mut row = Row::new(Arc::clone(&t), &protocol);
+        let mut row = Row::new(Arc::clone(&t), true, true);
         let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Item(i_id));
         row.set_primary_key(pk.clone());
         row.init_value("i_id", &i_id.to_string())?;
@@ -47,7 +47,7 @@ fn populate_item_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         row.init_value("i_name", &helper::random_string(14, 24, rng))?;
         row.init_value("i_price", &helper::random_float(1.0, 100.0, 2, rng))?;
         row.init_value("i_data", &helper::item_data(rng))?;
-        i.insert(pk, row)?;
+        i.insert(&pk, row)?;
     }
     Ok(())
 }
@@ -67,7 +67,7 @@ fn populate_warehouse_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     let protocol = data.config.get_str("protocol")?;
 
     for w_id in 0..n {
-        let mut row = Row::new(Arc::clone(&t), &protocol);
+        let mut row = Row::new(Arc::clone(&t), true, true);
         let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Warehouse(w_id));
         row.set_primary_key(pk.clone());
         row.init_value("w_id", &w_id.to_string())?;
@@ -79,7 +79,7 @@ fn populate_warehouse_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
         row.init_value("w_zip", &helper::zip(rng))?;
         row.init_value("w_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
         row.init_value("w_ytd", "300000.0")?;
-        i.insert(pk, row)?;
+        i.insert(&pk, row)?;
     }
     Ok(())
 }
@@ -101,7 +101,7 @@ fn populate_district_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
 
     for w_id in 0..n {
         for d_id in 0..d {
-            let mut row = Row::new(Arc::clone(&t), &protocol);
+            let mut row = Row::new(Arc::clone(&t), true, true);
             let pk = PrimaryKey::Tpcc(TpccPrimaryKey::District(w_id, d_id));
             row.set_primary_key(pk.clone());
             row.init_value("d_id", &d_id.to_string())?;
@@ -115,7 +115,7 @@ fn populate_district_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
             row.init_value("d_tax", &helper::random_float(0.0, 0.2, 4, rng))?;
             row.init_value("d_ytd", "30000.0")?;
             row.init_value("d_next_o_id", "3001")?;
-            i.insert(pk, row)?;
+            i.insert(&pk, row)?;
         }
     }
     Ok(())
@@ -139,14 +139,14 @@ fn populate_stock_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
 
     for w_id in 0..n {
         for s_i_id in 0..mi {
-            let mut row = Row::new(Arc::clone(&t), &protocol);
+            let mut row = Row::new(Arc::clone(&t), true, true);
             let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Stock(w_id, s_i_id));
             row.set_primary_key(pk.clone());
             row.init_value("s_i_id", &s_i_id.to_string())?;
             row.init_value("s_w_id", &w_id.to_string())?;
             row.init_value("s_quantity", &rng.gen_range(10..=100).to_string())?;
             row.init_value("s_remote_cnt", "0")?;
-            i.insert(pk, row)?;
+            i.insert(&pk, row)?;
         }
     }
     Ok(())
@@ -172,7 +172,7 @@ fn populate_customer_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
     for w_id in 0..w {
         for d_id in 0..d {
             for c_id in 0..c {
-                let mut row = Row::new(Arc::clone(&t), &protocol);
+                let mut row = Row::new(Arc::clone(&t), true, true);
                 let pk = PrimaryKey::Tpcc(TpccPrimaryKey::Customer(w_id, d_id, c_id));
                 row.set_primary_key(pk.clone());
                 row.init_value("c_id", &c_id.to_string())?;
@@ -183,7 +183,7 @@ fn populate_customer_table(data: &Internal, rng: &mut StdRng) -> Result<()> {
                 row.init_value("c_balance", "-10.0")?;
                 row.init_value("c_ytd_payment", "10.0")?;
                 row.init_value("c_payment_cnt", "1")?;
-                i.insert(pk, row)?;
+                i.insert(&pk, row)?;
             }
         }
     }

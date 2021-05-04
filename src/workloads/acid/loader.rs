@@ -29,14 +29,14 @@ pub fn load_person_table(data: &Internal) -> Result<()> {
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         let p: Person = result?; // deserialise
-        let mut row = Row::new(Arc::clone(&t), &protocol); // empty row
+        let mut row = Row::new(Arc::clone(&t), true, true); // empty row
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(p.p_id)); // pk
 
         row.set_primary_key(pk.clone());
         row.init_value("p_id", &p.p_id.to_string())?;
         row.init_value("version", &p.version.to_string())?;
         row.init_value("num_friends", &p.version.to_string())?;
-        i.insert(pk, row)?;
+        i.insert(&pk, row)?;
     }
     info!("Loaded {} row(s) into person", t.get_num_rows());
     Ok(())
@@ -63,7 +63,7 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
     info!("Populating person table: {}", persons);
     let mut ws_flag = true;
     for p_id in 0..persons {
-        let mut row = Row::new(Arc::clone(&t), &protocol);
+        let mut row = Row::new(Arc::clone(&t), true, true);
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(p_id));
         row.set_primary_key(pk.clone());
         row.init_value("p_id", &p_id.to_string())?;
@@ -79,7 +79,7 @@ pub fn populate_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
             ws_flag = true;
         }
 
-        i.insert(pk, row)?;
+        i.insert(&pk, row)?;
     }
     info!("Loaded {} row(s) into person", t.get_num_rows());
 
@@ -104,13 +104,13 @@ pub fn populate_person_knows_person_table(data: &Internal, _rng: &mut StdRng) ->
     info!("Populating knows table: {}", persons);
     for p1_id in (0..persons).step_by(2) {
         let p2_id = p1_id + 1;
-        let mut row = Row::new(Arc::clone(&t), &protocol);
+        let mut row = Row::new(Arc::clone(&t), true, true);
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Knows(p1_id, p2_id));
         row.set_primary_key(pk.clone());
         row.init_value("p1_id", &p1_id.to_string())?;
         row.init_value("p2_id", &p2_id.to_string())?;
         row.init_value("version_history", "")?;
-        i.insert(pk, row)?;
+        i.insert(&pk, row)?;
     }
 
     info!("Loaded {} row(s) into knows", t.get_num_rows());

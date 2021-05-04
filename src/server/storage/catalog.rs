@@ -12,7 +12,7 @@ pub struct Catalog {
     table_id: u64,
 
     /// Number of columns in table.
-    column_cnt: u64,
+    column_cnt: usize,
 
     /// List of columns.
     columns: Vec<Column>,
@@ -93,7 +93,7 @@ impl Catalog {
     }
 
     /// Returns the number of columns in the schema.
-    pub fn column_cnt(&self) -> u64 {
+    pub fn column_cnt(&self) -> usize {
         self.column_cnt
     }
 }

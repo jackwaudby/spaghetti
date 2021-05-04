@@ -1,7 +1,7 @@
 use crate::common::error::NonFatalError;
+use crate::server::scheduler::TransactionInfo;
 use crate::server::storage::catalog::ColumnKind;
-use crate::server::storage::datatype::Data;
-use crate::server::storage::datatype::Field;
+use crate::server::storage::datatype::{Data, Field};
 use crate::server::storage::table::Table;
 use crate::workloads::PrimaryKey;
 
@@ -18,8 +18,8 @@ pub enum State {
 /// Represents a row in the database.
 #[derive(Debug)]
 pub struct Row {
-    /// Optional field storing the row's primary key.
-    primary_key: Option<PrimaryKey>,
+    /// Primary key.
+    primary_key: PrimaryKey,
 
     /// Row id.
     row_id: u64,
@@ -36,27 +36,19 @@ pub struct Row {
     /// Row state.
     state: State,
 
-    /// Sequence of accesses to the row (op_type,txn_id) (optional)
+    /// Sequence of accesses to the row.
     access_history: Option<Vec<Access>>,
 
-    /// List of delayed transactions. (thread_id, txn_id)
-    delayed: Vec<(usize, u64)>,
+    /// List of delayed transactions.
+    delayed: Option<Vec<TransactionInfo>>,
 }
 
 /// Represents the type of access made to row.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Access {
-    Read(String),
-    Write(String),
+    Read(TransactionInfo),
+    Write(TransactionInfo),
 }
-
-// fn variant_eq(a: &Access, b: &Access) -> bool {
-//     match (a, b) {
-//         (&Access::Read(..), &Access::Read(..)) => true,
-//         (&Access::Write(..), &Access::Write(..)) => true,
-//         _ => false,
-//     }
-// }
 
 /// Represents the packet of information returned from a get/set operation on a row.
 #[derive(Debug)]
@@ -70,40 +62,49 @@ pub struct OperationResult {
 
 impl Row {
     /// Return an empty `Row`.
-    pub fn new(table: Arc<Table>, protocol: &str) -> Self {
-        let t = Arc::clone(&table); // get handle to table
-        let row_id = t.get_next_row_id(); // get row id
-        let field_cnt = t.schema().column_cnt(); // get number of fields in this table
-        let mut fields = Vec::new(); // create emty fields
-        for _ in 0..field_cnt {
-            fields.push(Field::new());
+    pub fn new(
+        primary_key: PrimaryKey,
+        table: Arc<Table>,
+        track_access: bool,
+        track_delayed: bool,
+    ) -> Self {
+        let row_id = table.get_next_row_id();
+
+        let fields = table.get_schema().column_cnt();
+        let mut current_fields = Vec::with_capacity(fields);
+        for _ in 0..fields {
+            current_fields.push(Field::new());
         }
 
-        let access_history = match protocol {
-            "sgt" | "hit" | "opt-hit" | "basic-sgt" => Some(vec![]), // (optional) track access history
-            _ => None,
-        };
+        let access_history;
+        if track_access {
+            access_history = Some(vec![]);
+        } else {
+            access_history = None;
+        }
+
+        let delayed;
+        if track_delayed {
+            delayed = Some(vec![]);
+        } else {
+            delayed = None;
+        }
 
         Row {
-            primary_key: None,
+            primary_key,
             row_id,
-            table: t,
-            current_fields: fields,
+            table,
+            current_fields,
             prev_fields: None,
             state: State::Clean,
             access_history,
-            delayed: vec![],
+            delayed,
         }
     }
 
     /// Returns a row's primary key.
-    pub fn get_primary_key(&self) -> Option<PrimaryKey> {
+    pub fn get_primary_key(&self) -> PrimaryKey {
         self.primary_key.clone()
-    }
-
-    /// Set a row's primary key.
-    pub fn set_primary_key(&mut self, key: PrimaryKey) {
-        self.primary_key = Some(key);
     }
 
     /// Returns the row id.
@@ -117,113 +118,85 @@ impl Row {
     }
 
     /// Initialise the value of a field in a row. Used by loaders.
-    pub fn init_value(&mut self, col_name: &str, col_value: &str) -> Result<(), NonFatalError> {
-        let table = Arc::clone(&self.table); // get handle to table
-        let field_index = table.schema().column_position_by_name(col_name)?; // get index of field in row
-        let field_type = table.schema().column_type_by_index(field_index); // get field type
+    pub fn init_value(&mut self, column: &str, value: Data) -> Result<(), NonFatalError> {
+        let schema = self.table.get_schema();
+        let field_index = schema.column_position_by_name(column)?;
+        let field_type = schema.column_type_by_index(field_index);
 
-        // convert value to `Data`
-        let value = match field_type {
-            ColumnKind::VarChar => Data::VarChar(col_value.to_string()),
-            ColumnKind::Int => Data::Int(col_value.parse::<i64>().map_err(|_| {
-                NonFatalError::UnableToConvertToDataType(col_value.to_string(), "int".to_string())
-            })?),
-            ColumnKind::Double => Data::Double(col_value.parse::<f64>().map_err(|_| {
-                NonFatalError::UnableToConvertToDataType(
-                    col_value.to_string(),
-                    "double".to_string(),
-                )
-            })?),
-            ColumnKind::List => Data::List(vec![]), // lists are always empty upon initialisation
-        };
-        self.current_fields[field_index].set(value); // set value
+        data_eq_column(field_type, value)?;
+
+        self.current_fields[field_index].set(value);
+
         Ok(())
     }
 
-    /// Get the values of `columns` in a row.
+    /// Get values of columns.
     pub fn get_values(
         &mut self,
         columns: &[&str],
-        protocol: &str,
-        tid: &str,
+        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
         if let State::Deleted = self.state {
             return Err(NonFatalError::RowDeleted(
-                format!("{:?}", self.primary_key),
+                self.primary_key.to_string(),
                 self.table.get_table_name(),
-            )); // if marked deleted operation
+            ));
         }
 
-        let access_history = match protocol {
-            "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
-                let ah = self.access_history.as_ref().unwrap().clone(); // get access history
-                self.append_access(Access::Read(tid.to_string())); // append operation
-                Some(ah)
-            }
-            _ => None,
-        };
+        let access_history;
+        if let TransactionInfo::TwoPhaseLocking { .. } = tid {
+            access_history = None;
+        } else {
+            let ah = self.access_history.as_ref().unwrap().clone();
+            self.append_access(Access::Read(tid.clone()));
+            access_history = Some(ah);
+        }
 
-        let table = Arc::clone(&self.table); // get handle to table
-        let mut values = Vec::new(); // get each value
+        let mut values = Vec::with_capacity(columns.len());
+        let schema = self.table.get_schema();
         for column in columns {
-            let field_index = table.schema().column_position_by_name(column)?; // get index of field in row
-            let field = &self.current_fields[field_index]; // get handle to field
-            let value = field.get(); // clone field
-            values.push(value); // add to result set
+            let field_index = schema.column_position_by_name(column)?;
+            let field = &self.current_fields[field_index];
+            let value = field.get();
+            values.push(value);
         }
-        let res = OperationResult::new(Some(values), access_history); // create return result
-
-        Ok(res)
+        Ok(OperationResult::new(Some(values), access_history))
     }
 
     /// Append value to list. (list datatype only).
     pub fn append_value(
         &mut self,
         column: &str,
-        value: &str,
-        protocol: &str,
-        tid: &str,
+        value: Data,
+        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
-                format!("{:?}", self.primary_key),
+                self.primary_key.to_string(),
                 self.table.get_table_name(),
             )),
             State::Deleted => Err(NonFatalError::RowDeleted(
-                format!("{:?}", self.primary_key),
+                self.primary_key.to_string(),
                 self.table.get_table_name(),
             )),
             State::Clean => {
-                let access_history = match protocol {
-                    "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
-                        let ah = self.get_access_history(); // get access history
-                        self.append_access(Access::Write(tid.to_string())); // append this operation
-                        Some(ah)
-                    }
-                    _ => None,
-                };
+                let schema = self.table.get_schema(); // get schema
+                let field_index = schema.column_position_by_name(column)?; // get field index
+                let field_type = schema.column_type_by_index(field_index); // get field type
+                data_eq_column(field_type, Data::List(..))?; // check field is list type
 
-                let prev_fields = self.current_fields.clone(); // create copy of old fields
-                self.set_prev(Some(prev_fields)); // set prev
-                let table = Arc::clone(&self.table); // get handle to table
-                let field_index = table.schema().column_position_by_name(column)?; // get index of field in row
-                let field_type = table.schema().column_type_by_index(field_index); // get type of field
-                let field = &self.current_fields[field_index]; // get handle to field
+                let prev_fields = self.current_fields.clone(); // set prev fields
+                self.prev_fields = Some(prev_fields);
 
-                if let ColumnKind::List = field_type {
-                    let current_list = field.get(); // get the current value
-                    if let Data::List(mut list) = current_list {
-                        let to_append = value.parse::<u64>().unwrap(); // convert to u64
-                        list.push(to_append); // append value
-                        self.current_fields[field_index].set(Data::List(list)); // set value
-                    } else {
-                        panic!("expected list data type");
-                    }
+                self.current_fields[field_index].append(value); // append value to list
+
+                let access_history;
+                if let TransactionInfo::TwoPhaseLocking { .. } = tid {
+                    access_history = None;
                 } else {
-                    panic!(
-                        "append operation not supported for {} data type",
-                        field_type
-                    );
+                    let ah = self.access_history.as_ref().unwrap().clone();
+                    self.append_access(Access::Read(tid.clone()));
+                    access_history = Some(ah);
                 }
 
                 self.state = State::Modified; // set state
@@ -238,63 +211,43 @@ impl Row {
     pub fn set_values(
         &mut self,
         columns: &[&str],
-        values: &[&str],
-        protocol: &str,
-        tid: &str,
+        values: &[Data],
+        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
-                format!("{:?}", self.primary_key),
+                self.primary_key.to_string(),
                 self.table.get_table_name(),
             )),
             State::Deleted => Err(NonFatalError::RowDeleted(
-                format!("{:?}", self.primary_key),
+                self.primary_key.to_string(),
                 self.table.get_table_name(),
             )),
             State::Clean => {
-                let access_history = match protocol {
-                    "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
-                        let ah = self.access_history.as_ref().unwrap().clone(); // get access history
-                        self.append_access(Access::Write(tid.to_string())); // append this operation
-                        Some(ah)
-                    }
-                    _ => None,
-                };
+                let prev_fields = self.current_fields.clone(); // set prev fields
+                self.prev_fields = Some(prev_fields);
 
-                let prev_fields = self.current_fields.clone(); // create copy of old fields
-                self.set_prev(Some(prev_fields)); // set prev
-                let table = Arc::clone(&self.table); // get handle to table
+                self.state = State::Modified; // set state
+
+                let access_history;
+                if let TransactionInfo::TwoPhaseLocking { .. } = tid {
+                    access_history = None;
+                } else {
+                    let ah = self.access_history.as_ref().unwrap().clone();
+                    self.append_access(Access::Write(tid.clone()));
+                    access_history = Some(ah);
+                }
+
+                let schema = self.table.get_schema();
 
                 // update each field;
                 for (i, col_name) in columns.iter().enumerate() {
-                    let field_index = table.schema().column_position_by_name(col_name)?; // get index of field in row
-                    let field_type = table.schema().column_type_by_index(field_index); // get type of field
-                    let value = values[i]; // new value
-
-                    // convert value to `Data`
-                    let new_value = match field_type {
-                        ColumnKind::VarChar => Data::VarChar(value.to_string()),
-                        ColumnKind::Int => Data::Int(value.parse::<i64>().map_err(|_| {
-                            NonFatalError::UnableToConvertToDataType(
-                                value.to_string(),
-                                "int".to_string(),
-                            )
-                        })?),
-                        ColumnKind::Double => Data::Double(value.parse::<f64>().map_err(|_| {
-                            NonFatalError::UnableToConvertToDataType(
-                                value.to_string(),
-                                "double".to_string(),
-                            )
-                        })?),
-                        ColumnKind::List => {
-                            panic!("set operation not supported for list data type")
-                        }
-                    };
-
-                    self.current_fields[field_index].set(new_value); // set value
+                    let field_index = schema.column_position_by_name(col_name)?; // get index of field in row
+                    let field_type = schema.column_type_by_index(field_index); // get type of field
+                    data_eq_column(field_type, values[i])?; // check field is list type
+                    self.current_fields[field_index].set(values[i]);
                 }
 
-                self.state = State::Modified; // set dirty flag
                 let res = OperationResult::new(None, access_history); // create return result
 
                 Ok(res)
@@ -306,17 +259,18 @@ impl Row {
     pub fn get_and_set_values(
         &mut self,
         columns: &[&str],
-        values: &[&str],
-        protocol: &str,
-        tid: &str,
+        values: &[Data],
+        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
-        let res = self.get_values(columns, protocol, tid); // get old
-        self.set_values(columns, values, protocol, tid)?; // set new
+        let res = self.get_values(columns, tid); // get old
+        self.set_values(columns, values, tid)?; // set new
         res
     }
 
     /// Mark row as deleted.
-    pub fn delete(&mut self, protocol: &str) -> Result<OperationResult, NonFatalError> {
+    ///
+    /// Committing a delete is handled at the index level.
+    pub fn delete(&mut self, tid: &TransactionInfo) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
                 format!("{:?}", self.primary_key),
@@ -328,13 +282,15 @@ impl Row {
             )),
             State::Clean => {
                 self.state = State::Deleted; // set state
-                let access_history = match protocol {
-                    "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
-                        let ah = self.access_history.as_ref().unwrap().clone(); // get access history
-                        Some(ah)
-                    }
-                    _ => None,
-                };
+
+                let access_history;
+                if let TransactionInfo::TwoPhaseLocking { .. } = tid {
+                    access_history = None;
+                } else {
+                    let ah = self.access_history.as_ref().unwrap().clone();
+                    access_history = Some(ah);
+                }
+
                 let res = OperationResult::new(None, access_history);
                 Ok(res)
             }
@@ -342,66 +298,49 @@ impl Row {
     }
 
     /// Make an update permanent.
-    ///
-    /// Committing a delete is handled at the index level.
-    pub fn commit(&mut self, protocol: &str, tid: &str) {
+    pub fn commit(&mut self, tid: &TransactionInfo) {
         self.state = State::Clean;
         self.set_prev(None);
 
         // safe to remove all accesses before this write; as if this committed all previous accesses must have committed.
-        match protocol {
-            "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
-                let mut ah = self.access_history.take().unwrap(); // take access history
-                let ind = ah
-                    .iter()
-                    .position(|a| a == &Access::Write(tid.to_string()))
-                    .unwrap();
-                let new_ah = ah.split_off(ind + 1); // remove "old" access information; including self
-                self.access_history = Some(new_ah); // reset
-            }
-            _ => {}
-        };
+        if let Some(mut ah) = self.access_history {
+            let ind = ah.iter().position(|a| a == &Access::Write(*tid)).unwrap();
+            let new_ah = ah.split_off(ind + 1); // remove "old" access information; including self
+            self.access_history = Some(new_ah); // reset
+        }
     }
 
     /// Revert to previous version of row.
     ///
     /// Handles reverting a delete and an update.
-    pub fn revert(&mut self, protocol: &str, tid: &str) {
+    pub fn revert(&mut self, tid: &TransactionInfo) {
         match self.state {
             State::Deleted => self.state = State::Clean,
             State::Modified => {
-                self.current_fields = self.prev_fields.take().unwrap(); // revert to old values
+                self.current_fields = Some(self.prev_fields.take().unwrap()); // revert to old values
                 self.state = State::Clean;
 
                 // remove all accesses after this write as they should also have aborted
-                match protocol {
-                    "sgt" | "hit" | "opt-hit" | "basic-sgt" => {
-                        let mut ah = self.access_history.take().unwrap();
-                        let ind = ah
-                            .iter()
-                            .position(|a| a == &Access::Write(tid.to_string()))
-                            .unwrap(); // get index of this write
-                        ah.truncate(ind); // remove "old" access information
-                        self.access_history = Some(ah); // reset access history
-                    }
-                    _ => {}
-                };
+                if let Some(mut ah) = self.access_history {
+                    let ind = ah
+                        .iter()
+                        .position(|a| a == &Access::Write(tid.clone()))
+                        .unwrap();
+                    ah.truncate(ind); // remove "old" access information
+
+                    self.access_history = Some(ah); // reset
+                }
             }
             State::Clean => {}
         }
     }
 
     /// Revert reads to a `Row`.
-    pub fn revert_read(&mut self, tid: &str) {
+    pub fn revert_read(&mut self, tid: &TransactionInfo) {
         self.access_history
             .as_mut()
             .unwrap()
-            .retain(|a| a != &Access::Read(tid.to_string()));
-    }
-
-    /// Set previous version of row.
-    fn set_prev(&mut self, vers: Option<Vec<Field>>) {
-        self.prev_fields = vers;
+            .retain(|a| a != &Access::Read(tid.clone()));
     }
 
     /// Append `Access` to access history.
@@ -421,27 +360,27 @@ impl Row {
 
     /// Returns `true` if there are transactions delayed from operating on the row.
     pub fn is_delayed(&self) -> bool {
-        !self.delayed.is_empty()
+        !self.delayed.unwrap().is_empty()
     }
 
     /// Returns a copy of the delayed transactions.
-    pub fn get_delayed(&self) -> Vec<(usize, u64)> {
-        self.delayed.clone()
+    pub fn get_delayed(&self) -> Vec<TransactionInfo> {
+        self.delayed.unwrap().clone()
     }
 
-    /// Removes a transaction from the the delayed queue.
-    pub fn remove_delayed(&mut self, t: (usize, u64)) {
-        self.delayed.retain(|&x| x != t);
+    /// Removes a transaction from the delayed queue.
+    pub fn remove_delayed(&mut self, t: &TransactionInfo) {
+        self.delayed.as_mut().unwrap().retain(|&x| x != *t);
     }
 
     /// Append a transaction to the delayed queue.
-    pub fn append_delayed(&mut self, t: (usize, u64)) {
-        self.delayed.push(t);
+    pub fn append_delayed(&mut self, t: &TransactionInfo) {
+        self.delayed.as_mut().unwrap().push(t.clone());
     }
 
     /// Returns true if the transaction is the head of the delayed queue and the row is clean.
-    pub fn resume(&self, t: (usize, u64)) -> bool {
-        self.delayed[0] == t && self.state == State::Clean
+    pub fn resume(&self, t: &TransactionInfo) -> bool {
+        self.delayed.unwrap()[0] == *t && self.state == State::Clean
     }
 }
 
@@ -455,13 +394,24 @@ impl OperationResult {
     }
 
     /// Get values.
-    pub fn get_values(&self) -> Option<Vec<Data>> {
-        self.values.clone()
+    pub fn get_values(&self) -> Vec<Data> {
+        self.values.unwrap().clone()
     }
 
     /// Get access history.
     pub fn get_access_history(&self) -> Vec<Access> {
-        self.access_history.as_ref().unwrap().clone()
+        self.access_history.unwrap().clone()
+    }
+}
+
+/// Returns true if the value type matches the column type.
+fn data_eq_column(a: &ColumnKind, b: &Data) -> Result<(), NonFatalError> {
+    match (a, b) {
+        (&ColumnKind::Double, &Data::Double(..)) => Ok(()),
+        (&ColumnKind::Int, &Data::Int(..)) => Ok(()),
+        (&ColumnKind::List, &Data::List(..)) => Ok(()),
+        (&ColumnKind::VarChar, &Data::VarChar(..)) => Ok(()),
+        _ => Err(NonFatalError::InvalidColumnType(a.to_string())), // TODO: need better error
     }
 }
 
@@ -477,12 +427,12 @@ impl fmt::Display for State {
 impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let table = Arc::clone(&self.table);
-        let fc = self.current_fields.len();
+        let fc = self.current_fields.unwrap().len();
         let mut fields = String::new();
-        for field in &self.current_fields[0..fc - 1] {
+        for field in &self.current_fields.unwrap()[0..fc - 1] {
             fields.push_str(format!("{}, ", field).as_str());
         }
-        let last = &self.current_fields[fc - 1];
+        let last = &self.current_fields.unwrap()[fc - 1];
         fields.push_str(format!("{}", last).as_str());
         write!(
             f,
