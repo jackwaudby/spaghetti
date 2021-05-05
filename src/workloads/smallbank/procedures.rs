@@ -26,7 +26,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
         .scheduler
         .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read 1 -- get customer id
 
-    let cust_id = i64::try_from(read1[0].clone()).unwrap() as u64;
+    let cust_id = u64::try_from(read1[0].clone()).unwrap();
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
 
@@ -77,7 +77,7 @@ pub fn deposit_checking(
         .scheduler
         .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
 
-    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
+    let cust_id = u64::try_from(res1[0].clone()).unwrap();
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
     let params = vec![Data::Double(params.value)];
 
@@ -130,7 +130,7 @@ pub fn transact_savings(
         .scheduler
         .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
 
-    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
+    let cust_id = u64::try_from(res1[0].clone()).unwrap();
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
 
     protocol.scheduler.update(
@@ -165,7 +165,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         .scheduler
         .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer1 ID
 
-    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
+    let cust_id = u64::try_from(res1[0].clone()).unwrap();
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
 
@@ -193,7 +193,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         .scheduler
         .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
 
-    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
+    let cust_id = u64::try_from(res1[0].clone()).unwrap();
 
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
     let params: Vec<Data> = vec![Data::Double(total)];
@@ -263,7 +263,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
         .scheduler
         .read("accounts", &accounts_pk, &accounts_cols, &meta)?;
 
-    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
+    let cust_id = u64::try_from(res1[0].clone()).unwrap();
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
 
@@ -340,8 +340,8 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         .scheduler
         .read("accounts", &accounts_pk2, &accounts_cols, &meta)?; // read -- get customer ID 2
 
-    let cust_id1 = i64::try_from(res1[0].clone()).unwrap() as u64;
-    let cust_id2 = i64::try_from(res2[0].clone()).unwrap() as u64;
+    let cust_id1 = u64::try_from(res1[0].clone()).unwrap();
+    let cust_id2 = u64::try_from(res2[0].clone()).unwrap();
     let checking_pk1 = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id1));
     let checking_pk2 = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id2));
 

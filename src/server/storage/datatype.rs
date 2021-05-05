@@ -211,75 +211,75 @@ impl SuccessMessage {
     }
 }
 
-#[cfg(test)]
-mod tests {
+// #[cfg(test)]
+// mod tests {
 
-    use super::*;
+//     use super::*;
 
-    #[test]
-    fn fields_test() {
-        let mut f = Field::new();
+//     #[test]
+//     fn fields_test() {
+//         let mut f = Field::new();
 
-        assert_eq!(f.get(), Data::Null);
-        assert_eq!(format!("{}", f), String::from("null"));
+//         assert_eq!(f.get(), Data::Null);
+//         assert_eq!(format!("{}", f), String::from("null"));
 
-        f.set(Data::Int(5));
-        assert_eq!(f.get(), Data::Int(5));
-        assert_eq!(format!("{}", f), String::from("5"));
+//         f.set(Data::Int(5));
+//         assert_eq!(f.get(), Data::Int(5));
+//         assert_eq!(format!("{}", f), String::from("5"));
 
-        f.set(Data::VarChar("abc".to_string()));
-        assert_eq!(f.get(), Data::VarChar("abc".to_string()));
-        assert_eq!(format!("{}", f), String::from("abc"));
+//         f.set(Data::VarChar("abc".to_string()));
+//         assert_eq!(f.get(), Data::VarChar("abc".to_string()));
+//         assert_eq!(format!("{}", f), String::from("abc"));
 
-        f.set(Data::Double(1.7));
-        assert_eq!(f.get(), Data::Double(1.7));
-        assert_eq!(format!("{}", f), String::from("1.7"));
+//         f.set(Data::Double(1.7));
+//         assert_eq!(f.get(), Data::Double(1.7));
+//         assert_eq!(format!("{}", f), String::from("1.7"));
 
-        f.set(Data::List(vec![1, 2]));
-        assert_eq!(f.get(), Data::List(vec![1, 2]));
-        assert_eq!(format!("{}", f), String::from("[1, 2]"));
+//         f.set(Data::List(vec![1, 2]));
+//         assert_eq!(f.get(), Data::List(vec![1, 2]));
+//         assert_eq!(format!("{}", f), String::from("[1, 2]"));
 
-        // Conversion success
-        assert_eq!(i64::try_from(Data::Int(5)), Ok(5));
-        assert_eq!(f64::try_from(Data::Double(5.5)), Ok(5.5));
-        assert_eq!(
-            String::try_from(Data::VarChar("test".to_string())),
-            Ok("test".to_string())
-        );
+//         // Conversion success
+//         assert_eq!(i64::try_from(Data::Int(5)), Ok(5));
+//         assert_eq!(f64::try_from(Data::Double(5.5)), Ok(5.5));
+//         assert_eq!(
+//             String::try_from(Data::VarChar("test".to_string())),
+//             Ok("test".to_string())
+//         );
 
-        // Conversion failure
-        assert_eq!(
-            i64::try_from(Data::Double(1.6)),
-            Err(NonFatalError::UnableToConvertFromDataType(
-                "1.6".to_string(),
-                "i64".to_string()
-            ))
-        );
-        assert_eq!(
-            f64::try_from(Data::Int(1)),
-            Err(NonFatalError::UnableToConvertFromDataType(
-                "1".to_string(),
-                "f64".to_string()
-            ))
-        );
-        assert_eq!(
-            String::try_from(Data::Int(1)),
-            Err(NonFatalError::UnableToConvertFromDataType(
-                "1".to_string(),
-                "string".to_string()
-            ))
-        );
-    }
+//         // Conversion failure
+//         assert_eq!(
+//             i64::try_from(Data::Double(1.6)),
+//             Err(NonFatalError::UnableToConvertFromDataType(
+//                 "1.6".to_string(),
+//                 "i64".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             f64::try_from(Data::Int(1)),
+//             Err(NonFatalError::UnableToConvertFromDataType(
+//                 "1".to_string(),
+//                 "f64".to_string()
+//             ))
+//         );
+//         assert_eq!(
+//             String::try_from(Data::Int(1)),
+//             Err(NonFatalError::UnableToConvertFromDataType(
+//                 "1".to_string(),
+//                 "string".to_string()
+//             ))
+//         );
+//     }
 
-    #[test]
-    fn to_result_test() {
-        let columns = vec!["a", "b", "c", "d"];
-        let values = vec![
-            Data::Double(1.3),
-            Data::Null,
-            Data::Int(10),
-            Data::VarChar("hello".to_string()),
-        ];
-        assert_eq!(to_result(None, None, None, Some(&columns), Some(&values)).unwrap(),"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"a\":\"1.3\",\"b\":\"null\",\"c\":\"10\",\"d\":\"hello\"}}");
-    }
-}
+//     #[test]
+//     fn to_result_test() {
+//         let columns = vec!["a", "b", "c", "d"];
+//         let values = vec![
+//             Data::Double(1.3),
+//             Data::Null,
+//             Data::Int(10),
+//             Data::VarChar("hello".to_string()),
+//         ];
+//         assert_eq!(to_result(None, None, None, Some(&columns), Some(&values)).unwrap(),"{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"a\":\"1.3\",\"b\":\"null\",\"c\":\"10\",\"d\":\"hello\"}}");
+//     }
+// }

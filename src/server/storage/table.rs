@@ -104,52 +104,52 @@ impl fmt::Display for Table {
     }
 }
 
-#[cfg(test)]
-mod tests {
+// #[cfg(test)]
+// mod tests {
 
-    use super::*;
+//     use super::*;
 
-    use crate::server::storage::row::Row;
-    use std::sync::Arc;
+//     use crate::server::storage::row::Row;
+//     use std::sync::Arc;
 
-    #[test]
-    #[ignore]
-    fn tables() {
-        // Create schema
-        let table_name = String::from("products");
-        let mut catalog = Catalog::init(&table_name, 1);
-        catalog.add_column(("id", "int")).unwrap();
-        catalog.add_column(("price", "double")).unwrap();
-        catalog.add_column(("desc", "string")).unwrap();
-        let c_catalog = catalog.clone();
+//     #[test]
+//     #[ignore]
+//     fn tables() {
+//         // Create schema
+//         let table_name = String::from("products");
+//         let mut catalog = Catalog::init(&table_name, 1);
+//         catalog.add_column(("id", "int")).unwrap();
+//         catalog.add_column(("price", "double")).unwrap();
+//         catalog.add_column(("desc", "string")).unwrap();
+//         let c_catalog = catalog.clone();
 
-        // create table
-        let table = Table::init(catalog);
-        assert_eq!(table.get_table_name(), table_name);
-        assert_eq!(table.schema(), &c_catalog);
-        assert_eq!(table.get_table_id(), 1);
+//         // create table
+//         let table = Table::init(catalog);
+//         assert_eq!(table.get_table_name(), table_name);
+//         assert_eq!(table.schema(), &c_catalog);
+//         assert_eq!(table.get_table_id(), 1);
 
-        assert_eq!(table.get_num_rows(), 0);
-        assert_eq!(table.get_next_row_id(), 0);
+//         assert_eq!(table.get_num_rows(), 0);
+//         assert_eq!(table.get_next_row_id(), 0);
 
-        assert_eq!(
-            format!("{}", table),
-            "schema: [products,1,(id, int),(price, double),(desc, varchar)]\nindexes: [null,n_idx]"
-        );
-        // Generate new rows
-        let t = Arc::new(table);
+//         assert_eq!(
+//             format!("{}", table),
+//             "schema: [products,1,(id, int),(price, double),(desc, varchar)]\nindexes: [null,n_idx]"
+//         );
+//         // Generate new rows
+//         let t = Arc::new(table);
 
-        let r1 = Row::new(Arc::clone(&t), "2pl");
-        let r2 = Row::new(Arc::clone(&t), "2pl");
+//         let r1 = Row::new(Arc::clone(&t), "2pl");
+//         let r2 = Row::new(Arc::clone(&t), "2pl");
 
-        assert_eq!(
-            format!("{}", r1),
-            String::from("[1, None, false, products, null, null, null, None]")
-        );
+//         assert_eq!(
+//             format!("{}", r1),
+//             String::from("[1, None, false, products, null, null, null, None]")
+//         );
 
-        assert_eq!(
-            format!("{}", r2),
-            String::from("[2, None, false, products, null, null, null, None]")
-        );
-    }
-}
+//         assert_eq!(
+//             format!("{}", r2),
+//             String::from("[2, None, false, products, null, null, null, None]")
+//         );
+//     }
+// }

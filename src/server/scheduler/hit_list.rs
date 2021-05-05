@@ -704,61 +704,61 @@ impl Drop for HitList {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::server::storage::datatype;
-    use crate::workloads::tatp::keys::TatpPrimaryKey;
-    use crate::workloads::tatp::loader;
-    use crate::workloads::Internal;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::server::storage::datatype;
+//     use crate::workloads::tatp::keys::TatpPrimaryKey;
+//     use crate::workloads::tatp::loader;
+//     use crate::workloads::Internal;
 
-    use config::Config;
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
-    use std::convert::TryInto;
-    use test_env_log::test;
+//     use config::Config;
+//     use rand::rngs::StdRng;
+//     use rand::SeedableRng;
+//     use std::convert::TryInto;
+//     use test_env_log::test;
 
-    // single transaction that commits.
-    #[test]
-    fn hit_list_commit_test() {
-        let mut c = Config::default();
-        c.merge(config::File::with_name("./tests/Test-hit.toml"))
-            .unwrap();
-        let config = Arc::new(c);
+//     // single transaction that commits.
+//     #[test]
+//     fn hit_list_commit_test() {
+//         let mut c = Config::default();
+//         c.merge(config::File::with_name("./tests/Test-hit.toml"))
+//             .unwrap();
+//         let config = Arc::new(c);
 
-        // workload with fixed seed
-        let schema = "./schema/tatp_schema.txt".to_string();
-        let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
-        let seed = config.get_int("seed").unwrap();
-        let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());
-        loader::populate_tables(&internals, &mut rng).unwrap();
-        let workload = Arc::new(Workload::Tatp(internals));
+//         // workload with fixed seed
+//         let schema = "./schema/tatp_schema.txt".to_string();
+//         let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
+//         let seed = config.get_int("seed").unwrap();
+//         let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());
+//         loader::populate_tables(&internals, &mut rng).unwrap();
+//         let workload = Arc::new(Workload::Tatp(internals));
 
-        // Initialise scheduler.
-        let scheduler = Arc::new(HitList::new(workload));
+//         // Initialise scheduler.
+//         let scheduler = Arc::new(HitList::new(workload));
 
-        let h = thread::Builder::new().name("1".to_string()).spawn(move || {
-            let txn = scheduler.register().unwrap(); // register
-            assert_eq!(txn, TransactionInfo::new(Some("0".to_string()), None));
+//         let h = thread::Builder::new().name("1".to_string()).spawn(move || {
+//             let txn = scheduler.register().unwrap(); // register
+//             assert_eq!(txn, TransactionInfo::new(Some("0".to_string()), None));
 
-            let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3)); // pk
-            let columns: Vec<&str> = vec!["bit_1"];
+//             let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3)); // pk
+//             let columns: Vec<&str> = vec!["bit_1"];
 
-            let values = scheduler
-                .read("subscriber", pk.clone(), &columns, &txn)
-                .unwrap();
-            let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
-            assert_eq!(
-                res,
-                "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"0\"}}"
-            );
-            scheduler.commit(&txn).unwrap();
-            drop(scheduler);
-        });
+//             let values = scheduler
+//                 .read("subscriber", pk.clone(), &columns, &txn)
+//                 .unwrap();
+//             let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
+//             assert_eq!(
+//                 res,
+//                 "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"0\"}}"
+//             );
+//             scheduler.commit(&txn).unwrap();
+//             drop(scheduler);
+//         });
 
-        h.unwrap().join().unwrap();
-    }
-}
+//         h.unwrap().join().unwrap();
+//     }
+// }
 
 impl fmt::Display for HitList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

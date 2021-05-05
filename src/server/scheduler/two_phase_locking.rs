@@ -957,506 +957,506 @@ impl PartialEq for LockRequest {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
 
-    use crate::workloads::tatp::keys::TatpPrimaryKey;
-    use crate::workloads::tatp::loader;
-    use crate::workloads::Internal;
+//     use crate::workloads::tatp::keys::TatpPrimaryKey;
+//     use crate::workloads::tatp::loader;
+//     use crate::workloads::Internal;
 
-    use config::Config;
-    use lazy_static::lazy_static;
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
-    use std::convert::TryInto;
-    use std::thread;
+//     use config::Config;
+//     use lazy_static::lazy_static;
+//     use rand::rngs::StdRng;
+//     use rand::SeedableRng;
+//     use std::convert::TryInto;
+//     use std::thread;
 
-    lazy_static! {
-        // Create a scheduler and data.
-        static ref TPL: Arc<TwoPhaseLocking> = {
-            // Initialise configuration.
-            let mut c = Config::default();
-            c.merge(config::File::with_name("./tests/Test-tpl.toml")).unwrap();
-            let config = Arc::new(c);
+//     lazy_static! {
+//         // Create a scheduler and data.
+//         static ref TPL: Arc<TwoPhaseLocking> = {
+//             // Initialise configuration.
+//             let mut c = Config::default();
+//             c.merge(config::File::with_name("./tests/Test-tpl.toml")).unwrap();
+//             let config = Arc::new(c);
 
-            // Workload with fixed seed.
-            let schema = "./schema/tatp_schema.txt".to_string();
-            let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
-            let seed = config.get_int("seed").unwrap();
-            let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());
-            loader::populate_tables(&internals, &mut rng).unwrap();
-            let workload = Arc::new(Workload::Tatp(internals));
+//             // Workload with fixed seed.
+//             let schema = "./schema/tatp_schema.txt".to_string();
+//             let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
+//             let seed = config.get_int("seed").unwrap();
+//             let mut rng = StdRng::seed_from_u64(seed.try_into().unwrap());
+//             loader::populate_tables(&internals, &mut rng).unwrap();
+//             let workload = Arc::new(Workload::Tatp(internals));
 
-            // Initialise scheduler.
-            Arc::new(TwoPhaseLocking::new(workload))
+//             // Initialise scheduler.
+//             Arc::new(TwoPhaseLocking::new(workload))
 
-        };
-    }
+//         };
+//     }
 
-    // Compare lock request types
-    #[test]
-    fn tpl_lock_request_type_test() {
-        assert_eq!(LockRequest::Granted, LockRequest::Granted);
-        let pair = Arc::new((Mutex::new(false), Condvar::new()));
-        assert_eq!(
-            LockRequest::Delay(Arc::clone(&pair)),
-            LockRequest::Delay(Arc::clone(&pair))
-        );
-        assert_eq!(LockRequest::Denied, LockRequest::Denied);
-        assert!(LockRequest::Granted != LockRequest::Denied);
-    }
+//     // Compare lock request types
+//     #[test]
+//     fn tpl_lock_request_type_test() {
+//         assert_eq!(LockRequest::Granted, LockRequest::Granted);
+//         let pair = Arc::new((Mutex::new(false), Condvar::new()));
+//         assert_eq!(
+//             LockRequest::Delay(Arc::clone(&pair)),
+//             LockRequest::Delay(Arc::clone(&pair))
+//         );
+//         assert_eq!(LockRequest::Denied, LockRequest::Denied);
+//         assert!(LockRequest::Granted != LockRequest::Denied);
+//     }
 
-    // In this test 3 read locks are requested by Ta, Tb, and Tc, which are then released.
-    #[test]
-    fn tpl_request_lock_read_test() {
-        // Get handle to 2PL scheduler.
-        let tpl = Arc::clone(&TPL);
+//     // In this test 3 read locks are requested by Ta, Tb, and Tc, which are then released.
+//     #[test]
+//     fn tpl_request_lock_read_test() {
+//         // Get handle to 2PL scheduler.
+//         let tpl = Arc::clone(&TPL);
 
-        // Register transactions.
-        let ta = tpl.register().unwrap();
-        let tb = tpl.register().unwrap();
-        let tc = tpl.register().unwrap();
+//         // Register transactions.
+//         let ta = tpl.register().unwrap();
+//         let tb = tpl.register().unwrap();
+//         let tc = tpl.register().unwrap();
 
-        // Row transactions will contend on.
-        let index = "access_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
+//         // Row transactions will contend on.
+//         let index = "access_idx";
+//         let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2));
 
-        // Request locks.
-        assert_eq!(
-            tpl.request_lock(
-                index,
-                pk.clone(),
-                LockMode::Read,
-                &ta.get_id().unwrap(),
-                ta.get_ts().unwrap(),
-            ),
-            LockRequest::Granted
-        );
-        assert_eq!(
-            tpl.request_lock(
-                index,
-                pk.clone(),
-                LockMode::Read,
-                &tb.get_id().unwrap(),
-                tb.get_ts().unwrap(),
-            ),
-            LockRequest::Granted
-        );
-        assert_eq!(
-            tpl.request_lock(
-                index,
-                pk.clone(),
-                LockMode::Read,
-                &tc.get_id().unwrap(),
-                tc.get_ts().unwrap(),
-            ),
-            LockRequest::Granted
-        );
+//         // Request locks.
+//         assert_eq!(
+//             tpl.request_lock(
+//                 index,
+//                 pk.clone(),
+//                 LockMode::Read,
+//                 &ta.get_id().unwrap(),
+//                 ta.get_ts().unwrap(),
+//             ),
+//             LockRequest::Granted
+//         );
+//         assert_eq!(
+//             tpl.request_lock(
+//                 index,
+//                 pk.clone(),
+//                 LockMode::Read,
+//                 &tb.get_id().unwrap(),
+//                 tb.get_ts().unwrap(),
+//             ),
+//             LockRequest::Granted
+//         );
+//         assert_eq!(
+//             tpl.request_lock(
+//                 index,
+//                 pk.clone(),
+//                 LockMode::Read,
+//                 &tc.get_id().unwrap(),
+//                 tc.get_ts().unwrap(),
+//             ),
+//             LockRequest::Granted
+//         );
 
-        // Check
-        {
-            let lock = tpl.lock_table.get(&pk.clone()).unwrap();
-            assert_eq!(
-                lock.group_mode == Some(LockMode::Read)
-                    && !lock.waiting
-                    && lock.list.len() as u32 == 3
-                    && lock.timestamp == Some(3)
-                    && lock.granted == Some(3),
-                true,
-                "{}",
-                *lock
-            );
-        }
+//         // Check
+//         {
+//             let lock = tpl.lock_table.get(&pk.clone()).unwrap();
+//             assert_eq!(
+//                 lock.group_mode == Some(LockMode::Read)
+//                     && !lock.waiting
+//                     && lock.list.len() as u32 == 3
+//                     && lock.timestamp == Some(3)
+//                     && lock.granted == Some(3),
+//                 true,
+//                 "{}",
+//                 *lock
+//             );
+//         }
 
-        // Release locks.
-        assert_eq!(
-            tpl.release_lock(pk.clone(), &ta.get_id().unwrap(), true)
-                .unwrap(),
-            UnlockRequest::Ok
-        );
-        assert_eq!(
-            tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
-                .unwrap(),
-            UnlockRequest::Ok
-        );
-        assert_eq!(
-            tpl.release_lock(pk.clone(), &tc.get_id().unwrap(), true)
-                .unwrap(),
-            UnlockRequest::Reclaim
-        );
-        // Check.
-        {
-            let lock = tpl.lock_table.get(&pk.clone()).unwrap();
-            assert_eq!(
-                lock.group_mode == None
-                    && !lock.waiting
-                    && lock.list.len() as u32 == 0
-                    && lock.timestamp == None
-                    && lock.granted == None,
-                true,
-                "{}",
-                *lock
-            );
-        }
-        // Remove from active transactions.
-        // (tid) Remove from active transactions.
-        tpl.active_transactions
-            .remove(&ta.get_id().unwrap())
-            .unwrap();
-        tpl.active_transactions
-            .remove(&tb.get_id().unwrap())
-            .unwrap();
-        tpl.active_transactions
-            .remove(&tc.get_id().unwrap())
-            .unwrap();
-    }
+//         // Release locks.
+//         assert_eq!(
+//             tpl.release_lock(pk.clone(), &ta.get_id().unwrap(), true)
+//                 .unwrap(),
+//             UnlockRequest::Ok
+//         );
+//         assert_eq!(
+//             tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
+//                 .unwrap(),
+//             UnlockRequest::Ok
+//         );
+//         assert_eq!(
+//             tpl.release_lock(pk.clone(), &tc.get_id().unwrap(), true)
+//                 .unwrap(),
+//             UnlockRequest::Reclaim
+//         );
+//         // Check.
+//         {
+//             let lock = tpl.lock_table.get(&pk.clone()).unwrap();
+//             assert_eq!(
+//                 lock.group_mode == None
+//                     && !lock.waiting
+//                     && lock.list.len() as u32 == 0
+//                     && lock.timestamp == None
+//                     && lock.granted == None,
+//                 true,
+//                 "{}",
+//                 *lock
+//             );
+//         }
+//         // Remove from active transactions.
+//         // (tid) Remove from active transactions.
+//         tpl.active_transactions
+//             .remove(&ta.get_id().unwrap())
+//             .unwrap();
+//         tpl.active_transactions
+//             .remove(&tb.get_id().unwrap())
+//             .unwrap();
+//         tpl.active_transactions
+//             .remove(&tc.get_id().unwrap())
+//             .unwrap();
+//     }
 
-    // In this test a write lock is requested and then released.
-    #[test]
-    fn tpl_request_lock_write_test() {
-        // Get handle to 2PL scheduler.
-        let tpl = Arc::clone(&TPL);
+//     // In this test a write lock is requested and then released.
+//     #[test]
+//     fn tpl_request_lock_write_test() {
+//         // Get handle to 2PL scheduler.
+//         let tpl = Arc::clone(&TPL);
 
-        // Create transaction id and timestamp.
-        let t = tpl.register().unwrap();
+//         // Create transaction id and timestamp.
+//         let t = tpl.register().unwrap();
 
-        // Row transaction will access.
-        let index = "sub_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1));
+//         // Row transaction will access.
+//         let index = "sub_idx";
+//         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1));
 
-        // Lock.
-        assert_eq!(
-            tpl.request_lock(
-                index,
-                pk.clone(),
-                LockMode::Write,
-                &t.get_id().unwrap(),
-                t.get_ts().unwrap()
-            ),
-            LockRequest::Granted
-        );
-        // Check
-        {
-            let lock = tpl.lock_table.get(&pk.clone()).unwrap();
-            assert_eq!(
-                lock.group_mode == Some(LockMode::Write)
-                    && !lock.waiting
-                    && lock.list.len() as u32 == 1
-                    && lock.timestamp == Some(t.get_ts().unwrap())
-                    && lock.granted == Some(1)
-                    && lock.list[0].lock_mode == LockMode::Write,
-                true,
-                "{:?}",
-                lock
-            );
-        }
+//         // Lock.
+//         assert_eq!(
+//             tpl.request_lock(
+//                 index,
+//                 pk.clone(),
+//                 LockMode::Write,
+//                 &t.get_id().unwrap(),
+//                 t.get_ts().unwrap()
+//             ),
+//             LockRequest::Granted
+//         );
+//         // Check
+//         {
+//             let lock = tpl.lock_table.get(&pk.clone()).unwrap();
+//             assert_eq!(
+//                 lock.group_mode == Some(LockMode::Write)
+//                     && !lock.waiting
+//                     && lock.list.len() as u32 == 1
+//                     && lock.timestamp == Some(t.get_ts().unwrap())
+//                     && lock.granted == Some(1)
+//                     && lock.list[0].lock_mode == LockMode::Write,
+//                 true,
+//                 "{:?}",
+//                 lock
+//             );
+//         }
 
-        // Unlock
-        tpl.release_lock(pk.clone(), &t.get_id().unwrap(), true)
-            .unwrap();
-        {
-            let lock = tpl.lock_table.get(&pk.clone()).unwrap();
-            assert_eq!(
-                lock.group_mode == None
-                    && !lock.waiting
-                    && lock.list.len() as u32 == 0
-                    && lock.timestamp == None
-                    && lock.granted == None,
-                true,
-                "{:?}",
-                lock
-            );
-        }
-        tpl.active_transactions
-            .remove(&t.get_id().unwrap())
-            .unwrap();
-    }
+//         // Unlock
+//         tpl.release_lock(pk.clone(), &t.get_id().unwrap(), true)
+//             .unwrap();
+//         {
+//             let lock = tpl.lock_table.get(&pk.clone()).unwrap();
+//             assert_eq!(
+//                 lock.group_mode == None
+//                     && !lock.waiting
+//                     && lock.list.len() as u32 == 0
+//                     && lock.timestamp == None
+//                     && lock.granted == None,
+//                 true,
+//                 "{:?}",
+//                 lock
+//             );
+//         }
+//         tpl.active_transactions
+//             .remove(&t.get_id().unwrap())
+//             .unwrap();
+//     }
 
-    // In this test a read lock is taken by Ta, followed by a write lock by Tb, which delays
-    // until the read lock is released by Ta.
-    #[test]
-    fn tpl_read_delay_write_test() {
-        // Get handle to scheduler.
-        let tpl = Arc::clone(&TPL);
-        let tpl_h = Arc::clone(&TPL);
+//     // In this test a read lock is taken by Ta, followed by a write lock by Tb, which delays
+//     // until the read lock is released by Ta.
+//     #[test]
+//     fn tpl_read_delay_write_test() {
+//         // Get handle to scheduler.
+//         let tpl = Arc::clone(&TPL);
+//         let tpl_h = Arc::clone(&TPL);
 
-        let index = "access_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(2, 2));
+//         let index = "access_idx";
+//         let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(2, 2));
 
-        // Register transactions.
-        let ta = tpl.register().unwrap();
-        let tb = tpl.register().unwrap();
+//         // Register transactions.
+//         let ta = tpl.register().unwrap();
+//         let tb = tpl.register().unwrap();
 
-        let ta_h = ta.clone();
-        let tb_h = tb.clone();
-        let pk_h = pk.clone();
+//         let ta_h = ta.clone();
+//         let tb_h = tb.clone();
+//         let pk_h = pk.clone();
 
-        // Spawn thread.
-        let handle = thread::spawn(move || {
-            // Tb gets read lock.
-            assert_eq!(
-                tpl_h.request_lock(
-                    index,
-                    pk_h.clone(),
-                    LockMode::Read,
-                    &tb_h.get_id().unwrap(),
-                    tb_h.get_ts().unwrap(),
-                ),
-                LockRequest::Granted
-            );
+//         // Spawn thread.
+//         let handle = thread::spawn(move || {
+//             // Tb gets read lock.
+//             assert_eq!(
+//                 tpl_h.request_lock(
+//                     index,
+//                     pk_h.clone(),
+//                     LockMode::Read,
+//                     &tb_h.get_id().unwrap(),
+//                     tb_h.get_ts().unwrap(),
+//                 ),
+//                 LockRequest::Granted
+//             );
 
-            // Ta gets read lock.
-            debug!("Request Write lock");
-            if let LockRequest::Delay(pair) = tpl_h.request_lock(
-                index,
-                pk_h.clone(),
-                LockMode::Write,
-                &ta_h.get_id().unwrap(),
-                ta_h.get_ts().unwrap(),
-            ) {
-                let (lock, cvar) = &*pair;
-                let mut waiting = lock.lock().unwrap();
-                while !*waiting {
-                    waiting = cvar.wait(waiting).unwrap();
-                }
-                // delays
-            };
-        });
+//             // Ta gets read lock.
+//             debug!("Request Write lock");
+//             if let LockRequest::Delay(pair) = tpl_h.request_lock(
+//                 index,
+//                 pk_h.clone(),
+//                 LockMode::Write,
+//                 &ta_h.get_id().unwrap(),
+//                 ta_h.get_ts().unwrap(),
+//             ) {
+//                 let (lock, cvar) = &*pair;
+//                 let mut waiting = lock.lock().unwrap();
+//                 while !*waiting {
+//                     waiting = cvar.wait(waiting).unwrap();
+//                 }
+//                 // delays
+//             };
+//         });
 
-        // Sleep this thread, giving ta time to delay.
-        let ms = std::time::Duration::from_secs(2);
-        thread::sleep(ms);
-        // Release read lock
+//         // Sleep this thread, giving ta time to delay.
+//         let ms = std::time::Duration::from_secs(2);
+//         thread::sleep(ms);
+//         // Release read lock
 
-        assert_eq!(
-            tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
-                .unwrap(),
-            UnlockRequest::Ok
-        );
-        // Check ta got the lock.
-        let lock = tpl.lock_table.get(&pk.clone()).unwrap();
-        assert_eq!(
-            lock.group_mode == Some(LockMode::Write)
-                && !lock.waiting
-                && lock.list.len() as u32 == 1
-                && lock.timestamp == Some(ta.get_ts().unwrap())
-                && lock.granted == Some(1),
-            true,
-            "{}",
-            *lock
-        );
+//         assert_eq!(
+//             tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
+//                 .unwrap(),
+//             UnlockRequest::Ok
+//         );
+//         // Check ta got the lock.
+//         let lock = tpl.lock_table.get(&pk.clone()).unwrap();
+//         assert_eq!(
+//             lock.group_mode == Some(LockMode::Write)
+//                 && !lock.waiting
+//                 && lock.list.len() as u32 == 1
+//                 && lock.timestamp == Some(ta.get_ts().unwrap())
+//                 && lock.granted == Some(1),
+//             true,
+//             "{}",
+//             *lock
+//         );
 
-        handle.join().unwrap();
-        tpl.active_transactions
-            .remove(&ta.get_id().unwrap())
-            .unwrap();
-        tpl.active_transactions
-            .remove(&tb.get_id().unwrap())
-            .unwrap();
-    }
+//         handle.join().unwrap();
+//         tpl.active_transactions
+//             .remove(&ta.get_id().unwrap())
+//             .unwrap();
+//         tpl.active_transactions
+//             .remove(&tb.get_id().unwrap())
+//             .unwrap();
+//     }
 
-    // In this test a write lock is taken by Ta, followed by a read lock by Tb, which delays
-    // until the write lock is released by Ta.
-    #[test]
-    fn tpl_write_delay_read_test() {
-        // Get handle to 2PL scheduler.
-        let tpl = Arc::clone(&TPL);
+//     // In this test a write lock is taken by Ta, followed by a read lock by Tb, which delays
+//     // until the write lock is released by Ta.
+//     #[test]
+//     fn tpl_write_delay_read_test() {
+//         // Get handle to 2PL scheduler.
+//         let tpl = Arc::clone(&TPL);
 
-        // Register transactions.
-        let ta = tpl.register().unwrap();
-        let tb = tpl.register().unwrap();
+//         // Register transactions.
+//         let ta = tpl.register().unwrap();
+//         let tb = tpl.register().unwrap();
 
-        let index = "access_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1));
+//         let index = "access_idx";
+//         let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 1));
 
-        let tpl_h = Arc::clone(&TPL);
-        let ta_h = ta.clone();
-        let tb_h = tb.clone();
-        let pk_h = pk.clone();
+//         let tpl_h = Arc::clone(&TPL);
+//         let ta_h = ta.clone();
+//         let tb_h = tb.clone();
+//         let pk_h = pk.clone();
 
-        let handle = thread::spawn(move || {
-            debug!("Request write lock by Tb");
-            tpl_h.request_lock(
-                index,
-                pk_h.clone(),
-                LockMode::Write,
-                &tb_h.get_id().unwrap(),
-                tb_h.get_ts().unwrap(),
-            );
+//         let handle = thread::spawn(move || {
+//             debug!("Request write lock by Tb");
+//             tpl_h.request_lock(
+//                 index,
+//                 pk_h.clone(),
+//                 LockMode::Write,
+//                 &tb_h.get_id().unwrap(),
+//                 tb_h.get_ts().unwrap(),
+//             );
 
-            debug!("Request read lock by Ta");
-            let res = tpl_h.request_lock(
-                index,
-                pk_h.clone(),
-                LockMode::Read,
-                &ta_h.get_id().unwrap(),
-                ta_h.get_ts().unwrap(),
-            );
+//             debug!("Request read lock by Ta");
+//             let res = tpl_h.request_lock(
+//                 index,
+//                 pk_h.clone(),
+//                 LockMode::Read,
+//                 &ta_h.get_id().unwrap(),
+//                 ta_h.get_ts().unwrap(),
+//             );
 
-            // Assert it has been denied, use dummy pair.
-            assert_eq!(
-                res,
-                LockRequest::Delay(Arc::new((Mutex::new(false), Condvar::new())))
-            );
-            if let LockRequest::Delay(pair) = res {
-                let (lock, cvar) = &*pair;
-                let mut waiting = lock.lock().unwrap();
-                while !*waiting {
-                    waiting = cvar.wait(waiting).unwrap();
-                }
-                debug!("Read lock granted to Ta");
-            };
-        });
+//             // Assert it has been denied, use dummy pair.
+//             assert_eq!(
+//                 res,
+//                 LockRequest::Delay(Arc::new((Mutex::new(false), Condvar::new())))
+//             );
+//             if let LockRequest::Delay(pair) = res {
+//                 let (lock, cvar) = &*pair;
+//                 let mut waiting = lock.lock().unwrap();
+//                 while !*waiting {
+//                     waiting = cvar.wait(waiting).unwrap();
+//                 }
+//                 debug!("Read lock granted to Ta");
+//             };
+//         });
 
-        // Sleep thread
-        let ms = std::time::Duration::from_secs(2);
-        thread::sleep(ms);
-        debug!("Write lock released by Ta");
-        tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
-            .unwrap();
-        let lock = tpl.lock_table.get(&pk.clone()).unwrap();
+//         // Sleep thread
+//         let ms = std::time::Duration::from_secs(2);
+//         thread::sleep(ms);
+//         debug!("Write lock released by Ta");
+//         tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
+//             .unwrap();
+//         let lock = tpl.lock_table.get(&pk.clone()).unwrap();
 
-        assert_eq!(
-            lock.group_mode == Some(LockMode::Read)
-                && !lock.waiting
-                && lock.list.len() as u32 == 1
-                && lock.timestamp == Some(ta.get_ts().unwrap())
-                && lock.granted == Some(1),
-            true,
-            "{}",
-            *lock
-        );
+//         assert_eq!(
+//             lock.group_mode == Some(LockMode::Read)
+//                 && !lock.waiting
+//                 && lock.list.len() as u32 == 1
+//                 && lock.timestamp == Some(ta.get_ts().unwrap())
+//                 && lock.granted == Some(1),
+//             true,
+//             "{}",
+//             *lock
+//         );
 
-        handle.join().unwrap();
-        tpl.active_transactions
-            .remove(&ta.get_id().unwrap())
-            .unwrap();
-        tpl.active_transactions
-            .remove(&tb.get_id().unwrap())
-            .unwrap();
-    }
+//         handle.join().unwrap();
+//         tpl.active_transactions
+//             .remove(&ta.get_id().unwrap())
+//             .unwrap();
+//         tpl.active_transactions
+//             .remove(&tb.get_id().unwrap())
+//             .unwrap();
+//     }
 
-    // In this test a write lock is taken by Ta, followed by a write lock by Tb, which delays
-    // until the write lock is released by Ta.
-    #[test]
-    fn tpl_write_delay_write_test() {
-        let tpl = Arc::clone(&TPL);
-        let ta = tpl.register().unwrap();
-        let tb = tpl.register().unwrap();
+//     // In this test a write lock is taken by Ta, followed by a write lock by Tb, which delays
+//     // until the write lock is released by Ta.
+//     #[test]
+//     fn tpl_write_delay_write_test() {
+//         let tpl = Arc::clone(&TPL);
+//         let ta = tpl.register().unwrap();
+//         let tb = tpl.register().unwrap();
 
-        let tpl_h = Arc::clone(&TPL);
-        let ta_h = ta.clone();
-        let tb_h = tb.clone();
+//         let tpl_h = Arc::clone(&TPL);
+//         let ta_h = ta.clone();
+//         let tb_h = tb.clone();
 
-        let index = "sub_idx";
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(2));
-        let pk_h = pk.clone();
+//         let index = "sub_idx";
+//         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(2));
+//         let pk_h = pk.clone();
 
-        let handle = thread::spawn(move || {
-            // Tb
-            tpl_h.request_lock(
-                index,
-                pk_h.clone(),
-                LockMode::Write,
-                &tb_h.get_id().unwrap(),
-                tb_h.get_ts().unwrap(),
-            );
+//         let handle = thread::spawn(move || {
+//             // Tb
+//             tpl_h.request_lock(
+//                 index,
+//                 pk_h.clone(),
+//                 LockMode::Write,
+//                 &tb_h.get_id().unwrap(),
+//                 tb_h.get_ts().unwrap(),
+//             );
 
-            // Ta
-            let res = tpl_h.request_lock(
-                index,
-                pk_h.clone(),
-                LockMode::Write,
-                &ta_h.get_id().unwrap(),
-                ta_h.get_ts().unwrap(),
-            );
+//             // Ta
+//             let res = tpl_h.request_lock(
+//                 index,
+//                 pk_h.clone(),
+//                 LockMode::Write,
+//                 &ta_h.get_id().unwrap(),
+//                 ta_h.get_ts().unwrap(),
+//             );
 
-            // Assert it has been denied, use dummy pair.
-            assert_eq!(
-                res,
-                LockRequest::Delay(Arc::new((Mutex::new(false), Condvar::new())))
-            );
-            if let LockRequest::Delay(pair) = res {
-                let (lock, cvar) = &*pair;
-                let mut waiting = lock.lock().unwrap();
-                while !*waiting {
-                    waiting = cvar.wait(waiting).unwrap();
-                }
-            };
-        });
+//             // Assert it has been denied, use dummy pair.
+//             assert_eq!(
+//                 res,
+//                 LockRequest::Delay(Arc::new((Mutex::new(false), Condvar::new())))
+//             );
+//             if let LockRequest::Delay(pair) = res {
+//                 let (lock, cvar) = &*pair;
+//                 let mut waiting = lock.lock().unwrap();
+//                 while !*waiting {
+//                     waiting = cvar.wait(waiting).unwrap();
+//                 }
+//             };
+//         });
 
-        // Sleep thread
-        let ms = std::time::Duration::from_secs(2);
-        thread::sleep(ms);
-        // Tb
-        tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
-            .unwrap();
-        let lock = tpl.lock_table.get(&pk.clone()).unwrap();
+//         // Sleep thread
+//         let ms = std::time::Duration::from_secs(2);
+//         thread::sleep(ms);
+//         // Tb
+//         tpl.release_lock(pk.clone(), &tb.get_id().unwrap(), true)
+//             .unwrap();
+//         let lock = tpl.lock_table.get(&pk.clone()).unwrap();
 
-        assert_eq!(
-            lock.group_mode == Some(LockMode::Write)
-                && !lock.waiting
-                && lock.list.len() as u32 == 1
-                && lock.timestamp == Some(ta.get_ts().unwrap())
-                && lock.granted == Some(1),
-            true,
-            "{}",
-            *lock
-        );
+//         assert_eq!(
+//             lock.group_mode == Some(LockMode::Write)
+//                 && !lock.waiting
+//                 && lock.list.len() as u32 == 1
+//                 && lock.timestamp == Some(ta.get_ts().unwrap())
+//                 && lock.granted == Some(1),
+//             true,
+//             "{}",
+//             *lock
+//         );
 
-        handle.join().unwrap();
-        tpl.active_transactions
-            .remove(&ta.get_id().unwrap())
-            .unwrap();
-        tpl.active_transactions
-            .remove(&tb.get_id().unwrap())
-            .unwrap();
-    }
+//         handle.join().unwrap();
+//         tpl.active_transactions
+//             .remove(&ta.get_id().unwrap())
+//             .unwrap();
+//         tpl.active_transactions
+//             .remove(&tb.get_id().unwrap())
+//             .unwrap();
+//     }
 
-    //#[test]
-    // fn tpl_denied_lock_test() {
-    //     // Init scheduler.
-    //     let tpl = Arc::clone(&TPL);
-    //     let ta = tpl.register().unwrap();
-    //     let tb = tpl.register().unwrap();
-    //     let tc = tpl.register().unwrap();
+//     //#[test]
+//     // fn tpl_denied_lock_test() {
+//     //     // Init scheduler.
+//     //     let tpl = Arc::clone(&TPL);
+//     //     let ta = tpl.register().unwrap();
+//     //     let tb = tpl.register().unwrap();
+//     //     let tc = tpl.register().unwrap();
 
-    //     let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3));
-    //     let columns: Vec<&str> = vec!["bit_1"];
-    //     let values_a: Vec<&str> = vec!["0"];
-    //     let values_b: Vec<&str> = vec!["1"];
-    //     // Write by Ta.
-    //     assert_eq!(
-    //         tpl.update("subscriber", pk.clone(), &columns, &values_a, ta.clone())
-    //             .unwrap(),
-    //         ()
-    //     );
+//     //     let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(3));
+//     //     let columns: Vec<&str> = vec!["bit_1"];
+//     //     let values_a: Vec<&str> = vec!["0"];
+//     //     let values_b: Vec<&str> = vec!["1"];
+//     //     // Write by Ta.
+//     //     assert_eq!(
+//     //         tpl.update("subscriber", pk.clone(), &columns, &values_a, ta.clone())
+//     //             .unwrap(),
+//     //         ()
+//     //     );
 
-    //     // Write by Tb
-    //     assert_eq!(
-    //         format!(
-    //             "{}",
-    //             tpl.update("subscriber", pk.clone(), &columns, &values_b, tb)
-    //                 .unwrap_err()
-    //         ),
-    //         "write lock for Subscriber(3) denied"
-    //     );
+//     //     // Write by Tb
+//     //     assert_eq!(
+//     //         format!(
+//     //             "{}",
+//     //             tpl.update("subscriber", pk.clone(), &columns, &values_b, tb)
+//     //                 .unwrap_err()
+//     //         ),
+//     //         "write lock for Subscriber(3) denied"
+//     //     );
 
-    //     // Write by Tc
-    //     assert_eq!(
-    //         format!(
-    //             "{}",
-    //             tpl.read("subscriber", pk.clone(), &columns, tc)
-    //                 .unwrap_err()
-    //         ),
-    //         "read lock for Subscriber(3) denied"
-    //     );
+//     //     // Write by Tc
+//     //     assert_eq!(
+//     //         format!(
+//     //             "{}",
+//     //             tpl.read("subscriber", pk.clone(), &columns, tc)
+//     //                 .unwrap_err()
+//     //         ),
+//     //         "read lock for Subscriber(3) denied"
+//     //     );
 
-    //     // Commit Ta
-    //     assert_eq!(tpl.commit(ta).unwrap(), ());
-    // }
-}
+//     //     // Commit Ta
+//     //     assert_eq!(tpl.commit(ta).unwrap(), ());
+//     // }
+// }
 
 impl fmt::Display for TwoPhaseLocking {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

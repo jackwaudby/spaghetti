@@ -627,39 +627,39 @@ fn parse_id(joint: String) -> (usize, u64) {
     (vec[0], vec[1] as u64)
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::workloads::tatp;
-    use crate::workloads::Internal;
+// #[cfg(test)]
+// mod test {
+//     use super::*;
+//     use crate::workloads::tatp;
+//     use crate::workloads::Internal;
 
-    use config::Config;
-    use lazy_static::lazy_static;
-    use rand::rngs::StdRng;
-    use rand::SeedableRng;
-    use test_env_log::test;
+//     use config::Config;
+//     use lazy_static::lazy_static;
+//     use rand::rngs::StdRng;
+//     use rand::SeedableRng;
+//     use test_env_log::test;
 
-    lazy_static! {
-        static ref WORKLOAD: Arc<Workload> = {
-            let mut c = Config::default();
-            c.merge(config::File::with_name("./tests/Test-opt-hit.toml"))
-                .unwrap();
-            let config = Arc::new(c);
+//     lazy_static! {
+//         static ref WORKLOAD: Arc<Workload> = {
+//             let mut c = Config::default();
+//             c.merge(config::File::with_name("./tests/Test-opt-hit.toml"))
+//                 .unwrap();
+//             let config = Arc::new(c);
 
-            let schema = "./schema/tatp_schema.txt".to_string();
-            let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
-            let seed = config.get_int("seed").unwrap() as u64;
-            let mut rng = StdRng::seed_from_u64(seed);
-            tatp::loader::populate_tables(&internals, &mut rng).unwrap();
-            Arc::new(Workload::Tatp(internals))
-        };
-    }
+//             let schema = "./schema/tatp_schema.txt".to_string();
+//             let internals = Internal::new(&schema, Arc::clone(&config)).unwrap();
+//             let seed = config.get_int("seed").unwrap() as u64;
+//             let mut rng = StdRng::seed_from_u64(seed);
+//             tatp::loader::populate_tables(&internals, &mut rng).unwrap();
+//             Arc::new(Workload::Tatp(internals))
+//         };
+//     }
 
-    #[test]
-    fn test_optimised_hit_list() {
-        let _ohl = OptimisedHitList::new(5, Arc::clone(&WORKLOAD));
-    }
-}
+//     #[test]
+//     fn test_optimised_hit_list() {
+//         let _ohl = OptimisedHitList::new(5, Arc::clone(&WORKLOAD));
+//     }
+// }
 
 impl fmt::Display for OptimisedHitList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

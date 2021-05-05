@@ -451,373 +451,374 @@ impl fmt::Display for Row {
         )
     }
 }
-#[cfg(test)]
-mod tests {
 
-    use super::*;
-    use crate::server::storage::catalog::Catalog;
-    use crate::server::storage::datatype;
+// #[cfg(test)]
+// mod tests {
 
-    use test_env_log::test;
+//     use super::*;
+//     use crate::server::storage::catalog::Catalog;
+//     use crate::server::storage::datatype;
 
-    #[test]
-    fn row_2pl_test() {
-        // create table schema
-        let mut catalog = Catalog::init("cars", 1);
-        catalog.add_column(("name", "string")).unwrap();
-        catalog.add_column(("year", "int")).unwrap();
-        catalog.add_column(("amount", "double")).unwrap();
-        catalog.add_column(("calories", "list")).unwrap();
+//     use test_env_log::test;
 
-        let table = Table::init(catalog); // create table
-        let mut row = Row::new(Arc::new(table), "2pl"); // create row in table
-        assert_eq!(row.get_table().get_table_id(), 1);
-        assert_eq!(row.get_row_id(), 0);
+//     #[test]
+//     fn row_2pl_test() {
+//         // create table schema
+//         let mut catalog = Catalog::init("cars", 1);
+//         catalog.add_column(("name", "string")).unwrap();
+//         catalog.add_column(("year", "int")).unwrap();
+//         catalog.add_column(("amount", "double")).unwrap();
+//         catalog.add_column(("calories", "list")).unwrap();
 
-        let rcolumns = vec!["name", "year", "amount", "calories"];
-        let wcolumns = vec!["name", "year", "amount"];
-        let values = vec!["el camino", "2019", "53.2"];
+//         let table = Table::init(catalog); // create table
+//         let mut row = Row::new(Arc::new(table), "2pl"); // create row in table
+//         assert_eq!(row.get_table().get_table_id(), 1);
+//         assert_eq!(row.get_row_id(), 0);
 
-        // read
-        let r1 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
-        assert_eq!(
-            datatype::to_result(
-                None,
-                None,
-                None,
-                Some(&rcolumns),
-                Some(&r1.get_values().unwrap())
-            )
-                .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
-        );
+//         let rcolumns = vec!["name", "year", "amount", "calories"];
+//         let wcolumns = vec!["name", "year", "amount"];
+//         let values = vec!["el camino", "2019", "53.2"];
 
-        assert_eq!(format!("{:?}", row.prev_fields), "None");
+//         // read
+//         let r1 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
+//         assert_eq!(
+//             datatype::to_result(
+//                 None,
+//                 None,
+//                 None,
+//                 Some(&rcolumns),
+//                 Some(&r1.get_values().unwrap())
+//             )
+//                 .unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
+//         );
 
-        // write
-        let w1 = row.set_values(&wcolumns, &values, "2pl", "t1").unwrap();
+//         assert_eq!(format!("{:?}", row.prev_fields), "None");
 
-        assert_eq!(w1.get_values(), None);
+//         // write
+//         let w1 = row.set_values(&wcolumns, &values, "2pl", "t1").unwrap();
 
-        assert_eq!(
-            format!("{:?}", row.prev_fields),
-            "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: Null }])"
-        );
+//         assert_eq!(w1.get_values(), None);
 
-        // read
-        let r2 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
-        assert_eq!(
-            datatype::to_result(
-                None,
-                None,
-                None,
-                Some(&rcolumns),
-                Some(&r2.get_values().unwrap())
-            )
-                .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"53.2\",\"calories\":\"null\",\"name\":\"el camino\",\"year\":\"2019\"}}"
-        );
+//         assert_eq!(
+//             format!("{:?}", row.prev_fields),
+//             "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: Null }])"
+//         );
 
-        // commit
-        row.commit("2pl", "t1");
-        assert_eq!(format!("{:?}", row.prev_fields), "None");
+//         // read
+//         let r2 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
+//         assert_eq!(
+//             datatype::to_result(
+//                 None,
+//                 None,
+//                 None,
+//                 Some(&rcolumns),
+//                 Some(&r2.get_values().unwrap())
+//             )
+//                 .unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"53.2\",\"calories\":\"null\",\"name\":\"el camino\",\"year\":\"2019\"}}"
+//         );
 
-        // write
-        let values2 = vec!["ford", "2005", "78.2"];
-        row.set_values(&wcolumns, &values2, "2pl", "t1").unwrap();
+//         // commit
+//         row.commit("2pl", "t1");
+//         assert_eq!(format!("{:?}", row.prev_fields), "None");
 
-        assert_eq!(
-            format!("{:?}", row.prev_fields),
-            "Some([Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }, Field { data: Null }])"
-        );
-        assert_eq!(
-                    format!("{:?}", row.current_fields),
-            "[Field { data: VarChar(\"ford\") }, Field { data: Int(2005) }, Field { data: Double(78.2) }, Field { data: Null }]"
-        );
+//         // write
+//         let values2 = vec!["ford", "2005", "78.2"];
+//         row.set_values(&wcolumns, &values2, "2pl", "t1").unwrap();
 
-        // revert
-        row.revert("2pl", "t1");
-        assert_eq!(format!("{:?}", row.prev_fields), "None");
-        assert_eq!(
-                    format!("{:?}", row.current_fields),
-            "[Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }, Field { data: Null }]"
-        );
+//         assert_eq!(
+//             format!("{:?}", row.prev_fields),
+//             "Some([Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }, Field { data: Null }])"
+//         );
+//         assert_eq!(
+//                     format!("{:?}", row.current_fields),
+//             "[Field { data: VarChar(\"ford\") }, Field { data: Int(2005) }, Field { data: Double(78.2) }, Field { data: Null }]"
+//         );
 
-        assert_eq!(
-            format!("{}", row),
-            "[0, None, Clean, cars, el camino, 2019, 53.2, null, None, []]"
-        );
-    }
+//         // revert
+//         row.revert("2pl", "t1");
+//         assert_eq!(format!("{:?}", row.prev_fields), "None");
+//         assert_eq!(
+//                     format!("{:?}", row.current_fields),
+//             "[Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }, Field { data: Null }]"
+//         );
 
-    #[test]
-    fn row_2pl_append_test() {
-        // create table schema
-        let mut catalog = Catalog::init("cars", 1);
-        catalog.add_column(("name", "string")).unwrap();
-        catalog.add_column(("year", "int")).unwrap();
-        catalog.add_column(("amount", "double")).unwrap();
-        catalog.add_column(("calories", "list")).unwrap();
+//         assert_eq!(
+//             format!("{}", row),
+//             "[0, None, Clean, cars, el camino, 2019, 53.2, null, None, []]"
+//         );
+//     }
 
-        let table = Table::init(catalog); // create table
-        let mut row = Row::new(Arc::new(table), "2pl"); // create row in table
+//     #[test]
+//     fn row_2pl_append_test() {
+//         // create table schema
+//         let mut catalog = Catalog::init("cars", 1);
+//         catalog.add_column(("name", "string")).unwrap();
+//         catalog.add_column(("year", "int")).unwrap();
+//         catalog.add_column(("amount", "double")).unwrap();
+//         catalog.add_column(("calories", "list")).unwrap();
 
-        assert_eq!(row.get_table().get_table_id(), 1);
-        assert_eq!(row.get_row_id(), 0);
+//         let table = Table::init(catalog); // create table
+//         let mut row = Row::new(Arc::new(table), "2pl"); // create row in table
 
-        let rcolumns = vec!["name", "year", "amount", "calories"];
+//         assert_eq!(row.get_table().get_table_id(), 1);
+//         assert_eq!(row.get_row_id(), 0);
 
-        row.init_value("calories", "").unwrap(); // init list
+//         let rcolumns = vec!["name", "year", "amount", "calories"];
 
-        // read
-        let r1 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
-        assert_eq!(
-            datatype::to_result(
-                None,
-                None,
-                None,
-                Some(&rcolumns),
-                Some(&r1.get_values().unwrap())
-            )
-                .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"[]\",\"name\":\"null\",\"year\":\"null\"}}"
-        );
+//         row.init_value("calories", "").unwrap(); // init list
 
-        assert_eq!(format!("{:?}", row.prev_fields), "None");
+//         // read
+//         let r1 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
+//         assert_eq!(
+//             datatype::to_result(
+//                 None,
+//                 None,
+//                 None,
+//                 Some(&rcolumns),
+//                 Some(&r1.get_values().unwrap())
+//             )
+//                 .unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"[]\",\"name\":\"null\",\"year\":\"null\"}}"
+//         );
 
-        // write
-        row.append_value("calories", "1678", "2pl", "t1").unwrap();
+//         assert_eq!(format!("{:?}", row.prev_fields), "None");
 
-        assert_eq!(
-            format!("{:?}", row.prev_fields),
-            "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([]) }])"
-        );
+//         // write
+//         row.append_value("calories", "1678", "2pl", "t1").unwrap();
 
-        // read
-        let r2 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
+//         assert_eq!(
+//             format!("{:?}", row.prev_fields),
+//             "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([]) }])"
+//         );
 
-        assert_eq!(
-            datatype::to_result(
-                None,
-                None,
-                None,
-                Some(&rcolumns),
-                Some(&r2.get_values().unwrap())
-            )
-                .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"[1678]\",\"name\":\"null\",\"year\":\"null\"}}"
-        );
+//         // read
+//         let r2 = row.get_values(&rcolumns, "2pl", "t1").unwrap();
 
-        // commit
-        row.commit("2pl", "t1");
-        assert_eq!(format!("{:?}", row.prev_fields), "None");
+//         assert_eq!(
+//             datatype::to_result(
+//                 None,
+//                 None,
+//                 None,
+//                 Some(&rcolumns),
+//                 Some(&r2.get_values().unwrap())
+//             )
+//                 .unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"calories\":\"[1678]\",\"name\":\"null\",\"year\":\"null\"}}"
+//         );
 
-        // write
-        row.append_value("calories", "1203", "2pl", "t1").unwrap();
+//         // commit
+//         row.commit("2pl", "t1");
+//         assert_eq!(format!("{:?}", row.prev_fields), "None");
 
-        assert_eq!(
-            format!("{:?}", row.prev_fields),
-            "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678]) }])"
-        );
-        assert_eq!(
-            format!("{:?}", row.current_fields),
-            "[Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678, 1203]) }]"
-        );
+//         // write
+//         row.append_value("calories", "1203", "2pl", "t1").unwrap();
 
-        // revert
-        row.revert("2pl", "t1");
-        assert_eq!(format!("{:?}", row.prev_fields), "None");
-        assert_eq!(
-            format!("{:?}", row.current_fields),
-            "[Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678]) }]"
-        );
+//         assert_eq!(
+//             format!("{:?}", row.prev_fields),
+//             "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678]) }])"
+//         );
+//         assert_eq!(
+//             format!("{:?}", row.current_fields),
+//             "[Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678, 1203]) }]"
+//         );
 
-        assert_eq!(
-            format!("{}", row),
-            "[0, None, Clean, cars, null, null, null, [1678], None, []]"
-        );
-    }
+//         // revert
+//         row.revert("2pl", "t1");
+//         assert_eq!(format!("{:?}", row.prev_fields), "None");
+//         assert_eq!(
+//             format!("{:?}", row.current_fields),
+//             "[Field { data: Null }, Field { data: Null }, Field { data: Null }, Field { data: List([1678]) }]"
+//         );
 
-    #[test]
-    fn row_sgt_test() {
-        // create table schema
-        let mut catalog = Catalog::init("cars", 1);
-        catalog.add_column(("name", "string")).unwrap();
-        catalog.add_column(("year", "int")).unwrap();
-        catalog.add_column(("amount", "double")).unwrap();
-        // create table
-        let table = Table::init(catalog);
-        // create row in table
-        let mut row = Row::new(Arc::new(table), "sgt");
-        assert_eq!(row.get_table().get_table_id(), 1);
-        assert_eq!(row.get_row_id(), 0);
+//         assert_eq!(
+//             format!("{}", row),
+//             "[0, None, Clean, cars, null, null, null, [1678], None, []]"
+//         );
+//     }
 
-        let columns = vec!["name", "year", "amount"];
-        let values = vec!["el camino", "2019", "53.2"];
+//     #[test]
+//     fn row_sgt_test() {
+//         // create table schema
+//         let mut catalog = Catalog::init("cars", 1);
+//         catalog.add_column(("name", "string")).unwrap();
+//         catalog.add_column(("year", "int")).unwrap();
+//         catalog.add_column(("amount", "double")).unwrap();
+//         // create table
+//         let table = Table::init(catalog);
+//         // create row in table
+//         let mut row = Row::new(Arc::new(table), "sgt");
+//         assert_eq!(row.get_table().get_table_id(), 1);
+//         assert_eq!(row.get_row_id(), 0);
 
-        // read
-        let r1 = row.get_values(&columns, "sgt", "t1").unwrap();
-        assert_eq!(
-            datatype::to_result(
-                None,
-                None,
-                None,
-                Some(&columns),
-                Some(&r1.get_values().unwrap())
-            )
-                .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
-        );
-        assert_eq!(r1.get_access_history(), vec![]);
-        assert_eq!(
-            row.get_access_history(),
-            vec![Access::Read("t1".to_string())]
-        );
+//         let columns = vec!["name", "year", "amount"];
+//         let values = vec!["el camino", "2019", "53.2"];
 
-        assert_eq!(format!("{:?}", row.prev_fields), "None");
+//         // read
+//         let r1 = row.get_values(&columns, "sgt", "t1").unwrap();
+//         assert_eq!(
+//             datatype::to_result(
+//                 None,
+//                 None,
+//                 None,
+//                 Some(&columns),
+//                 Some(&r1.get_values().unwrap())
+//             )
+//                 .unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"null\",\"name\":\"null\",\"year\":\"null\"}}"
+//         );
+//         assert_eq!(r1.get_access_history(), vec![]);
+//         assert_eq!(
+//             row.get_access_history(),
+//             vec![Access::Read("t1".to_string())]
+//         );
 
-        // write
-        let w1 = row.set_values(&columns, &values, "sgt", "t2").unwrap();
-        assert_eq!(w1.get_values(), None);
-        assert_eq!(
-            w1.get_access_history(),
-            vec![Access::Read("t1".to_string())]
-        );
-        assert_eq!(
-            row.get_access_history(),
-            vec![
-                Access::Read("t1".to_string()),
-                Access::Write("t2".to_string())
-            ]
-        );
+//         assert_eq!(format!("{:?}", row.prev_fields), "None");
 
-        assert_eq!(
-            format!("{:?}", row.prev_fields),
-            "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }])"
-        );
+//         // write
+//         let w1 = row.set_values(&columns, &values, "sgt", "t2").unwrap();
+//         assert_eq!(w1.get_values(), None);
+//         assert_eq!(
+//             w1.get_access_history(),
+//             vec![Access::Read("t1".to_string())]
+//         );
+//         assert_eq!(
+//             row.get_access_history(),
+//             vec![
+//                 Access::Read("t1".to_string()),
+//                 Access::Write("t2".to_string())
+//             ]
+//         );
 
-        // read
-        let r2 = row.get_values(&columns, "sgt", "t3").unwrap();
-        assert_eq!(
-            datatype::to_result(
-                None,
-                None,
-                None,
-                Some(&columns),
-                Some(&r2.get_values().unwrap())
-            )
-                .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"53.2\",\"name\":\"el camino\",\"year\":\"2019\"}}"
-        );
-        assert_eq!(
-            r2.get_access_history(),
-            vec![
-                Access::Read("t1".to_string()),
-                Access::Write("t2".to_string())
-            ]
-        );
-        assert_eq!(
-            row.get_access_history(),
-            vec![
-                Access::Read("t1".to_string()),
-                Access::Write("t2".to_string()),
-                Access::Read("t3".to_string())
-            ]
-        );
+//         assert_eq!(
+//             format!("{:?}", row.prev_fields),
+//             "Some([Field { data: Null }, Field { data: Null }, Field { data: Null }])"
+//         );
 
-        // commit
-        row.commit("sgt", "t2");
-        assert_eq!(format!("{:?}", row.prev_fields), "None");
-        assert_eq!(
-            row.get_access_history(),
-            vec![Access::Read("t3".to_string())]
-        );
+//         // read
+//         let r2 = row.get_values(&columns, "sgt", "t3").unwrap();
+//         assert_eq!(
+//             datatype::to_result(
+//                 None,
+//                 None,
+//                 None,
+//                 Some(&columns),
+//                 Some(&r2.get_values().unwrap())
+//             )
+//                 .unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"amount\":\"53.2\",\"name\":\"el camino\",\"year\":\"2019\"}}"
+//         );
+//         assert_eq!(
+//             r2.get_access_history(),
+//             vec![
+//                 Access::Read("t1".to_string()),
+//                 Access::Write("t2".to_string())
+//             ]
+//         );
+//         assert_eq!(
+//             row.get_access_history(),
+//             vec![
+//                 Access::Read("t1".to_string()),
+//                 Access::Write("t2".to_string()),
+//                 Access::Read("t3".to_string())
+//             ]
+//         );
 
-        // write
-        let values2 = vec!["ford", "2005", "78.2"];
-        let w2 = row.set_values(&columns, &values2, "sgt", "t4").unwrap();
-        assert_eq!(
-            w2.get_access_history(),
-            vec![Access::Read("t3".to_string())]
-        );
-        assert_eq!(
-            row.get_access_history(),
-            vec![
-                Access::Read("t3".to_string()),
-                Access::Write("t4".to_string())
-            ]
-        );
+//         // commit
+//         row.commit("sgt", "t2");
+//         assert_eq!(format!("{:?}", row.prev_fields), "None");
+//         assert_eq!(
+//             row.get_access_history(),
+//             vec![Access::Read("t3".to_string())]
+//         );
 
-        assert_eq!(
-            format!("{:?}", row.prev_fields),
-            "Some([Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }])"
-        );
-        assert_eq!(
-                    format!("{:?}", row.current_fields),
-            "[Field { data: VarChar(\"ford\") }, Field { data: Int(2005) }, Field { data: Double(78.2) }]"
-        );
+//         // write
+//         let values2 = vec!["ford", "2005", "78.2"];
+//         let w2 = row.set_values(&columns, &values2, "sgt", "t4").unwrap();
+//         assert_eq!(
+//             w2.get_access_history(),
+//             vec![Access::Read("t3".to_string())]
+//         );
+//         assert_eq!(
+//             row.get_access_history(),
+//             vec![
+//                 Access::Read("t3".to_string()),
+//                 Access::Write("t4".to_string())
+//             ]
+//         );
 
-        // revert
-        row.revert("sgt", "t4");
-        assert_eq!(format!("{:?}", row.prev_fields), "None");
-        assert_eq!(
-                    format!("{:?}", row.current_fields),
-            "[Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }]"
-        );
+//         assert_eq!(
+//             format!("{:?}", row.prev_fields),
+//             "Some([Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }])"
+//         );
+//         assert_eq!(
+//                     format!("{:?}", row.current_fields),
+//             "[Field { data: VarChar(\"ford\") }, Field { data: Int(2005) }, Field { data: Double(78.2) }]"
+//         );
 
-        assert_eq!(
-            row.access_history,
-            Some(vec![Access::Read("t3".to_string()),])
-        );
+//         // revert
+//         row.revert("sgt", "t4");
+//         assert_eq!(format!("{:?}", row.prev_fields), "None");
+//         assert_eq!(
+//                     format!("{:?}", row.current_fields),
+//             "[Field { data: VarChar(\"el camino\") }, Field { data: Int(2019) }, Field { data: Double(53.2) }]"
+//         );
 
-        assert_eq!(
-            format!("{}", row),
-            "[0, None, Clean, cars, el camino, 2019, 53.2, Some([Read(\"t3\")]), []]"
-        );
-    }
+//         assert_eq!(
+//             row.access_history,
+//             Some(vec![Access::Read("t3".to_string()),])
+//         );
 
-    #[test]
-    fn row_edge_cases_test() {
-        // create table schema
-        let mut catalog = Catalog::init("cars", 1);
-        catalog.add_column(("name", "string")).unwrap();
-        catalog.add_column(("year", "int")).unwrap();
-        catalog.add_column(("amount", "double")).unwrap();
-        // create table
-        let table = Arc::new(Table::init(catalog));
-        // create row in table
-        let mut row = Row::new(Arc::clone(&table), "sgt");
+//         assert_eq!(
+//             format!("{}", row),
+//             "[0, None, Clean, cars, el camino, 2019, 53.2, Some([Read(\"t3\")]), []]"
+//         );
+//     }
 
-        assert_eq!(row.get_table().get_table_id(), 1);
-        assert_eq!(row.get_row_id(), 0);
+//     #[test]
+//     fn row_edge_cases_test() {
+//         // create table schema
+//         let mut catalog = Catalog::init("cars", 1);
+//         catalog.add_column(("name", "string")).unwrap();
+//         catalog.add_column(("year", "int")).unwrap();
+//         catalog.add_column(("amount", "double")).unwrap();
+//         // create table
+//         let table = Arc::new(Table::init(catalog));
+//         // create row in table
+//         let mut row = Row::new(Arc::clone(&table), "sgt");
 
-        let columns = vec!["name", "year", "amount"];
-        let values = vec!["el camino", "2019", "53.2"];
+//         assert_eq!(row.get_table().get_table_id(), 1);
+//         assert_eq!(row.get_row_id(), 0);
 
-        // writes
-        row.set_values(&columns, &values, "sgt", "t1").unwrap();
+//         let columns = vec!["name", "year", "amount"];
+//         let values = vec!["el camino", "2019", "53.2"];
 
-        assert_eq!(
-            format!(
-                "{}",
-                row.set_values(&columns, &values, "sgt", "t2").unwrap_err()
-            ),
-            "dirty: None in table cars"
-        );
+//         // writes
+//         row.set_values(&columns, &values, "sgt", "t1").unwrap();
 
-        // init_value
-        let mut row1 = Row::new(Arc::clone(&table), "sgt");
-        assert_eq!(row1.init_value("name", "jack").unwrap(), ());
-        assert_eq!(row1.init_value("year", "40").unwrap(), ());
-        assert_eq!(row1.init_value("amount", "43.2").unwrap(), ());
-        // row dirty
-        row1.set_values(&columns, &values, "sgt", "t2").unwrap();
+//         assert_eq!(
+//             format!(
+//                 "{}",
+//                 row.set_values(&columns, &values, "sgt", "t2").unwrap_err()
+//             ),
+//             "dirty: None in table cars"
+//         );
 
-        assert_eq!(
-            format!(
-                "{}",
-                row1.set_values(&columns, &values, "sgt", "t2").unwrap_err()
-            ),
-            "dirty: None in table cars"
-        );
-    }
-}
+//         // init_value
+//         let mut row1 = Row::new(Arc::clone(&table), "sgt");
+//         assert_eq!(row1.init_value("name", "jack").unwrap(), ());
+//         assert_eq!(row1.init_value("year", "40").unwrap(), ());
+//         assert_eq!(row1.init_value("amount", "43.2").unwrap(), ());
+//         // row dirty
+//         row1.set_values(&columns, &values, "sgt", "t2").unwrap();
+
+//         assert_eq!(
+//             format!(
+//                 "{}",
+//                 row1.set_values(&columns, &values, "sgt", "t2").unwrap_err()
+//             ),
+//             "dirty: None in table cars"
+//         );
+//     }
+// }

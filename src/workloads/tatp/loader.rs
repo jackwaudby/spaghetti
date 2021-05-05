@@ -450,190 +450,189 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
+// #[cfg(test)]
+// mod tests {
 
-    use super::*;
-    use crate::server::storage::datatype;
-    use config::Config;
-    use rand::SeedableRng;
+//     use super::*;
+//     use crate::server::storage::datatype;
+//     use config::Config;
+//     use rand::SeedableRng;
 
-    #[test]
-    fn populate_tables_test() {
-        // Initialise configuration.
-        let mut c = Config::default();
-        c.merge(config::File::with_name("./tests/Test-tpl.toml"))
-            .unwrap();
-        let config = Arc::new(c);
+//     #[test]
+//     fn populate_tables_test() {
+//         // Initialise configuration.
+//         let mut c = Config::default();
+//         c.merge(config::File::with_name("./tests/Test-tpl.toml"))
+//             .unwrap();
+//         let config = Arc::new(c);
 
-        let c = Arc::clone(&config);
-        let internals = Internal::new("./schema/tatp_schema.txt", c).unwrap();
-        let mut rng = StdRng::seed_from_u64(1);
+//         let c = Arc::clone(&config);
+//         let internals = Internal::new("./schema/tatp_schema.txt", c).unwrap();
+//         let mut rng = StdRng::seed_from_u64(1);
 
-        // Subscriber.
-        populate_subscriber_table(&internals, &mut rng).unwrap();
-        assert_eq!(
-            internals.get_table("subscriber").unwrap().get_next_row_id(),
-            10
-        );
-        let index = internals.indexes.get("sub_idx").unwrap();
+//         // Subscriber.
+//         populate_subscriber_table(&internals, &mut rng).unwrap();
+//         assert_eq!(
+//             internals.get_table("subscriber").unwrap().get_next_row_id(),
+//             10
+//         );
+//         let index = internals.indexes.get("sub_idx").unwrap();
 
-        let cols_s = vec![
-            "s_id",
-            "sub_nbr",
-            "bit_1",
-            "bit_2",
-            "bit_3",
-            "bit_4",
-            "bit_5",
-            "bit_6",
-            "bit_7",
-            "bit_8",
-            "bit_9",
-            "bit_10",
-            "hex_1",
-            "hex_2",
-            "hex_3",
-            "hex_4",
-            "hex_5",
-            "hex_6",
-            "hex_7",
-            "hex_8",
-            "hex_9",
-            "hex_10",
-            "byte_2_1",
-            "byte_2_2",
-            "byte_2_3",
-            "byte_2_4",
-            "byte_2_5",
-            "byte_2_6",
-            "byte_2_7",
-            "byte_2_8",
-            "byte_2_9",
-            "byte_2_10",
-            "msc_location",
-            "vlr_location",
-        ];
+//         let cols_s = vec![
+//             "s_id",
+//             "sub_nbr",
+//             "bit_1",
+//             "bit_2",
+//             "bit_3",
+//             "bit_4",
+//             "bit_5",
+//             "bit_6",
+//             "bit_7",
+//             "bit_8",
+//             "bit_9",
+//             "bit_10",
+//             "hex_1",
+//             "hex_2",
+//             "hex_3",
+//             "hex_4",
+//             "hex_5",
+//             "hex_6",
+//             "hex_7",
+//             "hex_8",
+//             "hex_9",
+//             "hex_10",
+//             "byte_2_1",
+//             "byte_2_2",
+//             "byte_2_3",
+//             "byte_2_4",
+//             "byte_2_5",
+//             "byte_2_6",
+//             "byte_2_7",
+//             "byte_2_8",
+//             "byte_2_9",
+//             "byte_2_10",
+//             "msc_location",
+//             "vlr_location",
+//         ];
 
-        let res = index
-            .read(
-                PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
-                &cols_s,
-                "2pl",
-                "t1",
-            )
-            .unwrap()
-            .get_values()
-            .unwrap();
-        assert_eq!(
-            datatype::to_result(
-                None,
-                None,
-                None,
-                Some(&cols_s),
-                Some(&res)
-            ).unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"1\",\"bit_10\":\"0\",\"bit_2\":\"0\",\"bit_3\":\"1\",\"bit_4\":\"1\",\"bit_5\":\"0\",\"bit_6\":\"0\",\"bit_7\":\"0\",\"bit_8\":\"1\",\"bit_9\":\"0\",\"byte_2_1\":\"55\",\"byte_2_10\":\"203\",\"byte_2_2\":\"65\",\"byte_2_3\":\"99\",\"byte_2_4\":\"138\",\"byte_2_5\":\"93\",\"byte_2_6\":\"228\",\"byte_2_7\":\"150\",\"byte_2_8\":\"132\",\"byte_2_9\":\"121\",\"hex_1\":\"3\",\"hex_10\":\"0\",\"hex_2\":\"12\",\"hex_3\":\"15\",\"hex_4\":\"8\",\"hex_5\":\"2\",\"hex_6\":\"3\",\"hex_7\":\"5\",\"hex_8\":\"4\",\"hex_9\":\"7\",\"msc_location\":\"22\",\"s_id\":\"1\",\"sub_nbr\":\"000000000000001\",\"vlr_location\":\"7\"}}"
-        );
+//         let res = index
+//             .read(
+//                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
+//                 &cols_s,
+//                 "2pl",
+//                 "t1",
+//             )
+//             .unwrap()
+//             .get_values()
+//             .unwrap();
+//         assert_eq!(
+//             datatype::to_result(
+//                 None,
+//                 None,
+//                 None,
+//                 Some(&cols_s),
+//                 Some(&res)
+//             ).unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"bit_1\":\"1\",\"bit_10\":\"0\",\"bit_2\":\"0\",\"bit_3\":\"1\",\"bit_4\":\"1\",\"bit_5\":\"0\",\"bit_6\":\"0\",\"bit_7\":\"0\",\"bit_8\":\"1\",\"bit_9\":\"0\",\"byte_2_1\":\"55\",\"byte_2_10\":\"203\",\"byte_2_2\":\"65\",\"byte_2_3\":\"99\",\"byte_2_4\":\"138\",\"byte_2_5\":\"93\",\"byte_2_6\":\"228\",\"byte_2_7\":\"150\",\"byte_2_8\":\"132\",\"byte_2_9\":\"121\",\"hex_1\":\"3\",\"hex_10\":\"0\",\"hex_2\":\"12\",\"hex_3\":\"15\",\"hex_4\":\"8\",\"hex_5\":\"2\",\"hex_6\":\"3\",\"hex_7\":\"5\",\"hex_8\":\"4\",\"hex_9\":\"7\",\"msc_location\":\"22\",\"s_id\":\"1\",\"sub_nbr\":\"000000000000001\",\"vlr_location\":\"7\"}}"
+//         );
 
-        // Access info.
-        populate_access_info(&internals, &mut rng).unwrap();
-        assert_eq!(
-            internals
-                .get_table("access_info")
-                .unwrap()
-                .get_next_row_id(),
-            24
-        );
+//         // Access info.
+//         populate_access_info(&internals, &mut rng).unwrap();
+//         assert_eq!(
+//             internals
+//                 .get_table("access_info")
+//                 .unwrap()
+//                 .get_next_row_id(),
+//             24
+//         );
 
-        let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
+//         let cols_ai = vec!["s_id", "ai_type", "data_1", "data_2", "data_3", "data_4"];
 
-        let index = internals.indexes.get("access_idx").unwrap();
-        assert_eq!(
-            datatype::to_result(
-                        None,
-                None,
-                None,
-                Some(
-                &cols_ai),
-                Some(&index
-                    .read(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2)), &cols_ai,"2pl","t1")
-                      .unwrap().get_values().unwrap())
+//         let index = internals.indexes.get("access_idx").unwrap();
+//         assert_eq!(
+//             datatype::to_result(
+//                         None,
+//                 None,
+//                 None,
+//                 Some(
+//                 &cols_ai),
+//                 Some(&index
+//                     .read(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(1, 2)), &cols_ai,"2pl","t1")
+//                       .unwrap().get_values().unwrap())
 
-            )
-                .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"ai_type\":\"2\",\"data_1\":\"118\",\"data_2\":\"249\",\"data_3\":\"QYU\",\"data_4\":\"PTUKB\",\"s_id\":\"1\"}}"
-        );
+//             )
+//                 .unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"ai_type\":\"2\",\"data_1\":\"118\",\"data_2\":\"249\",\"data_3\":\"QYU\",\"data_4\":\"PTUKB\",\"s_id\":\"1\"}}"
+//         );
 
-        // Special facillity.
-        populate_special_facility_call_forwarding(&internals, &mut rng).unwrap();
-        assert_eq!(
-            internals
-                .get_table("special_facility")
-                .unwrap()
-                .get_next_row_id(),
-            28
-        );
+//         // Special facillity.
+//         populate_special_facility_call_forwarding(&internals, &mut rng).unwrap();
+//         assert_eq!(
+//             internals
+//                 .get_table("special_facility")
+//                 .unwrap()
+//                 .get_next_row_id(),
+//             28
+//         );
 
-        let cols_sf = vec![
-            "s_id",
-            "sf_type",
-            "is_active",
-            "error_cntrl",
-            "data_a",
-            "data_b",
-        ];
-        let index = internals.indexes.get("special_idx").unwrap();
+//         let cols_sf = vec![
+//             "s_id",
+//             "sf_type",
+//             "is_active",
+//             "error_cntrl",
+//             "data_a",
+//             "data_b",
+//         ];
+//         let index = internals.indexes.get("special_idx").unwrap();
 
-        assert_eq!(
-            datatype::to_result(        None,
-                None,
-                None,
-                Some(
-                &cols_sf),
-                Some(&index
-                    .read(
-                        PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 2)),
-                        &cols_sf,
-                        "2pl",
-                        "t1",
-                    )
-                    .unwrap().get_values().unwrap())
-            )
-                .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"data_a\":\"217\",\"data_b\":\"IWPXS\",\"error_cntrl\":\"30\",\"is_active\":\"1\",\"s_id\":\"1\",\"sf_type\":\"3\"}}"
+//         assert_eq!(
+//             datatype::to_result(        None,
+//                 None,
+//                 None,
+//                 Some(
+//                 &cols_sf),
+//                 Some(&index
+//                     .read(
+//                         PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(1, 2)),
+//                         &cols_sf,
+//                         "2pl",
+//                         "t1",
+//                     )
+//                     .unwrap().get_values().unwrap())
+//             )
+//                 .unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"data_a\":\"217\",\"data_b\":\"IWPXS\",\"error_cntrl\":\"30\",\"is_active\":\"1\",\"s_id\":\"1\",\"sf_type\":\"3\"}}"
 
+//         );
 
-        );
+//         // Call forwarding.
+//         assert_eq!(
+//             internals
+//                 .get_table("call_forwarding")
+//                 .unwrap()
+//                 .get_next_row_id(),
+//             48
+//         );
+//         let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
+//         let index = internals.indexes.get("call_idx").unwrap();
+//         assert_eq!(
+//             datatype::to_result(
+//                 None,
+//                 None,
+//                 None,
+//                 Some(&cols_cf),
+//                 Some(&index
+//                     .read(
+//                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 2, 16)),
+//                         &cols_cf,
+//                         "2pl",
+//                         "t1",
+//                     )
+//                     .unwrap().get_values().unwrap()
+//             ))
+//                 .unwrap(),
+//             "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"end_time\":\"22\",\"number_x\":\"255859837238459\",\"s_id\":\"1\",\"sf_type\":\"3\",\"start_time\":\"16\"}}"
 
-        // Call forwarding.
-        assert_eq!(
-            internals
-                .get_table("call_forwarding")
-                .unwrap()
-                .get_next_row_id(),
-            48
-        );
-        let cols_cf = vec!["s_id", "sf_type", "start_time", "end_time", "number_x"];
-        let index = internals.indexes.get("call_idx").unwrap();
-        assert_eq!(
-            datatype::to_result(
-                None,
-                None,
-                None,
-                Some(&cols_cf),
-                Some(&index
-                    .read(
-                        PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(1, 2, 16)),
-                        &cols_cf,
-                        "2pl",
-                        "t1",
-                    )
-                    .unwrap().get_values().unwrap()
-            ))
-                .unwrap(),
-            "{\"created\":null,\"updated\":null,\"deleted\":null,\"val\":{\"end_time\":\"22\",\"number_x\":\"255859837238459\",\"s_id\":\"1\",\"sf_type\":\"3\",\"start_time\":\"16\"}}"
-
-        );
-    }
-}
+//         );
+//     }
+// }
