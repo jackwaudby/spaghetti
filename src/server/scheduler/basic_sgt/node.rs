@@ -197,8 +197,8 @@ impl Node {
     }
 
     /// Add key to the list of keys inserted/read/updated/deleted by the transaction in the node.
-    pub fn add_key(&self, index: &str, key: PrimaryKey, operation_type: OperationType) {
-        let pair = (index.to_string(), key);
+    pub fn add_key(&self, index: &str, key: &PrimaryKey, operation_type: OperationType) {
+        let pair = (index.to_string(), key.clone());
         use OperationType::*;
         match operation_type {
             Insert => self.keys_inserted.lock().as_mut().unwrap().push(pair),

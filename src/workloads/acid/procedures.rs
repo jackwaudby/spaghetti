@@ -1,12 +1,12 @@
 use crate::common::error::NonFatalError;
 use crate::server::scheduler::Protocol;
 use crate::server::storage::datatype::{self, Data};
-use crate::workloads::acid::keys::AcidPrimaryKey;
+use crate::workloads::acid::keys::AcidPrimaryKey::*;
 use crate::workloads::acid::paramgen::{
     G0Read, G0Write, G1aRead, G1aWrite, G1cReadWrite, G2itemRead, G2itemWrite, ImpRead, ImpWrite,
     LostUpdateRead, LostUpdateWrite, Otv,
 };
-use crate::workloads::PrimaryKey;
+use crate::workloads::PrimaryKey::Acid;
 
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -16,8 +16,9 @@ use std::{thread, time};
 ///
 /// Append (unique) transaction id to person pair version history.
 pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let pk_p1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // --- setup
-    let pk_p2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
+    let pk_p1 = Acid(Person(params.p1_id));
+    let pk_p2 = Acid(Person(params.p2_id));
+
     // flip for knows edge; 1,0 becomes 0,1
     let min;
     let max;
@@ -28,20 +29,23 @@ pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonF
         min = params.p1_id;
         max = params.p2_id;
     }
-    let pk_knows = PrimaryKey::Acid(AcidPrimaryKey::Knows(min, max));
-    let value = params.transaction_id.to_string();
+    let pk_knows = Acid(Knows(min, max));
 
-    let meta = protocol.scheduler.register().unwrap(); // --- register
+    let value = Data::Uint(params.transaction_id as u64);
+
+    let meta = protocol.scheduler.register().unwrap();
 
     protocol
         .scheduler
-        .append("person", pk_p1, "version_history", &value, &meta)?; // --- append
+        .append("person", &pk_p1, "version_history", value.clone(), &meta)?;
+
     protocol
         .scheduler
-        .append("person", pk_p2, "version_history", &value, &meta)?; // --- append
+        .append("person", &pk_p2, "version_history", value.clone(), &meta)?;
+
     protocol
         .scheduler
-        .append("knows", pk_knows, "version_history", &value, &meta)?; // --- append
+        .append("knows", &pk_knows, "version_history", value.clone(), &meta)?;
 
     protocol.scheduler.commit(&meta)?; // --- commit
 
@@ -54,24 +58,26 @@ pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonF
 ///
 /// Return the version history of person pair.
 pub fn g0_read(params: G0Read, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let person_columns: Vec<&str> = vec!["p_id", "version_history"]; // --- setup
+    let person_columns: Vec<&str> = vec!["p_id", "version_history"];
     let knows_columns: Vec<&str> = vec!["p1_id", "p2_id", "version_history"];
 
-    let pk_p1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id));
-    let pk_p2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
-    let pk_knows = PrimaryKey::Acid(AcidPrimaryKey::Knows(params.p1_id, params.p2_id));
+    let pk_p1 = Acid(Person(params.p1_id));
+    let pk_p2 = Acid(Person(params.p2_id));
+    let pk_knows = Acid(Knows(params.p1_id, params.p2_id));
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
 
     let mut r1 = protocol
         .scheduler
-        .read("person", pk_p1, &person_columns, &meta)?; // --- read
+        .read("person", &pk_p1, &person_columns, &meta)?; // --- read
+
     let mut r2 = protocol
         .scheduler
-        .read("person", pk_p2, &person_columns, &meta)?; // --- read
+        .read("person", &pk_p2, &person_columns, &meta)?; // --- read
+
     let mut r3 = protocol
         .scheduler
-        .read("knows", pk_knows, &knows_columns, &meta)?; // --- read
+        .read("knows", &pk_knows, &knows_columns, &meta)?; // --- read
 
     protocol.scheduler.commit(&meta)?; // --- commit
 
@@ -96,11 +102,13 @@ pub fn g0_read(params: G0Read, protocol: Arc<Protocol>) -> Result<String, NonFat
 ///
 /// Returns the version of a given persion
 pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let columns: Vec<&str> = vec!["p_id", "version"]; // --- setup
-    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id));
+    let columns = ["p_id", "version"];
+    let pk = Acid(Person(params.p_id));
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
-    let values = protocol.scheduler.read("person", pk, &columns, &meta)?; // --- read
+
+    let values = protocol.scheduler.read("person", &pk, &columns, &meta)?; // --- read
+
     protocol.scheduler.commit(&meta)?; // --- commit
 
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
@@ -112,24 +120,34 @@ pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonF
 ///
 /// Set the version to an even number before aborting.
 pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // --- setup
+    let pk = Acid(Person(params.p_id));
+    let columns = ["version"];
     let delay = params.delay;
-    let columns: Vec<String> = vec!["version".to_string()];
-    let params = vec![Data::Int(params.version as i64)];
-    let update = |columns: Vec<String>,
-                  _current: Option<Vec<Data>>,
-                  params: Vec<Data>|
-     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let value = i64::try_from(params[0].clone())?;
-        let new_values = vec![value.to_string()];
-        Ok((columns, new_values))
+    let params = vec![Data::Uint(params.version)];
+
+    let update_version = |columns: &[&str],
+                          _current: Option<Vec<Data>>,
+                          params: Option<&[Data]>|
+     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
+        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+        let new_values = vec![params.unwrap()[0]];
+        Ok((new_columns, new_values))
     };
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
-    protocol
-        .scheduler
-        .update("person", pk, columns, false, params, &update, &meta)?; // --- update
+
+    protocol.scheduler.update(
+        "person",
+        &pk,
+        &columns,
+        false,
+        Some(&params),
+        &update_version,
+        &meta,
+    )?; // --- update
+
     thread::sleep(time::Duration::from_millis(delay)); // --- artifical delay
+
     protocol.scheduler.abort(&meta).unwrap(); // --- abort
 
     Err(NonFatalError::NonSerializable)
@@ -143,28 +161,38 @@ pub fn g1c_read_write(
     params: G1cReadWrite,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // --- setup
-    let pk2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
-    let columns: Vec<String> = vec!["version".to_string()];
-    let rcolumns: Vec<&str> = vec!["version"];
-    let values = vec![Data::Int(params.transaction_id as i64)];
-    let update = |columns: Vec<String>,
-                  _current: Option<Vec<Data>>,
-                  params: Vec<Data>|
-     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let value = i64::try_from(params[0].clone())?;
-        let new_values = vec![value.to_string()];
-        Ok((columns, new_values))
+    let pk1 = Acid(Person(params.p1_id)); // --- setup
+    let pk2 = Acid(Person(params.p2_id));
+    let columns = ["version"];
+    let tid = params.transaction_id as i64;
+    let params = vec![Data::Uint(params.transaction_id as u64)];
+
+    let update_version = |columns: &[&str],
+                          _current: Option<Vec<Data>>,
+                          params: Option<&[Data]>|
+     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
+        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+        let new_values = vec![params.unwrap()[0]];
+        Ok((new_columns, new_values))
     };
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
-    protocol
-        .scheduler
-        .update("person", pk1, columns, false, values, &update, &meta)?; // --- update
-    let mut values = protocol.scheduler.read("person", pk2, &rcolumns, &meta)?; // --- read
+
+    protocol.scheduler.update(
+        "person",
+        &pk1,
+        &columns,
+        false,
+        Some(&params),
+        &update_version,
+        &meta,
+    )?; // --- update
+
+    let mut values = protocol.scheduler.read("person", &pk2, &columns, &meta)?; // --- read
+
     protocol.scheduler.commit(&meta)?; // --- commit
 
-    values.push(Data::Int(params.transaction_id.into())); // --- result
+    values.push(Data::Int(tid)); // --- result
     let frcolumns: Vec<&str> = vec!["version", "transaction_id"];
     let res = datatype::to_result(None, None, None, Some(&frcolumns), Some(&values)).unwrap();
 
@@ -175,15 +203,16 @@ pub fn g1c_read_write(
 ///
 /// Returns the version of a given person.
 pub fn imp_read(params: ImpRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let columns: Vec<&str> = vec!["version"]; // --- setup
-    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id));
+    let columns = ["version"]; // --- setup
+    let pk = Acid(Person(params.p_id));
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
-    let mut read1 = protocol
-        .scheduler
-        .read("person", pk.clone(), &columns, &meta)?; // --- read 1
+
+    let mut read1 = protocol.scheduler.read("person", &pk, &columns, &meta)?; // --- read 1
+
     thread::sleep(time::Duration::from_millis(params.delay)); // --- artifical delay
-    let mut read2 = protocol.scheduler.read("person", pk, &columns, &meta)?; // --- read 2
+
+    let mut read2 = protocol.scheduler.read("person", &pk, &columns, &meta)?; // --- read 2
 
     protocol.scheduler.commit(&meta)?; // --- commit
 
@@ -198,23 +227,25 @@ pub fn imp_read(params: ImpRead, protocol: Arc<Protocol>) -> Result<String, NonF
 ///
 /// Increments the version of a person.
 pub fn imp_write(params: ImpWrite, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // --- setup
-    let columns: Vec<String> = vec!["version".to_string()];
-    let values = vec![Data::Int(params.p_id as i64)];
-    let update = |columns: Vec<String>,
-                  current: Option<Vec<Data>>,
-                  _params: Vec<Data>|
-     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let current_value = i64::try_from(current.unwrap()[0].clone())?;
-        let nv = current_value + 1;
-        let new_values = vec![nv.to_string()];
-        Ok((columns, new_values))
+    let pk = Acid(Person(params.p_id)); // --- setup
+    let columns = ["version"];
+
+    let inc_version = |columns: &[&str],
+                       current: Option<Vec<Data>>,
+                       _params: Option<&[Data]>|
+     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
+        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+        let current_value = u64::try_from(current.unwrap()[0])?;
+        let new_values = vec![Data::Uint(current_value + 1)];
+        Ok((new_columns, new_values))
     };
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
+
     protocol
         .scheduler
-        .update("person", pk, columns, true, values, &update, &meta)?; //  ---  update
+        .update("person", &pk, &columns, true, None, &inc_version, &meta)?; //  ---  update
+
     protocol.scheduler.commit(&meta)?; // --- commit
 
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // --- result
@@ -225,41 +256,33 @@ pub fn imp_write(params: ImpWrite, protocol: Arc<Protocol>) -> Result<String, No
 ///
 /// Selects a disjoint person sequence (length 4) and increments `version` property.
 pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // keys
-    let pk2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
-    let pk3 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p3_id));
-    let pk4 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p4_id));
+    let pk1 = Acid(Person(params.p1_id)); // keys
+    let pk2 = Acid(Person(params.p2_id));
+    let pk3 = Acid(Person(params.p3_id));
+    let pk4 = Acid(Person(params.p4_id));
+
     let keys = vec![pk1, pk2, pk3, pk4];
 
-    let column: Vec<String> = vec!["version".to_string()]; // column to update
+    let column = ["version"];
+
+    let inc_version = |columns: &[&str],
+                       current: Option<Vec<Data>>,
+                       _params: Option<&[Data]>|
+     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
+        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+        let current_value = u64::try_from(current.unwrap()[0])?;
+        let new_values = vec![Data::Uint(current_value + 1)];
+        Ok((new_columns, new_values))
+    };
 
     let meta = protocol.scheduler.register().unwrap(); // register
 
-    // calculate new values -- read current value and increment
-    let calc = |columns: Vec<String>,
-                current: Option<Vec<Data>>,
-                _params: Vec<Data>|
-     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let current_value = i64::try_from(current.unwrap()[0].clone())?;
-        let nv = current_value + 1; // increment current value
-        let new_values = vec![nv.to_string()]; // convert to string
-        Ok((columns, new_values)) // new values for columns
-    };
-
-    // TODO: unneeded
-    let params = vec![Data::Int(params.p1_id as i64)]; // convert parameters to Vec<Data>
-
     for pk in keys {
-        protocol.scheduler.update(
-            "person",
-            pk,
-            column.clone(),
-            true,
-            params.clone(),
-            &calc,
-            &meta,
-        )?;
+        protocol
+            .scheduler
+            .update("person", &pk, &column, true, None, &inc_version, &meta)?;
     }
+
     protocol.scheduler.commit(&meta)?; // commit
 
     let res = datatype::to_result(None, Some(4), None, None, None).unwrap();
@@ -271,24 +294,23 @@ pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFata
 /// Person nodes are arranged in disjoint sequences of length 4, e.g., (p1, p2, p3, p4).
 /// This transaction reads the `version` property of each person in some disjoint person sequence.
 pub fn otv_read(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // keys
-    let pk2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
-    let pk3 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p3_id));
-    let pk4 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p4_id));
+    let pk1 = Acid(Person(params.p1_id)); // keys
+    let pk2 = Acid(Person(params.p2_id));
+    let pk3 = Acid(Person(params.p3_id));
+    let pk4 = Acid(Person(params.p4_id));
     let keys = vec![pk1, pk2, pk3, pk4];
 
-    let column: Vec<&str> = vec!["version"]; // columns to read
+    let column = ["version"]; // columns to read
 
     let meta = protocol.scheduler.register().unwrap(); // register
 
     let mut reads = vec![];
 
     for key in keys {
-        let mut read = protocol
-            .scheduler
-            .read("person", key.clone(), &column, &meta)?; // read
+        let mut read = protocol.scheduler.read("person", &key, &column, &meta)?; // read
         reads.append(&mut read);
     }
+
     protocol.scheduler.commit(&meta)?; // commit
 
     let columns: Vec<&str> = vec!["p1_version", "p2_version", "p3_version", "p4_version"];
@@ -298,28 +320,25 @@ pub fn otv_read(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFatal
 }
 
 /// Lost Update (LU) Write Transaction.
-///
-/// TODO
 pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // key
-    let columns: Vec<String> = vec!["num_friends".to_string()]; // columns
-    let update = |columns: Vec<String>,
-                  current: Option<Vec<Data>>,
-                  _params: Vec<Data>|
-     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let current_value = i64::try_from(current.unwrap()[0].clone())?;
-        let nv = current_value + 1; // increment current value
-        let new_values = vec![nv.to_string()]; // convert to string
-        Ok((columns, new_values)) // new values for columns
-    }; // update computation
+    let pk = Acid(Person(params.p_id)); // key
+    let columns = ["num_friends"]; // columns
 
-    let values = vec![Data::Int(params.p_id as i64)]; // TODO: placeholder
+    let inc_version = |columns: &[&str],
+                       current: Option<Vec<Data>>,
+                       _params: Option<&[Data]>|
+     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
+        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+        let current_value = u64::try_from(current.unwrap()[0])?;
+        let new_values = vec![Data::Uint(current_value + 1)];
+        Ok((new_columns, new_values))
+    };
 
     let meta = protocol.scheduler.register().unwrap(); // register
 
     protocol
         .scheduler
-        .update("person", pk, columns, true, values, &update, &meta)?; //  update
+        .update("person", &pk, &columns, true, None, &inc_version, &meta)?; //  update
 
     protocol.scheduler.commit(&meta)?; // commit
 
@@ -329,14 +348,14 @@ pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<Stri
 }
 
 /// Lost Update (LU) Read Transaction.
-///
-/// TODO
 pub fn lu_read(params: LostUpdateRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let columns: Vec<&str> = vec!["p_id", "num_friends"]; // columns to read
-    let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p_id)); // pk
+    let pk = Acid(Person(params.p_id)); // pk
 
     let meta = protocol.scheduler.register().unwrap(); // register
-    let read = protocol.scheduler.read("person", pk, &columns, &meta)?; // read
+
+    let read = protocol.scheduler.read("person", &pk, &columns, &meta)?; // read
+
     protocol.scheduler.commit(&meta)?; // commit
 
     let res = datatype::to_result(None, None, None, Some(&columns), Some(&read)).unwrap();
@@ -352,68 +371,41 @@ pub fn g2_item_write(
     params: G2itemWrite,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // key
-    let pk2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id));
-    let read_column: Vec<&str> = vec!["value"]; // column
-    let write_column: Vec<String> = vec!["value".to_string()]; // column
+    let pk1 = Acid(Person(params.p1_id)); // key
+    let pk2 = Acid(Person(params.p2_id));
+    let column = ["value"]; // column
 
     let meta = protocol.scheduler.register().unwrap(); // register
 
+    // takes in current value of p1 and value of p2 via params
+    let deduct = |columns: &[&str],
+                  current: Option<Vec<Data>>,
+                  params: Option<&[Data]>|
+     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
+        let current_value = i64::try_from(current.unwrap()[0])?;
+        let other_value = i64::try_from(params.unwrap()[0])?;
+
+        if current_value + other_value < 100 {
+            return Err(NonFatalError::NonSerializable);
+        }
+
+        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+        let new_values = vec![Data::Int(current_value - 100)];
+        Ok((new_columns, new_values))
+    };
+
     if params.p_id_update == params.p1_id {
-        // read p2 for value
-        let read = protocol
-            .scheduler
-            .read("person", pk2, &read_column, &meta)?; // read 1
-
-        // takes in current value of p1 and value of p2 via params
-        let calc = |columns: Vec<String>,
-                    current: Option<Vec<Data>>,
-                    params: Vec<Data>|
-         -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-            let current_value = i64::try_from(current.unwrap()[0].clone())?;
-
-            let other_value = i64::try_from(params[0].clone())?;
-
-            if current_value + other_value < 100 {
-                return Err(NonFatalError::NonSerializable);
-            }
-
-            let nv = current_value - 100;
-            let new_values = vec![nv.to_string()]; // convert to string
-            Ok((columns, new_values)) // new values for columns
-        };
+        let read = protocol.scheduler.read("person", &pk2, &column, &meta)?;
 
         protocol
             .scheduler
-            .update("person", pk1, write_column, true, read, &calc, &meta)?;
+            .update("person", &pk1, &column, true, Some(&read), &deduct, &meta)?;
     } else {
-        let read = protocol
-            .scheduler
-            .read("person", pk1, &read_column, &meta)?; // read 1
-
-        // takes in current value of p1 and value of p2 via params
-        let calc = |columns: Vec<String>,
-                    current: Option<Vec<Data>>,
-                    params: Vec<Data>|
-         -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-            let current_value = i64::try_from(current.unwrap()[0].clone())?;
-
-            let other_value = i64::try_from(params[0].clone())?;
-
-            if current_value + other_value < 100 {
-                return Err(NonFatalError::NonSerializable);
-            }
-
-            // TODO: sleep
-
-            let nv = current_value - 100;
-            let new_values = vec![nv.to_string()]; // convert to string
-            Ok((columns, new_values)) // new values for columns
-        };
+        let read = protocol.scheduler.read("person", &pk1, &column, &meta)?;
 
         protocol
             .scheduler
-            .update("person", pk2, write_column, true, read, &calc, &meta)?;
+            .update("person", &pk2, &column, true, Some(&read), &deduct, &meta)?;
     }
 
     protocol.scheduler.commit(&meta)?; // commit
@@ -426,13 +418,16 @@ pub fn g2_item_write(
 ///
 /// TODO
 pub fn g2_item_read(params: G2itemRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    let columns: Vec<&str> = vec!["value"]; // columns to read
-    let pk1 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p1_id)); // pk
-    let pk2 = PrimaryKey::Acid(AcidPrimaryKey::Person(params.p2_id)); // pk
+    let columns = ["value"]; // columns to read
+    let pk1 = Acid(Person(params.p1_id)); // pk
+    let pk2 = Acid(Person(params.p2_id)); // pk
 
     let meta = protocol.scheduler.register().unwrap(); // register
-    let mut read1 = protocol.scheduler.read("person", pk1, &columns, &meta)?; // read
-    let mut read2 = protocol.scheduler.read("person", pk2, &columns, &meta)?; // read
+
+    let mut read1 = protocol.scheduler.read("person", &pk1, &columns, &meta)?; // read
+
+    let mut read2 = protocol.scheduler.read("person", &pk2, &columns, &meta)?; // read
+
     protocol.scheduler.commit(&meta)?; // commit
 
     read1.append(&mut read2);

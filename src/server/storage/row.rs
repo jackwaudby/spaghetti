@@ -123,7 +123,7 @@ impl Row {
         let field_index = schema.column_position_by_name(column)?;
         let field_type = schema.column_type_by_index(field_index);
 
-        data_eq_column(field_type, value)?;
+        data_eq_column(field_type, &value)?;
 
         self.current_fields[field_index].set(value);
 
@@ -183,7 +183,7 @@ impl Row {
                 let schema = self.table.get_schema(); // get schema
                 let field_index = schema.column_position_by_name(column)?; // get field index
                 let field_type = schema.column_type_by_index(field_index); // get field type
-                data_eq_column(field_type, Data::List(..))?; // check field is list type
+                data_eq_column(field_type, &Data::List(vec![]))?; // check field is list type
 
                 let prev_fields = self.current_fields.clone(); // set prev fields
                 self.prev_fields = Some(prev_fields);
@@ -244,7 +244,7 @@ impl Row {
                 for (i, col_name) in columns.iter().enumerate() {
                     let field_index = schema.column_position_by_name(col_name)?; // get index of field in row
                     let field_type = schema.column_type_by_index(field_index); // get type of field
-                    data_eq_column(field_type, values[i])?; // check field is list type
+                    data_eq_column(field_type, &values[i])?; // check field is list type
                     self.current_fields[field_index].set(values[i]);
                 }
 
@@ -300,7 +300,7 @@ impl Row {
     /// Make an update permanent.
     pub fn commit(&mut self, tid: &TransactionInfo) {
         self.state = State::Clean;
-        self.set_prev(None);
+        self.prev_fields = None;
 
         // safe to remove all accesses before this write; as if this committed all previous accesses must have committed.
         if let Some(mut ah) = self.access_history {
@@ -317,7 +317,7 @@ impl Row {
         match self.state {
             State::Deleted => self.state = State::Clean,
             State::Modified => {
-                self.current_fields = Some(self.prev_fields.take().unwrap()); // revert to old values
+                self.current_fields = self.prev_fields.take().unwrap(); // revert to old values
                 self.state = State::Clean;
 
                 // remove all accesses after this write as they should also have aborted
@@ -409,6 +409,7 @@ fn data_eq_column(a: &ColumnKind, b: &Data) -> Result<(), NonFatalError> {
     match (a, b) {
         (&ColumnKind::Double, &Data::Double(..)) => Ok(()),
         (&ColumnKind::Int, &Data::Int(..)) => Ok(()),
+        (&ColumnKind::Uint, &Data::Uint(..)) => Ok(()),
         (&ColumnKind::List, &Data::List(..)) => Ok(()),
         (&ColumnKind::VarChar, &Data::VarChar(..)) => Ok(()),
         _ => Err(NonFatalError::InvalidColumnType(a.to_string())), // TODO: need better error
@@ -427,12 +428,12 @@ impl fmt::Display for State {
 impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let table = Arc::clone(&self.table);
-        let fc = self.current_fields.unwrap().len();
+        let fc = self.current_fields.len();
         let mut fields = String::new();
-        for field in &self.current_fields.unwrap()[0..fc - 1] {
+        for field in &self.current_fields[0..fc - 1] {
             fields.push_str(format!("{}, ", field).as_str());
         }
-        let last = &self.current_fields.unwrap()[fc - 1];
+        let last = &self.current_fields[fc - 1];
         fields.push_str(format!("{}", last).as_str());
         write!(
             f,

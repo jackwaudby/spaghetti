@@ -2,7 +2,7 @@ use crate::common::error::{FatalError, NonFatalError};
 
 use std::fmt;
 
-// A `Catalog` contains the schema of a `Table`.
+// A catalog contains the schema of a table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Catalog {
     /// Table name.
@@ -16,6 +16,23 @@ pub struct Catalog {
 
     /// List of columns.
     columns: Vec<Column>,
+}
+
+/// An entry in a catalog's list of columns.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Column {
+    name: String,
+    kind: ColumnKind,
+}
+
+/// Column datatypes.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ColumnKind {
+    Int,
+    Uint,
+    VarChar,
+    Double,
+    List,
 }
 
 impl Catalog {
@@ -46,7 +63,8 @@ impl Catalog {
     /// Returns a fatal error if the desired column type is not recognised.
     pub fn add_column(&mut self, col: (&str, &str)) -> Result<(), FatalError> {
         let col_type = match col.1 {
-            "int" | "int64_t" | "uint64_t" => ColumnKind::Int,
+            "uint" => ColumnKind::Uint,
+            "int" => ColumnKind::Int,
             "string" => ColumnKind::VarChar,
             "double" => ColumnKind::Double,
             "list" => ColumnKind::List,
@@ -113,13 +131,6 @@ impl fmt::Display for Catalog {
     }
 }
 
-/// An entry in a `Catalog`s list of columns.
-#[derive(Debug, Clone, PartialEq)]
-pub struct Column {
-    name: String,
-    kind: ColumnKind,
-}
-
 impl Column {
     /// Create a new column.
     pub fn new(name: &str, kind: ColumnKind) -> Self {
@@ -147,19 +158,11 @@ impl fmt::Display for Column {
     }
 }
 
-/// Column datatypes.
-#[derive(Debug, Clone, PartialEq)]
-pub enum ColumnKind {
-    Int,
-    VarChar,
-    Double,
-    List,
-}
-
 /// Format: type
 impl fmt::Display for ColumnKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let printable = match *self {
+            ColumnKind::Uint => "uint",
             ColumnKind::Int => "int",
             ColumnKind::VarChar => "varchar",
             ColumnKind::Double => "double",

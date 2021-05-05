@@ -94,7 +94,7 @@ impl Scheduler for HitList {
         self.active_transactions
             .start_tracking(worker_id, id, start_epoch);
 
-        let info = TransactionInfo::new(Some(id.to_string()), None);
+        let info = TransactionInfo::HitList { txn_id: id };
         debug!("Thread {} registered a transaction", handle.name().unwrap());
 
         Ok(info)
@@ -113,103 +113,101 @@ impl Scheduler for HitList {
     fn create(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let tname = thread::current().name().unwrap().to_string();
-        let worker_id = tname.parse::<usize>().unwrap();
+        if let TransactionInfo::HitList { txn_id } = meta {
+            let worker_id = 0;
+            let table = self.get_table(table, &meta)?; // get table
+            let mut row = Row::new(key.clone(), Arc::clone(&table), true, true); // create new row
 
-        let handle = thread::current();
-        debug!("Thread {} executing create", handle.name().unwrap());
+            // init values
+            for (i, column) in columns.iter().enumerate() {
+                match row.init_value(column, Data::from(values[i])) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        self.abort(meta).unwrap();
+                        return Err(e);
+                    }
+                }
+            }
 
-        let table = self.get_table(table, &meta)?; // get table
-        let mut row = Row::new(Arc::clone(&table), "hit"); // create new row
-        row.set_primary_key(key.clone()); // set pk
+            let index = self.get_index(table, &meta)?; // get index
 
-        // init values
-        for (i, column) in columns.iter().enumerate() {
-            match row.init_value(column, &values[i].to_string()) {
+            // Set values - Needed to make the row "dirty"
+            match row.set_values(columns, values, meta) {
                 Ok(_) => {}
                 Err(e) => {
                     self.abort(&meta).unwrap();
                     return Err(e);
                 }
             }
-        }
 
-        let index = self.get_index(table, &meta)?; // get index
+            let pair = (index.get_name(), key.clone());
+            self.active_transactions
+                .add_key(worker_id, pair, Operation::Create);
 
-        // Set values - Needed to make the row "dirty"
-        match row.set_values(columns, values, "hit", &meta.get_id().unwrap()) {
-            Ok(_) => {}
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                return Err(e);
+            // attempt to insert row
+            match index.insert(key, row) {
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-        }
-
-        let pair = (index.get_name(), key.clone());
-        self.active_transactions
-            .add_key(worker_id, pair, Operation::Create);
-
-        // attempt to insert row
-        match index.insert(key, row) {
-            Ok(_) => Ok(()),
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
     /// Execute a read operation.
-    ///
-    /// A transaction aborts if:
-    /// - Table or index does not exist
-    /// - Incorrect column or value
     fn read(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        let tname = thread::current().name().unwrap().to_string();
-        let worker_id = tname.parse::<usize>().unwrap();
+        if let TransactionInfo::HitList { txn_id } = meta {
+            let worker_id = 0;
 
-        let handle = thread::current();
-        debug!("Thread {} executing read", handle.name().unwrap());
+            let table = self.get_table(table, &meta)?; // get table
+            let index = self.get_index(table, &meta)?; // get index
 
-        let table = self.get_table(table, &meta)?; // get table
-        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
-
-        // execute read
-        match index.read(key.clone(), columns, "hit", &meta.get_id().unwrap()) {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    // WR conflict
-                    if let Access::Write(tid) = access {
-                        let tid = tid.parse::<u64>().unwrap();
-                        self.active_transactions
-                            .add_predecessor(worker_id, tid, Predecessor::Read);
+            // execute read
+            match index.read(key, columns, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
+                    for access in access_history {
+                        // WR conflict
+                        if let Access::Write(tid) = access {
+                            if let TransactionInfo::HitList { txn_id } = tid {
+                                self.active_transactions.add_predecessor(
+                                    worker_id,
+                                    txn_id,
+                                    Predecessor::Read,
+                                );
+                            }
+                        }
                     }
+
+                    let pair = (index.get_name(), key.clone());
+                    self.active_transactions
+                        .add_key(worker_id, pair, Operation::Read);
+
+                    let vals = res.get_values(); // get the values
+
+                    Ok(vals)
                 }
-
-                let pair = (index.get_name(), key);
-                self.active_transactions
-                    .add_key(worker_id, pair, Operation::Read);
-
-                let vals = res.get_values().unwrap(); // get the values
-
-                Ok(vals)
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
@@ -217,61 +215,60 @@ impl Scheduler for HitList {
     fn read_and_update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        let tname = thread::current().name().unwrap().to_string();
-        let worker_id = tname.parse::<usize>().unwrap();
+        if let TransactionInfo::HitList { txn_id } = meta {
+            let worker_id = 0;
+            let table = self.get_table(table, &meta)?; // get table
+            let index = self.get_index(table, &meta)?; // get index
 
-        let handle = thread::current();
-        debug!(
-            "Thread {} executing read and update",
-            handle.name().unwrap()
-        );
-        let table = self.get_table(table, &meta)?; // get table
-        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
+            // execute read and update
+            match index.read_and_update(key, columns, values, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
 
-        // execute read and update
-        match index.read_and_update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    match access {
-                        // WW conflict
-                        Access::Write(tid) => {
-                            let tid = tid.parse::<u64>().unwrap();
-                            self.active_transactions.add_predecessor(
-                                worker_id,
-                                tid,
-                                Predecessor::Write,
-                            );
-                        }
-                        // RW conflict
-                        Access::Read(tid) => {
-                            let tid = tid.parse::<u64>().unwrap();
-                            self.active_transactions.add_predecessor(
-                                worker_id,
-                                tid,
-                                Predecessor::Write,
-                            );
+                    for access in access_history {
+                        match access {
+                            Access::Write(tid) => {
+                                if let TransactionInfo::HitList { txn_id } = tid {
+                                    self.active_transactions.add_predecessor(
+                                        worker_id,
+                                        txn_id,
+                                        Predecessor::Write,
+                                    );
+                                }
+                            }
+
+                            Access::Read(tid) => {
+                                if let TransactionInfo::HitList { txn_id } = tid {
+                                    self.active_transactions.add_predecessor(
+                                        worker_id,
+                                        txn_id,
+                                        Predecessor::Write,
+                                    );
+                                }
+                            }
                         }
                     }
+                    let pair = (index.get_name(), key.clone());
+                    self.active_transactions
+                        .add_key(worker_id, pair, Operation::Update);
+                    // TODO: register as read as well?
+
+                    let vals = res.get_values();
+
+                    Ok(vals)
                 }
-                let pair = (index.get_name(), key);
-                self.active_transactions
-                    .add_key(worker_id, pair, Operation::Update);
-                // TODO: register as read as well?
-
-                let vals = res.get_values().unwrap();
-
-                Ok(vals)
+                Err(e) => {
+                    self.abort(&meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
@@ -279,69 +276,61 @@ impl Scheduler for HitList {
     fn update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: Vec<String>,
+        key: &PrimaryKey,
+        columns: &[&str],
         read: bool,
-        params: Vec<Data>,
-        // (columns, current_values, parameters) -> (columns,new_values)
+        params: Option<&[Data]>,
         f: &dyn Fn(
-            Vec<String>,
-            Option<Vec<Data>>,
-            Vec<Data>,
-        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
+            &[&str],           // columns
+            Option<Vec<Data>>, // current values
+            Option<&[Data]>,   // parameters
+        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let tname = thread::current().name().unwrap().to_string();
-        let worker_id = tname.parse::<usize>().unwrap();
+        if let TransactionInfo::HitList { txn_id } = meta {
+            let worker_id = 0;
+            let table = self.get_table(table, &meta)?;
+            let index = self.get_index(Arc::clone(&table), &meta)?;
 
-        let handle = thread::current();
-        debug!("Thread {} executing  update", handle.name().unwrap());
-
-        let table = self.get_table(table, &meta)?;
-        let index = self.get_index(Arc::clone(&table), &meta)?;
-
-        match index.update(
-            key.clone(),
-            columns,
-            read,
-            params,
-            f,
-            "hit",
-            &meta.get_id().unwrap(),
-        ) {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    match access {
-                        // WW conflict
-                        Access::Write(tid) => {
-                            let tid = tid.parse::<u64>().unwrap();
-                            self.active_transactions.add_predecessor(
-                                worker_id,
-                                tid,
-                                Predecessor::Write,
-                            );
-                        }
-                        // RW conflict
-                        Access::Read(tid) => {
-                            let tid = tid.parse::<u64>().unwrap();
-                            self.active_transactions.add_predecessor(
-                                worker_id,
-                                tid,
-                                Predecessor::Write,
-                            );
+            match index.update(key, columns, read, params, f, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
+                    for access in access_history {
+                        match access {
+                            // WW conflict
+                            Access::Write(tid) => {
+                                if let TransactionInfo::HitList { txn_id } = tid {
+                                    self.active_transactions.add_predecessor(
+                                        worker_id,
+                                        txn_id,
+                                        Predecessor::Write,
+                                    );
+                                }
+                            }
+                            // RW conflict
+                            Access::Read(tid) => {
+                                if let TransactionInfo::HitList { txn_id } = tid {
+                                    self.active_transactions.add_predecessor(
+                                        worker_id,
+                                        txn_id,
+                                        Predecessor::Write,
+                                    );
+                                }
+                            }
                         }
                     }
+                    let pair = (index.get_name(), key.clone());
+                    self.active_transactions
+                        .add_key(worker_id, pair, Operation::Update);
+                    Ok(())
                 }
-                let pair = (index.get_name(), key);
-                self.active_transactions
-                    .add_key(worker_id, pair, Operation::Update);
-                Ok(())
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
@@ -349,54 +338,56 @@ impl Scheduler for HitList {
     fn append(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         column: &str,
-        value: &str,
+        value: Data,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let tname = thread::current().name().unwrap().to_string();
-        let worker_id = tname.parse::<usize>().unwrap();
+        if let TransactionInfo::HitList { txn_id } = meta {
+            let worker_id = 0; // TODO
 
-        let handle = thread::current();
-        debug!("Thread {} executing update", handle.name().unwrap());
+            let table = self.get_table(table, &meta)?;
+            let index = self.get_index(Arc::clone(&table), &meta)?;
 
-        let table = self.get_table(table, &meta)?;
-        let index = self.get_index(Arc::clone(&table), &meta)?;
-
-        match index.append(key.clone(), column, value, "hit", &meta.get_id().unwrap()) {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    match access {
-                        // WW conflict
-                        Access::Write(tid) => {
-                            let tid = tid.parse::<u64>().unwrap();
-                            self.active_transactions.add_predecessor(
-                                worker_id,
-                                tid,
-                                Predecessor::Write,
-                            );
-                        }
-                        // RW conflict
-                        Access::Read(tid) => {
-                            let tid = tid.parse::<u64>().unwrap();
-                            self.active_transactions.add_predecessor(
-                                worker_id,
-                                tid,
-                                Predecessor::Write,
-                            );
+            match index.append(key, column, value, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
+                    for access in access_history {
+                        match access {
+                            // WW conflict
+                            Access::Write(tid) => {
+                                if let TransactionInfo::HitList { txn_id } = tid {
+                                    self.active_transactions.add_predecessor(
+                                        worker_id,
+                                        txn_id,
+                                        Predecessor::Write,
+                                    );
+                                }
+                            }
+                            // RW conflict
+                            Access::Read(tid) => {
+                                if let TransactionInfo::HitList { txn_id } = tid {
+                                    self.active_transactions.add_predecessor(
+                                        worker_id,
+                                        txn_id,
+                                        Predecessor::Write,
+                                    );
+                                }
+                            }
                         }
                     }
+                    let pair = (index.get_name(), key.clone());
+                    self.active_transactions
+                        .add_key(worker_id, pair, Operation::Update);
+                    Ok(())
                 }
-                let pair = (index.get_name(), key);
-                self.active_transactions
-                    .add_key(worker_id, pair, Operation::Update);
-                Ok(())
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
@@ -404,186 +395,69 @@ impl Scheduler for HitList {
     fn delete(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let tname = thread::current().name().unwrap().to_string();
-        let worker_id = tname.parse::<usize>().unwrap();
+        if let TransactionInfo::HitList { txn_id } = meta {
+            let worker_id = 0; // TODO
+            let table = self.get_table(table, &meta)?; // get table
+            let index = self.get_index(table, &meta)?; // get index
 
-        let handle = thread::current();
-        debug!("Thread {} executing delete", handle.name().unwrap());
-
-        let table = self.get_table(table, &meta)?; // get table
-        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
-
-        match index.delete(key.clone(), "hit") {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    match access {
-                        // WW conflict
-                        Access::Write(tid) => {
-                            let tid = tid.parse::<u64>().unwrap();
-                            self.active_transactions.add_predecessor(
-                                worker_id,
-                                tid,
-                                Predecessor::Write,
-                            );
-                        }
-                        // RW conflict
-                        Access::Read(tid) => {
-                            let tid = tid.parse::<u64>().unwrap();
-                            self.active_transactions.add_predecessor(
-                                worker_id,
-                                tid,
-                                Predecessor::Write,
-                            );
+            match index.delete(key, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
+                    for access in access_history {
+                        match access {
+                            Access::Write(tid) => {
+                                if let TransactionInfo::HitList { txn_id } = tid {
+                                    self.active_transactions.add_predecessor(
+                                        worker_id,
+                                        txn_id,
+                                        Predecessor::Write,
+                                    );
+                                }
+                            }
+                            Access::Read(tid) => {
+                                if let TransactionInfo::HitList { txn_id } = tid {
+                                    self.active_transactions.add_predecessor(
+                                        worker_id,
+                                        txn_id,
+                                        Predecessor::Write,
+                                    );
+                                }
+                            }
                         }
                     }
-                }
-                let pair = (index.get_name(), key);
-                self.active_transactions
-                    .add_key(worker_id, pair, Operation::Delete);
+                    let pair = (index.get_name(), key.clone());
+                    self.active_transactions
+                        .add_key(worker_id, pair, Operation::Delete);
 
-                Ok(())
+                    Ok(())
+                }
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
     /// Abort a transaction.
-    ///
-    /// # Panics
-    /// - RWLock or Mutex error.
     fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
-        let tname = thread::current().name().unwrap().to_string();
-        let worker_id = tname.parse::<usize>().unwrap();
+        if let TransactionInfo::HitList { txn_id } = meta {
+            let id = *txn_id;
+            let worker_id = 0;
 
-        let handle = thread::current();
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
-        debug!("Thread {} aborting {}", handle.name().unwrap(), id);
+            let mut lock = self.asr.get_lock(); // get lock on resources
 
-        debug!("Thread {} requesting lock", handle.name().unwrap());
-        let mut lock = self.asr.get_lock(); // get lock on resources
-        debug!("Thread {} received lock", handle.name().unwrap());
+            lock.remove_from_hit_list(id); // remove aborted txn from hit list
+            lock.add_to_terminated_list(id, TransactionOutcome::Aborted); // add txn to terminated list
+            let se = self.active_transactions.get_start_epoch(worker_id); // register txn with gc
+            lock.get_mut_epoch_tracker().add_terminated(id, se); // add to epoch terminated
 
-        lock.remove_from_hit_list(id); // remove aborted txn from hit list
-        lock.add_to_terminated_list(id, TransactionOutcome::Aborted); // add txn to terminated list
-        let se = self.active_transactions.get_start_epoch(worker_id); // register txn with gc
-        lock.get_mut_epoch_tracker().add_terminated(id, se); // add to epoch terminated
-
-        // remove inserts/reads/updates/deletes
-        let inserted = self
-            .active_transactions
-            .get_keys(worker_id, Operation::Create);
-        let read = self
-            .active_transactions
-            .get_keys(worker_id, Operation::Read);
-        let updated = self
-            .active_transactions
-            .get_keys(worker_id, Operation::Update);
-        let deleted = self
-            .active_transactions
-            .get_keys(worker_id, Operation::Delete);
-
-        for (index, key) in inserted {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index.remove(key.clone()).unwrap();
-        }
-        for (index, key) in read {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index
-                .revert_read(key.clone(), &meta.get_id().unwrap())
-                .unwrap();
-        }
-        for (index, key) in &deleted {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index
-                .revert(key.clone(), "hit", &meta.get_id().unwrap())
-                .unwrap();
-        }
-        for (index, key) in &updated {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index
-                .revert(key.clone(), "hit", &meta.get_id().unwrap())
-                .unwrap();
-        }
-
-        drop(lock); // drop lock on resources
-        debug!("Thread {} dropped lock", handle.name().unwrap());
-        self.active_transactions.clear(worker_id);
-        Ok(())
-    }
-
-    /// Commit a transaction.
-    ///
-    /// There are two-phases to the commit procedure:
-    /// 1) Wait-phase; for each predecessor upon read; abort if active or aborted.
-    /// 2) Hit-phase; for each predecessor upon write; if in hit list then abort; else hit predecessors if they are active
-    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
-        let tname = thread::current().name().unwrap().to_string();
-        let worker_id = tname.parse::<usize>().unwrap();
-
-        let handle = thread::current();
-        let id = meta.get_id().unwrap().parse::<u64>().unwrap(); // get id
-        debug!("Thread {} committing txn {}", handle.name().unwrap(), id);
-        debug!("Thread {} requesting lock", handle.name().unwrap());
-        let mut lock = self.asr.get_lock(); // get lock on resources
-        debug!("Thread {} received lock", handle.name().unwrap());
-
-        debug!(
-            "Thread {} request write guard on entry in active transactions for txn {}",
-            handle.name().unwrap(),
-            id
-        );
-
-        debug!(
-            "Thread {} received write guard on entry in active transactions for txn {}",
-            handle.name().unwrap(),
-            id
-        );
-
-        let pur = self
-            .active_transactions
-            .get_predecessors(worker_id, Predecessor::Read);
-        let mut pur: Vec<u64> = pur.iter().cloned().collect(); // convert to vec
-        debug!("Thread {} entering wait phase", handle.name().unwrap());
-
-        // while pur is not empty;
-        // for each predecessor upon read;
-        while !pur.is_empty() {
-            let predecessor = pur.pop().unwrap(); // take a predecessor
-
-            // if terminated but aborted; then abort
-            if lock.has_terminated(predecessor) {
-                if lock.get_terminated_outcome(predecessor) == TransactionOutcome::Aborted {
-                    drop(lock); // drop lock on shared resources
-                    debug!("Thread {} dropped lock", handle.name().unwrap());
-                    self.abort(&meta).unwrap(); // abort txn
-                    return Err(HitListError::PredecessorAborted(id).into());
-                } // else; terminated and committed, continue
-            } else {
-                // if not terminated and committed; then abort
-                drop(lock); // drop lock on shared resources
-                debug!("Thread {} dropped lock", handle.name().unwrap());
-                self.abort(&meta).unwrap();
-                return Err(HitListError::PredecessorActive(id).into());
-            }
-        }
-
-        debug!("Thread {} wait phase complete", handle.name().unwrap());
-        debug!("Thread {} entering hit phase", handle.name().unwrap());
-
-        // if txn is not in hit list; then commit txn
-        if !lock.is_in_hit_list(id) {
-            debug!("Thread {} not in hit list", handle.name().unwrap());
-
-            debug!("Thread {} removed txn from active", handle.name().unwrap());
-
-            // commit changes
+            // remove inserts/reads/updates/deletes
             let inserted = self
                 .active_transactions
                 .get_keys(worker_id, Operation::Create);
@@ -599,49 +473,128 @@ impl Scheduler for HitList {
 
             for (index, key) in inserted {
                 let index = self.data.get_internals().get_index(&index).unwrap();
-                index.commit(key, "hit", &id.to_string()).unwrap();
-            }
-            for (index, key) in deleted {
-                let index = self.data.get_internals().get_index(&index).unwrap();
-                index.remove(key).unwrap();
-            }
-            for (index, key) in updated {
-                let index = self.data.get_internals().get_index(&index).unwrap();
-                index.commit(key, "hit", &id.to_string()).unwrap();
+                index.remove(&key).unwrap();
             }
             for (index, key) in read {
                 let index = self.data.get_internals().get_index(&index).unwrap();
-                index.revert_read(key, &meta.get_id().unwrap()).unwrap();
+                index.revert_read(&key, meta).unwrap();
             }
-            debug!("Thread {} committed changes", handle.name().unwrap());
-            // merge active transactions in PuW into hit list.
-            let puw = self
-                .active_transactions
-                .get_predecessors(worker_id, Predecessor::Write);
-            for predecessor in puw {
-                if !lock.has_terminated(predecessor) {
-                    lock.add_to_hit_list(predecessor);
-                }
+            for (index, key) in &deleted {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                index.revert(&key, meta).unwrap();
             }
-            debug!("Thread {} merged in hit list", handle.name().unwrap());
+            for (index, key) in &updated {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                index.revert(&key, meta).unwrap();
+            }
 
-            let se = self.active_transactions.get_start_epoch(worker_id);
-            lock.get_mut_epoch_tracker().add_terminated(id, se);
-            lock.add_to_terminated_list(id, TransactionOutcome::Committed);
-            debug!(
-                "Thread {} added to terminated  list",
-                handle.name().unwrap()
-            );
+            drop(lock); // drop lock on resources
+
             self.active_transactions.clear(worker_id);
-            drop(lock);
-            debug!("Thread {} dropped lock", handle.name().unwrap());
             Ok(())
         } else {
-            debug!("Thread {} in hit list", handle.name().unwrap());
-            drop(lock);
-            debug!("Thread {} dropped lock", handle.name().unwrap());
-            self.abort(&meta).unwrap();
-            Err(HitListError::TransactionInHitList(id).into())
+            panic!("unexpected transaction info");
+        }
+    }
+
+    /// Commit a transaction.
+    ///
+    /// There are two-phases to the commit procedure:
+    /// 1) Wait-phase; for each predecessor upon read; abort if active or aborted.
+    /// 2) Hit-phase; for each predecessor upon write; if in hit list then abort; else hit predecessors if they are active
+    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
+        if let TransactionInfo::HitList { txn_id } = meta {
+            let id = *txn_id;
+            let worker_id = 0;
+
+            let mut lock = self.asr.get_lock(); // get lock on resources
+
+            let pur = self
+                .active_transactions
+                .get_predecessors(worker_id, Predecessor::Read);
+            let mut pur: Vec<u64> = pur.iter().cloned().collect(); // convert to vec
+
+            // while pur is not empty;
+            // for each predecessor upon read;
+            while !pur.is_empty() {
+                let predecessor = pur.pop().unwrap(); // take a predecessor
+
+                // if terminated but aborted; then abort
+                if lock.has_terminated(predecessor) {
+                    if lock.get_terminated_outcome(predecessor) == TransactionOutcome::Aborted {
+                        drop(lock); // drop lock on shared resources
+
+                        self.abort(&meta).unwrap(); // abort txn
+                        return Err(HitListError::PredecessorAborted(id).into());
+                    } // else; terminated and committed, continue
+                } else {
+                    // if not terminated and committed; then abort
+                    drop(lock); // drop lock on shared resources
+
+                    self.abort(&meta).unwrap();
+                    return Err(HitListError::PredecessorActive(id).into());
+                }
+            }
+
+            // if txn is not in hit list; then commit txn
+            if !lock.is_in_hit_list(id) {
+                // commit changes
+                let inserted = self
+                    .active_transactions
+                    .get_keys(worker_id, Operation::Create);
+                let read = self
+                    .active_transactions
+                    .get_keys(worker_id, Operation::Read);
+                let updated = self
+                    .active_transactions
+                    .get_keys(worker_id, Operation::Update);
+                let deleted = self
+                    .active_transactions
+                    .get_keys(worker_id, Operation::Delete);
+
+                for (index, key) in inserted {
+                    let index = self.data.get_internals().get_index(&index).unwrap();
+                    index.commit(&key, meta).unwrap();
+                }
+                for (index, key) in deleted {
+                    let index = self.data.get_internals().get_index(&index).unwrap();
+                    index.remove(&key).unwrap();
+                }
+                for (index, key) in updated {
+                    let index = self.data.get_internals().get_index(&index).unwrap();
+                    index.commit(&key, meta).unwrap();
+                }
+                for (index, key) in read {
+                    let index = self.data.get_internals().get_index(&index).unwrap();
+                    index.revert_read(&key, meta).unwrap();
+                }
+
+                // merge active transactions in PuW into hit list.
+                let puw = self
+                    .active_transactions
+                    .get_predecessors(worker_id, Predecessor::Write);
+                for predecessor in puw {
+                    if !lock.has_terminated(predecessor) {
+                        lock.add_to_hit_list(predecessor);
+                    }
+                }
+
+                let se = self.active_transactions.get_start_epoch(worker_id);
+                lock.get_mut_epoch_tracker().add_terminated(id, se);
+                lock.add_to_terminated_list(id, TransactionOutcome::Committed);
+
+                self.active_transactions.clear(worker_id);
+                drop(lock);
+
+                Ok(())
+            } else {
+                drop(lock);
+
+                self.abort(&meta).unwrap();
+                Err(HitListError::TransactionInHitList(id).into())
+            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 

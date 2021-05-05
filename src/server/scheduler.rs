@@ -207,3 +207,19 @@ impl fmt::Display for Protocol {
         write!(f, "{}", self.scheduler)
     }
 }
+
+impl fmt::Display for TransactionInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use TransactionInfo::*;
+
+        match &self {
+            BasicSerializationGraph { thread_id, txn_id } => write!(f, "{}-{}", thread_id, txn_id),
+            OptimisticSerializationGraph { thread_id, txn_id } => {
+                write!(f, "{}-{}", thread_id, txn_id)
+            }
+            HitList { txn_id: u64 } => write!(f, "{}", txn_id),
+            OptimisticHitList { thread_id, txn_id } => write!(f, "{}-{}", thread_id, txn_id),
+            TwoPhaseLocking { txn_id, timestamp } => write!(f, "{}-{}", txn_id, timestamp),
+        }
+    }
+}

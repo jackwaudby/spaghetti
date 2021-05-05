@@ -1,4 +1,5 @@
 use crate::datagen::tatp::{AccessInfo, CallForwarding, SpecialFacility, Subscriber};
+use crate::server::storage::datatype::Data;
 use crate::server::storage::row::Row;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
@@ -35,46 +36,46 @@ pub fn load_sub_table(data: &Internal) -> Result<()> {
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         let s: Subscriber = result?;
-        let mut row = Row::new(Arc::clone(&subscriber), track_access, track_delayed);
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s.s_id.parse::<u64>()?));
-        row.set_primary_key(pk.clone());
-        row.init_value("s_id", &s.s_id)?;
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s.s_id));
+        let mut row = Row::new(pk, Arc::clone(&subscriber), track_access, track_delayed);
 
-        row.init_value("bit_1", &s.bit_1)?;
-        row.init_value("bit_2", &s.bit_2)?;
-        row.init_value("bit_3", &s.bit_3)?;
-        row.init_value("bit_4", &s.bit_4)?;
-        row.init_value("bit_5", &s.bit_5)?;
-        row.init_value("bit_6", &s.bit_6)?;
-        row.init_value("bit_7", &s.bit_7)?;
-        row.init_value("bit_8", &s.bit_8)?;
-        row.init_value("bit_9", &s.bit_9)?;
-        row.init_value("bit_10", &s.bit_10)?;
+        row.init_value("s_id", Data::from(s.s_id))?;
 
-        row.init_value("hex_1", &s.hex_1)?;
-        row.init_value("hex_2", &s.hex_2)?;
-        row.init_value("hex_3", &s.hex_3)?;
-        row.init_value("hex_4", &s.hex_4)?;
-        row.init_value("hex_5", &s.hex_5)?;
-        row.init_value("hex_6", &s.hex_6)?;
-        row.init_value("hex_7", &s.hex_7)?;
-        row.init_value("hex_8", &s.hex_8)?;
-        row.init_value("hex_9", &s.hex_9)?;
-        row.init_value("hex_10", &s.hex_10)?;
+        row.init_value("bit_1", Data::from(s.bit_1))?;
+        row.init_value("bit_2", Data::from(s.bit_2))?;
+        row.init_value("bit_3", Data::from(s.bit_3))?;
+        row.init_value("bit_4", Data::from(s.bit_4))?;
+        row.init_value("bit_5", Data::from(s.bit_5))?;
+        row.init_value("bit_6", Data::from(s.bit_6))?;
+        row.init_value("bit_7", Data::from(s.bit_7))?;
+        row.init_value("bit_8", Data::from(s.bit_8))?;
+        row.init_value("bit_9", Data::from(s.bit_9))?;
+        row.init_value("bit_10", Data::from(s.bit_10))?;
 
-        row.init_value("byte_2_1", &s.byte_2_1)?;
-        row.init_value("byte_2_2", &s.byte_2_2)?;
-        row.init_value("byte_2_3", &s.byte_2_3)?;
-        row.init_value("byte_2_4", &s.byte_2_4)?;
-        row.init_value("byte_2_5", &s.byte_2_5)?;
-        row.init_value("byte_2_6", &s.byte_2_6)?;
-        row.init_value("byte_2_7", &s.byte_2_7)?;
-        row.init_value("byte_2_8", &s.byte_2_8)?;
-        row.init_value("byte_2_9", &s.byte_2_9)?;
-        row.init_value("byte_2_10", &s.byte_2_10)?;
+        row.init_value("hex_1", Data::from(s.hex_1))?;
+        row.init_value("hex_2", Data::from(s.hex_2))?;
+        row.init_value("hex_3", Data::from(s.hex_3))?;
+        row.init_value("hex_4", Data::from(s.hex_4))?;
+        row.init_value("hex_5", Data::from(s.hex_5))?;
+        row.init_value("hex_6", Data::from(s.hex_6))?;
+        row.init_value("hex_7", Data::from(s.hex_7))?;
+        row.init_value("hex_8", Data::from(s.hex_8))?;
+        row.init_value("hex_9", Data::from(s.hex_9))?;
+        row.init_value("hex_10", Data::from(s.hex_10))?;
 
-        row.init_value("msc_location", &s.msc_location)?;
-        row.init_value("vlr_location", &s.vlr_location)?;
+        row.init_value("byte_2_1", Data::from(s.byte_2_1))?;
+        row.init_value("byte_2_2", Data::from(s.byte_2_2))?;
+        row.init_value("byte_2_3", Data::from(s.byte_2_3))?;
+        row.init_value("byte_2_4", Data::from(s.byte_2_4))?;
+        row.init_value("byte_2_5", Data::from(s.byte_2_5))?;
+        row.init_value("byte_2_6", Data::from(s.byte_2_6))?;
+        row.init_value("byte_2_7", Data::from(s.byte_2_7))?;
+        row.init_value("byte_2_8", Data::from(s.byte_2_8))?;
+        row.init_value("byte_2_9", Data::from(s.byte_2_9))?;
+        row.init_value("byte_2_10", Data::from(s.byte_2_10))?;
+
+        row.init_value("msc_location", Data::from(s.msc_location))?;
+        row.init_value("vlr_location", Data::from(s.vlr_location))?;
 
         sub_idx.insert(&pk, row)?;
     }
@@ -105,20 +106,15 @@ pub fn load_access_info_table(data: &Internal) -> Result<()> {
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         let ai: AccessInfo = result?;
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(ai.s_id, ai.ai_type));
+        let mut row = Row::new(pk, Arc::clone(&access_info), track_access, track_delayed);
 
-        let mut row = Row::new(Arc::clone(&access_info), track_access, track_delayed);
-
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(
-            ai.s_id.parse::<u64>()?,
-            ai.ai_type.parse::<u64>()?,
-        ));
-        row.set_primary_key(pk.clone());
-        row.init_value("s_id", &ai.s_id)?;
-        row.init_value("ai_type", &ai.ai_type)?;
-        row.init_value("data_1", &ai.data_1)?;
-        row.init_value("data_2", &ai.data_2)?;
-        row.init_value("data_3", &ai.data_3)?;
-        row.init_value("data_4", &ai.data_4)?;
+        row.init_value("s_id", Data::from(ai.s_id))?;
+        row.init_value("ai_type", Data::from(ai.ai_type))?;
+        row.init_value("data_1", Data::from(ai.data_1))?;
+        row.init_value("data_2", Data::from(ai.data_2))?;
+        row.init_value("data_3", Data::from(ai.data_3))?;
+        row.init_value("data_4", Data::from(ai.data_4))?;
 
         access_idx.insert(&pk, row)?;
     }
@@ -151,18 +147,24 @@ pub fn load_call_forwarding_table(data: &Internal) -> Result<()> {
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         let cf: CallForwarding = result?;
-        let mut row = Row::new(Arc::clone(&call_forwarding), track_access, track_delayed);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(
-            cf.s_id.parse::<u64>()?,
-            cf.sf_type.parse::<u64>()?,
-            cf.start_time.parse::<u64>()?,
+            cf.s_id,
+            cf.sf_type,
+            cf.start_time,
         ));
-        row.set_primary_key(pk.clone());
-        row.init_value("s_id", &cf.s_id)?;
-        row.init_value("sf_type", &cf.sf_type)?;
-        row.init_value("start_time", &cf.start_time)?;
-        row.init_value("end_time", &cf.end_time)?;
-        row.init_value("number_x", &cf.number_x)?;
+
+        let mut row = Row::new(
+            pk,
+            Arc::clone(&call_forwarding),
+            track_access,
+            track_delayed,
+        );
+
+        row.init_value("s_id", Data::from(cf.s_id))?;
+        row.init_value("sf_type", Data::from(cf.sf_type))?;
+        row.init_value("start_time", Data::from(cf.start_time))?;
+        row.init_value("end_time", Data::from(cf.end_time))?;
+        row.init_value("number_x", Data::from(cf.number_x))?;
 
         call_idx.insert(&pk, row)?;
     }
@@ -196,18 +198,21 @@ pub fn load_special_facility_table(data: &Internal) -> Result<()> {
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         let sf: SpecialFacility = result?;
-        let mut row = Row::new(Arc::clone(&special_facility), track_access, track_delayed);
-        let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
-            sf.s_id.parse::<u64>()?,
-            sf.sf_type.parse::<u64>()?,
-        ));
-        row.set_primary_key(pk.clone());
-        row.init_value("s_id", &sf.s_id)?;
-        row.init_value("sf_type", &sf.sf_type)?;
-        row.init_value("is_active", &sf.is_active)?;
-        row.init_value("error_cntrl", &sf.error_cntrl)?;
-        row.init_value("data_a", &sf.data_a)?;
-        row.init_value("data_b", &sf.data_b)?;
+        let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(sf.s_id, sf.sf_type));
+
+        let mut row = Row::new(
+            pk,
+            Arc::clone(&special_facility),
+            track_access,
+            track_delayed,
+        );
+
+        row.init_value("s_id", Data::from(sf.s_id))?;
+        row.init_value("sf_type", Data::from(sf.sf_type))?;
+        row.init_value("is_active", Data::from(sf.is_active))?;
+        row.init_value("error_cntrl", Data::from(sf.error_cntrl))?;
+        row.init_value("data_a", Data::from(sf.data_a))?;
+        row.init_value("data_b", Data::from(sf.data_b))?;
 
         special_idx.insert(&pk, row)?;
     }
@@ -248,27 +253,33 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
     };
 
     for s_id in 1..=subs {
-        let mut row = Row::new(Arc::clone(&subscriber), track_access, track_delayed);
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
-        row.set_primary_key(pk.clone());
-        row.init_value("s_id", &s_id.to_string())?;
-        row.init_value("sub_nbr", &helper::to_sub_nbr(s_id))?;
+        let mut row = Row::new(pk, Arc::clone(&subscriber), track_access, track_delayed);
+
+        row.init_value("s_id", Data::from(s_id))?;
+        row.init_value("sub_nbr", Data::from(helper::to_sub_nbr(s_id)))?;
         for i in 1..=10 {
             row.init_value(
                 format!("bit_{}", i).as_str(),
-                &rng.gen_range(0..=1).to_string(),
+                Data::from(rng.gen_range(0..=1) as u64),
             )?;
             row.init_value(
                 format!("hex_{}", i).as_str(),
-                &rng.gen_range(0..=15).to_string(),
+                Data::from(rng.gen_range(0..=15) as u64),
             )?;
             row.init_value(
                 format!("byte_2_{}", i).as_str(),
-                &rng.gen_range(0..=255).to_string(),
+                Data::from(rng.gen_range(0..=255) as u64),
             )?;
         }
-        row.init_value("msc_location", &rng.gen_range(1..(2 ^ 32)).to_string())?;
-        row.init_value("vlr_location", &rng.gen_range(1..(2 ^ 32)).to_string())?;
+        row.init_value(
+            "msc_location",
+            Data::from(rng.gen_range(1..(2 ^ 32)) as u64),
+        )?;
+        row.init_value(
+            "vlr_location",
+            Data::from(rng.gen_range(1..(2 ^ 32)) as u64),
+        )?;
 
         sub_idx.insert(&pk, row)?;
     }
@@ -304,15 +315,15 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
 
         let sample = ai_type_values.iter().choose_multiple(rng, n_ai); // randomly sample w.o. replacement from range of ai_type values
         for record in 1..=n_ai {
-            let mut row = Row::new(Arc::clone(&access_info), track_access, track_delayed);
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(s_id, record as u64));
-            row.set_primary_key(pk.clone());
-            row.init_value("s_id", &s_id.to_string())?;
-            row.init_value("ai_type", &sample[record - 1].to_string())?;
-            row.init_value("data_1", &rng.gen_range(0..=255).to_string())?;
-            row.init_value("data_2", &rng.gen_range(0..=255).to_string())?;
-            row.init_value("data_3", &helper::get_data_x(3, rng))?;
-            row.init_value("data_4", &helper::get_data_x(5, rng))?;
+            let mut row = Row::new(pk, Arc::clone(&access_info), track_access, track_delayed);
+
+            row.init_value("s_id", Data::from(s_id))?;
+            row.init_value("ai_type", Data::from(*sample[record - 1] as u64))?;
+            row.init_value("data_1", Data::from(rng.gen_range(0..=255) as u64))?;
+            row.init_value("data_2", Data::from(rng.gen_range(0..=255) as u64))?;
+            row.init_value("data_3", Data::from(helper::get_data_x(3, rng)))?;
+            row.init_value("data_4", Data::from(helper::get_data_x(5, rng)))?;
 
             access_idx.insert(&pk, row)?;
         }
@@ -360,16 +371,21 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
         let sample = sf_type_values.iter().choose_multiple(rng, n_sf); // randomly sample w.o. replacement from range of ai_type values
 
         for record in 1..=n_sf {
-            let mut row = Row::new(Arc::clone(&special_facility), track_access, track_delayed); // initialise empty row
-            let is_active = helper::is_active(rng); // calculate is_active
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(s_id, record as u64)); // calculate primary key
-            row.set_primary_key(pk.clone());
-            row.init_value("s_id", &s_id.to_string())?;
-            row.init_value("sf_type", &sample[record - 1].to_string())?;
-            row.init_value("is_active", &is_active.to_string())?;
-            row.init_value("error_cntrl", &rng.gen_range(0..=255).to_string())?;
-            row.init_value("data_a", &rng.gen_range(0..=255).to_string())?;
-            row.init_value("data_b", &helper::get_data_x(5, rng))?;
+            let mut row = Row::new(
+                pk,
+                Arc::clone(&special_facility),
+                track_access,
+                track_delayed,
+            ); // initialise empty row
+            let is_active = helper::is_active(rng); // calculate is_active
+
+            row.init_value("s_id", Data::from(s_id))?;
+            row.init_value("sf_type", Data::from(*sample[record - 1] as u64))?;
+            row.init_value("is_active", Data::from(is_active))?;
+            row.init_value("error_cntrl", Data::from(rng.gen_range(0..=255) as u64))?;
+            row.init_value("data_a", Data::from(rng.gen_range(0..=255) as u64))?;
+            row.init_value("data_b", Data::from(helper::get_data_x(5, rng)))?;
 
             special_idx.insert(&pk, row)?;
 
@@ -378,8 +394,6 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
             let start_times = start_time_values.iter().choose_multiple(rng, n_cf); // randomly sample w.o. replacement from range of ai_type values
             if n_cf != 0 {
                 for i in 1..=n_cf {
-                    // s_id from above
-                    // sf_type from above
                     let st = *start_times[i - 1];
                     let et = st + rng.gen_range(1..=8);
                     let nx = helper::get_number_x(rng);
@@ -387,14 +401,18 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                     let pk =
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(s_id, record as u64, st));
 
-                    let mut row =
-                        Row::new(Arc::clone(&call_forwarding), track_access, track_delayed);
-                    row.set_primary_key(pk.clone());
-                    row.init_value("s_id", &s_id.to_string())?;
-                    row.init_value("sf_type", &sample[record - 1].to_string())?;
-                    row.init_value("start_time", &st.to_string())?;
-                    row.init_value("end_time", &et.to_string())?;
-                    row.init_value("number_x", &nx)?;
+                    let mut row = Row::new(
+                        pk,
+                        Arc::clone(&call_forwarding),
+                        track_access,
+                        track_delayed,
+                    );
+
+                    row.init_value("s_id", Data::from(s_id))?;
+                    row.init_value("sf_type", Data::from(*sample[record - 1] as u64))?;
+                    row.init_value("start_time", Data::from(st))?;
+                    row.init_value("end_time", Data::from(et))?;
+                    row.init_value("number_x", Data::from(nx))?;
 
                     call_idx.insert(&pk, row)?;
                 }

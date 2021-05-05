@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 
 /// Generate `Person` records.
 pub fn persons(persons: u64, sf: u64) -> Result<()> {
-    // TODO: see person knows person
     let mut wtr = WriterBuilder::new()
         .has_headers(false)
         .from_path(format!("./data/acid/sf-{}/persons.csv", sf))?;

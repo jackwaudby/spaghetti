@@ -1,14 +1,14 @@
 //size,type,name
 TABLE=PERSON
-    8,int,P_ID
-    1,int,VERSION
-    1,int,NUM_FRIENDS
+    8,uint,P_ID
+    1,uint,VERSION
+    1,uint,NUM_FRIENDS
     1,list,VERSION_HISTORY
     1,int,VALUE
 
 TABLE=KNOWS
-    1,int,P1_ID
-   1,int,P2_ID
+   1,uint,P1_ID
+   1,uint,P2_ID
    1,list,VERSION_HISTORY
 
 INDEX=PERSON_IDX

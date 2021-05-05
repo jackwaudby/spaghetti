@@ -343,7 +343,7 @@ pub struct G0Read {
     pub p2_id: u64,
 }
 
-x#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub struct G1aWrite {
     pub p_id: u64,
     pub version: u64,

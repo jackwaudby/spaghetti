@@ -61,7 +61,10 @@ impl Scheduler for OptimisedHitList {
 
         debug!("Register: {}", transaction_id);
 
-        Ok(TransactionInfo::new(Some(transaction_id), None))
+        Ok(TransactionInfo::OptimisticHitList(
+            Some(transaction_id),
+            None,
+        ))
     }
 
     /// Create row in table.
@@ -77,102 +80,97 @@ impl Scheduler for OptimisedHitList {
     fn create(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let (thread_id, seq_num) = parse_id(meta.get_id().unwrap()); // split
-        debug!("Create: {}-{}", thread_id, seq_num);
+        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let seq_num = *txn_id;
+            let thread_id = *thread_id;
 
-        let table = self.get_table(table, &meta)?; // get table
-        let mut row = Row::new(Arc::clone(&table), "hit"); // create new row
-        row.set_primary_key(key.clone()); // set pk
+            let table = self.get_table(table, &meta)?; // get table
+            let mut row = Row::new(key.clone(), Arc::clone(&table), true, true); // create new row
 
-        // init values
-        for (i, column) in columns.iter().enumerate() {
-            match row.init_value(column, &values[i].to_string()) {
+            // init values
+            for (i, column) in columns.iter().enumerate() {
+                match row.init_value(column, Data::from(values[i])) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        self.abort(meta).unwrap();
+                        return Err(e);
+                    }
+                }
+            }
+
+            let index = self.get_index(table, &meta)?; // get index
+
+            // Set values - Needed to make the row "dirty"
+            match row.set_values(columns, values, meta) {
                 Ok(_) => {}
                 Err(e) => {
-                    self.abort(&meta).unwrap();
+                    self.abort(meta).unwrap();
                     return Err(e);
                 }
             }
-        }
 
-        let index = self.get_index(table, &meta)?; // get index
+            // attempt to insert row
+            match index.insert(key, row) {
+                Ok(_) => {
+                    let pair = (index.get_name(), key.clone());
+                    self.thread_states[thread_id].add_key(seq_num, pair, Operation::Create); // register
 
-        // Set values - Needed to make the row "dirty"
-        match row.set_values(columns, values, "hit", &meta.get_id().unwrap()) {
-            Ok(_) => {}
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                return Err(e);
+                    Ok(())
+                }
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-        }
-
-        // attempt to insert row
-        match index.insert(key.clone(), row) {
-            Ok(_) => {
-                let pair = (index.get_name(), key);
-                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Create); // register
-
-                Ok(())
-            }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
     /// Execute a read operation.
-    ///
-    /// A transaction aborts if:
-    /// - Table or index does not exist
-    /// - Incorrect column or value
     fn read(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        let (thread_id, seq_num) = parse_id(meta.get_id().unwrap()); // split transaction_id
-        debug!("Read: {}-{}", thread_id, seq_num);
+        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let seq_num = *txn_id;
+            let table = self.get_table(table, &meta)?;
+            let index = self.get_index(table, &meta)?;
 
-        let table = self.get_table(table, &meta)?; // get table
-        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
-
-        match index.read(key.clone(), columns, "hit", &meta.get_id().unwrap()) {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    // WR conflict
-                    if let Access::Write(predecessor_id) = access {
-                        if predecessor_id != meta.get_id().unwrap() {
-                            debug!(
-                                "Read: {}-{}; predecessor: {}",
-                                thread_id, seq_num, predecessor_id
-                            );
-
-                            self.thread_states[thread_id].add_predecessor(
-                                seq_num,
-                                predecessor_id,
-                                PredecessorUpon::Read,
-                            );
+            match index.read(key, columns, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
+                    for access in access_history {
+                        if let Access::Write(predecessor_id) = access {
+                            if &predecessor_id != meta {
+                                self.thread_states[*thread_id].add_predecessor(
+                                    seq_num,
+                                    predecessor_id.to_string(),
+                                    PredecessorUpon::Read,
+                                );
+                            }
                         }
                     }
+                    let pair = (index.get_name(), key.clone());
+                    self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Read); // register operation; used to clean up.
+                    let vals = res.get_values(); // get the values
+                    Ok(vals)
                 }
-                let pair = (index.get_name(), key);
-                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Read); // register operation; used to clean up.
-                let vals = res.get_values().unwrap(); // get the values
-                Ok(vals)
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
@@ -180,61 +178,56 @@ impl Scheduler for OptimisedHitList {
     fn read_and_update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        let (thread_id, seq_num) = parse_id(meta.get_id().unwrap()); // transaction_id
-        let table = self.get_table(table, &meta)?; // get table
-        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
+        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let seq_num = *txn_id;
+            let table = self.get_table(table, &meta)?;
+            let index = self.get_index(Arc::clone(&table), &meta)?;
 
-        match index.read_and_update(key.clone(), columns, values, "hit", &meta.get_id().unwrap()) {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    match access {
-                        // WW conflict
-                        Access::Write(predecessor_id) => {
-                            if predecessor_id != meta.get_id().unwrap() {
-                                debug!(
-                                    "Read: {}-{}; predecessor: {}",
-                                    thread_id, seq_num, predecessor_id
-                                );
-                                self.thread_states[thread_id].add_predecessor(
-                                    seq_num,
-                                    predecessor_id,
-                                    PredecessorUpon::Write,
-                                );
+            match index.read_and_update(key, columns, values, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
+                    for access in access_history {
+                        match access {
+                            Access::Write(predecessor_id) => {
+                                if &predecessor_id != meta {
+                                    self.thread_states[*thread_id].add_predecessor(
+                                        seq_num,
+                                        predecessor_id.to_string(),
+                                        PredecessorUpon::Write,
+                                    );
+                                }
                             }
-                        }
-                        // RW conflict
-                        Access::Read(predecessor_id) => {
-                            if predecessor_id != meta.get_id().unwrap() {
-                                debug!(
-                                    "Read: {}-{}; predecessor: {}",
-                                    thread_id, seq_num, predecessor_id
-                                );
-                                self.thread_states[thread_id].add_predecessor(
-                                    seq_num,
-                                    predecessor_id,
-                                    PredecessorUpon::Write,
-                                );
+
+                            Access::Read(predecessor_id) => {
+                                if &predecessor_id != meta {
+                                    self.thread_states[*thread_id].add_predecessor(
+                                        seq_num,
+                                        predecessor_id.to_string(),
+                                        PredecessorUpon::Write,
+                                    );
+                                }
                             }
                         }
                     }
-                }
 
-                // TODO: register read operation as well
-                let pair = (index.get_name(), key);
-                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Update); // register operation; used to clean up.
-                let vals = res.get_values().unwrap(); // get vals
-                Ok(vals)
+                    // TODO: register read operation as well
+                    let pair = (index.get_name(), key.clone());
+                    self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Update); // register operation; used to clean up.
+                    let vals = res.get_values(); // get vals
+                    Ok(vals)
+                }
+                Err(e) => {
+                    self.abort(&meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
@@ -242,75 +235,59 @@ impl Scheduler for OptimisedHitList {
     fn update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: Vec<String>,
+        key: &PrimaryKey,
+        columns: &[&str],
         read: bool,
-        params: Vec<Data>,
-        // (columns, current_values, parameters) -> (columns,new_values)
+        params: Option<&[Data]>,
         f: &dyn Fn(
-            Vec<String>,
-            Option<Vec<Data>>,
-            Vec<Data>,
-        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
+            &[&str],           // columns
+            Option<Vec<Data>>, // current values
+            Option<&[Data]>,   // parameters
+        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let (thread_id, seq_num) = parse_id(meta.get_id().unwrap());
-        debug!("Update: {}-{}", thread_id, seq_num);
+        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let seq_num = *txn_id;
+            let table = self.get_table(table, &meta)?;
+            let index = self.get_index(table, &meta)?;
 
-        let table = self.get_table(table, &meta)?;
-        let index = self.get_index(Arc::clone(&table), &meta)?;
-
-        match index.update(
-            key.clone(),
-            columns,
-            read,
-            params,
-            f,
-            "hit",
-            &meta.get_id().unwrap(),
-        ) {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    match access {
-                        // WW conflict
-                        Access::Write(predecessor_id) => {
-                            if predecessor_id != meta.get_id().unwrap() {
-                                debug!(
-                                    "Read: {}-{}; predecessor: {}",
-                                    thread_id, seq_num, predecessor_id
-                                );
-                                self.thread_states[thread_id].add_predecessor(
-                                    seq_num,
-                                    predecessor_id,
-                                    PredecessorUpon::Write,
-                                );
+            match index.update(key, columns, read, params, f, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
+                    for access in access_history {
+                        match access {
+                            Access::Write(predecessor_id) => {
+                                if &predecessor_id != meta {
+                                    self.thread_states[*thread_id].add_predecessor(
+                                        seq_num,
+                                        predecessor_id.to_string(),
+                                        PredecessorUpon::Write,
+                                    );
+                                }
                             }
-                        }
-                        // RW conflict
-                        Access::Read(predecessor_id) => {
-                            if predecessor_id != meta.get_id().unwrap() {
-                                debug!(
-                                    "Read: {}-{}; predecessor: {}",
-                                    thread_id, seq_num, predecessor_id
-                                );
-                                self.thread_states[thread_id].add_predecessor(
-                                    seq_num,
-                                    predecessor_id,
-                                    PredecessorUpon::Write,
-                                );
+
+                            Access::Read(predecessor_id) => {
+                                if &predecessor_id != meta {
+                                    self.thread_states[*thread_id].add_predecessor(
+                                        seq_num,
+                                        predecessor_id.to_string(),
+                                        PredecessorUpon::Write,
+                                    );
+                                }
                             }
                         }
                     }
+                    let pair = (index.get_name(), key.clone());
+                    self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Update);
+                    Ok(())
                 }
-                let pair = (index.get_name(), key);
-                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Update);
-                Ok(())
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
@@ -318,60 +295,54 @@ impl Scheduler for OptimisedHitList {
     fn append(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         column: &str,
-        value: &str,
+        value: Data,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let (thread_id, seq_num) = parse_id(meta.get_id().unwrap());
-        debug!("Update: {}-{}", thread_id, seq_num);
+        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let seq_num = *txn_id;
 
-        let table = self.get_table(table, &meta)?;
-        let index = self.get_index(Arc::clone(&table), &meta)?;
+            let table = self.get_table(table, &meta)?;
+            let index = self.get_index(Arc::clone(&table), &meta)?;
 
-        match index.append(key.clone(), column, value, "hit", &meta.get_id().unwrap()) {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    match access {
-                        // WW conflict
-                        Access::Write(predecessor_id) => {
-                            if predecessor_id != meta.get_id().unwrap() {
-                                debug!(
-                                    "Read: {}-{}; predecessor: {}",
-                                    thread_id, seq_num, predecessor_id
-                                );
-                                self.thread_states[thread_id].add_predecessor(
-                                    seq_num,
-                                    predecessor_id,
-                                    PredecessorUpon::Write,
-                                );
+            match index.append(key, column, value, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
+                    for access in access_history {
+                        match access {
+                            Access::Write(predecessor_id) => {
+                                if &predecessor_id != meta {
+                                    self.thread_states[*thread_id].add_predecessor(
+                                        seq_num,
+                                        predecessor_id.to_string(),
+                                        PredecessorUpon::Write,
+                                    );
+                                }
                             }
-                        }
-                        // RW conflict
-                        Access::Read(predecessor_id) => {
-                            if predecessor_id != meta.get_id().unwrap() {
-                                debug!(
-                                    "Read: {}-{}; predecessor: {}",
-                                    thread_id, seq_num, predecessor_id
-                                );
-                                self.thread_states[thread_id].add_predecessor(
-                                    seq_num,
-                                    predecessor_id,
-                                    PredecessorUpon::Write,
-                                );
+                            // RW conflict
+                            Access::Read(predecessor_id) => {
+                                if predecessor_id != *meta {
+                                    self.thread_states[*thread_id].add_predecessor(
+                                        seq_num,
+                                        predecessor_id.to_string(),
+                                        PredecessorUpon::Write,
+                                    );
+                                }
                             }
                         }
                     }
+                    let pair = (index.get_name(), key.clone());
+                    self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Update);
+                    Ok(())
                 }
-                let pair = (index.get_name(), key);
-                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Update);
-                Ok(())
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
@@ -379,233 +350,216 @@ impl Scheduler for OptimisedHitList {
     fn delete(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let (thread_id, seq_num) = parse_id(meta.get_id().unwrap());
-        debug!("Delete: {}-{}", thread_id, seq_num);
+        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let seq_num = *txn_id;
+            let table = self.get_table(table, &meta)?; // get table
+            let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
-        let table = self.get_table(table, &meta)?; // get table
-        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
-
-        match index.delete(key.clone(), "hit") {
-            Ok(res) => {
-                let access_history = res.get_access_history();
-                for access in access_history {
-                    match access {
-                        // WW conflict
-                        Access::Write(predecessor_id) => {
-                            if predecessor_id != meta.get_id().unwrap() {
-                                self.thread_states[thread_id].add_predecessor(
-                                    seq_num,
-                                    predecessor_id,
-                                    PredecessorUpon::Write,
-                                );
+            match index.delete(key, meta) {
+                Ok(res) => {
+                    let access_history = res.get_access_history();
+                    for access in access_history {
+                        match access {
+                            // WW conflict
+                            Access::Write(predecessor_id) => {
+                                if &predecessor_id != meta {
+                                    self.thread_states[*thread_id].add_predecessor(
+                                        seq_num,
+                                        predecessor_id.to_string(),
+                                        PredecessorUpon::Write,
+                                    );
+                                }
                             }
-                        }
-                        // RW conflict
-                        Access::Read(predecessor_id) => {
-                            if predecessor_id != meta.get_id().unwrap() {
-                                self.thread_states[thread_id].add_predecessor(
-                                    seq_num,
-                                    predecessor_id,
-                                    PredecessorUpon::Write,
-                                );
+                            // RW conflict
+                            Access::Read(predecessor_id) => {
+                                if &predecessor_id != meta {
+                                    self.thread_states[*thread_id].add_predecessor(
+                                        seq_num,
+                                        predecessor_id.to_string(),
+                                        PredecessorUpon::Write,
+                                    );
+                                }
                             }
                         }
                     }
+                    let pair = (index.get_name(), key.clone());
+                    self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Delete);
+                    Ok(())
                 }
-                let pair = (index.get_name(), key);
-                self.thread_states[thread_id].add_key(seq_num, pair, Operation::Delete);
-                Ok(())
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    Err(e)
+                }
             }
-            Err(e) => {
-                self.abort(&meta).unwrap();
-                Err(e)
-            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 
     /// Abort a transaction.
     fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
-        let transaction_id = meta.get_id().unwrap(); // get transaction id
-        let (thread_id, seq_num) = parse_id(transaction_id); // split into thread id + seq
-        self.thread_states[thread_id].set_state(seq_num, TransactionState::Aborted); // set state.
+        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let seq_num = *txn_id;
+            self.thread_states[*thread_id].set_state(seq_num, TransactionState::Aborted); // set state.
 
-        let rg = &self.thread_states[thread_id];
-        let x = rg.get_transaction_id(seq_num);
+            let rg = &self.thread_states[*thread_id];
+            let x = rg.get_transaction_id(seq_num);
 
-        assert_eq!(x, seq_num, "{} != {}", x, seq_num);
+            assert_eq!(x, seq_num, "{} != {}", x, seq_num);
 
-        let inserted = rg.get_keys(seq_num, Operation::Create);
-        let read = rg.get_keys(seq_num, Operation::Read);
-        let updated = rg.get_keys(seq_num, Operation::Update);
-        let deleted = rg.get_keys(seq_num, Operation::Delete);
+            let inserted = rg.get_keys(seq_num, Operation::Create);
+            let read = rg.get_keys(seq_num, Operation::Read);
+            let updated = rg.get_keys(seq_num, Operation::Update);
+            let deleted = rg.get_keys(seq_num, Operation::Delete);
 
-        for (index, key) in inserted {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index.remove(key.clone()).unwrap();
-        }
-
-        // This operation can fail of the transaction you read from has already aborted and removed the record.
-        for (index, key) in read {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            match index.revert_read(key.clone(), &meta.get_id().unwrap()) {
-                Ok(()) => {} // record was there
-                Err(_) => {} // record already removed
+            for (index, key) in inserted {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                index.remove(&key).unwrap();
             }
-        }
 
-        for (index, key) in &deleted {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index
-                .revert(key.clone(), "hit", &meta.get_id().unwrap())
-                .unwrap();
-        }
-        for (index, key) in &updated {
-            let index = self.data.get_internals().get_index(&index).unwrap();
-            index
-                .revert(key.clone(), "hit", &meta.get_id().unwrap())
-                .unwrap();
-        }
+            // This operation can fail of the transaction you read from has already aborted and removed the record.
+            for (index, key) in read {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                match index.revert_read(&key, meta) {
+                    Ok(()) => {} // record was there
+                    Err(_) => {} // record already removed
+                }
+            }
 
-        let se = rg.get_start_epoch(seq_num);
-        rg.get_epoch_tracker().add_terminated(seq_num, se);
+            for (index, key) in &deleted {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                index.revert(key, meta).unwrap();
+            }
+            for (index, key) in &updated {
+                let index = self.data.get_internals().get_index(&index).unwrap();
+                index.revert(key, meta).unwrap();
+            }
 
-        Ok(())
+            let se = rg.get_start_epoch(seq_num);
+            rg.get_epoch_tracker().add_terminated(seq_num, se);
+
+            Ok(())
+        } else {
+            panic!("unexpected transaction info");
+        }
     }
 
     /// Commit a transaction.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
-        let handle = thread::current();
-        let transaction_id = meta.get_id().unwrap(); // get transaction id
+        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let seq_num = *txn_id;
+            // CHECK //
 
-        let (thread_id, seq_num) = parse_id(transaction_id); // split into thread id + seq
-
-        // CHECK //
-
-        if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
-            self.abort(&meta).unwrap(); // abort txn
-            return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
-        }
-
-        // HIT PHASE //
-        debug!("Thread {}: start hit phase", handle.name().unwrap());
-        let mut hit_list = self.thread_states[thread_id].get_hit_list(seq_num); // get hit list
-
-        while !hit_list.is_empty() {
-            let predecessor = hit_list.pop().unwrap(); // take a predecessor
-            let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
-
-            // if active then hit
-            if let TransactionState::Active = self.thread_states[p_thread_id].get_state(p_seq_num) {
-                self.thread_states[p_thread_id].set_state(p_seq_num, TransactionState::Aborted);
-            }
-        }
-        debug!("Thread {}: finish hit phase", handle.name().unwrap());
-
-        // CHECK //
-        if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
-            self.abort(&meta).unwrap(); // abort txn
-            return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
-        }
-
-        // WAIT PHASE //
-        debug!("Thread {}: start wait phase", handle.name().unwrap());
-
-        let mut wait_list = self.thread_states[thread_id].get_wait_list(seq_num); // get wait list
-
-        debug!(
-            "Thread {}: wait list {:?}",
-            handle.name().unwrap(),
-            wait_list
-        );
-
-        while !wait_list.is_empty() {
-            let predecessor = wait_list.pop().unwrap(); // take a predecessor
-            let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
-
-            match self.thread_states[p_thread_id].get_state(p_seq_num) {
-                TransactionState::Active => {
-                    self.abort(&meta).unwrap(); // abort txn
-
-                    return Err(
-                        OptimisedHitListError::PredecessorActive(meta.get_id().unwrap()).into(),
-                    );
-                }
-                TransactionState::Aborted => {
-                    self.abort(&meta).unwrap(); // abort txn
-
-                    return Err(
-                        OptimisedHitListError::PredecessorAborted(meta.get_id().unwrap()).into(),
-                    );
-                }
-                TransactionState::Committed => {}
-            }
-        }
-        debug!("Thread {}: finish wait phase", handle.name().unwrap());
-
-        // CHECK //
-        if let TransactionState::Aborted = self.thread_states[thread_id].get_state(seq_num) {
-            self.abort(&meta).unwrap(); // abort txn
-            return Err(OptimisedHitListError::Hit(meta.get_id().unwrap()).into());
-        }
-
-        // TRY COMMIT //
-        debug!("Thread {}: try commit", handle.name().unwrap());
-
-        let outcome = self.thread_states[thread_id].try_commit(seq_num);
-        match outcome {
-            Ok(_) => {
-                debug!("Thread {}: committed", handle.name().unwrap());
-                // commit changes
-                debug!("Thread {}: get shared lock on list", handle.name().unwrap());
-                let rg = &self.thread_states[thread_id];
-                debug!("Thread {}: got shared lock on list", handle.name().unwrap());
-                let x = rg.get_transaction_id(seq_num);
-                assert_eq!(x, seq_num, "{} != {}", x, seq_num);
-                let inserted = rg.get_keys(seq_num, Operation::Create);
-                let read = rg.get_keys(seq_num, Operation::Read);
-                let updated = rg.get_keys(seq_num, Operation::Update);
-                let deleted = rg.get_keys(seq_num, Operation::Delete);
-
-                debug!("Thread {}: got keys", handle.name().unwrap());
-
-                for (index, key) in inserted {
-                    let index = self.data.get_internals().get_index(&index).unwrap();
-                    index
-                        .commit(key, "hit", &meta.get_id().unwrap().to_string())
-                        .unwrap();
-                }
-                for (index, key) in deleted {
-                    let index = self.data.get_internals().get_index(&index).unwrap();
-                    index.remove(key).unwrap();
-                }
-                for (index, key) in updated {
-                    let index = self.data.get_internals().get_index(&index).unwrap();
-                    index
-                        .commit(key, "hit", &meta.get_id().unwrap().to_string())
-                        .unwrap();
-                }
-                // TODO: bug here
-                // would imply I have read from uncommitted data but if so should have not got to this point.
-                for (index, key) in read {
-                    let index = self.data.get_internals().get_index(&index).unwrap();
-                    index.revert_read(key, &meta.get_id().unwrap()).unwrap();
-                }
-                debug!("Thread {}: committed changed", handle.name().unwrap());
-
-                debug!("Thread {}: add terminated", handle.name().unwrap());
-                let se = rg.get_start_epoch(seq_num);
-                rg.get_epoch_tracker().add_terminated(seq_num, se);
-                debug!("Thread {}: added terminated", handle.name().unwrap());
-
-                Ok(())
-            }
-            Err(e) => {
+            if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(seq_num) {
                 self.abort(&meta).unwrap(); // abort txn
-                Err(e)
+                return Err(OptimisedHitListError::Hit(meta.to_string()).into());
             }
+
+            // HIT PHASE //
+
+            let mut hit_list = self.thread_states[*thread_id].get_hit_list(seq_num); // get hit list
+
+            while !hit_list.is_empty() {
+                let predecessor = hit_list.pop().unwrap(); // take a predecessor
+                let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
+
+                // if active then hit
+                if let TransactionState::Active =
+                    self.thread_states[p_thread_id].get_state(p_seq_num)
+                {
+                    self.thread_states[p_thread_id].set_state(p_seq_num, TransactionState::Aborted);
+                }
+            }
+
+            // CHECK //
+            if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(seq_num) {
+                self.abort(&meta).unwrap(); // abort txn
+                return Err(OptimisedHitListError::Hit(meta.to_string()).into());
+            }
+
+            // WAIT PHASE //
+
+            let mut wait_list = self.thread_states[*thread_id].get_wait_list(seq_num); // get wait list
+
+            while !wait_list.is_empty() {
+                let predecessor = wait_list.pop().unwrap(); // take a predecessor
+                let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
+
+                match self.thread_states[p_thread_id].get_state(p_seq_num) {
+                    TransactionState::Active => {
+                        self.abort(&meta).unwrap(); // abort txn
+
+                        return Err(
+                            OptimisedHitListError::PredecessorActive(meta.to_string()).into()
+                        );
+                    }
+                    TransactionState::Aborted => {
+                        self.abort(&meta).unwrap(); // abort txn
+
+                        return Err(
+                            OptimisedHitListError::PredecessorAborted(meta.to_string()).into()
+                        );
+                    }
+                    TransactionState::Committed => {}
+                }
+            }
+
+            // CHECK //
+            if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(seq_num) {
+                self.abort(&meta).unwrap(); // abort txn
+                return Err(OptimisedHitListError::Hit(meta.to_string()).into());
+            }
+
+            // TRY COMMIT //
+
+            let outcome = self.thread_states[*thread_id].try_commit(seq_num);
+            match outcome {
+                Ok(_) => {
+                    // commit changes
+
+                    let rg = &self.thread_states[*thread_id];
+
+                    let x = rg.get_transaction_id(seq_num);
+                    assert_eq!(x, seq_num, "{} != {}", x, seq_num);
+                    let inserted = rg.get_keys(seq_num, Operation::Create);
+                    let read = rg.get_keys(seq_num, Operation::Read);
+                    let updated = rg.get_keys(seq_num, Operation::Update);
+                    let deleted = rg.get_keys(seq_num, Operation::Delete);
+
+                    for (index, key) in inserted {
+                        let index = self.data.get_internals().get_index(&index).unwrap();
+                        index.commit(&key, meta).unwrap();
+                    }
+                    for (index, key) in deleted {
+                        let index = self.data.get_internals().get_index(&index).unwrap();
+                        index.remove(&key).unwrap();
+                    }
+                    for (index, key) in updated {
+                        let index = self.data.get_internals().get_index(&index).unwrap();
+                        index.commit(&key, meta).unwrap();
+                    }
+                    // TODO: bug here
+                    // would imply I have read from uncommitted data but if so should have not got to this point.
+                    for (index, key) in read {
+                        let index = self.data.get_internals().get_index(&index).unwrap();
+                        index.revert_read(&key, meta).unwrap();
+                    }
+
+                    let se = rg.get_start_epoch(seq_num);
+                    rg.get_epoch_tracker().add_terminated(seq_num, se);
+
+                    Ok(())
+                }
+                Err(e) => {
+                    self.abort(&meta).unwrap(); // abort txn
+                    Err(e)
+                }
+            }
+        } else {
+            panic!("unexpected transaction info");
         }
     }
 

@@ -2,6 +2,7 @@ use crate::common::error::NonFatalError;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::convert::From;
 use std::convert::TryFrom;
 use std::fmt;
 
@@ -40,7 +41,7 @@ impl Field {
 
     /// Append data to list.
     pub fn append(&mut self, data: Data) {
-        if let Data::List(mut list) = self.0 {
+        if let Data::List(mut list) = self.data {
             list.push(data);
         }
     }
@@ -62,6 +63,30 @@ impl fmt::Display for Data {
             Data::List(val) => write!(f, "{:?}", val),
             Data::Null => write!(f, "null"),
         }
+    }
+}
+
+impl From<f64> for Data {
+    fn from(item: f64) -> Self {
+        Data::Double(item)
+    }
+}
+
+impl From<u64> for Data {
+    fn from(item: u64) -> Self {
+        Data::Uint(item)
+    }
+}
+
+impl From<i64> for Data {
+    fn from(item: i64) -> Self {
+        Data::Int(item)
+    }
+}
+
+impl From<String> for Data {
+    fn from(item: String) -> Self {
+        Data::VarChar(item)
     }
 }
 

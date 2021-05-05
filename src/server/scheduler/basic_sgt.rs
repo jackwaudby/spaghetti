@@ -11,7 +11,7 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::{fmt, thread};
-use tracing::{debug, info};
+use tracing::info;
 
 pub mod node;
 
@@ -311,20 +311,19 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn create(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let table = self.get_table(table, &meta)?; // get handle to table
             let index = self.get_index(Arc::clone(&table), &meta)?; // get handle to index
-            let mut row = Row::new(Arc::clone(&table), true, true); // create new row
-            row.set_primary_key(key.clone()); // set pk
+            let mut row = Row::new(key.clone(), Arc::clone(&table), true, true); // create new row
 
             // initialise each field
             for (i, column) in columns.iter().enumerate() {
-                if row.init_value(column, &values[i].to_string()).is_err() {
+                if row.init_value(column, Data::from(&values[i])).is_err() {
                     self.abort(&meta).unwrap(); // abort -- unable to initialise row
                     return Err(NonFatalError::UnableToInitialiseRow(
                         table.to_string(),
@@ -340,7 +339,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                 return Err(e);
             }
 
-            match index.insert(&key, row) {
+            match index.insert(key, row) {
                 Ok(_) => {
                     let rlock = self.get_shared_lock(*thread_id); // get shared lock
                     let node = rlock.get_transaction(*txn_id);
@@ -363,8 +362,8 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn read(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
@@ -410,7 +409,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     let node = rlock.get_transaction(*txn_id);
                     node.add_key(&index.get_name(), key, OperationType::Read);
                     drop(rlock);
-                    let vals = res.get_values().unwrap();
+                    let vals = res.get_values();
                     drop(mg);
                     drop(rh);
 
@@ -434,15 +433,15 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: Vec<String>,
+        key: &PrimaryKey,
+        columns: &[&str],
         read: bool,
-        params: Vec<Data>,
+        params: Option<&[Data]>,
         f: &dyn Fn(
-            Vec<String>,
-            Option<Vec<Data>>,
-            Vec<Data>,
-        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
+            &[&str],           // columns
+            Option<Vec<Data>>, // current values
+            Option<&[Data]>,   // parameters
+        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
@@ -478,34 +477,19 @@ impl Scheduler for BasicSerializationGraphTesting {
                             return Err(e.into()); // abort -- cascading abort or cycle found
                         }
 
-                        let c: Vec<&str> = columns.iter().map(|s| s as &str).collect(); // convert to expected type
-                        let current;
+                        let current_values;
                         if read {
-                            let res = match row.get_values(&c, meta) {
-                                Ok(res) => {
-                                    let rlock = self.get_shared_lock(*thread_id);
-                                    let node = rlock.get_transaction(*txn_id);
-                                    node.add_key(
-                                        &index.get_name(),
-                                        key.clone(),
-                                        OperationType::Read,
-                                    ); // register operation
-                                    drop(rlock);
-                                    res
-                                }
-                                Err(e) => {
-                                    drop(mg);
-                                    drop(rh);
-                                    self.abort(meta).unwrap(); // abort -- row marked for delete
-                                    return Err(e);
-                                }
-                            };
-                            current = res.get_values();
+                            let res = row.get_values(columns, meta).unwrap(); // should not fail
+                            let rlock = self.get_shared_lock(*thread_id);
+                            let node = rlock.get_transaction(*txn_id);
+                            node.add_key(&index.get_name(), &key, OperationType::Read); // register operation
+                            drop(rlock);
+                            current_values = Some(res.get_values());
                         } else {
-                            current = None;
+                            current_values = None;
                         }
 
-                        let (_, new_values) = match f(columns.clone(), current, params) {
+                        let (new_columns, new_values) = match f(columns, current_values, params) {
                             Ok(res) => res,
                             Err(e) => {
                                 drop(mg);
@@ -515,8 +499,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
-                        row.set_values(&c, &nv, meta).unwrap();
+                        let cols: Vec<&str> = new_columns.into_iter().map(|s| s.as_str()).collect(); // TODO: don't like this, but don't think it can be avoided
+                        row.set_values(&cols, &new_values, meta).unwrap();
 
                         let rlock = self.get_shared_lock(*thread_id);
                         let node = rlock.get_transaction(*txn_id);
@@ -565,53 +549,40 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     return Err(e.into()); // abort -- cascading abort or cycle
                                 }
 
-                                let c: Vec<&str> = columns.iter().map(|s| s as &str).collect(); // convert to expected type
-                                let current;
+                                let current_values;
                                 if read {
-                                    let res = match row.get_values(&c, meta) {
-                                        Ok(res) => {
-                                            let rlock = self.get_shared_lock(*thread_id);
-                                            let node = rlock.get_transaction(*txn_id);
-                                            node.add_key(
-                                                &index.get_name(),
-                                                key.clone(),
-                                                OperationType::Read,
-                                            ); // register operation
-                                            drop(rlock);
-                                            res
-                                        }
+                                    let res = row.get_values(columns, meta).unwrap(); // should not fail
+                                    let rlock = self.get_shared_lock(*thread_id);
+                                    let node = rlock.get_transaction(*txn_id);
+                                    node.add_key(&index.get_name(), &key, OperationType::Read); // register operation
+                                    drop(rlock);
+                                    current_values = Some(res.get_values());
+                                } else {
+                                    current_values = None;
+                                }
+
+                                let (new_columns, new_values) =
+                                    match f(columns, current_values, params) {
+                                        Ok(res) => res,
                                         Err(e) => {
                                             drop(mg);
                                             drop(rh);
-                                            self.abort(meta).unwrap(); // abort -- row marked for delete
+                                            self.abort(&meta).unwrap(); // abort -- due to integrity constraint
                                             return Err(e);
                                         }
                                     };
-                                    current = res.get_values();
-                                } else {
-                                    current = None;
-                                }
 
-                                let (_, new_values) = match f(columns.clone(), current, params) {
-                                    Ok(res) => res,
-                                    Err(e) => {
-                                        drop(mg);
-                                        drop(rh);
-                                        self.abort(meta).unwrap(); // abort -- due to integrity constraint
-                                        return Err(e);
-                                    }
-                                };
-
-                                let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
-                                row.set_values(&c, &nv, meta).unwrap();
+                                let cols: Vec<&str> =
+                                    new_columns.into_iter().map(|s| s.as_str()).collect(); // TODO: don't like this, but don't think it can be avoided
+                                row.set_values(&cols, &new_values, meta).unwrap();
 
                                 let rlock = self.get_shared_lock(*thread_id);
                                 let node = rlock.get_transaction(*txn_id);
-
                                 node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
+
                                 return Ok(());
                             } else {
                                 let ah = row.get_access_history();
@@ -682,45 +653,32 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     return Err(e.into()); // abort -- cascading abort
                                 }
 
-                                let c: Vec<&str> = columns.iter().map(|s| s as &str).collect(); // convert to expected type
-                                let current;
+                                let current_values;
                                 if read {
-                                    let res = match row.get_values(&c, meta) {
-                                        Ok(res) => {
-                                            let rlock = self.get_shared_lock(*thread_id);
-                                            let node = rlock.get_transaction(*txn_id);
-                                            node.add_key(
-                                                &index.get_name(),
-                                                key.clone(),
-                                                OperationType::Read,
-                                            ); // register operation
-                                            drop(rlock);
-                                            res
-                                        }
+                                    let res = row.get_values(columns, meta).unwrap(); // should not fail
+                                    let rlock = self.get_shared_lock(*thread_id);
+                                    let node = rlock.get_transaction(*txn_id);
+                                    node.add_key(&index.get_name(), &key, OperationType::Read); // register operation
+                                    drop(rlock);
+                                    current_values = Some(res.get_values());
+                                } else {
+                                    current_values = None;
+                                }
+
+                                let (new_columns, new_values) =
+                                    match f(columns, current_values, params) {
+                                        Ok(res) => res,
                                         Err(e) => {
                                             drop(mg);
                                             drop(rh);
-                                            self.abort(&meta).unwrap(); // abort -- row marked for delete
+                                            self.abort(&meta).unwrap(); // abort -- due to integrity constraint
                                             return Err(e);
                                         }
                                     };
-                                    current = res.get_values();
-                                } else {
-                                    current = None;
-                                }
 
-                                let (_, new_values) = match f(columns.clone(), current, params) {
-                                    Ok(res) => res,
-                                    Err(e) => {
-                                        drop(mg);
-                                        drop(rh);
-                                        self.abort(&meta).unwrap(); // abort -- due to integrity constraint
-                                        return Err(e);
-                                    }
-                                };
-
-                                let nv: Vec<&str> = new_values.iter().map(|s| s as &str).collect();
-                                row.set_values(&c, &nv, meta).unwrap();
+                                let cols: Vec<&str> =
+                                    new_columns.into_iter().map(|s| s.as_str()).collect(); // TODO: don't like this, but don't think it can be avoided
+                                row.set_values(&cols, &new_values, meta).unwrap();
 
                                 let rlock = self.get_shared_lock(*thread_id);
                                 let node = rlock.get_transaction(*txn_id);
@@ -735,6 +693,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     row.remove_delayed(meta);
                                     drop(mg);
                                     drop(rh);
+
                                     self.abort(&meta).unwrap();
                                     return Err(e.into()); // abort -- cascading abort or cycle
                                 }
@@ -764,9 +723,9 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn append(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         column: &str,
-        value: &str,
+        value: Data,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
@@ -967,9 +926,9 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn read_and_update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
@@ -1002,7 +961,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                         let res = row.get_and_set_values(columns, values, meta).unwrap();
 
-                        let vals = res.get_values().unwrap(); // get values
+                        let vals = res.get_values(); // get values
 
                         let rlock = self.get_shared_lock(*thread_id);
                         let node = rlock.get_transaction(*txn_id);
@@ -1052,7 +1011,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 }
 
                                 let res = row.get_and_set_values(columns, values, meta).unwrap();
-                                let vals = res.get_values().unwrap(); // get values
+                                let vals = res.get_values(); // get values
 
                                 let rlock = self.get_shared_lock(*thread_id);
                                 let node = rlock.get_transaction(*txn_id);
@@ -1131,7 +1090,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 }
 
                                 let res = row.get_and_set_values(columns, values, meta).unwrap();
-                                let vals = res.get_values().unwrap(); // get values
+                                let vals = res.get_values(); // get values
 
                                 let rlock = self.get_shared_lock(*thread_id);
                                 let node = rlock.get_transaction(*txn_id);
@@ -1175,7 +1134,7 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn delete(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
@@ -1259,7 +1218,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 let rlock = self.get_shared_lock(*thread_id);
                                 let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                                node.add_key(&index.get_name(), &key, OperationType::Update); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
@@ -1337,7 +1296,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 let rlock = self.get_shared_lock(*thread_id);
                                 let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                                node.add_key(&index.get_name(), &key, OperationType::Update); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);

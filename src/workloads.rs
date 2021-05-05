@@ -59,26 +59,21 @@ pub enum PrimaryKey {
 impl Workload {
     /// Create new `Workload`.
     pub fn new(config: Arc<Config>) -> crate::Result<Workload> {
-        // Determine workload type.
         let workload = config.get_str("workload")?;
         match workload.as_str() {
             "acid" => {
-                // Create internals from schema file
                 let internals = Internal::new("./schema/acid_schema.txt", config)?;
                 Ok(Workload::Acid(internals))
             }
             "tatp" => {
-                // Create internals from schema file
                 let internals = Internal::new("./schema/tatp_schema.txt", config)?;
                 Ok(Workload::Tatp(internals))
             }
             "tpcc" => {
-                // Create internals from schema file
                 let internals = Internal::new("./schema/tpcc_short_schema.txt", config)?;
                 Ok(Workload::Tpcc(internals))
             }
             "smallbank" => {
-                // Create internals from schema file
                 let internals = Internal::new("./schema/smallbank_schema.txt", config)?;
                 Ok(Workload::SmallBank(internals))
             }
@@ -100,7 +95,7 @@ impl Workload {
                     acid::loader::load_person_table(i)?;
                 } else {
                     info!("Generate ACID SF-{} ", sf);
-                    acid::loader::populate_person_table(i, rng)?;
+                    acid::loader::populate_person_table(i)?;
                     acid::loader::populate_person_knows_person_table(i, rng)?;
                 }
             }

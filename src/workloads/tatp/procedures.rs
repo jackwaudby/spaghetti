@@ -143,7 +143,7 @@ pub fn get_access_data(
 
     let values = protocol
         .scheduler
-        .read("access_info", pk, &columns, &meta)?;
+        .read("access_info", &pk, &columns, &meta)?;
 
     protocol.scheduler.commit(&meta)?;
 
@@ -157,53 +157,46 @@ pub fn update_subscriber_data(
     params: UpdateSubscriberData,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
-    let columns_sb: Vec<String> = vec!["bit_1".to_string()];
-    let values_sb = vec![Data::Int(params.bit_1.into())];
-    let update = |_columns: Vec<String>,
+    let pk1 = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    let pk2 = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
+        params.s_id,
+        params.sf_type.into(),
+    ));
+
+    let columns1 = ["bit_1"];
+    let columns2 = ["data_a"];
+
+    let values1 = vec![Data::Int(params.bit_1.into())];
+    let values2 = vec![Data::Int(params.data_a.into())];
+
+    let update = |columns: &[&str],
                   _current: Option<Vec<Data>>,
-                  params: Vec<Data>|
-     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let value = i64::try_from(params[0].clone()).unwrap();
-        let new_values = vec![value.to_string()];
-        let columns = vec!["bit_1".to_string()];
-        Ok((columns, new_values))
+                  params: Option<&[Data]>|
+     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
+        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+        let new_values = vec![params.unwrap()[0]];
+        Ok((new_columns, new_values))
     };
 
     let meta = protocol.scheduler.register().unwrap();
 
     protocol.scheduler.update(
         "subscriber",
-        pk_sb,
-        columns_sb,
+        &pk1,
+        &columns1,
         false,
-        values_sb,
+        Some(&values1),
         &update,
         &meta,
     )?;
 
-    let pk_sp = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
-        params.s_id,
-        params.sf_type.into(),
-    ));
-    let columns_sp = vec!["data_a".to_string()];
-    let values_sp = vec![Data::Int(params.data_a.into())];
-    let update_sp = |_columns: Vec<String>,
-                     _current: Option<Vec<Data>>,
-                     params: Vec<Data>|
-     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let value = i64::try_from(params[0].clone()).unwrap();
-        let new_values = vec![value.to_string()];
-        let columns = vec!["data_a".to_string()];
-        Ok((columns, new_values))
-    };
     protocol.scheduler.update(
         "special_facility",
-        pk_sp,
-        columns_sp,
+        &pk2,
+        &columns2,
         false,
-        values_sp,
-        &update_sp,
+        Some(&values2),
+        &update,
         &meta,
     )?;
 
@@ -218,27 +211,28 @@ pub fn update_location(
     params: UpdateLocationData,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    let pk_sb = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    let columns = ["vlr_location"];
+    let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    let params = vec![Data::Int(params.vlr_location.into())];
 
-    let update = |_columns: Vec<String>,
-                  _current: Option<Vec<Data>>,
-                  params: Vec<Data>|
-     -> Result<(Vec<String>, Vec<String>), NonFatalError> {
-        let value = i64::try_from(params[0].clone()).unwrap();
-        let new_values = vec![value.to_string()];
-        let columns = vec!["bit_1".to_string()];
-        Ok((columns, new_values))
+    let update_vlr = |columns: &[&str],
+                      _current: Option<Vec<Data>>,
+                      params: Option<&[Data]>|
+     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
+        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+        let new_values = vec![params.unwrap()[0]];
+        Ok((new_columns, new_values))
     };
 
     let meta = protocol.scheduler.register().unwrap();
 
     protocol.scheduler.update(
         "subscriber",
-        &pk_sb,
-        vec!["vlr_location".to_string()],
+        &pk,
+        &columns,
         false,
-        vec![Data::Int(params.vlr_location.into())],
-        &update,
+        Some(&params),
+        &update_vlr,
         &meta,
     )?;
 
@@ -268,17 +262,18 @@ pub fn insert_call_forwarding(
 
     protocol
         .scheduler
-        .read("subscriber", pk_sb, &vec!["s_id"], &meta)?;
+        .read("subscriber", &pk_sb, &vec!["s_id"], &meta)?;
 
     protocol
         .scheduler
-        .read("special_facility", pk_sf, &vec!["sf_type"], &meta)?;
+        .read("special_facility", &pk_sf, &vec!["sf_type"], &meta)?;
 
-    let s_id = params.s_id.to_string();
-    let sf_type = params.sf_type.to_string();
-    let start_time = params.start_time.to_string();
-    let end_time = params.end_time.to_string();
-    let values_cf: Vec<&str> = vec![&s_id, &sf_type, &start_time, &end_time, &params.number_x];
+    let s_id = Data::from(params.s_id);
+    let sf_type = Data::from(params.sf_type as u64);
+    let start_time = Data::from(params.start_time as u64);
+    let end_time = Data::from(params.end_time as u64);
+    let number_x = Data::from(params.number_x);
+    let values_cf = vec![s_id, sf_type, start_time, end_time, number_x];
 
     protocol.scheduler.create(
         "call_forwarding",

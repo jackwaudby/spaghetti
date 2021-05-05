@@ -39,10 +39,6 @@ pub struct TwoPhaseLocking {
 
 impl Scheduler for TwoPhaseLocking {
     /// Register a transaction with the scheduler.
-    ///
-    /// # Aborts
-    ///
-    /// A transaction with the same name is already registered.
     fn register(&self) -> Result<TransactionInfo, NonFatalError> {
         let th = thread::current();
         let thread_id = th.name().unwrap(); // get thread id
@@ -83,9 +79,9 @@ impl Scheduler for TwoPhaseLocking {
     fn create(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let table = self.get_table(table, &meta)?; // get handle to table
@@ -161,20 +157,11 @@ impl Scheduler for TwoPhaseLocking {
     }
 
     /// Attempt to read columns in row.
-    ///
-    /// # Aborts
-    ///
-    /// The table cannot be found.
-    /// There is no primary index on this table.
-    /// The index cannot be found.
-    /// Row cannot be found.
-    /// Column does not exist in the table.
-    /// Lock request denied.
     fn read(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         let table = self.get_table(table, &meta)?; // get handle to table
@@ -240,27 +227,18 @@ impl Scheduler for TwoPhaseLocking {
     }
 
     /// Attempt to update columns in row.
-    ///
-    /// # Aborts
-    ///
-    /// The table cannot be found.
-    /// There is no primary index on this table.
-    /// The index cannot be found.
-    /// Row cannot be found.
-    /// Column does not exist in the table.
-    /// Lock request denied.
     fn update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: Vec<String>,
+        key: &PrimaryKey,
+        columns: &[&str],
         read: bool,
-        params: Vec<Data>,
+        params: Option<&[Data]>,
         f: &dyn Fn(
-            Vec<String>,
-            Option<Vec<Data>>,
-            Vec<Data>,
-        ) -> Result<(Vec<String>, Vec<String>), NonFatalError>,
+            &[&str],           // columns
+            Option<Vec<Data>>, // current values
+            Option<&[Data]>,   // parameters
+        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let table = self.get_table(table, &meta)?; // get handle to table
@@ -331,21 +309,12 @@ impl Scheduler for TwoPhaseLocking {
     }
 
     /// Attempt to append `value` to `columns` in row.
-    ///
-    /// # Aborts
-    ///
-    /// The table cannot be found.
-    /// There is no primary index on this table.
-    /// The index cannot be found.
-    /// Row cannot be found.
-    /// Column does not exist in the table.
-    /// Lock request denied.
     fn append(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         column: &str,
-        value: &str,
+        value: Data,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let table = self.get_table(table, &meta)?;
@@ -400,21 +369,12 @@ impl Scheduler for TwoPhaseLocking {
     }
 
     /// Attempt to update columns in row.
-    ///
-    /// # Aborts
-    ///
-    /// The table cannot be found.
-    /// There is no primary index on this table.
-    /// The index cannot be found.
-    /// Row cannot be found.
-    /// Column does not exist in the table.
-    /// Lock request denied.
     fn read_and_update(
         &self,
         table: &str,
-        key: PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        key: &PrimaryKey,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         let table = self.get_table(table, &meta)?;
@@ -461,9 +421,9 @@ impl Scheduler for TwoPhaseLocking {
                     .add_lock(key.clone());
                 // Execute update.
 
-                match index.read_and_update(key, columns, values, "2pl", &meta.get_id().unwrap()) {
+                match index.read_and_update(key, columns, values, meta) {
                     Ok(res) => {
-                        let vals = res.get_values().unwrap();
+                        let vals = res.get_values();
                         Ok(vals)
                     }
                     Err(e) => {
@@ -491,7 +451,7 @@ impl Scheduler for TwoPhaseLocking {
     fn delete(
         &self,
         table: &str,
-        key: PrimaryKey,
+        key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         let table = self.get_table(table, &meta)?;

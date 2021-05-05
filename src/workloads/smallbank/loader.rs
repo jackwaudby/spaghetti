@@ -1,4 +1,5 @@
 use crate::datagen::smallbank::{Account, Checking, Savings};
+use crate::server::storage::datatype::Data;
 use crate::server::storage::row::Row;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
 use crate::workloads::smallbank::{MAX_BALANCE, MIN_BALANCE, SB_SF_MAP};
@@ -7,6 +8,7 @@ use crate::Result;
 
 use rand::rngs::StdRng;
 use rand::Rng;
+
 use std::sync::Arc;
 use tracing::info;
 
@@ -32,11 +34,11 @@ pub fn load_account_table(data: &Internal) -> Result<()> {
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         let s: Account = result?; // deserialise
-        let mut row = Row::new(Arc::clone(&table), track_access, track_delayed); // initialise empty row
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(s.name.clone())); // calculate primary key
-        row.set_primary_key(pk.clone());
-        row.init_value("name", &s.name)?;
-        row.init_value("customer_id", &s.customer_id.to_string())?;
+        let mut row = Row::new(pk, Arc::clone(&table), track_access, track_delayed); // initialise empty row
+
+        row.init_value("name", Data::from(s.name))?;
+        row.init_value("customer_id", Data::from(s.customer_id.to_string()))?;
 
         index.insert(&pk, row)?;
     }
@@ -66,12 +68,11 @@ pub fn load_savings_table(data: &Internal) -> Result<()> {
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         let s: Savings = result?; // deserialise
-        let mut row = Row::new(Arc::clone(&table), track_access, track_delayed); // initialise empty row
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(s.customer_id)); // calculate primary key
-        row.set_primary_key(pk.clone());
+        let mut row = Row::new(pk, Arc::clone(&table), track_access, track_delayed); // initialise empty row
 
-        row.init_value("customer_id", &s.customer_id.to_string())?;
-        row.init_value("balance", &s.balance.to_string())?;
+        row.init_value("customer_id", Data::from(s.customer_id.to_string()))?;
+        row.init_value("balance", Data::from(s.balance.to_string()))?;
 
         index.insert(&pk, row)?;
     }
@@ -101,12 +102,11 @@ pub fn load_checking_table(data: &Internal) -> Result<()> {
     let mut rdr = csv::Reader::from_path(&path)?;
     for result in rdr.deserialize() {
         let s: Checking = result?; // deserialise
-        let mut row = Row::new(Arc::clone(&table), track_access, track_delayed); // initialise empty row
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(s.customer_id)); // calculate primary key
-        row.set_primary_key(pk.clone());
+        let mut row = Row::new(pk, Arc::clone(&table), track_access, track_delayed); // initialise empty row
 
-        row.init_value("customer_id", &s.customer_id.to_string())?;
-        row.init_value("balance", &s.balance.to_string())?;
+        row.init_value("customer_id", Data::from(s.customer_id.to_string()))?;
+        row.init_value("balance", Data::from(s.balance.to_string()))?;
 
         index.insert(&pk, row)?;
     }
@@ -143,11 +143,11 @@ pub fn populate_account(data: &Internal) -> Result<()> {
 
     for a_id in 0..n_accounts {
         let name = format!("cust{}", a_id);
-        let mut row = Row::new(Arc::clone(&accounts), track_access, track_delayed);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(name.clone()));
-        row.set_primary_key(pk.clone());
-        row.init_value("name", &name)?;
-        row.init_value("customer_id", &a_id.to_string())?;
+        let mut row = Row::new(pk, Arc::clone(&accounts), track_access, track_delayed);
+
+        row.init_value("name", Data::from(name))?;
+        row.init_value("customer_id", Data::from(a_id.to_string()))?;
         accounts_idx.insert(&pk, row)?;
     }
     info!("Loaded {} rows into account", accounts.get_num_rows());
@@ -178,12 +178,11 @@ pub fn populate_savings(data: &Internal, rng: &mut StdRng) -> Result<()> {
     };
 
     for customer_id in 0..accounts {
-        let mut row = Row::new(Arc::clone(&savings), track_access, track_delayed);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(customer_id));
-        row.set_primary_key(pk.clone());
-        row.init_value("customer_id", &customer_id.to_string())?;
+        let mut row = Row::new(pk, Arc::clone(&savings), track_access, track_delayed);
+        row.init_value("customer_id", Data::from(customer_id.to_string()))?;
         let balance = rng.gen_range(min_bal..=max_bal) as f64;
-        row.init_value("balance", &balance.to_string())?;
+        row.init_value("balance", Data::from(balance))?;
         savings_idx.insert(&pk, row)?;
     }
     info!("Loaded {} rows into savings", savings.get_num_rows());
@@ -213,12 +212,11 @@ pub fn populate_checking(data: &Internal, rng: &mut StdRng) -> Result<()> {
     };
 
     for customer_id in 0..accounts {
-        let mut row = Row::new(Arc::clone(&checking), track_access, track_delayed);
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(customer_id));
-        row.set_primary_key(pk.clone());
-        row.init_value("customer_id", &customer_id.to_string())?;
+        let mut row = Row::new(pk, Arc::clone(&checking), track_access, track_delayed);
+        row.init_value("customer_id", Data::from(customer_id.to_string()))?;
         let balance = rng.gen_range(min_bal..=max_bal) as f64;
-        row.init_value("balance", &balance.to_string())?;
+        row.init_value("balance", Data::from(balance))?;
         checking_idx.insert(&pk, row)?;
     }
     info!("Loaded {} rows into savings", checking.get_num_rows());

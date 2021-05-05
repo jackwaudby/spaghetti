@@ -1,61 +1,61 @@
 //size,type,name
 TABLE=SUBSCRIBER
-    8,int,S_ID
+    8,uint,S_ID
     10,string,SUB_NBR
-    1,int,BIT_1
-    1,int,BIT_2
-    1,int,BIT_3
-    1,int,BIT_4
-    1,int,BIT_5
-   1,int,BIT_6
-   1,int,BIT_7
-   1,int,BIT_8
-   1,int,BIT_9
-   1,int,BIT_10
-   1,int,HEX_1
-   1,int,HEX_2
-   1,int,HEX_3
-   1,int,HEX_4
-   1,int,HEX_5
-   1,int,HEX_6
-   1,int,HEX_7
-   1,int,HEX_8
-   1,int,HEX_9
-   1,int,HEX_10
-   1,int,BYTE_2_1
-   1,int,BYTE_2_2
-   1,int,BYTE_2_3
-   1,int,BYTE_2_4
-   1,int,BYTE_2_5
-   1,int,BYTE_2_6
-   1,int,BYTE_2_7
-   1,int,BYTE_2_8
-   1,int,BYTE_2_9
-   1,int,BYTE_2_10
-   1,int,MSC_LOCATION
-   1,int,VLR_LOCATION
+    1,uint,BIT_1
+    1,uint,BIT_2
+    1,uint,BIT_3
+    1,uint,BIT_4
+    1,uint,BIT_5
+   1,uint,BIT_6
+   1,uint,BIT_7
+   1,uint,BIT_8
+   1,uint,BIT_9
+   1,uint,BIT_10
+   1,uint,HEX_1
+   1,uint,HEX_2
+   1,uint,HEX_3
+   1,uint,HEX_4
+   1,uint,HEX_5
+   1,uint,HEX_6
+   1,uint,HEX_7
+   1,uint,HEX_8
+   1,uint,HEX_9
+   1,uint,HEX_10
+   1,uint,BYTE_2_1
+   1,uint,BYTE_2_2
+   1,uint,BYTE_2_3
+   1,uint,BYTE_2_4
+   1,uint,BYTE_2_5
+   1,uint,BYTE_2_6
+   1,uint,BYTE_2_7
+   1,uint,BYTE_2_8
+   1,uint,BYTE_2_9
+   1,uint,BYTE_2_10
+   1,uint,MSC_LOCATION
+   1,uint,VLR_LOCATION
 
 TABLE=ACCESS_INFO
-    8,int,S_ID
-    1,int,AI_TYPE
-    1,int,DATA_1
-    1,int,DATA_2
+    8,uint,S_ID
+    1,uint,AI_TYPE
+    1,uint,DATA_1
+    1,uint,DATA_2
     1,string,DATA_3
     1,string,DATA_4
 
 TABLE=SPECIAL_FACILITY
-    8,int,S_ID
-    1,int,SF_TYPE
-    1,int,IS_ACTIVE
-    1,int,ERROR_CNTRL
-    1,int,DATA_A
+    8,uint,S_ID
+    1,uint,SF_TYPE
+    1,uint,IS_ACTIVE
+    1,uint,ERROR_CNTRL
+    1,uint,DATA_A
     1,string,DATA_B
 
 TABLE=CALL_FORWARDING
-    8,int,S_ID
-    1,int,SF_TYPE
-    1,int,START_TIME
-    1,int,END_TIME
+    8,uint,S_ID
+    1,uint,SF_TYPE
+    1,uint,START_TIME
+    1,uint,END_TIME
     1,string,NUMBER_X
 
 INDEX=SUB_IDX
