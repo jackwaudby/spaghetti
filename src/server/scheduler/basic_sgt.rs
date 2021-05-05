@@ -54,6 +54,7 @@ impl BasicSerializationGraphTesting {
     /// If the edges is (i) a self edge, (ii) already exists, or (iii) from node is committed no edge is added.
     pub fn add_edge(
         &self,
+        rlock: &RwLockReadGuard<NodeSet>,
         from: (usize, u64),
         to: (usize, u64),
         rw_edge: bool,
@@ -61,6 +62,7 @@ impl BasicSerializationGraphTesting {
         if from == to {
             return Ok(()); // don't add self edges
         }
+
         let (from_thread, from_txn_id) = from;
 
         let from_node = self.get_shared_lock(from_thread);
@@ -74,16 +76,13 @@ impl BasicSerializationGraphTesting {
             }
             State::Active => {
                 let (to_thread, to_txn_id) = to;
-                let to_node = self.get_shared_lock(to_thread);
 
                 from_node
                     .get_transaction(from_txn_id)
                     .insert_edge(to, EdgeType::Outgoing);
-                to_node
+                rlock
                     .get_transaction(to_txn_id)
                     .insert_edge(from, EdgeType::Incoming);
-
-                drop(to_node);
             }
             State::Committed => {}
         }
@@ -93,15 +92,15 @@ impl BasicSerializationGraphTesting {
     }
 
     /// Check if a transaction with `id` has aborted.
-    pub fn abort_check(&self, id: (usize, u64)) -> Result<(), ProtocolError> {
-        let (thread_id, txn_id) = id;
-        let rlock = self.get_shared_lock(thread_id);
+    pub fn abort_check(
+        &self,
+        rlock: &RwLockReadGuard<NodeSet>,
+        txn_id: u64,
+    ) -> Result<(), ProtocolError> {
         let state = rlock.get_transaction(txn_id).get_state();
         if let State::Aborted = state {
-            drop(rlock);
             Err(ProtocolError::CascadingAbort)
         } else {
-            drop(rlock);
             Ok(())
         }
     }
@@ -110,6 +109,7 @@ impl BasicSerializationGraphTesting {
     /// for transaction residing in `this_node`.
     pub fn detect_write_conflicts(
         &self,
+        rlock: &RwLockReadGuard<NodeSet>,
         this_node: (usize, u64),
         access_history: Vec<Access>,
     ) -> Result<(), ProtocolError> {
@@ -119,14 +119,16 @@ impl BasicSerializationGraphTesting {
                     if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } =
                         from_node
                     {
-                        self.add_edge((thread_id, txn_id), this_node, false)?; // w-w conflict
+                        self.add_edge(rlock, (thread_id, txn_id), this_node, false)?;
+                        // w-w conflict
                     }
                 }
                 Access::Read(from_node) => {
                     if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } =
                         from_node
                     {
-                        self.add_edge((thread_id, txn_id), this_node, true)?; // r-w conflict
+                        self.add_edge(rlock, (thread_id, txn_id), this_node, true)?;
+                        // r-w conflict
                     }
                 }
             }
@@ -134,21 +136,20 @@ impl BasicSerializationGraphTesting {
         Ok(())
     }
 
-    /// Given an access history, detect conflicts with a read operation, and insert edges into the graph
-    /// for transaction residing in `this_node`.
+    /// Given an access history, detect conflicts with a read operation, and insert edges into the graph.
     pub fn detect_read_conflicts(
         &self,
+        rlock: &RwLockReadGuard<NodeSet>,
         this_node: (usize, u64),
         access_history: Vec<Access>,
     ) -> Result<(), ProtocolError> {
         for access in access_history {
             match access {
-                // WR conflict
                 Access::Write(from_node) => {
                     if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } =
                         from_node
                     {
-                        self.add_edge((thread_id, txn_id), this_node, false)?;
+                        self.add_edge(rlock, (thread_id, txn_id), this_node, false)?;
                     }
                 }
                 Access::Read(_) => {}
@@ -160,10 +161,11 @@ impl BasicSerializationGraphTesting {
     /// Detect conflicts, insert edges, and do cycle check.
     pub fn insert_and_check(
         &self,
+        rlock: &RwLockReadGuard<NodeSet>,
         this_node: (usize, u64),
         access_history: Vec<Access>,
     ) -> Result<(), ProtocolError> {
-        self.detect_write_conflicts(this_node, access_history)?;
+        self.detect_write_conflicts(rlock, this_node, access_history)?;
         self.reduced_depth_first_search(this_node)?;
         Ok(())
     }
@@ -370,18 +372,22 @@ impl Scheduler for BasicSerializationGraphTesting {
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
-            if let Err(e) = self.abort_check((*thread_id, *txn_id)) {
+            let rlock = self.get_shared_lock(*thread_id); // take shared lock
+
+            if let Err(e) = self.abort_check(&rlock, *txn_id) {
+                drop(rlock);
                 self.abort(meta).unwrap();
                 return Err(e.into()); // abort -- cascading abort
             }
 
             let table = self.get_table(table, &meta)?;
-            let index = self.get_index(Arc::clone(&table), &meta)?;
+            let index = self.get_index(table, &meta)?;
 
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rh) => rh,
                 Err(e) => {
-                    self.abort(&meta).unwrap(); // abort -- row does not exist
+                    drop(rlock);
+                    self.abort(meta).unwrap(); // abort -- row does not exist
                     return Err(e);
                 }
             };
@@ -390,35 +396,34 @@ impl Scheduler for BasicSerializationGraphTesting {
             let row = &mut *mg;
 
             let ah = row.get_access_history();
-            if let Err(e) = self.detect_read_conflicts((*thread_id, *txn_id), ah) {
+            if let Err(e) = self.detect_read_conflicts(&rlock, (*thread_id, *txn_id), ah) {
+                drop(rlock);
                 drop(mg);
                 drop(rh);
-                self.abort(&meta).unwrap();
-
+                self.abort(meta).unwrap();
                 return Err(e.into()); // abort -- cascading abort
             }
 
             if let Err(e) = self.reduced_depth_first_search((*thread_id, *txn_id)) {
+                drop(rlock);
                 drop(mg);
                 drop(rh);
-
                 self.abort(&meta).unwrap(); // abort -- cycle found
                 return Err(e.into());
             }
 
             match row.get_values(columns, meta) {
                 Ok(res) => {
-                    let rlock = self.get_shared_lock(*thread_id);
                     let node = rlock.get_transaction(*txn_id);
                     node.add_key(&index.get_name(), key, OperationType::Read);
                     drop(rlock);
                     let vals = res.get_values();
                     drop(mg);
                     drop(rh);
-
                     Ok(vals)
                 }
                 Err(e) => {
+                    drop(rlock);
                     drop(mg);
                     drop(rh);
                     self.abort(meta).unwrap(); // abort -- row marked for delete
@@ -448,19 +453,15 @@ impl Scheduler for BasicSerializationGraphTesting {
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let rlock = self.get_shared_lock(*thread_id); // take shared lock
             let id = (thread_id, txn_id);
 
-            if let Err(e) = self.abort_check((*thread_id, *txn_id)) {
-                self.abort(meta).unwrap();
+            let index = self.get_index(self.get_table(table, &meta)?, &meta)?;
 
-                return Err(e.into()); // abort -- cascading abort
-            }
-
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(Arc::clone(&table), &meta)?;
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rg) => rg,
                 Err(e) => {
+                    drop(rlock);
                     self.abort(meta).unwrap(); // abort -- row not found
                     return Err(e);
                 }
@@ -473,7 +474,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                 match row.get_state() {
                     RowState::Clean => {
                         let ah = row.get_access_history();
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(meta).unwrap();
@@ -483,10 +485,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let current_values;
                         if read {
                             let res = row.get_values(columns, meta).unwrap(); // should not fail
-                            let rlock = self.get_shared_lock(*thread_id);
                             let node = rlock.get_transaction(*txn_id);
                             node.add_key(&index.get_name(), &key, OperationType::Read); // register operation
-                            drop(rlock);
                             current_values = Some(res.get_values());
                         } else {
                             current_values = None;
@@ -495,17 +495,16 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let (new_columns, new_values) = match f(columns, current_values, params) {
                             Ok(res) => res,
                             Err(e) => {
+                                drop(rlock);
                                 drop(mg);
                                 drop(rh);
-                                self.abort(&meta).unwrap(); // abort -- due to integrity constraint
+                                self.abort(meta).unwrap(); // abort -- due to integrity constraint
                                 return Err(e);
                             }
                         };
 
                         let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
                         row.set_values(&cols, &new_values, meta).unwrap();
-
-                        let rlock = self.get_shared_lock(*thread_id);
                         let node = rlock.get_transaction(*txn_id);
                         node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                         drop(rlock);
@@ -517,7 +516,8 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                     RowState::Modified => {
                         let ah = row.get_access_history();
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(meta).unwrap();
@@ -533,6 +533,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let rh = match index.get_lock_on_row(&key) {
                                 Ok(rg) => rg,
                                 Err(e) => {
+                                    drop(rlock);
                                     self.abort(meta).unwrap(); // row not found
                                     return Err(e);
                                 }
@@ -545,7 +546,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(meta); // remove from delayed queue
 
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(meta).unwrap();
@@ -555,10 +559,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 let current_values;
                                 if read {
                                     let res = row.get_values(columns, meta).unwrap(); // should not fail
-                                    let rlock = self.get_shared_lock(*thread_id);
                                     let node = rlock.get_transaction(*txn_id);
                                     node.add_key(&index.get_name(), &key, OperationType::Read); // register operation
-                                    drop(rlock);
                                     current_values = Some(res.get_values());
                                 } else {
                                     current_values = None;
@@ -568,6 +570,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     match f(columns, current_values, params) {
                                         Ok(res) => res,
                                         Err(e) => {
+                                            drop(rlock);
                                             drop(mg);
                                             drop(rh);
                                             self.abort(&meta).unwrap(); // abort -- due to integrity constraint
@@ -575,21 +578,20 @@ impl Scheduler for BasicSerializationGraphTesting {
                                         }
                                     };
                                 let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
-
                                 row.set_values(&cols, &new_values, meta).unwrap();
-
-                                let rlock = self.get_shared_lock(*thread_id);
                                 let node = rlock.get_transaction(*txn_id);
                                 node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
-
                                 return Ok(());
                             } else {
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
                                     row.remove_delayed(meta);
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(meta).unwrap();
@@ -602,6 +604,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
                     }
                     RowState::Deleted => {
+                        drop(rlock);
                         drop(mg);
                         drop(rh);
                         self.abort(meta).unwrap(); // abort -- cascading abort
@@ -620,7 +623,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                             ah.push(Access::Write(tid));
                         }
 
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(meta).unwrap();
@@ -636,6 +640,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let rh = match index.get_lock_on_row(&key) {
                                 Ok(rg) => rg,
                                 Err(e) => {
+                                    drop(rlock);
                                     self.abort(meta).unwrap(); // abort -- row not found
                                     return Err(e);
                                 }
@@ -648,7 +653,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(meta);
 
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(&meta).unwrap();
@@ -658,10 +666,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 let current_values;
                                 if read {
                                     let res = row.get_values(columns, meta).unwrap(); // should not fail
-                                    let rlock = self.get_shared_lock(*thread_id);
                                     let node = rlock.get_transaction(*txn_id);
                                     node.add_key(&index.get_name(), &key, OperationType::Read); // register operation
-                                    drop(rlock);
                                     current_values = Some(res.get_values());
                                 } else {
                                     current_values = None;
@@ -671,6 +677,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     match f(columns, current_values, params) {
                                         Ok(res) => res,
                                         Err(e) => {
+                                            drop(rlock);
                                             drop(mg);
                                             drop(rh);
                                             self.abort(&meta).unwrap(); // abort -- due to integrity constraint
@@ -681,7 +688,6 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 row.set_values(&cols, &new_values, meta).unwrap();
 
-                                let rlock = self.get_shared_lock(*thread_id);
                                 let node = rlock.get_transaction(*txn_id);
                                 node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                                 drop(rlock);
@@ -690,12 +696,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 return Ok(());
                             } else {
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
                                     row.remove_delayed(meta);
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
-
-                                    self.abort(&meta).unwrap();
+                                    self.abort(meta).unwrap();
                                     return Err(e.into()); // abort -- cascading abort or cycle
                                 }
 
@@ -705,6 +713,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
                     }
                     RowState::Deleted => {
+                        drop(rlock);
                         drop(mg);
                         drop(rh);
                         self.abort(meta).unwrap(); // abort -- cascading abort
@@ -730,12 +739,8 @@ impl Scheduler for BasicSerializationGraphTesting {
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let rlock = self.get_shared_lock(*thread_id); // take shared lock
             let id = (thread_id, txn_id);
-
-            if let Err(e) = self.abort_check((*thread_id, *txn_id)) {
-                self.abort(meta).unwrap();
-                return Err(e.into()); // abort -- cascading abort
-            }
 
             let table = self.get_table(table, &meta)?;
             let index = self.get_index(Arc::clone(&table), &meta)?;
@@ -743,6 +748,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rg) => rg,
                 Err(e) => {
+                    drop(rlock);
                     self.abort(meta).unwrap(); // row not found
                     return Err(e);
                 }
@@ -753,10 +759,11 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             if !row.is_delayed() {
                 let ah = row.get_access_history();
-                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                    drop(rlock);
                     drop(mg);
                     drop(rh);
-                    self.abort(&meta).unwrap();
+                    self.abort(meta).unwrap();
                     return Err(e.into()); // cascading abort or cycle found
                 }
 
@@ -764,10 +771,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 match row.get_state() {
                     RowState::Clean => {
                         row.append_value(column, value, meta).unwrap(); // execute append
-
-                        let rlock = self.get_shared_lock(*thread_id);
-                        let node = rlock.get_transaction(*txn_id);
-                        node.add_key(&index.get_name(), key, OperationType::Update); // register operation
+                        rlock.get_transaction(*txn_id).add_key(
+                            &index.get_name(),
+                            key,
+                            OperationType::Update,
+                        ); // register operation
                         drop(rlock);
                         drop(mg);
                         drop(rh);
@@ -785,6 +793,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let rh = match index.get_lock_on_row(&key) {
                                 Ok(rg) => rg,
                                 Err(e) => {
+                                    drop(rlock);
                                     self.abort(meta).unwrap(); // row not found
                                     return Err(e);
                                 }
@@ -797,27 +806,34 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(meta);
 
                                 let ah = row.get_access_history(); // insert and check
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
-
                                     self.abort(meta).unwrap();
                                     return Err(e.into()); // cascading abort or cycle found
                                 }
 
                                 row.append_value(column, value, meta).unwrap(); // execute append ( never fails )
 
-                                let rlock = self.get_shared_lock(*thread_id);
-                                let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                                let node = rlock.get_transaction(*txn_id).add_key(
+                                    &index.get_name(),
+                                    key,
+                                    OperationType::Update,
+                                ); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
                                 return Ok(());
                             } else {
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
                                     row.remove_delayed(meta);
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(&meta).unwrap();
@@ -830,6 +846,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
                     }
                     RowState::Deleted => {
+                        drop(rlock);
                         drop(mg);
                         drop(rh);
                         self.abort(&meta).unwrap(); // abort -- cascading abort
@@ -848,7 +865,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                             ah.push(Access::Write(tid));
                         }
 
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(meta).unwrap();
@@ -864,6 +882,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let rh = match index.get_lock_on_row(&key) {
                                 Ok(rg) => rg,
                                 Err(e) => {
+                                    drop(rlock);
                                     self.abort(meta).unwrap(); // abort -- row not found
                                     return Err(e);
                                 }
@@ -876,7 +895,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(meta);
 
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(meta).unwrap();
@@ -884,18 +906,23 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 }
 
                                 row.append_value(column, value, meta).unwrap();
-
-                                let rlock = self.get_shared_lock(*thread_id);
-                                let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                                rlock.get_transaction(*txn_id).add_key(
+                                    &index.get_name(),
+                                    key,
+                                    OperationType::Update,
+                                ); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
                                 return Ok(());
                             } else {
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
                                     row.remove_delayed(meta);
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(meta).unwrap();
@@ -908,6 +935,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
                     }
                     RowState::Deleted => {
+                        drop(rlock);
                         drop(mg);
                         drop(rh);
                         self.abort(meta).unwrap(); // abort -- cascading abort
@@ -933,14 +961,15 @@ impl Scheduler for BasicSerializationGraphTesting {
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let rlock = self.get_shared_lock(*thread_id); // take shared lock
             let id = (thread_id, txn_id);
 
-            let table = self.get_table(table, &meta)?; // get table
-            let index = self.get_index(Arc::clone(&table), &meta)?; // get index
+            let index = self.get_index(self.get_table(table, &meta)?, &meta)?; // get index
 
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rh) => rh,
                 Err(e) => {
+                    drop(rlock);
                     self.abort(meta).unwrap(); // abort -- row not found.
                     return Err(e);
                 }
@@ -953,7 +982,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                 match row.get_state() {
                     RowState::Clean => {
                         let ah = row.get_access_history();
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(meta).unwrap();
@@ -961,10 +991,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
 
                         let res = row.get_and_set_values(columns, values, meta).unwrap();
-
                         let vals = res.get_values(); // get values
-
-                        let rlock = self.get_shared_lock(*thread_id);
                         let node = rlock.get_transaction(*txn_id);
                         node.add_key(&index.get_name(), key, OperationType::Update); // register operation
                         drop(rlock);
@@ -975,7 +1002,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                     }
                     RowState::Modified => {
                         let ah = row.get_access_history(); // insert and check
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(meta).unwrap();
@@ -991,6 +1019,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let rh = match index.get_lock_on_row(&key) {
                                 Ok(rg) => rg,
                                 Err(e) => {
+                                    drop(rlock);
                                     self.abort(meta).unwrap(); // row not found
                                     return Err(e);
                                 }
@@ -1003,7 +1032,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(meta);
 
                                 let ah = row.get_access_history(); // insert and check
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
 
@@ -1014,17 +1046,22 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 let res = row.get_and_set_values(columns, values, meta).unwrap();
                                 let vals = res.get_values(); // get values
 
-                                let rlock = self.get_shared_lock(*thread_id);
-                                let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                                rlock.get_transaction(*txn_id).add_key(
+                                    &index.get_name(),
+                                    key,
+                                    OperationType::Update,
+                                ); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
                                 return Ok(vals);
                             } else {
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
                                     row.remove_delayed(meta);
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(meta).unwrap();
@@ -1037,6 +1074,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
                     }
                     RowState::Deleted => {
+                        drop(rlock);
                         drop(mg);
                         drop(rh);
                         self.abort(&meta).unwrap(); // abort -- cascading abort
@@ -1055,7 +1093,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                             ah.push(Access::Write(tid));
                         }
 
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(&meta).unwrap();
@@ -1071,6 +1110,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let rh = match index.get_lock_on_row(&key) {
                                 Ok(rg) => rg,
                                 Err(e) => {
+                                    drop(rlock);
                                     self.abort(meta).unwrap(); // abort -- row not found
                                     return Err(e);
                                 }
@@ -1083,7 +1123,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(meta);
 
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(meta).unwrap();
@@ -1093,17 +1136,22 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 let res = row.get_and_set_values(columns, values, meta).unwrap();
                                 let vals = res.get_values(); // get values
 
-                                let rlock = self.get_shared_lock(*thread_id);
-                                let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                                rlock.get_transaction(*txn_id).add_key(
+                                    &index.get_name(),
+                                    key,
+                                    OperationType::Update,
+                                ); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
                                 return Ok(vals);
                             } else {
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
                                     row.remove_delayed(meta);
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(meta).unwrap();
@@ -1116,6 +1164,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
                     }
                     RowState::Deleted => {
+                        drop(rlock);
                         drop(mg);
                         drop(rh);
                         self.abort(meta).unwrap(); // abort -- cascading abort
@@ -1139,15 +1188,17 @@ impl Scheduler for BasicSerializationGraphTesting {
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+            let rlock = self.get_shared_lock(*thread_id); // take shared lock
             let id = (thread_id, txn_id);
 
             let (thread_id, txn_id) = id;
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(Arc::clone(&table), &meta)?;
+
+            let index = self.get_index(self.get_table(table, &meta)?, &meta)?;
 
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rh) => rh,
                 Err(e) => {
+                    drop(rlock);
                     self.abort(meta).unwrap(); // abort - row not found
                     return Err(e);
                 }
@@ -1160,7 +1211,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                 match row.get_state() {
                     RowState::Clean => {
                         let ah = row.get_access_history();
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(meta).unwrap();
@@ -1180,7 +1232,8 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                     RowState::Modified => {
                         let ah = row.get_access_history(); // insert and check
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(&meta).unwrap();
@@ -1196,7 +1249,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let rh = match index.get_lock_on_row(&key) {
                                 Ok(rg) => rg,
                                 Err(e) => {
-                                    self.abort(&meta).unwrap(); // row not found
+                                    drop(rlock);
+                                    self.abort(meta).unwrap(); // row not found
                                     return Err(e);
                                 }
                             };
@@ -1208,29 +1262,37 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(meta);
 
                                 let ah = row.get_access_history(); // insert and check
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
 
-                                    self.abort(&meta).unwrap();
+                                    self.abort(meta).unwrap();
                                     return Err(e.into()); // cascading abort or cycle found
                                 }
                                 row.delete(meta).unwrap();
 
-                                let rlock = self.get_shared_lock(*thread_id);
-                                let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), &key, OperationType::Update); // operation succeeded -- register
+                                rlock.get_transaction(*txn_id).add_key(
+                                    &index.get_name(),
+                                    &key,
+                                    OperationType::Update,
+                                ); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
                                 return Ok(());
                             } else {
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
                                     row.remove_delayed(meta);
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
-                                    self.abort(&meta).unwrap();
+                                    self.abort(meta).unwrap();
                                     return Err(e.into()); // abort -- cascading abort or cycle
                                 }
 
@@ -1240,6 +1302,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
                     }
                     RowState::Deleted => {
+                        drop(rlock);
                         drop(mg);
                         drop(rh);
                         self.abort(meta).unwrap(); // abort -- cascading abort
@@ -1258,7 +1321,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                             ah.push(Access::Write(transaction_id));
                         }
 
-                        if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
                             self.abort(meta).unwrap();
@@ -1274,6 +1338,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             let rh = match index.get_lock_on_row(&key) {
                                 Ok(rg) => rg,
                                 Err(e) => {
+                                    drop(rlock);
                                     self.abort(meta).unwrap(); // abort -- row not found
                                     return Err(e);
                                 }
@@ -1286,7 +1351,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 row.remove_delayed(meta);
 
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(meta).unwrap();
@@ -1295,17 +1363,22 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 row.delete(meta).unwrap();
 
-                                let rlock = self.get_shared_lock(*thread_id);
-                                let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), &key, OperationType::Update); // operation succeeded -- register
+                                rlock.get_transaction(*txn_id).add_key(
+                                    &index.get_name(),
+                                    &key,
+                                    OperationType::Update,
+                                ); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
                                 return Ok(());
                             } else {
                                 let ah = row.get_access_history();
-                                if let Err(e) = self.insert_and_check((*thread_id, *txn_id), ah) {
+                                if let Err(e) =
+                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                {
                                     row.remove_delayed(meta);
+                                    drop(rlock);
                                     drop(mg);
                                     drop(rh);
                                     self.abort(meta).unwrap();
@@ -1318,6 +1391,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
                     }
                     RowState::Deleted => {
+                        drop(rlock);
                         drop(mg);
                         drop(rh);
                         self.abort(&meta).unwrap(); // abort -- cascading abort
