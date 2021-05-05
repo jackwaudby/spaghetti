@@ -147,7 +147,7 @@ impl Index {
 
         let (new_columns, new_values) = f(columns, current_values, params)?;
 
-        let cols: Vec<&str> = new_columns.into_iter().map(|s| s.as_str()).collect();
+        let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
 
         let res = row.set_values(&cols, &new_values, tid)?;
 

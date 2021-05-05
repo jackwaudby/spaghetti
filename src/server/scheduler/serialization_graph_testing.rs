@@ -12,7 +12,7 @@ use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::{fmt, thread};
-use tracing::{debug, info};
+use tracing::info;
 
 pub mod node;
 
@@ -95,10 +95,6 @@ impl SerializationGraphTesting {
 
     /// Check if node has any incoming edges. If so, set state to
     /// committed and return true.
-    ///
-    /// # Panics
-    ///
-    /// Unable to acquire exculsive lock.
     pub fn commit_check(&self, id: usize) -> bool {
         let node = self.get_exculsive_lock(id); // get exculsive lock
         if !node.has_incoming() && node.get_state() == State::Active {
@@ -109,10 +105,6 @@ impl SerializationGraphTesting {
     }
 
     /// Perform a reduced depth first search from `start` node.
-    ///
-    /// # Panics
-    ///
-    /// Unable to acquire locks on node.
     pub fn reduced_depth_first_search(&self, start: usize) -> bool {
         let mut stack = Vec::new(); // nodes to visit
         let mut visited = HashSet::new(); // nodes visited
@@ -207,7 +199,10 @@ impl Scheduler for SerializationGraphTesting {
 
             // initialise each field
             for (i, column) in columns.iter().enumerate() {
-                if row.init_value(column, Data::from(&values[i])).is_err() {
+                if row
+                    .init_value(column, Data::from(values[i].clone()))
+                    .is_err()
+                {
                     self.abort(&meta).unwrap(); // abort -- unable to initialise row
                     return Err(NonFatalError::UnableToInitialiseRow(
                         table.to_string(),
@@ -226,7 +221,7 @@ impl Scheduler for SerializationGraphTesting {
             match index.insert(key, row) {
                 Ok(_) => {
                     let node = self.get_shared_lock(*thread_id); // get shared lock
-                    node.add_key(&index.get_name(), key, OperationType::Insert); // operation succeeded -- register
+                    node.add_key(&index.get_name(), key.clone(), OperationType::Insert); // operation succeeded -- register
                     drop(node); // drop shared lock
                 }
 
@@ -251,6 +246,7 @@ impl Scheduler for SerializationGraphTesting {
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::OptimisticSerializationGraph { thread_id, .. } = meta {
+            let this_node = thread_id;
             let table = self.get_table(table, &meta)?; // get table
             let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
@@ -275,14 +271,19 @@ impl Scheduler for SerializationGraphTesting {
                     for access in access_history {
                         // WR conflict
                         if let Access::Write(tid) = access {
-                            let from_node: usize = tid.parse().unwrap(); // get from_node position in sgt
+                            if let TransactionInfo::OptimisticSerializationGraph {
+                                thread_id, ..
+                            } = tid
+                            {
+                                let from_node = thread_id;
 
-                            // add edge
-                            if let Err(e) = self.add_edge(from_node, this_node, false) {
-                                drop(mg); // drop mutex on row
-                                drop(rh); // drop read handle to row
-                                self.abort(&meta).unwrap(); // abort -- from_node aborted
-                                return Err(e.into());
+                                // add edge
+                                if let Err(e) = self.add_edge(from_node, *this_node, false) {
+                                    drop(mg); // drop mutex on row
+                                    drop(rh); // drop read handle to row
+                                    self.abort(&meta).unwrap(); // abort -- from_node aborted
+                                    return Err(e.into());
+                                }
                             }
                         }
                     }
@@ -302,6 +303,8 @@ impl Scheduler for SerializationGraphTesting {
                     Err(e)
                 }
             }
+        } else {
+            panic!("TODO");
         }
     }
 
@@ -323,6 +326,7 @@ impl Scheduler for SerializationGraphTesting {
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::OptimisticSerializationGraph { thread_id, .. } = meta {
+            let this_node = thread_id;
             let table = self.get_table(table, &meta)?; // get table
             let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
@@ -342,7 +346,7 @@ impl Scheduler for SerializationGraphTesting {
             if read {
                 let res = row.get_values(columns, meta).unwrap(); // should not fail
                 let rlock = self.get_shared_lock(*thread_id);
-                rlock.add_key(&index.get_name(), &key, OperationType::Read); // register operation
+                rlock.add_key(&index.get_name(), key.clone(), OperationType::Read); // register operation
                 drop(rlock);
                 current_values = Some(res.get_values());
             } else {
@@ -358,8 +362,8 @@ impl Scheduler for SerializationGraphTesting {
                     return Err(e);
                 }
             };
+            let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
 
-            let cols: Vec<&str> = new_columns.into_iter().map(|s| s.as_str()).collect(); // TODO: don't like this, but don't think it can be avoided
             match row.set_values(&cols, &new_values, meta) {
                 Ok(res) => {
                     let rlock = self.get_shared_lock(*thread_id);
@@ -372,28 +376,39 @@ impl Scheduler for SerializationGraphTesting {
                     // insert edges
                     for access in access_history {
                         match access {
-                            // WW conflict
                             Access::Write(tid) => {
-                                let from_node: usize = tid.parse().unwrap(); // get from_node position in graph
+                                if let TransactionInfo::OptimisticSerializationGraph {
+                                    thread_id,
+                                    ..
+                                } = tid
+                                {
+                                    let from_node = thread_id;
 
-                                // insert edges
-                                if let Err(e) = self.add_edge(from_node, this_node, false) {
-                                    drop(mg); // drop mutex on row
-                                    drop(rh); // drop read handle to row
-                                    self.abort(&meta).unwrap(); // abort -- from_node aborted
-                                    return Err(e.into());
+                                    // insert edges
+                                    if let Err(e) = self.add_edge(from_node, *this_node, false) {
+                                        drop(mg); // drop mutex on row
+                                        drop(rh); // drop read handle to row
+                                        self.abort(&meta).unwrap(); // abort -- from_node aborted
+                                        return Err(e.into());
+                                    }
                                 }
                             }
                             // RW conflict
                             Access::Read(tid) => {
-                                let from_node: usize = tid.parse().unwrap();
+                                if let TransactionInfo::OptimisticSerializationGraph {
+                                    thread_id,
+                                    ..
+                                } = tid
+                                {
+                                    let from_node = thread_id;
 
-                                // insert edges
-                                if let Err(e) = self.add_edge(from_node, this_node, true) {
-                                    drop(mg); // drop mutex on row
-                                    drop(rh); // drop read handle to row
-                                    self.abort(&meta).unwrap(); // abort -- from_node aborted
-                                    return Err(e.into());
+                                    // insert edges
+                                    if let Err(e) = self.add_edge(from_node, *this_node, true) {
+                                        drop(mg); // drop mutex on row
+                                        drop(rh); // drop read handle to row
+                                        self.abort(&meta).unwrap(); // abort -- from_node aborted
+                                        return Err(e.into());
+                                    }
                                 }
                             }
                         }
@@ -410,6 +425,8 @@ impl Scheduler for SerializationGraphTesting {
                     Err(e)
                 }
             }
+        } else {
+            panic!("TODO");
         }
     }
 
@@ -424,69 +441,83 @@ impl Scheduler for SerializationGraphTesting {
         value: Data,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        let th = thread::current();
-        let thread_id = th.name().unwrap(); // get thread id
-        debug!("Thread {}: Executing append operation", thread_id);
+        if let TransactionInfo::OptimisticSerializationGraph { thread_id, .. } = meta {
+            let this_node = thread_id;
 
-        let table = self.get_table(table, &meta)?; // get table
-        let index = self.get_index(Arc::clone(&table), &meta)?; // get index
+            let table = self.get_table(table, &meta)?; // get table
+            let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
-        let rh = match index.get_lock_on_row(&key) {
-            Ok(rh) => rh, // get handle to row
-            Err(e) => {
-                self.abort(&meta).unwrap(); // abort -- RowNotFound.
-                return Err(e);
-            }
-        };
+            let rh = match index.get_lock_on_row(&key) {
+                Ok(rh) => rh, // get handle to row
+                Err(e) => {
+                    self.abort(&meta).unwrap(); // abort -- RowNotFound.
+                    return Err(e);
+                }
+            };
 
-        let mut mg = rh.lock(); // get mutex on row
-        let row = &mut *mg; // deref to row
+            let mut mg = rh.lock(); // get mutex on row
+            let row = &mut *mg; // deref to row
 
-        match row.append_value(column, value, meta) {
-            Ok(res) => {
-                let this_node = meta.get_id().unwrap().parse::<usize>().unwrap(); // get position of this transaction in the graph
-                let node = self.get_shared_lock(this_node);
-                node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
-                drop(node);
+            match row.append_value(column, value, meta) {
+                Ok(res) => {
+                    let node = self.get_shared_lock(*this_node);
+                    node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
+                    drop(node);
 
-                let access_history = res.get_access_history(); // get access history
+                    let access_history = res.get_access_history(); // get access history
 
-                for access in access_history {
-                    match access {
-                        // WW conflict
-                        Access::Write(tid) => {
-                            let from_node: usize = tid.parse().unwrap(); // get position of conflicting transaction in the graph.
+                    for access in access_history {
+                        match access {
+                            // WW conflict
+                            Access::Write(tid) => {
+                                if let TransactionInfo::OptimisticSerializationGraph {
+                                    thread_id,
+                                    ..
+                                } = tid
+                                {
+                                    let from_node = thread_id;
 
-                            // insert edges
-                            if let Err(e) = self.add_edge(from_node, this_node, false) {
-                                drop(mg); // drop mutex on row
-                                drop(rh); // drop read handle to row
-                                self.abort(&meta).unwrap(); // abort -- parent aborted
-                                return Err(e.into());
+                                    // insert edges
+                                    if let Err(e) = self.add_edge(from_node, *this_node, false) {
+                                        drop(mg); // drop mutex on row
+                                        drop(rh); // drop read handle to row
+                                        self.abort(&meta).unwrap(); // abort -- parent aborted
+                                        return Err(e.into());
+                                    }
+                                }
                             }
-                        }
-                        // RW conflict
-                        Access::Read(tid) => {
-                            let from_node: usize = tid.parse().unwrap();
-                            if let Err(e) = self.add_edge(from_node, this_node, true) {
-                                drop(mg); // drop mutex on row
-                                drop(rh); // drop read handle to row
-                                self.abort(&meta).unwrap(); // abort -- parent aborted
-                                return Err(e.into());
+                            // RW conflict
+                            Access::Read(tid) => {
+                                if let TransactionInfo::OptimisticSerializationGraph {
+                                    thread_id,
+                                    ..
+                                } = tid
+                                {
+                                    let from_node = thread_id;
+
+                                    if let Err(e) = self.add_edge(from_node, *this_node, true) {
+                                        drop(mg); // drop mutex on row
+                                        drop(rh); // drop read handle to row
+                                        self.abort(&meta).unwrap(); // abort -- parent aborted
+                                        return Err(e.into());
+                                    }
+                                }
                             }
                         }
                     }
+                    drop(mg); // drop mutex on row
+                    drop(rh); // drop read handle to row
+                    Ok(())
                 }
-                drop(mg); // drop mutex on row
-                drop(rh); // drop read handle to row
-                Ok(())
+                Err(e) => {
+                    drop(mg); // drop mutex on row
+                    drop(rh); // drop read handle to row
+                    self.abort(&meta).unwrap(); // abort -- row deleted or row dirty
+                    Err(e)
+                }
             }
-            Err(e) => {
-                drop(mg); // drop mutex on row
-                drop(rh); // drop read handle to row
-                self.abort(&meta).unwrap(); // abort -- row deleted or row dirty
-                Err(e)
-            }
+        } else {
+            panic!("TODO");
         }
     }
 
@@ -495,12 +526,12 @@ impl Scheduler for SerializationGraphTesting {
         &self,
         table: &str,
         key: &PrimaryKey,
-        columns: &Vec<&str>,
-        values: &Vec<&str>,
+        columns: &[&str],
+        values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::OptimisticSerializationGraph { thread_id, .. } = meta {
-            let this_node = *thread_id;
+            let this_node = thread_id;
             let table = self.get_table(table, meta)?; // get table
             let index = self.get_index(table, meta)?; // get index
 
@@ -518,8 +549,8 @@ impl Scheduler for SerializationGraphTesting {
             // get and set values
             match row.get_and_set_values(columns, values, meta) {
                 Ok(res) => {
-                    let node = self.get_shared_lock(this_node); // get shared lock
-                    node.add_key(&index.get_name(), key, OperationType::Update); // operation succeeded -- register
+                    let node = self.get_shared_lock(*this_node); // get shared lock
+                    node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
                     drop(node);
 
                     let access_history = res.get_access_history(); // get access history
@@ -528,29 +559,42 @@ impl Scheduler for SerializationGraphTesting {
                         match access {
                             // WW conflict
                             Access::Write(tid) => {
-                                let from_node: usize = tid.parse().unwrap(); // Get position of conflicting transaction in the graph.
+                                if let TransactionInfo::OptimisticSerializationGraph {
+                                    thread_id,
+                                    ..
+                                } = tid
+                                {
+                                    let from_node = thread_id;
 
-                                // insert edges
-                                if let Err(e) = self.add_edge(from_node, this_node, false) {
-                                    drop(mg); // drop mutex on row
-                                    drop(rh); // drop read handle to row
-                                    self.abort(&meta).unwrap(); // abort -- parent aborted.
-                                    return Err(e.into());
+                                    // insert edges
+                                    if let Err(e) = self.add_edge(from_node, *this_node, false) {
+                                        drop(mg); // drop mutex on row
+                                        drop(rh); // drop read handle to row
+                                        self.abort(&meta).unwrap(); // abort -- parent aborted.
+                                        return Err(e.into());
+                                    }
                                 }
                             }
                             // RW conflict
                             Access::Read(tid) => {
-                                // insert edges
-                                if let Err(e) = self.add_edge(from_node, this_node, true) {
-                                    drop(mg); // drop mutex on row
-                                    drop(rh); // drop read handle to row
-                                    self.abort(&meta).unwrap(); // abort -- parent aborted.
-                                    return Err(e.into());
+                                if let TransactionInfo::OptimisticSerializationGraph {
+                                    thread_id,
+                                    ..
+                                } = tid
+                                {
+                                    let from_node = thread_id;
+                                    // insert edges
+                                    if let Err(e) = self.add_edge(from_node, *this_node, true) {
+                                        drop(mg); // drop mutex on row
+                                        drop(rh); // drop read handle to row
+                                        self.abort(&meta).unwrap(); // abort -- parent aborted.
+                                        return Err(e.into());
+                                    }
                                 }
                             }
                         }
                     }
-                    let vals = res.get_values().unwrap(); // get values
+                    let vals = res.get_values(); // get values
                     Ok(vals)
                 }
                 Err(e) => {
@@ -560,6 +604,8 @@ impl Scheduler for SerializationGraphTesting {
                     Err(e)
                 }
             }
+        } else {
+            panic!("TODO");
         }
     }
 
@@ -571,7 +617,7 @@ impl Scheduler for SerializationGraphTesting {
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::OptimisticSerializationGraph { thread_id, .. } = meta {
-            let this_node = *thread_id;
+            let this_node = thread_id;
             let table = self.get_table(table, &meta)?; // get table
             let index = self.get_index(Arc::clone(&table), &meta)?; // get index
 
@@ -588,8 +634,8 @@ impl Scheduler for SerializationGraphTesting {
 
             match row.delete(meta) {
                 Ok(res) => {
-                    let node = self.get_shared_lock(this_node); // get shared lock
-                    node.add_key(&index.get_name(), key, OperationType::Delete);
+                    let node = self.get_shared_lock(*this_node); // get shared lock
+                    node.add_key(&index.get_name(), key.clone(), OperationType::Delete);
                     drop(node);
 
                     let access_history = res.get_access_history(); // get the access history
@@ -599,20 +645,34 @@ impl Scheduler for SerializationGraphTesting {
                         match access {
                             // WW conflict
                             Access::Write(tid) => {
-                                if let Err(e) = self.add_edge(from_node, this_node, false) {
-                                    drop(mg); // drop mutex on row
-                                    drop(rh); // drop read handle to row
-                                    self.abort(&meta).unwrap();
-                                    return Err(e.into());
+                                if let TransactionInfo::OptimisticSerializationGraph {
+                                    thread_id,
+                                    ..
+                                } = tid
+                                {
+                                    let from_node = thread_id;
+                                    if let Err(e) = self.add_edge(from_node, *this_node, false) {
+                                        drop(mg); // drop mutex on row
+                                        drop(rh); // drop read handle to row
+                                        self.abort(&meta).unwrap();
+                                        return Err(e.into());
+                                    }
                                 }
                             }
                             // RW conflict
                             Access::Read(tid) => {
-                                if let Err(e) = self.add_edge(from_node, this_node, true) {
-                                    drop(mg); // drop mutex on row
-                                    drop(rh); // drop read handle to row
-                                    self.abort(&meta).unwrap();
-                                    return Err(e.into());
+                                if let TransactionInfo::OptimisticSerializationGraph {
+                                    thread_id,
+                                    ..
+                                } = tid
+                                {
+                                    let from_node = thread_id;
+                                    if let Err(e) = self.add_edge(from_node, *this_node, true) {
+                                        drop(mg); // drop mutex on row
+                                        drop(rh); // drop read handle to row
+                                        self.abort(&meta).unwrap();
+                                        return Err(e.into());
+                                    }
                                 }
                             }
                         }
@@ -633,9 +693,6 @@ impl Scheduler for SerializationGraphTesting {
     }
 
     /// Abort a transaction.
-    ///
-    /// # Panics
-    /// - RWLock or Mutex error.
     fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
         if let TransactionInfo::OptimisticSerializationGraph { thread_id, txn_id } = meta {
             let wlock = self.get_exculsive_lock(*thread_id);
@@ -691,8 +748,8 @@ impl Scheduler for SerializationGraphTesting {
                 };
             }
 
-            self.clean_up_graph(this_node_id); // abort outgoing nodes
-            self.get_exculsive_lock(this_node_id).reset(); // reset node information
+            self.clean_up_graph(*thread_id); // abort outgoing nodes
+            self.get_exculsive_lock(*thread_id).reset(); // reset node information
 
             Ok(())
         } else {

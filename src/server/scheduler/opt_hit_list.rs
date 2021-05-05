@@ -57,26 +57,17 @@ impl Scheduler for OptimisedHitList {
             .parse::<usize>()
             .unwrap(); // get thread id
         let seq_num = self.thread_states[thread_id].new_transaction(); // get sequence number
-        let transaction_id = format!("{}-{}", thread_id, seq_num); // create transaction id
 
-        debug!("Register: {}", transaction_id);
-
-        Ok(TransactionInfo::OptimisticHitList(
-            Some(transaction_id),
-            None,
-        ))
+        Ok(TransactionInfo::OptimisticHitList {
+            thread_id,
+            txn_id: seq_num,
+        })
     }
 
     /// Create row in table.
     ///
     /// The row is immediately inserted into its table and marked as dirty. No predecessors
     /// collected by this operation.
-    ///
-    /// # Aborts
-    ///
-    /// A transaction aborts if:
-    /// - Table or index does not exist
-    /// - Incorrect column or value
     fn create(
         &self,
         table: &str,
@@ -94,7 +85,7 @@ impl Scheduler for OptimisedHitList {
 
             // init values
             for (i, column) in columns.iter().enumerate() {
-                match row.init_value(column, Data::from(values[i])) {
+                match row.init_value(column, Data::from(values[i].clone())) {
                     Ok(_) => {}
                     Err(e) => {
                         self.abort(meta).unwrap();

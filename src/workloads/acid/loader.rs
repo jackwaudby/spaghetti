@@ -26,7 +26,7 @@ pub fn load_person_table(data: &Internal) -> Result<()> {
     for result in rdr.deserialize() {
         let p: Person = result?;
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(p.p_id));
-        let mut row = Row::new(pk, Arc::clone(&person), true, true);
+        let mut row = Row::new(pk.clone(), Arc::clone(&person), true, true);
 
         row.init_value("p_id", Data::Uint(p.p_id))?;
         row.init_value("version", Data::Uint(p.version))?;
@@ -57,7 +57,7 @@ pub fn populate_person_table(data: &Internal) -> Result<()> {
     let mut ws_flag = true;
     for p_id in 0..persons {
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(p_id));
-        let mut row = Row::new(pk, Arc::clone(&person), true, true);
+        let mut row = Row::new(pk.clone(), Arc::clone(&person), true, true);
 
         row.init_value("p_id", Data::Uint(p_id))?;
         row.init_value("version", Data::Uint(1))?;
@@ -97,7 +97,7 @@ pub fn populate_person_knows_person_table(data: &Internal, _rng: &mut StdRng) ->
     for p1_id in (0..persons).step_by(2) {
         let p2_id = p1_id + 1;
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Knows(p1_id, p2_id));
-        let mut row = Row::new(pk, Arc::clone(&knows), true, true);
+        let mut row = Row::new(pk.clone(), Arc::clone(&knows), true, true);
 
         row.init_value("p1_id", Data::Uint(p1_id))?;
         row.init_value("p2_id", Data::Uint(p2_id))?;

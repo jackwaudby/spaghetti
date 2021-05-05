@@ -41,7 +41,7 @@ impl Field {
 
     /// Append data to list.
     pub fn append(&mut self, data: Data) {
-        if let Data::List(mut list) = self.data {
+        if let Data::List(ref mut list) = &mut self.data {
             list.push(data);
         }
     }
@@ -155,7 +155,7 @@ pub fn to_result(
     created: Option<u64>,
     updated: Option<u64>,
     deleted: Option<u64>,
-    columns: Option<&Vec<&str>>,
+    columns: Option<&[&str]>,
     values: Option<&Vec<Data>>,
 ) -> crate::Result<String> {
     let mut vals;

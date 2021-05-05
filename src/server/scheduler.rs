@@ -217,7 +217,7 @@ impl fmt::Display for TransactionInfo {
             OptimisticSerializationGraph { thread_id, txn_id } => {
                 write!(f, "{}-{}", thread_id, txn_id)
             }
-            HitList { txn_id: u64 } => write!(f, "{}", txn_id),
+            HitList { txn_id } => write!(f, "{}", txn_id),
             OptimisticHitList { thread_id, txn_id } => write!(f, "{}-{}", thread_id, txn_id),
             TwoPhaseLocking { txn_id, timestamp } => write!(f, "{}-{}", txn_id, timestamp),
         }

@@ -245,7 +245,7 @@ impl Row {
                     let field_index = schema.column_position_by_name(col_name)?; // get index of field in row
                     let field_type = schema.column_type_by_index(field_index); // get type of field
                     data_eq_column(field_type, &values[i])?; // check field is list type
-                    self.current_fields[field_index].set(values[i]);
+                    self.current_fields[field_index].set(values[i].clone());
                 }
 
                 let res = OperationResult::new(None, access_history); // create return result
@@ -303,8 +303,11 @@ impl Row {
         self.prev_fields = None;
 
         // safe to remove all accesses before this write; as if this committed all previous accesses must have committed.
-        if let Some(mut ah) = self.access_history {
-            let ind = ah.iter().position(|a| a == &Access::Write(*tid)).unwrap();
+        if let Some(ref mut ah) = &mut self.access_history {
+            let ind = ah
+                .iter()
+                .position(|a| a == &Access::Write(tid.clone()))
+                .unwrap();
             let new_ah = ah.split_off(ind + 1); // remove "old" access information; including self
             self.access_history = Some(new_ah); // reset
         }
@@ -321,14 +324,14 @@ impl Row {
                 self.state = State::Clean;
 
                 // remove all accesses after this write as they should also have aborted
-                if let Some(mut ah) = self.access_history {
+                if let Some(ref mut ah) = &mut self.access_history {
                     let ind = ah
                         .iter()
                         .position(|a| a == &Access::Write(tid.clone()))
                         .unwrap();
                     ah.truncate(ind); // remove "old" access information
 
-                    self.access_history = Some(ah); // reset
+                    self.access_history = Some(ah.to_vec()); // reset
                 }
             }
             State::Clean => {}
@@ -360,17 +363,17 @@ impl Row {
 
     /// Returns `true` if there are transactions delayed from operating on the row.
     pub fn is_delayed(&self) -> bool {
-        !self.delayed.unwrap().is_empty()
+        !self.delayed.as_ref().unwrap().is_empty()
     }
 
     /// Returns a copy of the delayed transactions.
     pub fn get_delayed(&self) -> Vec<TransactionInfo> {
-        self.delayed.unwrap().clone()
+        self.delayed.as_ref().unwrap().clone()
     }
 
     /// Removes a transaction from the delayed queue.
     pub fn remove_delayed(&mut self, t: &TransactionInfo) {
-        self.delayed.as_mut().unwrap().retain(|&x| x != *t);
+        self.delayed.as_mut().unwrap().retain(|x| x != t);
     }
 
     /// Append a transaction to the delayed queue.
@@ -380,7 +383,7 @@ impl Row {
 
     /// Returns true if the transaction is the head of the delayed queue and the row is clean.
     pub fn resume(&self, t: &TransactionInfo) -> bool {
-        self.delayed.unwrap()[0] == *t && self.state == State::Clean
+        self.delayed.as_ref().unwrap()[0] == *t && self.state == State::Clean
     }
 }
 
@@ -395,12 +398,12 @@ impl OperationResult {
 
     /// Get values.
     pub fn get_values(&self) -> Vec<Data> {
-        self.values.unwrap().clone()
+        self.values.as_ref().unwrap().clone()
     }
 
     /// Get access history.
     pub fn get_access_history(&self) -> Vec<Access> {
-        self.access_history.unwrap().clone()
+        self.access_history.as_ref().unwrap().clone()
     }
 }
 

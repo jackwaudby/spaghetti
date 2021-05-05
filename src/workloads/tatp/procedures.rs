@@ -174,7 +174,7 @@ pub fn update_subscriber_data(
                   params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let new_values = vec![params.unwrap()[0]];
+        let new_values = vec![params.unwrap()[0].clone().clone()];
         Ok((new_columns, new_values))
     };
 
@@ -220,7 +220,7 @@ pub fn update_location(
                       params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let new_values = vec![params.unwrap()[0]];
+        let new_values = vec![params.unwrap()[0].clone()b.clone()];
         Ok((new_columns, new_values))
     };
 

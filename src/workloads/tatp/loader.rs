@@ -37,7 +37,12 @@ pub fn load_sub_table(data: &Internal) -> Result<()> {
     for result in rdr.deserialize() {
         let s: Subscriber = result?;
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s.s_id));
-        let mut row = Row::new(pk, Arc::clone(&subscriber), track_access, track_delayed);
+        let mut row = Row::new(
+            pk.clone(),
+            Arc::clone(&subscriber),
+            track_access,
+            track_delayed,
+        );
 
         row.init_value("s_id", Data::from(s.s_id))?;
 
@@ -107,7 +112,12 @@ pub fn load_access_info_table(data: &Internal) -> Result<()> {
     for result in rdr.deserialize() {
         let ai: AccessInfo = result?;
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(ai.s_id, ai.ai_type));
-        let mut row = Row::new(pk, Arc::clone(&access_info), track_access, track_delayed);
+        let mut row = Row::new(
+            pk.clone(),
+            Arc::clone(&access_info),
+            track_access,
+            track_delayed,
+        );
 
         row.init_value("s_id", Data::from(ai.s_id))?;
         row.init_value("ai_type", Data::from(ai.ai_type))?;
@@ -154,7 +164,7 @@ pub fn load_call_forwarding_table(data: &Internal) -> Result<()> {
         ));
 
         let mut row = Row::new(
-            pk,
+            pk.clone(),
             Arc::clone(&call_forwarding),
             track_access,
             track_delayed,
@@ -201,7 +211,7 @@ pub fn load_special_facility_table(data: &Internal) -> Result<()> {
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(sf.s_id, sf.sf_type));
 
         let mut row = Row::new(
-            pk,
+            pk.clone(),
             Arc::clone(&special_facility),
             track_access,
             track_delayed,
@@ -254,7 +264,12 @@ pub fn populate_subscriber_table(data: &Internal, rng: &mut StdRng) -> Result<()
 
     for s_id in 1..=subs {
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
-        let mut row = Row::new(pk, Arc::clone(&subscriber), track_access, track_delayed);
+        let mut row = Row::new(
+            pk.clone(),
+            Arc::clone(&subscriber),
+            track_access,
+            track_delayed,
+        );
 
         row.init_value("s_id", Data::from(s_id))?;
         row.init_value("sub_nbr", Data::from(helper::to_sub_nbr(s_id)))?;
@@ -316,7 +331,12 @@ pub fn populate_access_info(data: &Internal, rng: &mut StdRng) -> Result<()> {
         let sample = ai_type_values.iter().choose_multiple(rng, n_ai); // randomly sample w.o. replacement from range of ai_type values
         for record in 1..=n_ai {
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(s_id, record as u64));
-            let mut row = Row::new(pk, Arc::clone(&access_info), track_access, track_delayed);
+            let mut row = Row::new(
+                pk.clone(),
+                Arc::clone(&access_info),
+                track_access,
+                track_delayed,
+            );
 
             row.init_value("s_id", Data::from(s_id))?;
             row.init_value("ai_type", Data::from(*sample[record - 1] as u64))?;
@@ -373,7 +393,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
         for record in 1..=n_sf {
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(s_id, record as u64)); // calculate primary key
             let mut row = Row::new(
-                pk,
+                pk.clone(),
                 Arc::clone(&special_facility),
                 track_access,
                 track_delayed,
@@ -402,7 +422,7 @@ pub fn populate_special_facility_call_forwarding(data: &Internal, rng: &mut StdR
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(s_id, record as u64, st));
 
                     let mut row = Row::new(
-                        pk,
+                        pk.clone(),
                         Arc::clone(&call_forwarding),
                         track_access,
                         track_delayed,

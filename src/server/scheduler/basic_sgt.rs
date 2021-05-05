@@ -323,7 +323,10 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             // initialise each field
             for (i, column) in columns.iter().enumerate() {
-                if row.init_value(column, Data::from(&values[i])).is_err() {
+                if row
+                    .init_value(column, Data::from(values[i].clone()))
+                    .is_err()
+                {
                     self.abort(&meta).unwrap(); // abort -- unable to initialise row
                     return Err(NonFatalError::UnableToInitialiseRow(
                         table.to_string(),
@@ -499,7 +502,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let cols: Vec<&str> = new_columns.into_iter().map(|s| s.as_str()).collect(); // TODO: don't like this, but don't think it can be avoided
+                        let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
                         row.set_values(&cols, &new_values, meta).unwrap();
 
                         let rlock = self.get_shared_lock(*thread_id);
@@ -571,9 +574,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                                             return Err(e);
                                         }
                                     };
+                                let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
 
-                                let cols: Vec<&str> =
-                                    new_columns.into_iter().map(|s| s.as_str()).collect(); // TODO: don't like this, but don't think it can be avoided
                                 row.set_values(&cols, &new_values, meta).unwrap();
 
                                 let rlock = self.get_shared_lock(*thread_id);
@@ -675,9 +677,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                                             return Err(e);
                                         }
                                     };
+                                let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
 
-                                let cols: Vec<&str> =
-                                    new_columns.into_iter().map(|s| s.as_str()).collect(); // TODO: don't like this, but don't think it can be avoided
                                 row.set_values(&cols, &new_values, meta).unwrap();
 
                                 let rlock = self.get_shared_lock(*thread_id);

@@ -130,7 +130,7 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
                           params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let new_values = vec![params.unwrap()[0]];
+        let new_values = vec![params.unwrap()[0].clone()];
         Ok((new_columns, new_values))
     };
 
@@ -172,7 +172,7 @@ pub fn g1c_read_write(
                           params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let new_values = vec![params.unwrap()[0]];
+        let new_values = vec![params.unwrap()[0].clone()];
         Ok((new_columns, new_values))
     };
 
@@ -235,7 +235,7 @@ pub fn imp_write(params: ImpWrite, protocol: Arc<Protocol>) -> Result<String, No
                        _params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let current_value = u64::try_from(current.unwrap()[0])?;
+        let current_value = u64::try_from(current.unwrap()[0].clone())?;
         let new_values = vec![Data::Uint(current_value + 1)];
         Ok((new_columns, new_values))
     };
@@ -270,7 +270,7 @@ pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFata
                        _params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let current_value = u64::try_from(current.unwrap()[0])?;
+        let current_value = u64::try_from(current.unwrap()[0].clone())?;
         let new_values = vec![Data::Uint(current_value + 1)];
         Ok((new_columns, new_values))
     };
@@ -329,7 +329,7 @@ pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<Stri
                        _params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let current_value = u64::try_from(current.unwrap()[0])?;
+        let current_value = u64::try_from(current.unwrap()[0].clone())?;
         let new_values = vec![Data::Uint(current_value + 1)];
         Ok((new_columns, new_values))
     };
@@ -382,8 +382,8 @@ pub fn g2_item_write(
                   current: Option<Vec<Data>>,
                   params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let current_value = i64::try_from(current.unwrap()[0])?;
-        let other_value = i64::try_from(params.unwrap()[0])?;
+        let current_value = i64::try_from(current.unwrap()[0].clone())?;
+        let other_value = i64::try_from(params.unwrap()[0].clone())?;
 
         if current_value + other_value < 100 {
             return Err(NonFatalError::NonSerializable);

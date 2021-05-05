@@ -64,8 +64,8 @@ pub fn deposit_checking(
                            current: Option<Vec<Data>>,
                            params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let balance = f64::try_from(current.unwrap()[0])?; // get current balance
-        let value = f64::try_from(params.unwrap()[0])?; // get deposit amount
+        let balance = f64::try_from(current.unwrap()[0].clone())?; // get current balance
+        let value = f64::try_from(params.unwrap()[0].clone())?; // get deposit amount
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
         let new_balance = vec![Data::from(balance + value)]; // create new balance
         Ok((new_columns, new_balance))
@@ -77,7 +77,7 @@ pub fn deposit_checking(
         .scheduler
         .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
 
-    let cust_id = i64::try_from(res1[0]).unwrap() as u64;
+    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
     let params = vec![Data::Double(params.value)];
 
@@ -114,7 +114,7 @@ pub fn transact_savings(
                               params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
         let balance = f64::try_from(current.unwrap()[0].clone()).unwrap(); // get current balance
-        let value = f64::try_from(params.unwrap()[0]).unwrap(); // get value
+        let value = f64::try_from(params.unwrap()[0].clone()).unwrap(); // get value
         if balance - value > 0.0 {
             let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
             let new_balance = vec![Data::Double(balance - value)]; // create new balance
@@ -202,8 +202,8 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
                   current: Option<Vec<Data>>,
                   params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let balance = f64::try_from(current.unwrap()[0])?; // current balance
-        let value = f64::try_from(params.unwrap()[0])?;
+        let balance = f64::try_from(current.unwrap()[0].clone())?; // current balance
+        let value = f64::try_from(params.unwrap()[0].clone())?;
         let new_balance = vec![Data::from(balance + value)];
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
 
@@ -240,10 +240,10 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
                            current: Option<Vec<Data>>,
                            params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let a = f64::try_from(params.unwrap()[1])?; // savings balance
-        let b = f64::try_from(current.unwrap()[0])?; // checking balance
+        let a = f64::try_from(params.unwrap()[1].clone())?; // savings balance
+        let b = f64::try_from(current.unwrap()[0].clone())?; // checking balance
 
-        let value = f64::try_from(params.unwrap()[0])?; // amount
+        let value = f64::try_from(params.unwrap()[0].clone())?; // amount
 
         let new_balance;
         if a + b < value {
@@ -263,7 +263,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
         .scheduler
         .read("accounts", &accounts_pk, &accounts_cols, &meta)?;
 
-    let cust_id = i64::try_from(res1[0]).unwrap() as u64;
+    let cust_id = i64::try_from(res1[0].clone()).unwrap() as u64;
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
 
@@ -306,8 +306,8 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
                        current: Option<Vec<Data>>,
                        params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let current_balance = f64::try_from(current.unwrap()[0])?; // checking balance of cust1
-        let value = f64::try_from(params.unwrap()[0])?; // proposed payment amount
+        let current_balance = f64::try_from(current.unwrap()[0].clone())?; // checking balance of cust1
+        let value = f64::try_from(params.unwrap()[0].clone())?; // proposed payment amount
 
         if value < current_balance {
             let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
@@ -322,8 +322,8 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
                             current: Option<Vec<Data>>,
                             params: Option<&[Data]>|
      -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let current_balance = f64::try_from(current.unwrap()[0])?;
-        let value = f64::try_from(params.unwrap()[0])?;
+        let current_balance = f64::try_from(current.unwrap()[0].clone())?;
+        let value = f64::try_from(params.unwrap()[0].clone())?;
 
         let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
         let new_balance: Vec<Data> = vec![Data::Double(current_balance + value)];

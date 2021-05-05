@@ -125,7 +125,7 @@ impl Scheduler for HitList {
 
             // init values
             for (i, column) in columns.iter().enumerate() {
-                match row.init_value(column, Data::from(values[i])) {
+                match row.init_value(column, Data::from(values[i].clone())) {
                     Ok(_) => {}
                     Err(e) => {
                         self.abort(meta).unwrap();
