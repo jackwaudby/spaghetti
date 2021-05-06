@@ -419,6 +419,14 @@ fn data_eq_column(a: &ColumnKind, b: &Data) -> Result<(), NonFatalError> {
     }
 }
 
+pub fn access_eq(a: &Access, b: &Access) -> bool {
+    match (a, b) {
+        (&Access::Read(..), &Access::Read(..)) => true,
+        (&Access::Write(..), &Access::Write(..)) => true,
+        _ => false,
+    }
+}
+
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {

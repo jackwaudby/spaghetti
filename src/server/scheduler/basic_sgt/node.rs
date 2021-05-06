@@ -115,7 +115,7 @@ impl Node {
             id,
             outgoing: Mutex::new(Some(vec![])),
             incoming: Mutex::new(Some(vec![])),
-            state: Mutex::new(Some(State::Active)), // TODO: None to be when there is no transaction or Vacant type
+            state: Mutex::new(Some(State::Active)),
             keys_inserted: Mutex::new(Some(vec![])),
             keys_read: Mutex::new(Some(vec![])),
             keys_updated: Mutex::new(Some(vec![])),

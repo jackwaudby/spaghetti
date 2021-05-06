@@ -4,7 +4,7 @@ use crate::server::scheduler::basic_sgt::node::{EdgeType, NodeSet, OperationType
 use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
 use crate::server::storage::index::Index;
-use crate::server::storage::row::{Access, Row, State as RowState};
+use crate::server::storage::row::{self, access_eq, Access, Row, State as RowState};
 
 use crate::workloads::{PrimaryKey, Workload};
 
@@ -1064,6 +1064,12 @@ impl Scheduler for BasicSerializationGraphTesting {
                     }
                     RowState::Modified => {
                         let ah = row.get_access_history(); // insert and check
+
+                        // let doorman = ah
+                        //     .into_iter()
+                        //     .filter(|i| access_eq(i, &Access::Write(..)))
+                        //     .last();
+
                         if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
                             drop(rlock);
                             drop(mg);
@@ -1071,11 +1077,24 @@ impl Scheduler for BasicSerializationGraphTesting {
                             self.abort(meta).unwrap();
                             return Err(e.into()); // cascading abort or cycle found
                         }
+                        // let (doorman_th, doorman_id) = doorman;
 
                         row.append_delayed(meta); // add to delayed queue
 
                         drop(mg);
                         drop(rh);
+
+                        // loop {
+                        //     let rlock2 = self.get_shared_lock(doorman_th);
+                        //     let state = rlock2.get_transaction(doorman_id).get_state();
+                        //     match state {
+                        //         State::Aborted | State::Committed => {
+                        //             drop(rlock2);
+                        //             break;
+                        //         }
+                        //         State::Active => drop(rlock2),
+                        //     }
+                        // }
 
                         loop {
                             let rh = match index.get_lock_on_row(&key) {
@@ -1118,20 +1137,20 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 drop(rh);
                                 return Ok(vals);
                             } else {
-                                let ah = row.get_access_history();
-                                if let Err(e) =
-                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
-                                {
-                                    row.remove_delayed(meta);
-                                    drop(rlock);
-                                    drop(mg);
-                                    drop(rh);
-                                    self.abort(meta).unwrap();
-                                    return Err(e.into()); // abort -- cascading abort or cycle
-                                }
+                                // let ah = row.get_access_history();
+                                // if let Err(e) =
+                                //     self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                // {
+                                //     row.remove_delayed(meta);
+                                //     drop(rlock);
+                                //     drop(mg);
+                                //     drop(rh);
+                                //     self.abort(meta).unwrap();
+                                //     return Err(e.into()); // abort -- cascading abort or cycle
+                                // }
 
-                                drop(mg);
-                                drop(rh);
+                                // drop(mg);
+                                // drop(rh);
                             }
                         }
                     }
@@ -1151,6 +1170,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                     RowState::Clean | RowState::Modified => {
                         let mut ah = row.get_access_history(); // get access history
                         let delayed = row.get_delayed(); // other delayed transactions; multiple w-w conflicts
+
+                        //     let doorman = delayed.last().unwrap();
+                        //   if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+                        //   let (d_th, d_id) = doorman;
+
                         for tid in delayed {
                             ah.push(Access::Write(tid));
                         }
@@ -1167,6 +1191,18 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                         drop(mg);
                         drop(rh);
+
+                        // loop {
+                        //     let rlock2 = self.get_shared_lock(doorman_th);
+                        //     let state = rlock2.get_transaction(doorman_id).get_state();
+                        //     match state {
+                        //         State::Aborted | State::Committed => {
+                        //             drop(rlock2);
+                        //             break;
+                        //         }
+                        //         State::Active => drop(rlock2),
+                        //     }
+                        // }
 
                         loop {
                             let rh = match index.get_lock_on_row(&key) {
@@ -1208,20 +1244,20 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 drop(rh);
                                 return Ok(vals);
                             } else {
-                                let ah = row.get_access_history();
-                                if let Err(e) =
-                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
-                                {
-                                    row.remove_delayed(meta);
-                                    drop(rlock);
-                                    drop(mg);
-                                    drop(rh);
-                                    self.abort(meta).unwrap();
-                                    return Err(e.into()); // abort -- cascading abort or cycle
-                                }
+                                // let ah = row.get_access_history();
+                                // if let Err(e) =
+                                //     self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
+                                // {
+                                //     row.remove_delayed(meta);
+                                //     drop(rlock);
+                                //     drop(mg);
+                                //     drop(rh);
+                                //     self.abort(meta).unwrap();
+                                //     return Err(e.into()); // abort -- cascading abort or cycle
+                                // }
 
-                                drop(mg);
-                                drop(rh);
+                                // drop(mg);
+                                // drop(rh);
                             }
                         }
                     }
