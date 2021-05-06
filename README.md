@@ -70,3 +70,7 @@ Test coverage can be ran locally using:
 ```
 docker run --security-opt seccomp=unconfined -v "${PWD}:/volume" xd009642/tarpaulin:0.16.0
 ```
+
+```
+cargo flamegraph -o 30-core.svg --bin=spag-gpc -- -c 30 -p basic-sgt -t 1000000
+```
