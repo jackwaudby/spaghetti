@@ -1,6 +1,7 @@
 use crate::server::storage::index::Index;
 use crate::workloads::PrimaryKey;
 
+use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fmt;
@@ -10,7 +11,7 @@ use std::sync::Arc;
 pub struct NodeSet {
     id: usize,
     counter: u64,
-    transactions: HashMap<u64, Node>,
+    transactions: IntMap<u64, Node>,
 }
 
 impl NodeSet {
@@ -19,7 +20,7 @@ impl NodeSet {
         NodeSet {
             id,
             counter: 0,
-            transactions: HashMap::new(),
+            transactions: IntMap::default(),
         }
     }
 
