@@ -1,8 +1,10 @@
+use crate::server::storage::index::Index;
 use crate::workloads::PrimaryKey;
 
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct NodeSet {
@@ -68,7 +70,7 @@ pub struct Node {
     keys_inserted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
 
     /// List of keys read by transaction.
-    keys_read: Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_read: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
 
     /// List of keys updated by transaction.
     keys_updated: Mutex<Option<Vec<(String, PrimaryKey)>>>,
@@ -196,7 +198,7 @@ impl Node {
                 Some(vec) => vec,
                 None => panic!("{:?}", &self),
             },
-            Read => self.keys_read.lock().take().unwrap(),
+            Read => unimplemented!(),
             Update => self.keys_updated.lock().take().unwrap(),
             Delete => self.keys_deleted.lock().take().unwrap(),
         }
@@ -208,9 +210,27 @@ impl Node {
         use OperationType::*;
         match operation_type {
             Insert => self.keys_inserted.lock().as_mut().unwrap().push(pair),
-            Read => self.keys_read.lock().as_mut().unwrap().push(pair),
+            Read => {}
             Update => self.keys_updated.lock().as_mut().unwrap().push(pair),
             Delete => self.keys_deleted.lock().as_mut().unwrap().push(pair),
+        }
+    }
+
+    pub fn get_keys2(&self, operation_type: OperationType) -> Vec<(Arc<Index>, PrimaryKey)> {
+        use OperationType::*;
+        if let Read = operation_type {
+            return self.keys_read.lock().take().unwrap();
+        } else {
+            panic!("TODO");
+        }
+    }
+
+    pub fn add_key2(&self, index: Arc<Index>, key: &PrimaryKey, operation_type: OperationType) {
+        let pair = (index, key.clone());
+        use OperationType::*;
+
+        if let Read = operation_type {
+            self.keys_read.lock().as_mut().unwrap().push(pair);
         }
     }
 

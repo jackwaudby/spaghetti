@@ -416,7 +416,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             match row.get_values(columns, meta) {
                 Ok(res) => {
                     let node = rlock.get_transaction(*txn_id);
-                    node.add_key(&index.get_name(), key, OperationType::Read);
+                    node.add_key2(Arc::clone(&index), key, OperationType::Read);
                     drop(rlock);
                     let vals = res.get_values();
                     drop(mg);
@@ -1426,7 +1426,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             let node = rlock.get_transaction(*txn_id);
 
             let inserts = node.get_keys(OperationType::Insert);
-            let reads = node.get_keys(OperationType::Read);
+            let reads = node.get_keys2(OperationType::Read);
             let updates = node.get_keys(OperationType::Update);
             let deletes = node.get_keys(OperationType::Delete);
             drop(rlock);
@@ -1437,8 +1437,6 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
 
             for (index, key) in &reads {
-                let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
-
                 // get read handle to row
                 if let Ok(rh) = index.get_lock_on_row(&key) {
                     let mut mg = rh.lock(); // acquire mutex on the row
@@ -1521,7 +1519,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                     let node = rlock.get_transaction(*txn_id);
                     let inserts = node.get_keys(OperationType::Insert);
-                    let reads = node.get_keys(OperationType::Read);
+                    let reads = node.get_keys2(OperationType::Read);
                     let updates = node.get_keys(OperationType::Update);
                     let deletes = node.get_keys(OperationType::Delete);
                     drop(rlock); // drop shared lock
@@ -1537,8 +1535,6 @@ impl Scheduler for BasicSerializationGraphTesting {
                     }
 
                     for (index, key) in &reads {
-                        let index = self.data.get_internals().get_index(&index).unwrap(); // get handle to index
-
                         // get read handle to row
                         if let Ok(rh) = index.get_lock_on_row(&key) {
                             let mut mg = rh.lock(); // acquire mutex on the row
