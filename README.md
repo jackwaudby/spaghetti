@@ -16,7 +16,7 @@ Configuration is set in `Embedded.toml`.
 cargo build
 
 #run embedded mode
-./target/debug/spag-em
+./target/debug/spag-gpc -c 1 -p basic-sgt -t 10000
 ```
 
 ## Client-Server Mode
