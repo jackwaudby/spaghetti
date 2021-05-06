@@ -68,16 +68,16 @@ pub struct Node {
     incoming: Mutex<Option<Vec<(usize, u64)>>>,
 
     /// Keys inserted
-    keys_inserted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_inserted: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
 
     /// List of keys read by transaction.
     keys_read: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
 
     /// List of keys updated by transaction.
-    keys_updated: Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_updated: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
 
     /// List of keys deleted by transaction.
-    keys_deleted: Mutex<Option<Vec<(String, PrimaryKey)>>>,
+    keys_deleted: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
 }
 
 /// Represents states a `Node` can be in.
@@ -189,49 +189,24 @@ impl Node {
         self.outgoing.lock().clone().unwrap()
     }
 
-    /// Takes the list of keys inserted/read/updated/deleted by the transaction in the node.
-    pub fn get_keys(&self, operation_type: OperationType) -> Vec<(String, PrimaryKey)> {
-        //        tracing::info!("Called on: {}-{}", &self.thread_id, &self.id);
-
-        use OperationType::*;
-        match operation_type {
-            Insert => match self.keys_inserted.lock().take() {
-                Some(vec) => vec,
-                None => panic!("{:?}", &self),
-            },
-            Read => unimplemented!(),
-            Update => self.keys_updated.lock().take().unwrap(),
-            Delete => self.keys_deleted.lock().take().unwrap(),
-        }
-    }
-
-    /// Add key to the list of keys inserted/read/updated/deleted by the transaction in the node.
-    pub fn add_key(&self, index: &str, key: &PrimaryKey, operation_type: OperationType) {
-        let pair = (index.to_string(), key.clone());
-        use OperationType::*;
-        match operation_type {
-            Insert => self.keys_inserted.lock().as_mut().unwrap().push(pair),
-            Read => {}
-            Update => self.keys_updated.lock().as_mut().unwrap().push(pair),
-            Delete => self.keys_deleted.lock().as_mut().unwrap().push(pair),
-        }
-    }
-
     pub fn get_keys2(&self, operation_type: OperationType) -> Vec<(Arc<Index>, PrimaryKey)> {
         use OperationType::*;
-        if let Read = operation_type {
-            return self.keys_read.lock().take().unwrap();
-        } else {
-            panic!("TODO");
+        match operation_type {
+            Insert => self.keys_inserted.lock().take().unwrap(),
+            Read => self.keys_read.lock().take().unwrap(),
+            Update => self.keys_updated.lock().take().unwrap(),
+            Delete => self.keys_deleted.lock().take().unwrap(),
         }
     }
 
     pub fn add_key2(&self, index: Arc<Index>, key: &PrimaryKey, operation_type: OperationType) {
         let pair = (index, key.clone());
         use OperationType::*;
-
-        if let Read = operation_type {
-            self.keys_read.lock().as_mut().unwrap().push(pair);
+        match operation_type {
+            Insert => self.keys_inserted.lock().as_mut().unwrap().push(pair),
+            Read => self.keys_read.lock().as_mut().unwrap().push(pair),
+            Update => self.keys_updated.lock().as_mut().unwrap().push(pair),
+            Delete => self.keys_deleted.lock().as_mut().unwrap().push(pair),
         }
     }
 

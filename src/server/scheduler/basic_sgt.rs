@@ -343,10 +343,13 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             match index.insert(key, row) {
                 Ok(_) => {
-                    let rlock = self.get_shared_lock(*thread_id); // get shared lock
-                    let node = rlock.get_transaction(*txn_id);
-                    node.add_key(&index.get_name(), key, OperationType::Insert); // operation succeeded -- register
-                    drop(rlock); // drop shared lock
+                    let rlock = self.get_shared_lock(*thread_id);
+                    rlock.get_transaction(*txn_id).add_key2(
+                        Arc::clone(&index),
+                        key,
+                        OperationType::Insert,
+                    );
+                    drop(rlock);
                 }
 
                 Err(e) => {
@@ -507,7 +510,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         if read {
                             let res = row.get_values(columns, meta).unwrap(); // should not fail
                             let node = rlock.get_transaction(*txn_id);
-                            node.add_key(&index.get_name(), &key, OperationType::Read); // register operation
+                            node.add_key2(Arc::clone(&index), key, OperationType::Read);
                             current_values = Some(res.get_values());
                         } else {
                             current_values = None;
@@ -527,7 +530,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
                         row.set_values(&cols, &new_values, meta).unwrap();
                         let node = rlock.get_transaction(*txn_id);
-                        node.add_key(&index.get_name(), key, OperationType::Update); // register operation
+                        node.add_key2(Arc::clone(&index), key, OperationType::Update);
                         drop(rlock);
                         drop(mg);
                         drop(rh);
@@ -581,7 +584,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 if read {
                                     let res = row.get_values(columns, meta).unwrap(); // should not fail
                                     let node = rlock.get_transaction(*txn_id);
-                                    node.add_key(&index.get_name(), &key, OperationType::Read); // register operation
+                                    node.add_key2(Arc::clone(&index), key, OperationType::Read);
                                     current_values = Some(res.get_values());
                                 } else {
                                     current_values = None;
@@ -601,7 +604,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
                                 row.set_values(&cols, &new_values, meta).unwrap();
                                 let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), key, OperationType::Update); // register operation
+                                node.add_key2(Arc::clone(&index), key, OperationType::Update);
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
@@ -688,7 +691,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 if read {
                                     let res = row.get_values(columns, meta).unwrap(); // should not fail
                                     let node = rlock.get_transaction(*txn_id);
-                                    node.add_key(&index.get_name(), &key, OperationType::Read); // register operation
+                                    node.add_key2(Arc::clone(&index), key, OperationType::Read);
+
                                     current_values = Some(res.get_values());
                                 } else {
                                     current_values = None;
@@ -709,8 +713,11 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 row.set_values(&cols, &new_values, meta).unwrap();
 
-                                let node = rlock.get_transaction(*txn_id);
-                                node.add_key(&index.get_name(), key, OperationType::Update); // register operation
+                                rlock.get_transaction(*txn_id).add_key2(
+                                    Arc::clone(&index),
+                                    key,
+                                    OperationType::Update,
+                                );
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
@@ -754,7 +761,6 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn append(
         &self,
         table: &str,
-
         index: Option<&str>,
         key: &PrimaryKey,
         column: &str,
@@ -807,11 +813,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                 match row.get_state() {
                     RowState::Clean => {
                         row.append_value(column, value, meta).unwrap(); // execute append
-                        rlock.get_transaction(*txn_id).add_key(
-                            &index.get_name(),
+                        rlock.get_transaction(*txn_id).add_key2(
+                            Arc::clone(&index),
                             key,
                             OperationType::Update,
-                        ); // register operation
+                        );
                         drop(rlock);
                         drop(mg);
                         drop(rh);
@@ -853,12 +859,12 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 }
 
                                 row.append_value(column, value, meta).unwrap(); // execute append ( never fails )
-
-                                let node = rlock.get_transaction(*txn_id).add_key(
-                                    &index.get_name(),
+                                rlock.get_transaction(*txn_id).add_key2(
+                                    Arc::clone(&index),
                                     key,
                                     OperationType::Update,
-                                ); // operation succeeded -- register
+                                );
+
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
@@ -942,11 +948,12 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 }
 
                                 row.append_value(column, value, meta).unwrap();
-                                rlock.get_transaction(*txn_id).add_key(
-                                    &index.get_name(),
+                                rlock.get_transaction(*txn_id).add_key2(
+                                    Arc::clone(&index),
                                     key,
                                     OperationType::Update,
-                                ); // operation succeeded -- register
+                                );
+
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
@@ -1043,8 +1050,12 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                         let res = row.get_and_set_values(columns, values, meta).unwrap();
                         let vals = res.get_values(); // get values
-                        let node = rlock.get_transaction(*txn_id);
-                        node.add_key(&index.get_name(), key, OperationType::Update); // register operation
+                        rlock.get_transaction(*txn_id).add_key2(
+                            Arc::clone(&index),
+                            key,
+                            OperationType::Update,
+                        );
+
                         drop(rlock);
                         drop(mg);
                         drop(rh);
@@ -1096,12 +1107,12 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 let res = row.get_and_set_values(columns, values, meta).unwrap();
                                 let vals = res.get_values(); // get values
-
-                                rlock.get_transaction(*txn_id).add_key(
-                                    &index.get_name(),
+                                rlock.get_transaction(*txn_id).add_key2(
+                                    Arc::clone(&index),
                                     key,
                                     OperationType::Update,
-                                ); // operation succeeded -- register
+                                );
+
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
@@ -1186,12 +1197,12 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 let res = row.get_and_set_values(columns, values, meta).unwrap();
                                 let vals = res.get_values(); // get values
-
-                                rlock.get_transaction(*txn_id).add_key(
-                                    &index.get_name(),
+                                rlock.get_transaction(*txn_id).add_key2(
+                                    Arc::clone(&index),
                                     key,
                                     OperationType::Update,
-                                ); // operation succeeded -- register
+                                );
+
                                 drop(rlock);
                                 drop(mg);
                                 drop(rh);
@@ -1286,9 +1297,12 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
                         row.delete(meta).unwrap();
 
-                        let rlock = self.get_shared_lock(*thread_id);
-                        let node = rlock.get_transaction(*txn_id);
-                        node.add_key(&index.get_name(), key, OperationType::Update); // register operation
+                        rlock.get_transaction(*txn_id).add_key2(
+                            Arc::clone(&index),
+                            key,
+                            OperationType::Update,
+                        );
+
                         drop(rlock);
                         drop(mg);
                         drop(rh);
@@ -1340,10 +1354,10 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 }
                                 row.delete(meta).unwrap();
 
-                                rlock.get_transaction(*txn_id).add_key(
-                                    &index.get_name(),
+                                rlock.get_transaction(*txn_id).add_key2(
+                                    Arc::clone(&index),
                                     &key,
-                                    OperationType::Update,
+                                    OperationType::Delete,
                                 ); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
@@ -1429,10 +1443,10 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 row.delete(meta).unwrap();
 
-                                rlock.get_transaction(*txn_id).add_key(
-                                    &index.get_name(),
+                                rlock.get_transaction(*txn_id).add_key2(
+                                    Arc::clone(&index),
                                     &key,
-                                    OperationType::Update,
+                                    OperationType::Delete,
                                 ); // operation succeeded -- register
                                 drop(rlock);
                                 drop(mg);
@@ -1480,13 +1494,12 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             let node = rlock.get_transaction(*txn_id);
             node.set_state(State::Aborted);
-            let inserts = node.get_keys(OperationType::Insert);
+            let inserts = node.get_keys2(OperationType::Insert);
             let reads = node.get_keys2(OperationType::Read);
-            let updates = node.get_keys(OperationType::Update);
-            let deletes = node.get_keys(OperationType::Delete);
+            let updates = node.get_keys2(OperationType::Update);
+            let deletes = node.get_keys2(OperationType::Delete);
 
             for (index, key) in &inserts {
-                let index = self.data.get_internals().get_index(&index).unwrap();
                 index.remove(&key).unwrap();
             }
 
@@ -1501,18 +1514,16 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
 
             for (index, key) in &updates {
-                let index = self.data.get_internals().get_index(&index).unwrap();
                 if let Ok(rh) = index.get_lock_on_row(&key) {
                     let mut mg = rh.lock();
                     let row = &mut *mg;
-                    row.revert(meta);
+                    row.commit(meta);
                     drop(mg);
                     drop(rh);
                 };
             }
 
             for (index, key) in &deletes {
-                let index = self.data.get_internals().get_index(&index).unwrap();
                 if let Ok(rh) = index.get_lock_on_row(&key) {
                     let mut mg = rh.lock();
                     let row = &mut *mg;
@@ -1561,20 +1572,20 @@ impl Scheduler for BasicSerializationGraphTesting {
                     self.clean_up_graph(&rlock, (*thread_id, *txn_id)); // remove outgoing edges
 
                     let node = rlock.get_transaction(*txn_id);
-                    let inserts = node.get_keys(OperationType::Insert);
+                    let inserts = node.get_keys2(OperationType::Insert);
                     let reads = node.get_keys2(OperationType::Read);
-                    let updates = node.get_keys(OperationType::Update);
-                    let deletes = node.get_keys(OperationType::Delete);
+                    let updates = node.get_keys2(OperationType::Update);
+                    let deletes = node.get_keys2(OperationType::Delete);
                     drop(rlock);
 
                     for (index, key) in inserts {
-                        let index = self.data.get_internals().get_index(&index).unwrap();
-                        let rh = index.get_lock_on_row(&key).unwrap();
-                        let mut mg = rh.lock();
-                        let row = &mut *mg;
-                        row.commit(meta);
-                        drop(mg);
-                        drop(rh);
+                        if let Ok(rh) = index.get_lock_on_row(&key) {
+                            let mut mg = rh.lock();
+                            let row = &mut *mg;
+                            row.commit(meta);
+                            drop(mg);
+                            drop(rh);
+                        };
                     }
 
                     for (index, key) in &reads {
@@ -1588,18 +1599,17 @@ impl Scheduler for BasicSerializationGraphTesting {
                     }
 
                     for (index, key) in updates {
-                        let index = self.data.get_internals().get_index(&index).unwrap();
-                        let rh = index.get_lock_on_row(&key).unwrap();
-                        let mut mg = rh.lock();
-                        let row = &mut *mg;
-                        row.commit(meta);
-                        drop(mg);
-                        drop(rh);
+                        if let Ok(rh) = index.get_lock_on_row(&key) {
+                            let mut mg = rh.lock();
+                            let row = &mut *mg;
+                            row.commit(meta);
+                            drop(mg);
+                            drop(rh);
+                        };
                     }
 
                     for (index, key) in deletes {
-                        let index = self.data.get_internals().get_index(&index).unwrap();
-                        index.get_map().remove(&key);
+                        index.remove(&key);
                     }
                 }
 
