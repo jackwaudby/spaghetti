@@ -241,6 +241,7 @@ impl Scheduler for SerializationGraphTesting {
     fn read(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         meta: &TransactionInfo,

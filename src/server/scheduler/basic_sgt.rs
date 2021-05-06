@@ -3,6 +3,7 @@ use crate::server::scheduler::basic_sgt::error::BasicSerializationGraphTestingEr
 use crate::server::scheduler::basic_sgt::node::{EdgeType, NodeSet, OperationType, State};
 use crate::server::scheduler::{Scheduler, TransactionInfo};
 use crate::server::storage::datatype::Data;
+use crate::server::storage::index::Index;
 use crate::server::storage::row::{Access, Row, State as RowState};
 
 use crate::workloads::{PrimaryKey, Workload};
@@ -273,6 +274,10 @@ impl BasicSerializationGraphTesting {
         drop(rlock1); // drop shared lock on this_node
                       //      debug!("CLEAN - {} drop shared lock on {}", id, id);
     }
+
+    fn get_ind(&self, name: &str) -> Result<Arc<Index>, NonFatalError> {
+        self.get_data().get_internals().get_index(name)
+    }
 }
 
 impl Scheduler for BasicSerializationGraphTesting {
@@ -352,9 +357,11 @@ impl Scheduler for BasicSerializationGraphTesting {
     }
 
     /// Execute a read operation.
+
     fn read(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         meta: &TransactionInfo,
@@ -368,8 +375,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                 return Err(e.into()); // abort -- cascading abort
             }
 
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(table, &meta)?;
+            let index = match self.get_ind(index.unwrap()) {
+                Ok(index) => index,
+                Err(e) => {
+                    drop(rlock);
+                    self.abort(meta).unwrap();
+                    return Err(e.into());
+                }
+            };
 
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rh) => rh,

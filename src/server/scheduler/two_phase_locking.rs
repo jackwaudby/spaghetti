@@ -154,6 +154,7 @@ impl Scheduler for TwoPhaseLocking {
     fn read(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         meta: &TransactionInfo,

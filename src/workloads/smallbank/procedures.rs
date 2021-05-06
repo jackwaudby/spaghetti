@@ -22,21 +22,33 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
 
     let meta = protocol.scheduler.register()?; // register
 
-    let read1 = protocol
-        .scheduler
-        .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read 1 -- get customer id
+    let read1 = protocol.scheduler.read(
+        "accounts",
+        Some("account_name"),
+        &accounts_pk,
+        &accounts_cols,
+        &meta,
+    )?; // read 1 -- get customer id
 
     let cust_id = u64::try_from(read1[0].clone()).unwrap();
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
 
-    let read2 = protocol
-        .scheduler
-        .read("savings", &savings_pk, &other_cols, &meta)?; // read 2 -- get savings
+    let read2 = protocol.scheduler.read(
+        "savings",
+        Some("savings_idx"),
+        &savings_pk,
+        &other_cols,
+        &meta,
+    )?; // read 2 -- get savings
 
-    let read3 = protocol
-        .scheduler
-        .read("checking", &checking_pk, &other_cols, &meta)?; // read 3 -- get checking
+    let read3 = protocol.scheduler.read(
+        "checking",
+        Some("checking_idx"),
+        &checking_pk,
+        &other_cols,
+        &meta,
+    )?; // read 3 -- get checking
 
     protocol.scheduler.commit(&meta)?; // commit
 
@@ -73,9 +85,13 @@ pub fn deposit_checking(
 
     let meta = protocol.scheduler.register()?; // register
 
-    let res1 = protocol
-        .scheduler
-        .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
+    let res1 = protocol.scheduler.read(
+        "accounts",
+        Some("account_name"),
+        &accounts_pk,
+        &accounts_cols,
+        &meta,
+    )?; // read -- get customer ID
 
     let cust_id = u64::try_from(res1[0].clone()).unwrap();
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
@@ -126,9 +142,13 @@ pub fn transact_savings(
 
     let meta = protocol.scheduler.register()?; // register
 
-    let res1 = protocol
-        .scheduler
-        .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
+    let res1 = protocol.scheduler.read(
+        "accounts",
+        Some("account_name"),
+        &accounts_pk,
+        &accounts_cols,
+        &meta,
+    )?; // read -- get customer ID
 
     let cust_id = u64::try_from(res1[0].clone()).unwrap();
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
@@ -161,9 +181,13 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 
     let meta = protocol.scheduler.register()?; // register
 
-    let res1 = protocol
-        .scheduler
-        .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer1 ID
+    let res1 = protocol.scheduler.read(
+        "accounts",
+        Some("account_name"),
+        &accounts_pk,
+        &accounts_cols,
+        &meta,
+    )?; // read -- get customer1 ID
 
     let cust_id = u64::try_from(res1[0].clone()).unwrap();
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
@@ -189,9 +213,13 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let total = a + b; // create balance
 
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name2));
-    let res1 = protocol
-        .scheduler
-        .read("accounts", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
+    let res1 = protocol.scheduler.read(
+        "accounts",
+        Some("account_name"),
+        &accounts_pk,
+        &accounts_cols,
+        &meta,
+    )?; // read -- get customer ID
 
     let cust_id = u64::try_from(res1[0].clone()).unwrap();
 
@@ -259,17 +287,25 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 
     let meta = protocol.scheduler.register()?; // register
 
-    let res1 = protocol
-        .scheduler
-        .read("accounts", &accounts_pk, &accounts_cols, &meta)?;
+    let res1 = protocol.scheduler.read(
+        "accounts",
+        Some("account_name"),
+        &accounts_pk,
+        &accounts_cols,
+        &meta,
+    )?;
 
     let cust_id = u64::try_from(res1[0].clone()).unwrap();
     let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
     let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
 
-    let res2 = protocol
-        .scheduler
-        .read("savings", &savings_pk, &other_cols, &meta)?; // get savings balance
+    let res2 = protocol.scheduler.read(
+        "savings",
+        Some("savings_idx"),
+        &savings_pk,
+        &other_cols,
+        &meta,
+    )?; // get savings balance
 
     let params = vec![Data::Double(params.value), res2[0].clone()];
 
@@ -333,12 +369,20 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
 
     let meta = protocol.scheduler.register()?; // register
 
-    let res1 = protocol
-        .scheduler
-        .read("accounts", &accounts_pk1, &accounts_cols, &meta)?; // read -- get customer ID 1
-    let res2 = protocol
-        .scheduler
-        .read("accounts", &accounts_pk2, &accounts_cols, &meta)?; // read -- get customer ID 2
+    let res1 = protocol.scheduler.read(
+        "accounts",
+        Some("account_name"),
+        &accounts_pk1,
+        &accounts_cols,
+        &meta,
+    )?; // read -- get customer ID 1
+    let res2 = protocol.scheduler.read(
+        "accounts",
+        Some("account_name"),
+        &accounts_pk2,
+        &accounts_cols,
+        &meta,
+    )?; // read -- get customer ID 2
 
     let cust_id1 = u64::try_from(res1[0].clone()).unwrap();
     let cust_id2 = u64::try_from(res2[0].clone()).unwrap();

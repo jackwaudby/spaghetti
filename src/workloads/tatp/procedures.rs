@@ -58,7 +58,7 @@ pub fn get_subscriber_data(
 
     let values = protocol
         .scheduler
-        .read("subscriber", &pk, &columns, &meta)?;
+        .read("subscriber", Some("sub_idx"), &pk, &columns, &meta)?;
 
     protocol.scheduler.commit(&meta)?;
 
@@ -86,9 +86,13 @@ pub fn get_new_destination(
 
     let meta = protocol.scheduler.register().unwrap();
 
-    let sf_res = protocol
-        .scheduler
-        .read("special_facility", &sf_pk, &sf_columns, &meta)?;
+    let sf_res = protocol.scheduler.read(
+        "special_facility",
+        Some("special_idx"),
+        &sf_pk,
+        &sf_columns,
+        &meta,
+    )?;
 
     let is_active = i64::try_from(sf_res[2].clone()).unwrap();
 
@@ -100,9 +104,13 @@ pub fn get_new_destination(
         ));
     }
 
-    let cf_res = protocol
-        .scheduler
-        .read("call_forwarding", &cf_pk, &cf_columns, &meta)?;
+    let cf_res = protocol.scheduler.read(
+        "call_forwarding",
+        Some("call_idx"),
+        &cf_pk,
+        &cf_columns,
+        &meta,
+    )?;
 
     let end_time = i64::try_from(cf_res[3].clone()).unwrap();
 
@@ -141,9 +149,10 @@ pub fn get_access_data(
 
     let meta = protocol.scheduler.register().unwrap();
 
-    let values = protocol
-        .scheduler
-        .read("access_info", &pk, &columns, &meta)?;
+    let values =
+        protocol
+            .scheduler
+            .read("access_info", Some("access_idx"), &pk, &columns, &meta)?;
 
     protocol.scheduler.commit(&meta)?;
 
@@ -262,11 +271,15 @@ pub fn insert_call_forwarding(
 
     protocol
         .scheduler
-        .read("subscriber", &pk_sb, &vec!["s_id"], &meta)?;
+        .read("subscriber", Some("sub_idx"), &pk_sb, &vec!["s_id"], &meta)?;
 
-    protocol
-        .scheduler
-        .read("special_facility", &pk_sf, &vec!["sf_type"], &meta)?;
+    protocol.scheduler.read(
+        "special_facility",
+        Some("special_idx"),
+        &pk_sf,
+        &vec!["sf_type"],
+        &meta,
+    )?;
 
     let s_id = Data::from(params.s_id);
     let sf_type = Data::from(params.sf_type as u64);
@@ -305,7 +318,7 @@ pub fn delete_call_forwarding(
 
     protocol
         .scheduler
-        .read("subscriber", &pk_sb, &vec!["s_id"], &meta)?;
+        .read("subscriber", Some("sub_idx"), &pk_sb, &vec!["s_id"], &meta)?;
     protocol
         .scheduler
         .delete("call_forwarding", &pk_cf, &meta)?;

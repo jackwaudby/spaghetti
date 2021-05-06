@@ -67,17 +67,23 @@ pub fn g0_read(params: G0Read, protocol: Arc<Protocol>) -> Result<String, NonFat
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
 
-    let mut r1 = protocol
-        .scheduler
-        .read("person", &pk_p1, &person_columns, &meta)?; // --- read
+    let mut r1 =
+        protocol
+            .scheduler
+            .read("person", Some("person_idx"), &pk_p1, &person_columns, &meta)?; // --- read
 
-    let mut r2 = protocol
-        .scheduler
-        .read("person", &pk_p2, &person_columns, &meta)?; // --- read
+    let mut r2 =
+        protocol
+            .scheduler
+            .read("person", Some("person_idx"), &pk_p2, &person_columns, &meta)?; // --- read
 
-    let mut r3 = protocol
-        .scheduler
-        .read("knows", &pk_knows, &knows_columns, &meta)?; // --- read
+    let mut r3 = protocol.scheduler.read(
+        "knows",
+        Some("person_idx"),
+        &pk_knows,
+        &knows_columns,
+        &meta,
+    )?; // --- read
 
     protocol.scheduler.commit(&meta)?; // --- commit
 
@@ -107,7 +113,9 @@ pub fn g1a_read(params: G1aRead, protocol: Arc<Protocol>) -> Result<String, NonF
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
 
-    let values = protocol.scheduler.read("person", &pk, &columns, &meta)?; // --- read
+    let values = protocol
+        .scheduler
+        .read("person", Some("person_idx"), &pk, &columns, &meta)?; // --- read
 
     protocol.scheduler.commit(&meta)?; // --- commit
 
@@ -188,7 +196,10 @@ pub fn g1c_read_write(
         &meta,
     )?; // --- update
 
-    let mut values = protocol.scheduler.read("person", &pk2, &columns, &meta)?; // --- read
+    let mut values =
+        protocol
+            .scheduler
+            .read("person", Some("person_idx"), &pk2, &columns, &meta)?; // --- read
 
     protocol.scheduler.commit(&meta)?; // --- commit
 
@@ -208,11 +219,15 @@ pub fn imp_read(params: ImpRead, protocol: Arc<Protocol>) -> Result<String, NonF
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
 
-    let mut read1 = protocol.scheduler.read("person", &pk, &columns, &meta)?; // --- read 1
+    let mut read1 = protocol
+        .scheduler
+        .read("person", Some("person_idx"), &pk, &columns, &meta)?; // --- read 1
 
     thread::sleep(time::Duration::from_millis(params.delay)); // --- artifical delay
 
-    let mut read2 = protocol.scheduler.read("person", &pk, &columns, &meta)?; // --- read 2
+    let mut read2 = protocol
+        .scheduler
+        .read("person", Some("person_idx"), &pk, &columns, &meta)?; // --- read 2
 
     protocol.scheduler.commit(&meta)?; // --- commit
 
@@ -307,7 +322,10 @@ pub fn otv_read(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFatal
     let mut reads = vec![];
 
     for key in keys {
-        let mut read = protocol.scheduler.read("person", &key, &column, &meta)?; // read
+        let mut read =
+            protocol
+                .scheduler
+                .read("person", Some("person_idx"), &key, &column, &meta)?; // read
         reads.append(&mut read);
     }
 
@@ -354,7 +372,9 @@ pub fn lu_read(params: LostUpdateRead, protocol: Arc<Protocol>) -> Result<String
 
     let meta = protocol.scheduler.register().unwrap(); // register
 
-    let read = protocol.scheduler.read("person", &pk, &columns, &meta)?; // read
+    let read = protocol
+        .scheduler
+        .read("person", Some("person_idx"), &pk, &columns, &meta)?; // read
 
     protocol.scheduler.commit(&meta)?; // commit
 
@@ -395,13 +415,17 @@ pub fn g2_item_write(
     };
 
     if params.p_id_update == params.p1_id {
-        let read = protocol.scheduler.read("person", &pk2, &column, &meta)?;
+        let read = protocol
+            .scheduler
+            .read("person", Some("person_idx"), &pk2, &column, &meta)?;
 
         protocol
             .scheduler
             .update("person", &pk1, &column, true, Some(&read), &deduct, &meta)?;
     } else {
-        let read = protocol.scheduler.read("person", &pk1, &column, &meta)?;
+        let read = protocol
+            .scheduler
+            .read("person", Some("person_idx"), &pk1, &column, &meta)?;
 
         protocol
             .scheduler
@@ -424,9 +448,13 @@ pub fn g2_item_read(params: G2itemRead, protocol: Arc<Protocol>) -> Result<Strin
 
     let meta = protocol.scheduler.register().unwrap(); // register
 
-    let mut read1 = protocol.scheduler.read("person", &pk1, &columns, &meta)?; // read
+    let mut read1 = protocol
+        .scheduler
+        .read("person", Some("person_idx"), &pk1, &columns, &meta)?; // read
 
-    let mut read2 = protocol.scheduler.read("person", &pk2, &columns, &meta)?; // read
+    let mut read2 = protocol
+        .scheduler
+        .read("person", Some("person_idx"), &pk2, &columns, &meta)?; // read
 
     protocol.scheduler.commit(&meta)?; // commit
 

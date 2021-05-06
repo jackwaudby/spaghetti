@@ -127,6 +127,7 @@ impl Scheduler for OptimisedHitList {
     fn read(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         meta: &TransactionInfo,
