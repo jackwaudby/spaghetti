@@ -23,7 +23,13 @@ impl NodeSet {
 
     /// Get a shared reference to a Node in the set of Node's on this thread.
     pub fn get_transaction(&self, id: u64) -> &Node {
-        self.transactions.get(&id).unwrap()
+        match self.transactions.get(&id) {
+            Some(node) => node,
+            None => panic!(
+                "txn {} does not exist on {}, counter: {}",
+                id, self.id, self.counter
+            ),
+        }
     }
 
     pub fn create_node(&mut self) -> (usize, u64) {

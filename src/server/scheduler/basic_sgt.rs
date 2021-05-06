@@ -166,7 +166,7 @@ impl BasicSerializationGraphTesting {
         access_history: Vec<Access>,
     ) -> Result<(), ProtocolError> {
         self.detect_write_conflicts(rlock, this_node, access_history)?;
-        self.reduced_depth_first_search(this_node)?;
+        self.reduced_depth_first_search(rlock, this_node)?;
         Ok(())
     }
 
@@ -200,17 +200,18 @@ impl BasicSerializationGraphTesting {
     }
 
     /// Perform a reduced depth first search from `start` node.
-    pub fn reduced_depth_first_search(&self, start: (usize, u64)) -> Result<(), ProtocolError> {
+    pub fn reduced_depth_first_search(
+        &self,
+        rlock: &RwLockReadGuard<NodeSet>,
+        start: (usize, u64),
+    ) -> Result<(), ProtocolError> {
         let (thread_id, txn_id) = start;
 
         let mut stack = Vec::new(); // nodes to visit
         let mut visited = HashSet::new(); // nodes visited
 
-        let rlock = self.get_shared_lock(thread_id); // get shared lock on start node
-
         let start_node = rlock.get_transaction(txn_id);
         stack.append(&mut start_node.get_outgoing()); // push outgoing to stack
-        drop(rlock); // drop shared lock
 
         // pop until no more nodes to visit
         while let Some(current) = stack.pop() {
@@ -224,28 +225,15 @@ impl BasicSerializationGraphTesting {
 
             visited.insert(current); // mark as visited
 
-            let (thread_id, txn_id) = current;
-            let rlock = self.get_shared_lock(thread_id); // get shared lock on current_node.
-            let current_node = rlock.get_transaction(txn_id);
+            let (thread_id2, txn_id2) = current;
+
+            let rlock2 = self.get_shared_lock(thread_id2); // get shared lock on current_node.
+            let current_node = rlock2.get_transaction(txn_id2);
             let cs = current_node.get_state();
-            let cc = current_node.get_outgoing();
-            drop(rlock);
             if let State::Active = cs {
-                for child in cc {
-                    if child == start {
-                        return Err(ProtocolError::CycleFound); // outgoing edge to start node -- cycle found
-                    } else {
-                        let (thread_id, txn_id) = child;
-
-                        let rlock = self.get_shared_lock(thread_id); // get read lock on child_node
-                        let child_node = rlock.get_transaction(txn_id);
-
-                        visited.insert(child); // mark as visited
-                        stack.append(&mut child_node.get_outgoing()); // add outgoing to stack
-                        drop(rlock);
-                    }
-                }
+                stack.append(&mut current_node.get_outgoing()); // add outgoing to stack
             }
+            drop(rlock2);
         }
 
         Ok(()) // no cycle found
@@ -404,7 +392,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                 return Err(e.into()); // abort -- cascading abort
             }
 
-            if let Err(e) = self.reduced_depth_first_search((*thread_id, *txn_id)) {
+            if let Err(e) = self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id)) {
                 drop(rlock);
                 drop(mg);
                 drop(rh);
@@ -1490,16 +1478,15 @@ impl Scheduler for BasicSerializationGraphTesting {
             while let Err(ProtocolError::HasIncomingEdges) =
                 self.commit_check((*thread_id, *txn_id))
             {
-                if let Err(ProtocolError::CycleFound) =
-                    self.reduced_depth_first_search((*thread_id, *txn_id))
-                {
-                    let rlock = self.get_shared_lock(*thread_id);
+                let rlock = self.get_shared_lock(*thread_id);
 
+                if let Err(ProtocolError::CycleFound) =
+                    self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id))
+                {
                     let node = rlock.get_transaction(*txn_id);
                     node.set_state(State::Aborted);
-                    drop(rlock);
-                } else {
                 }
+                drop(rlock);
             }
 
             let rlock = self.get_shared_lock(*thread_id); // take shared lock on this_node
