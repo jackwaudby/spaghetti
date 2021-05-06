@@ -65,6 +65,14 @@ impl BasicSerializationGraphTesting {
         }
 
         let (from_thread, from_txn_id) = from;
+        let (to_thread, to_txn_id) = to;
+
+        if rlock
+            .get_transaction(to_txn_id)
+            .incoming_edge_from_exists(from)
+        {
+            return Ok(());
+        }
 
         let from_node = self.get_shared_lock(from_thread);
 
@@ -449,7 +457,6 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn update(
         &self,
         table: &str,
-
         index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],

@@ -227,6 +227,11 @@ impl Node {
         let data = self.incoming.lock();
         !data.as_ref().unwrap().is_empty()
     }
+
+    /// Check if edge exists
+    pub fn incoming_edge_from_exists(&self, id: (usize, u64)) -> bool {
+        self.incoming.lock().as_ref().unwrap().contains(&id)
+    }
 }
 
 impl fmt::Display for NodeSet {
