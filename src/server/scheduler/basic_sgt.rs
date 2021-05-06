@@ -1065,58 +1065,58 @@ impl Scheduler for BasicSerializationGraphTesting {
                     RowState::Modified => {
                         let ah = row.get_access_history(); // insert and check
 
-                        let doorman = ah
-                            .iter()
-                            .filter(|i| {
-                                access_eq(
-                                    i,
-                                    &Access::Write(TransactionInfo::BasicSerializationGraph {
-                                        thread_id: 0,
-                                        txn_id: 0,
-                                    }),
-                                )
-                            })
-                            .last()
-                            .unwrap();
+                        // let doorman = ah
+                        //     .iter()
+                        //     .filter(|i| {
+                        //         access_eq(
+                        //             i,
+                        //             &Access::Write(TransactionInfo::BasicSerializationGraph {
+                        //                 thread_id: 0,
+                        //                 txn_id: 0,
+                        //             }),
+                        //         )
+                        //     })
+                        //     .last()
+                        //     .unwrap();
 
-                        let tid = match doorman {
-                            Access::Write(id) => id,
-                            _ => unimplemented!(),
-                        };
+                        // let tid = match doorman {
+                        //     Access::Write(id) => id,
+                        //     _ => unimplemented!(),
+                        // };
 
-                        if let TransactionInfo::BasicSerializationGraph {
-                            thread_id: doorman_th,
-                            txn_id: doorman_id,
-                        } = tid
+                        // if let TransactionInfo::BasicSerializationGraph {
+                        //     thread_id: doorman_th,
+                        //     txn_id: doorman_id,
+                        // } = tid
+                        // {
+                        if let Err(e) =
+                            self.insert_and_check(&rlock, (*thread_id, *txn_id), ah.clone())
                         {
-                            if let Err(e) =
-                                self.insert_and_check(&rlock, (*thread_id, *txn_id), ah.clone())
-                            {
-                                drop(rlock);
-                                drop(mg);
-                                drop(rh);
-                                self.abort(meta).unwrap();
-                                return Err(e.into()); // cascading abort or cycle found
-                            }
-                            // let (doorman_th, doorman_id) = doorman;
-
-                            row.append_delayed(meta); // add to delayed queue
-
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
-
-                            loop {
-                                let rlock2 = self.get_shared_lock(*doorman_th);
-                                let state = rlock2.get_transaction(*doorman_id).get_state();
-                                match state {
-                                    State::Aborted | State::Committed => {
-                                        drop(rlock2);
-                                        break;
-                                    }
-                                    State::Active => drop(rlock2),
-                                }
-                            }
+                            self.abort(meta).unwrap();
+                            return Err(e.into()); // cascading abort or cycle found
                         }
+                        // let (doorman_th, doorman_id) = doorman;
+
+                        row.append_delayed(meta); // add to delayed queue
+
+                        drop(mg);
+                        drop(rh);
+
+                        // loop {
+                        //     let rlock2 = self.get_shared_lock(*doorman_th);
+                        //     let state = rlock2.get_transaction(*doorman_id).get_state();
+                        //     match state {
+                        //         State::Aborted | State::Committed => {
+                        //             drop(rlock2);
+                        //             break;
+                        //         }
+                        //         State::Active => drop(rlock2),
+                        //     }
+                        // }
+                        // }
 
                         loop {
                             let rh = match index.get_lock_on_row(&key) {
@@ -1197,38 +1197,37 @@ impl Scheduler for BasicSerializationGraphTesting {
                             ah.push(Access::Write(tid.clone()));
                         }
 
-                        let doorman = delayed.last().unwrap();
-                        if let TransactionInfo::BasicSerializationGraph {
-                            thread_id: doorman_th,
-                            txn_id: doorman_id,
-                        } = doorman
-                        {
-                            if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
-                            {
-                                drop(rlock);
-                                drop(mg);
-                                drop(rh);
-                                self.abort(&meta).unwrap();
-                                return Err(e.into());
-                            }
-
-                            row.append_delayed(meta); // add to delayed queue; returns wait on
-
+                        // let doorman = delayed.last().unwrap();
+                        // if let TransactionInfo::BasicSerializationGraph {
+                        //     thread_id: doorman_th,
+                        //     txn_id: doorman_id,
+                        // } = doorman
+                        // {
+                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                            drop(rlock);
                             drop(mg);
                             drop(rh);
-
-                            loop {
-                                let rlock2 = self.get_shared_lock(*doorman_th);
-                                let state = rlock2.get_transaction(*doorman_id).get_state();
-                                match state {
-                                    State::Aborted | State::Committed => {
-                                        drop(rlock2);
-                                        break;
-                                    }
-                                    State::Active => drop(rlock2),
-                                }
-                            }
+                            self.abort(&meta).unwrap();
+                            return Err(e.into());
                         }
+
+                        row.append_delayed(meta); // add to delayed queue; returns wait on
+
+                        drop(mg);
+                        drop(rh);
+
+                        // loop {
+                        //     let rlock2 = self.get_shared_lock(*doorman_th);
+                        //     let state = rlock2.get_transaction(*doorman_id).get_state();
+                        //     match state {
+                        //         State::Aborted | State::Committed => {
+                        //             drop(rlock2);
+                        //             break;
+                        //         }
+                        //         State::Active => drop(rlock2),
+                        //     }
+                        // }
+                        // }
 
                         loop {
                             let rh = match index.get_lock_on_row(&key) {
