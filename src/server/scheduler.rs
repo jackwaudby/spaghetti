@@ -91,6 +91,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn create(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
@@ -111,6 +112,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn read_and_update(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
@@ -123,6 +125,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn append(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         column: &str,
         value: Data,
@@ -133,6 +136,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn update(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         read: bool,
@@ -149,6 +153,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     fn delete(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;

@@ -346,7 +346,6 @@ impl Scheduler for OptimisedHitList {
     fn delete(
         &self,
         table: &str,
-
         index: Option<&str>,
         key: &PrimaryKey,
         meta: &TransactionInfo,

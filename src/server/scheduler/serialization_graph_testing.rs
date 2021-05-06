@@ -187,6 +187,7 @@ impl Scheduler for SerializationGraphTesting {
     fn create(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
@@ -315,6 +316,7 @@ impl Scheduler for SerializationGraphTesting {
     fn update(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         read: bool,
@@ -437,6 +439,7 @@ impl Scheduler for SerializationGraphTesting {
     fn append(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         column: &str,
         value: Data,
@@ -526,6 +529,7 @@ impl Scheduler for SerializationGraphTesting {
     fn read_and_update(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
@@ -614,6 +618,7 @@ impl Scheduler for SerializationGraphTesting {
     fn delete(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {

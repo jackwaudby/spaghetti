@@ -99,6 +99,7 @@ pub fn deposit_checking(
 
     protocol.scheduler.update(
         "checking",
+        Some("checking_idx"),
         &checking_pk,
         &checking_cols,
         true,
@@ -155,6 +156,7 @@ pub fn transact_savings(
 
     protocol.scheduler.update(
         "savings",
+        Some("savings_idx"),
         &savings_pk,
         &savings_cols,
         true,
@@ -195,13 +197,18 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 
     let values = vec![Data::Double(0.0)];
 
-    let res2 =
-        protocol
-            .scheduler
-            .read_and_update("savings", &savings_pk, &other_cols, &values, &meta)?; // clone and set savings
+    let res2 = protocol.scheduler.read_and_update(
+        "savings",
+        Some("savings_idx"),
+        &savings_pk,
+        &other_cols,
+        &values,
+        &meta,
+    )?; // clone and set savings
 
     let res3 = protocol.scheduler.read_and_update(
         "checking",
+        Some("checking_idx"),
         &checking_pk,
         &other_cols,
         &values,
@@ -240,6 +247,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 
     protocol.scheduler.update(
         "checking",
+        Some("checking_idx"),
         &checking_pk,
         &other_cols,
         true,
@@ -311,6 +319,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 
     protocol.scheduler.update(
         "checking",
+        Some("checking_idx"),
         &checking_pk,
         &other_cols,
         true,
@@ -391,6 +400,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
 
     protocol.scheduler.update(
         "checking",
+        Some("checking_idx"),
         &checking_pk1,
         &checking_cols,
         true,
@@ -401,6 +411,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
 
     protocol.scheduler.update(
         "checking",
+        Some("checking_idx"),
         &checking_pk2,
         &checking_cols,
         true,

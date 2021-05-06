@@ -75,6 +75,7 @@ impl Scheduler for TwoPhaseLocking {
     fn create(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
@@ -230,6 +231,7 @@ impl Scheduler for TwoPhaseLocking {
     fn update(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         read: bool,
@@ -301,6 +303,7 @@ impl Scheduler for TwoPhaseLocking {
     fn append(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         column: &str,
         value: Data,
@@ -366,6 +369,7 @@ impl Scheduler for TwoPhaseLocking {
     fn read_and_update(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
@@ -443,6 +447,7 @@ impl Scheduler for TwoPhaseLocking {
     fn delete(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {

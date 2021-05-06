@@ -35,17 +35,32 @@ pub fn g0_write(params: G0Write, protocol: Arc<Protocol>) -> Result<String, NonF
 
     let meta = protocol.scheduler.register().unwrap();
 
-    protocol
-        .scheduler
-        .append("person", &pk_p1, "version_history", value.clone(), &meta)?;
+    protocol.scheduler.append(
+        "person",
+        Some("person_idx"),
+        &pk_p1,
+        "version_history",
+        value.clone(),
+        &meta,
+    )?;
 
-    protocol
-        .scheduler
-        .append("person", &pk_p2, "version_history", value.clone(), &meta)?;
+    protocol.scheduler.append(
+        "person",
+        Some("person_idx"),
+        &pk_p2,
+        "version_history",
+        value.clone(),
+        &meta,
+    )?;
 
-    protocol
-        .scheduler
-        .append("knows", &pk_knows, "version_history", value.clone(), &meta)?;
+    protocol.scheduler.append(
+        "knows",
+        Some("knows_idx"),
+        &pk_knows,
+        "version_history",
+        value.clone(),
+        &meta,
+    )?;
 
     protocol.scheduler.commit(&meta)?; // --- commit
 
@@ -146,6 +161,7 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
 
     protocol.scheduler.update(
         "person",
+        Some("person_idx"),
         &pk,
         &columns,
         false,
@@ -188,6 +204,7 @@ pub fn g1c_read_write(
 
     protocol.scheduler.update(
         "person",
+        Some("person_idx"),
         &pk1,
         &columns,
         false,
@@ -257,9 +274,16 @@ pub fn imp_write(params: ImpWrite, protocol: Arc<Protocol>) -> Result<String, No
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
 
-    protocol
-        .scheduler
-        .update("person", &pk, &columns, true, None, &inc_version, &meta)?; //  ---  update
+    protocol.scheduler.update(
+        "person",
+        Some("person_idx"),
+        &pk,
+        &columns,
+        true,
+        None,
+        &inc_version,
+        &meta,
+    )?; //  ---  update
 
     protocol.scheduler.commit(&meta)?; // --- commit
 
@@ -293,9 +317,16 @@ pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFata
     let meta = protocol.scheduler.register().unwrap(); // register
 
     for pk in keys {
-        protocol
-            .scheduler
-            .update("person", &pk, &column, true, None, &inc_version, &meta)?;
+        protocol.scheduler.update(
+            "person",
+            Some("person_idx"),
+            &pk,
+            &column,
+            true,
+            None,
+            &inc_version,
+            &meta,
+        )?;
     }
 
     protocol.scheduler.commit(&meta)?; // commit
@@ -354,9 +385,16 @@ pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<Stri
 
     let meta = protocol.scheduler.register().unwrap(); // register
 
-    protocol
-        .scheduler
-        .update("person", &pk, &columns, true, None, &inc_version, &meta)?; //  update
+    protocol.scheduler.update(
+        "person",
+        Some("person_idx"),
+        &pk,
+        &columns,
+        true,
+        None,
+        &inc_version,
+        &meta,
+    )?; //  update
 
     protocol.scheduler.commit(&meta)?; // commit
 
@@ -419,17 +457,31 @@ pub fn g2_item_write(
             .scheduler
             .read("person", Some("person_idx"), &pk2, &column, &meta)?;
 
-        protocol
-            .scheduler
-            .update("person", &pk1, &column, true, Some(&read), &deduct, &meta)?;
+        protocol.scheduler.update(
+            "person",
+            Some("person_idx"),
+            &pk1,
+            &column,
+            true,
+            Some(&read),
+            &deduct,
+            &meta,
+        )?;
     } else {
         let read = protocol
             .scheduler
             .read("person", Some("person_idx"), &pk1, &column, &meta)?;
 
-        protocol
-            .scheduler
-            .update("person", &pk2, &column, true, Some(&read), &deduct, &meta)?;
+        protocol.scheduler.update(
+            "person",
+            Some("person_idx"),
+            &pk2,
+            &column,
+            true,
+            Some(&read),
+            &deduct,
+            &meta,
+        )?;
     }
 
     protocol.scheduler.commit(&meta)?; // commit

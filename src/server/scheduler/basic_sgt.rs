@@ -306,14 +306,23 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn create(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
-            let table = self.get_table(table, &meta)?; // get handle to table
-            let index = self.get_index(Arc::clone(&table), &meta)?; // get handle to index
+            let table = self.get_table(table, meta)?;
+
+            let index = match self.get_ind(index.unwrap()) {
+                Ok(index) => index,
+                Err(e) => {
+                    self.abort(meta).unwrap();
+                    return Err(e.into());
+                }
+            };
+
             let mut row = Row::new(key.clone(), Arc::clone(&table), true, true); // create new row
 
             // initialise each field
@@ -442,14 +451,16 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn update(
         &self,
         table: &str,
+
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         read: bool,
         params: Option<&[Data]>,
         f: &dyn Fn(
-            &[&str],           // columns
-            Option<Vec<Data>>, // current values
-            Option<&[Data]>,   // parameters
+            &[&str],
+            Option<Vec<Data>>,
+            Option<&[Data]>,
         ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
@@ -464,7 +475,14 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             let id = (thread_id, txn_id);
 
-            let index = self.get_index(self.get_table(table, &meta)?, &meta)?;
+            let index = match self.get_ind(index.unwrap()) {
+                Ok(index) => index,
+                Err(e) => {
+                    drop(rlock);
+                    self.abort(meta).unwrap();
+                    return Err(e.into());
+                }
+            };
 
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rg) => rg,
@@ -741,6 +759,8 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn append(
         &self,
         table: &str,
+
+        index: Option<&str>,
         key: &PrimaryKey,
         column: &str,
         value: Data,
@@ -757,8 +777,14 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             let id = (thread_id, txn_id);
 
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(Arc::clone(&table), &meta)?;
+            let index = match self.get_ind(index.unwrap()) {
+                Ok(index) => index,
+                Err(e) => {
+                    drop(rlock);
+                    self.abort(meta).unwrap();
+                    return Err(e.into());
+                }
+            };
 
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rg) => rg,
@@ -970,6 +996,7 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn read_and_update(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
@@ -986,7 +1013,14 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             let id = (thread_id, txn_id);
 
-            let index = self.get_index(self.get_table(table, &meta)?, &meta)?; // get index
+            let index = match self.get_ind(index.unwrap()) {
+                Ok(index) => index,
+                Err(e) => {
+                    drop(rlock);
+                    self.abort(meta).unwrap();
+                    return Err(e.into());
+                }
+            };
 
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rh) => rh,
@@ -1206,6 +1240,7 @@ impl Scheduler for BasicSerializationGraphTesting {
     fn delete(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
@@ -1222,7 +1257,14 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             let (thread_id, txn_id) = id;
 
-            let index = self.get_index(self.get_table(table, &meta)?, &meta)?;
+            let index = match self.get_ind(index.unwrap()) {
+                Ok(index) => index,
+                Err(e) => {
+                    drop(rlock);
+                    self.abort(meta).unwrap();
+                    return Err(e.into());
+                }
+            };
 
             let rh = match index.get_lock_on_row(&key) {
                 Ok(rh) => rh,

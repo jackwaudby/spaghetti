@@ -191,6 +191,7 @@ pub fn update_subscriber_data(
 
     protocol.scheduler.update(
         "subscriber",
+        Some("sub_idx"),
         &pk1,
         &columns1,
         false,
@@ -201,6 +202,7 @@ pub fn update_subscriber_data(
 
     protocol.scheduler.update(
         "special_facility",
+        Some("special_idx"),
         &pk2,
         &columns2,
         false,
@@ -237,6 +239,7 @@ pub fn update_location(
 
     protocol.scheduler.update(
         "subscriber",
+        Some("sub_idx"),
         &pk,
         &columns,
         false,
@@ -290,6 +293,7 @@ pub fn insert_call_forwarding(
 
     protocol.scheduler.create(
         "call_forwarding",
+        Some("call_idx"),
         &pk_cf,
         &vec!["s_id", "sf_type", "start_time", "end_time", "number_x"],
         &values_cf,
@@ -321,7 +325,7 @@ pub fn delete_call_forwarding(
         .read("subscriber", Some("sub_idx"), &pk_sb, &vec!["s_id"], &meta)?;
     protocol
         .scheduler
-        .delete("call_forwarding", &pk_cf, &meta)?;
+        .delete("call_forwarding", Some("call_idx"), &pk_cf, &meta)?;
 
     protocol.scheduler.commit(&meta)?;
     let res = datatype::to_result(None, None, Some(1), None, None).unwrap();

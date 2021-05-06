@@ -113,6 +113,7 @@ impl Scheduler for HitList {
     fn create(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
@@ -216,6 +217,7 @@ impl Scheduler for HitList {
     fn read_and_update(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         values: &[Data],
@@ -277,6 +279,7 @@ impl Scheduler for HitList {
     fn update(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
         read: bool,
@@ -339,6 +342,7 @@ impl Scheduler for HitList {
     fn append(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         column: &str,
         value: Data,
@@ -396,6 +400,7 @@ impl Scheduler for HitList {
     fn delete(
         &self,
         table: &str,
+        index: Option<&str>,
         key: &PrimaryKey,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
