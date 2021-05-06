@@ -31,7 +31,7 @@ pub struct BasicSerializationGraphTesting {
 impl BasicSerializationGraphTesting {
     /// Initialise serialization graph with `size` nodes.
     pub fn new(size: u32, data: Arc<Workload>) -> Self {
-        info!("Initialise basic serialization graph with {} nodes", size);
+        info!("Initialise basic serialization graph with {} node(s)", size);
         let mut nodes = vec![];
         for i in 0..size {
             let node = RwLock::new(NodeSet::new(i as usize));
@@ -455,6 +455,13 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let rlock = self.get_shared_lock(*thread_id); // take shared lock
+
+            if let Err(e) = self.abort_check(&rlock, *txn_id) {
+                drop(rlock);
+                self.abort(meta).unwrap();
+                return Err(e.into()); // abort -- cascading abort
+            }
+
             let id = (thread_id, txn_id);
 
             let index = self.get_index(self.get_table(table, &meta)?, &meta)?;
@@ -741,6 +748,13 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let rlock = self.get_shared_lock(*thread_id); // take shared lock
+
+            if let Err(e) = self.abort_check(&rlock, *txn_id) {
+                drop(rlock);
+                self.abort(meta).unwrap();
+                return Err(e.into()); // abort -- cascading abort
+            }
+
             let id = (thread_id, txn_id);
 
             let table = self.get_table(table, &meta)?;
@@ -963,6 +977,13 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let rlock = self.get_shared_lock(*thread_id); // take shared lock
+
+            if let Err(e) = self.abort_check(&rlock, *txn_id) {
+                drop(rlock);
+                self.abort(meta).unwrap();
+                return Err(e.into()); // abort -- cascading abort
+            }
+
             let id = (thread_id, txn_id);
 
             let index = self.get_index(self.get_table(table, &meta)?, &meta)?; // get index
@@ -1190,6 +1211,13 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let rlock = self.get_shared_lock(*thread_id); // take shared lock
+
+            if let Err(e) = self.abort_check(&rlock, *txn_id) {
+                drop(rlock);
+                self.abort(meta).unwrap();
+                return Err(e.into()); // abort -- cascading abort
+            }
+
             let id = (thread_id, txn_id);
 
             let (thread_id, txn_id) = id;
