@@ -66,17 +66,11 @@ pub struct Node {
     /// (other_node) --> (this_node)
     incoming: Mutex<Option<Vec<(usize, u64)>>>,
 
-    /// Keys inserted
-    keys_inserted: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
-
     /// List of keys read by transaction.
     keys_read: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
 
     /// List of keys updated by transaction.
     keys_updated: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
-
-    /// List of keys deleted by transaction.
-    keys_deleted: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
 }
 
 /// Represents states a `Node` can be in.
@@ -100,10 +94,8 @@ pub enum EdgeType {
 
 /// Type of operation.
 pub enum OperationType {
-    Insert,
     Read,
     Update,
-    Delete,
 }
 
 impl Node {
@@ -115,10 +107,8 @@ impl Node {
             outgoing: Mutex::new(Some(vec![])),
             incoming: Mutex::new(Some(vec![])),
             state: Mutex::new(Some(State::Active)),
-            keys_inserted: Mutex::new(Some(vec![])),
             keys_read: Mutex::new(Some(vec![])),
             keys_updated: Mutex::new(Some(vec![])),
-            keys_deleted: Mutex::new(Some(vec![])),
         }
     }
 
@@ -131,17 +121,13 @@ impl Node {
     pub fn reset(&self) {
         let mut outgoing = self.outgoing.lock();
         let mut incoming = self.incoming.lock();
-        let mut inserted = self.keys_inserted.lock();
         let mut read = self.keys_read.lock();
         let mut updated = self.keys_updated.lock();
-        let mut deleted = self.keys_deleted.lock();
 
         *outgoing = Some(vec![]);
         *incoming = Some(vec![]);
-        *inserted = Some(vec![]);
         *read = Some(vec![]);
         *updated = Some(vec![]);
-        *deleted = Some(vec![]);
     }
 
     /// Insert edge into a `Node`.
@@ -191,10 +177,8 @@ impl Node {
     pub fn get_keys2(&self, operation_type: OperationType) -> Vec<(Arc<Index>, PrimaryKey)> {
         use OperationType::*;
         match operation_type {
-            Insert => self.keys_inserted.lock().take().unwrap(),
             Read => self.keys_read.lock().take().unwrap(),
             Update => self.keys_updated.lock().take().unwrap(),
-            Delete => self.keys_deleted.lock().take().unwrap(),
         }
     }
 
@@ -202,10 +186,8 @@ impl Node {
         let pair = (index, key.clone());
         use OperationType::*;
         match operation_type {
-            Insert => self.keys_inserted.lock().as_mut().unwrap().push(pair),
             Read => self.keys_read.lock().as_mut().unwrap().push(pair),
             Update => self.keys_updated.lock().as_mut().unwrap().push(pair),
-            Delete => self.keys_deleted.lock().as_mut().unwrap().push(pair),
         }
     }
 
@@ -267,63 +249,8 @@ impl fmt::Display for OperationType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use OperationType::*;
         match *self {
-            Insert => write!(f, "insert"),
             Update => write!(f, "update"),
             Read => write!(f, "read"),
-            Delete => write!(f, "delete"),
         }
     }
 }
-
-// #[cfg(test)]
-// mod tests {
-
-//     use super::*;
-//     use crate::workloads::tatp::keys::TatpPrimaryKey;
-
-//     #[test]
-//     fn node_test() {
-//         // Create node.
-//         let n = Node::new(0);
-
-//         // Set state
-//         assert_eq!(n.set_state(State::Active), ());
-//         assert_eq!(n.get_state(), State::Active);
-
-//         // Insert outgoing edges.
-//         assert_eq!(n.insert_edge(1, EdgeType::Outgoing), ());
-//         assert_eq!(n.insert_edge(2, EdgeType::Outgoing), ());
-
-//         // Check incoming
-//         //    assert_eq!(n.has_incoming(), false, "{:?}", n);
-//         assert_eq!(n.insert_edge(2, EdgeType::Incoming), ());
-//         assert_eq!(n.has_incoming(), true);
-//         assert_eq!(n.delete_edge(2, EdgeType::Incoming), ());
-//         assert_eq!(n.has_incoming(), false);
-
-//         // Take outgoing.
-//         assert_eq!(n.delete_edge(1, EdgeType::Outgoing), ());
-//         assert_eq!(n.get_outgoing(), vec![2]);
-
-//         // Set state
-//         n.set_state(State::Committed);
-//         assert_eq!(n.get_state(), State::Committed);
-//         n.set_state(State::Aborted);
-//         assert_eq!(n.get_state(), State::Aborted);
-
-//         // Add key
-//         n.add_key(
-//             "test",
-//             PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1)),
-//             OperationType::Read,
-//         );
-
-//         assert_eq!(
-//             n.get_keys(OperationType::Read),
-//             vec![(
-//                 "test".to_string(),
-//                 PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(1))
-//             )]
-//         );
-//     }
-// }
