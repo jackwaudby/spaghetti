@@ -1,15 +1,11 @@
 use crate::common::error::NonFatalError;
-use crate::common::frame::Frame;
 use crate::workloads::acid::paramgen::AcidTransactionProfile;
 use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::paramgen::TatpTransactionProfile;
 use crate::workloads::tatp::TatpTransaction;
-use crate::workloads::tpcc::profiles::TpccTransactionProfile;
-use crate::workloads::tpcc::TpccTransaction;
 
-use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
@@ -54,7 +50,6 @@ pub enum Message {
 pub enum Transaction {
     Acid(AcidTransaction),
     Tatp(TatpTransaction),
-    Tpcc(TpccTransaction),
     SmallBank(SmallBankTransaction),
 }
 
@@ -63,7 +58,6 @@ pub enum Transaction {
 pub enum Parameters {
     Acid(AcidTransactionProfile),
     Tatp(TatpTransactionProfile),
-    Tpcc(TpccTransactionProfile),
     SmallBank(SmallBankTransactionProfile),
 }
 
@@ -115,16 +109,6 @@ pub enum Outcome {
     Aborted { reason: NonFatalError },
 }
 
-impl Message {
-    /// Convert `Message` into a `Frame`.
-    pub fn into_frame(&self) -> Frame {
-        // Serialize transaction
-        let s: Bytes = bincode::serialize(&self).unwrap().into();
-        // Create frame
-        Frame::new(s)
-    }
-}
-
 impl fmt::Display for Message {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Message::*;
@@ -146,19 +130,5 @@ impl fmt::Display for Outcome {
             Committed { value } => write!(f, "{}", value.as_ref().unwrap()),
             Aborted { reason } => write!(f, "val={{{}}}", reason),
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn message_into_frame() {
-        let m = Message::CloseConnection;
-
-        let s: Bytes = bincode::serialize(&m).unwrap().into();
-
-        assert_eq!(m.into_frame(), Frame::new(s));
     }
 }

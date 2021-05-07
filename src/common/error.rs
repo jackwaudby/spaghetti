@@ -1,12 +1,8 @@
-//! There are two types errors, (i) fatal errors, and (ii) non-fatal errors.
-//! Fatal errors, result in the termination of the database.
-//! Non-fatal errors, are reasons for transactions to abort.
-use crate::common::frame::ParseError;
-use crate::server::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
-use crate::server::scheduler::hit_list::error::HitListError;
-use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
-use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
-use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
+use crate::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
+use crate::scheduler::hit_list::error::HitListError;
+use crate::scheduler::opt_hit_list::error::OptimisedHitListError;
+use crate::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
+use crate::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 use crate::workloads::smallbank::error::SmallBankError;
 
 use serde::{Deserialize, Serialize};
@@ -24,9 +20,6 @@ pub enum FatalError {
 
     /// Remote only sent a partial frame before closing.
     CorruptedFrame,
-
-    /// Parsing error.
-    Parse(ParseError),
 
     /// Workload not recognised
     IncorrectWorkload(String),
@@ -136,7 +129,6 @@ impl fmt::Display for FatalError {
             ),
             Invalid => write!(f, "invalid message encoding."),
             CorruptedFrame => write!(f, "remote connection closed during sending of a frame"),
-            Parse(ref e) => write!(f, "parsing error {:?}", e),
             IncorrectWorkload(ref workload) => write!(f, "workload not recognised: {}", workload),
             UnexpectedMessage => write!(f, "unexpected message"),
             ConnectionUnexpectedlyClosed => write!(f, "connection unexpectedly closed"),
@@ -205,16 +197,9 @@ impl error::Error for FatalError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         use FatalError::*;
         match *self {
-            Parse(ref e) => Some(e),
             TwoPhaseLocking(ref e) => Some(e),
             _ => Some(self),
         }
-    }
-}
-
-impl From<ParseError> for FatalError {
-    fn from(error: ParseError) -> Self {
-        FatalError::Parse(error)
     }
 }
 

@@ -1,10 +1,8 @@
 pub mod common;
 
-pub mod datagen;
+pub mod storage;
 
-pub mod client;
-
-pub mod server;
+pub mod scheduler;
 
 pub mod workloads;
 

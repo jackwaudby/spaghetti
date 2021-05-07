@@ -12,7 +12,7 @@ fn main() {
     (author: "j. waudby <j.waudby2@newcastle.ac.uk>")
     (about: "spaghetti")
     (@arg WORKLOAD: -w --workload +takes_value "Set a workload")
-    (@arg PROTOCOL: -p --port +takes_value "Set a protocol")
+    (@arg PROTOCOL: -p --protocol +takes_value "Set a protocol")
     (@arg SF: -s --scalefactor +takes_value "Set a scale factor")
     (@arg TRANSACTIONS: -t --transactions +takes_value "Transactions per core")
     (@arg CORES: -c --cores +takes_value "Number of cores to use")

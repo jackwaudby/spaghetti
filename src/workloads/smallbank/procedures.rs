@@ -1,6 +1,6 @@
 use crate::common::error::NonFatalError;
-use crate::server::scheduler::Protocol;
-use crate::server::storage::datatype::{self, Data};
+use crate::scheduler::Protocol;
+use crate::storage::datatype::{self, Data};
 use crate::workloads::smallbank::error::SmallBankError;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
 use crate::workloads::smallbank::paramgen::{

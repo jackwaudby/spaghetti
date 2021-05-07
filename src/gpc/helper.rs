@@ -2,7 +2,7 @@ use crate::common::message::{InternalResponse, Message, Outcome, Parameters, Tra
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
 use crate::gpc::threads::{Recon, Worker};
-use crate::server::scheduler::Protocol;
+use crate::scheduler::Protocol;
 use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
 use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
@@ -10,8 +10,6 @@ use crate::workloads::Workload;
 use crate::workloads::{acid, smallbank, tatp};
 
 use config::Config;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use std::fs;
 use std::path::Path;
 use std::sync::mpsc;
@@ -68,8 +66,6 @@ pub fn set_log_level(config: Arc<Config>) {
 /// Initialise database.
 pub fn init_database(config: Arc<Config>) -> Arc<Workload> {
     let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
-    let mut rng: StdRng = SeedableRng::from_entropy();
-    workload.populate_tables(&mut rng).unwrap();
     workload
 }
 
@@ -146,12 +142,6 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
                         TatpTransactionProfile::UpdateLocationData(params) => {
                             tatp::procedures::update_location(params, scheduler)
                         }
-                        TatpTransactionProfile::InsertCallForwarding(params) => {
-                            tatp::procedures::insert_call_forwarding(params, scheduler)
-                        }
-                        TatpTransactionProfile::DeleteCallForwarding(params) => {
-                            tatp::procedures::delete_call_forwarding(params, scheduler)
-                        }
                     }
                 } else {
                     panic!("transaction type and parameters do not match");
@@ -183,7 +173,6 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
                     panic!("transaction type and parameters do not match");
                 }
             }
-            Transaction::Tpcc(_) => unimplemented!(),
             Transaction::Acid(_) => {
                 if let Parameters::Acid(params) = parameters {
                     match params {

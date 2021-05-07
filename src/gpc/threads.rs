@@ -2,7 +2,7 @@ use crate::common::message::{InternalResponse, Message, Outcome};
 use crate::common::message::{Parameters, Transaction};
 use crate::common::statistics::LocalStatistics;
 use crate::gpc::helper;
-use crate::server::scheduler::Protocol;
+use crate::scheduler::Protocol;
 use crate::workloads::acid::paramgen::{
     AcidTransactionProfile, G0Read, G2itemRead, LostUpdateRead,
 };

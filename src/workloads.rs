@@ -1,14 +1,14 @@
 use crate::common::error::{FatalError, NonFatalError};
-use crate::server::storage::catalog::Catalog;
-use crate::server::storage::index::Index;
-use crate::server::storage::table::Table;
+use crate::storage::catalog::Catalog;
+use crate::storage::index::Index;
+use crate::storage::table::Table;
 use crate::workloads::acid::keys::AcidPrimaryKey;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
-use crate::workloads::tpcc::keys::TpccPrimaryKey;
 
 use config::Config;
 use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::collections::HashMap;
 use std::fmt;
 use std::fs::File;
@@ -19,8 +19,6 @@ use tracing::{debug, info};
 
 pub mod acid;
 
-pub mod tpcc;
-
 pub mod tatp;
 
 pub mod smallbank;
@@ -30,7 +28,6 @@ pub mod smallbank;
 pub enum Workload {
     Acid(Internal),
     Tatp(Internal),
-    Tpcc(Internal),
     SmallBank(Internal),
 }
 
@@ -52,7 +49,6 @@ pub struct Internal {
 pub enum PrimaryKey {
     Acid(AcidPrimaryKey),
     Tatp(TatpPrimaryKey),
-    Tpcc(TpccPrimaryKey),
     SmallBank(SmallBankPrimaryKey),
 }
 
@@ -69,10 +65,6 @@ impl Workload {
                 let internals = Internal::new("./schema/tatp_schema.txt", config)?;
                 Ok(Workload::Tatp(internals))
             }
-            "tpcc" => {
-                let internals = Internal::new("./schema/tpcc_short_schema.txt", config)?;
-                Ok(Workload::Tpcc(internals))
-            }
             "smallbank" => {
                 let internals = Internal::new("./schema/smallbank_schema.txt", config)?;
                 Ok(Workload::SmallBank(internals))
@@ -81,72 +73,51 @@ impl Workload {
         }
     }
 
-    /// Populate indexes with data.
-    pub fn populate_tables(&self, rng: &mut StdRng) -> crate::Result<()> {
-        use Workload::*;
-        match *self {
-            Acid(ref i) => {
-                let config = self.get_internals().get_config();
-                let sf = config.get_int("scale_factor")?;
-                let set_seed = config.get_bool("set_seed")?;
-                info!("Parameter generator set seed: {}", set_seed);
-                if self.get_internals().get_config().get_bool("load")? {
-                    info!("Load sf-{} from files", sf);
-                    acid::loader::load_person_table(i)?;
-                } else {
-                    info!("Generate ACID SF-{} ", sf);
-                    acid::loader::populate_person_table(i)?;
-                    acid::loader::populate_person_knows_person_table(i, rng)?;
-                }
-            }
-            Tatp(ref i) => {
-                let config = self.get_internals().get_config();
-                let sf = config.get_int("scale_factor")?;
-                let set_seed = config.get_bool("set_seed")?;
-                let use_nurand = config.get_bool("nurand")?;
-                if self.get_internals().get_config().get_bool("load")? {
-                    info!("Load sf-{} from files", sf);
-                    tatp::loader::load_sub_table(i)?;
-                    tatp::loader::load_access_info_table(i)?;
-                    tatp::loader::load_call_forwarding_table(i)?;
-                    tatp::loader::load_special_facility_table(i)?;
-                } else {
-                    info!("Generate TATP SF-{}", sf);
-                    tatp::loader::populate_tables(i, rng)?;
-                }
-                info!("Generator set seed: {}", set_seed);
-                info!("Generator nurand: {}", use_nurand);
-            }
-            Tpcc(_) => unimplemented!(),
-            SmallBank(ref i) => {
-                let config = self.get_internals().get_config();
-                let sf = config.get_int("scale_factor")?;
-                let set_seed = config.get_bool("set_seed")?;
-                let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
-                let contention = match sf {
-                    0 => "NA",
-                    1 => "high",
-                    2 => "mid",
-                    3 => "low",
-                    _ => panic!("invalid scale factor"),
-                };
+    // /// Populate indexes with data.
+    // pub fn populate_tables(&self, rng: &mut StdRng) -> crate::Result<()> {
+    //     use Workload::*;
+    //     match *self {
+    //         Acid(ref i) => {
+    //             let config = self.get_internals().get_config();
+    //             let sf = config.get_int("scale_factor")?;
+    //             let set_seed = config.get_bool("set_seed")?;
+    //             info!("Parameter generator set seed: {}", set_seed);
+    //             info!("Generate ACID SF-{} ", sf);
+    //             acid::loader::populate_person_table(i)?;
+    //             acid::loader::populate_person_knows_person_table(i, rng)?;
+    //         }
+    //         Tatp(ref i) => {
+    //             let config = self.get_internals().get_config();
+    //             let sf = config.get_int("scale_factor")?;
+    //             let set_seed = config.get_bool("set_seed")?;
+    //             let use_nurand = config.get_bool("nurand")?;
+    //             info!("Generate TATP SF-{}", sf);
+    //             tatp::loader::populate_tables(i, rng)?;
+    //             info!("Generator set seed: {}", set_seed);
+    //             info!("Generator nurand: {}", use_nurand);
+    //         }
+    //         SmallBank(ref i) => {
+    //             let config = self.get_internals().get_config();
+    //             let sf = config.get_int("scale_factor")?;
+    //             let set_seed = config.get_bool("set_seed")?;
+    //             let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
+    //             let contention = match sf {
+    //                 0 => "NA",
+    //                 1 => "high",
+    //                 2 => "mid",
+    //                 3 => "low",
+    //                 _ => panic!("invalid scale factor"),
+    //             };
 
-                if self.get_internals().get_config().get_bool("load")? {
-                    info!("Load sf-{} from files", sf);
-                    smallbank::loader::load_account_table(i)?;
-                    smallbank::loader::load_checking_table(i)?;
-                    smallbank::loader::load_savings_table(i)?;
-                } else {
-                    info!("Generate SmallBank SF-{}", sf);
-                    smallbank::loader::populate_tables(i, rng)?
-                }
-                info!("Parameter generator set seed: {}", set_seed);
-                info!("Balance mix: {}", use_balance_mix);
-                info!("Contention: {}", contention);
-            } // TODO
-        }
-        Ok(())
-    }
+    //             info!("Generate SmallBank SF-{}", sf);
+    //             smallbank::loader::populate_tables(i, rng)?;
+    //             info!("Parameter generator set seed: {}", set_seed);
+    //             info!("Balance mix: {}", use_balance_mix);
+    //             info!("Contention: {}", contention);
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     /// Get reference to internals of workload.
     pub fn get_internals(&self) -> &Internal {
@@ -154,7 +125,6 @@ impl Workload {
         match *self {
             Acid(ref i) => &i,
             Tatp(ref i) => &i,
-            Tpcc(ref i) => &i,
             SmallBank(ref i) => &i,
         }
     }
@@ -217,21 +187,71 @@ impl Internal {
                     None => panic!("table does not exist: {:?}", &table_name),
                 }
 
-                // match table.get_primary_index() {
-                //     Ok(_) => table.set_secondary_index(&index_name),
-                //     Err(_) => table.set_primary_index(&index_name),
-                // }
-
-                //                let index = Arc::new(Index::init(&index_name));
                 let index = Index::init(&index_name);
                 debug!("Initialise index: {}", index);
 
                 indexes.insert(index_name, index);
             }
         }
+
         let mut atomic_tables = HashMap::new();
         for (key, val) in tables.drain() {
             atomic_tables.insert(key, Arc::new(val));
+        }
+
+        let workload = config.get_str("workload")?;
+        let sf = config.get_int("scale_factor")?;
+        let set_seed = config.get_bool("set_seed")?;
+        let mut rng: StdRng = SeedableRng::from_entropy();
+        match workload.as_str() {
+            "acid" => {
+                info!("Parameter generator set seed: {}", set_seed);
+                info!("Generate ACID SF-{} ", sf);
+                acid::loader::populate_person_table(
+                    Arc::clone(&config),
+                    &mut atomic_tables,
+                    &mut indexes,
+                )?;
+                acid::loader::populate_person_knows_person_table(
+                    Arc::clone(&config),
+                    &mut atomic_tables,
+                    &mut indexes,
+                )?;
+            }
+            "tatp" => {
+                let use_nurand = config.get_bool("nurand")?;
+                info!("Generate TATP SF-{}", sf);
+                tatp::loader::populate_tables(
+                    Arc::clone(&config),
+                    &mut atomic_tables,
+                    &mut indexes,
+                    &mut rng,
+                )?;
+                info!("Generator set seed: {}", set_seed);
+                info!("Generator nurand: {}", use_nurand);
+            }
+            "smallbank" => {
+                let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
+                let contention = match sf {
+                    0 => "NA",
+                    1 => "high",
+                    2 => "mid",
+                    3 => "low",
+                    _ => panic!("invalid scale factor"),
+                };
+
+                info!("Generate SmallBank SF-{}", sf);
+                smallbank::loader::populate_tables(
+                    Arc::clone(&config),
+                    &mut atomic_tables,
+                    &mut indexes,
+                    &mut rng,
+                )?;
+                info!("Parameter generator set seed: {}", set_seed);
+                info!("Balance mix: {}", use_balance_mix);
+                info!("Contention: {}", contention);
+            }
+            _ => unimplemented!(),
         }
 
         let mut atomic_indexes = HashMap::new();
@@ -277,7 +297,6 @@ impl fmt::Display for Workload {
     }
 }
 
-// TODO: improve display.
 impl fmt::Display for Internal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for index in self.indexes.values() {
@@ -293,7 +312,6 @@ impl fmt::Display for PrimaryKey {
         match &self {
             Acid(pk) => write!(f, "{:?}", pk),
             Tatp(pk) => write!(f, "{:?}", pk),
-            Tpcc(pk) => write!(f, "{:?}", pk),
             SmallBank(pk) => write!(f, "{:?}", pk),
         }
     }

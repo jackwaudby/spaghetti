@@ -1,49 +1,26 @@
-use crate::datagen::acid::Person;
-use crate::server::storage::datatype::Data;
-use crate::server::storage::row::Row;
+use crate::storage::datatype::Data;
+use crate::storage::row::Row;
 use crate::workloads::acid::keys::AcidPrimaryKey;
 use crate::workloads::acid::ACID_SF_MAP;
-use crate::workloads::{Internal, PrimaryKey};
+use crate::workloads::Index;
+use crate::workloads::PrimaryKey;
+use crate::workloads::Table;
 use crate::Result;
 
-use rand::rngs::StdRng;
+use config::Config;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::info;
 
-/// Load into the `Person` table from csv files.
-pub fn load_person_table(data: &Internal) -> Result<()> {
-    info!("Loading person table");
-
-    let person = data.get_table("person")?;
-    let person_idx = data.get_index(&person.get_primary_index()?)?;
-
-    let protocol = data.config.get_str("protocol")?;
-    let sf = data.config.get_int("scale_factor")?;
-
-    let path = format!("./data/acid/sf-{}/persons.csv", sf);
-
-    let mut rdr = csv::Reader::from_path(&path)?;
-    for result in rdr.deserialize() {
-        let p: Person = result?;
-        let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(p.p_id));
-        let mut row = Row::new(pk.clone(), Arc::clone(&person), true, true);
-
-        row.init_value("p_id", Data::Uint(p.p_id))?;
-        row.init_value("version", Data::Uint(p.version))?;
-        row.init_value("num_friends", Data::Uint(p.num_friends))?;
-        person_idx.insert(&pk, row)?;
-    }
-    info!("Loaded {} row(s) into person", person.get_num_rows());
-    Ok(())
-}
-
 /// Populate the person table.
-pub fn populate_person_table(data: &Internal) -> Result<()> {
-    let person = data.get_table("person")?;
-    let person_idx = data.get_index(&person.get_primary_index()?)?;
+pub fn populate_person_table(
+    config: Arc<Config>,
+    tables: &mut HashMap<String, Arc<Table>>,
+    indexes: &mut HashMap<String, Index>,
+) -> Result<()> {
+    let person = tables.get_mut("person").unwrap();
+    let person_idx = indexes.get_mut("person_idx").unwrap();
 
-    let config = data.get_config();
-    let protocol = config.get_str("protocol")?;
     let sf = config.get_int("scale_factor")? as u64;
     let anomaly = config.get_str("anomaly")?;
 
@@ -72,7 +49,7 @@ pub fn populate_person_table(data: &Internal) -> Result<()> {
             ws_flag = true;
         }
 
-        person_idx.insert(&pk, row)?;
+        person_idx.insert(&pk, row);
     }
     info!("Loaded {} row(s) into person", person.get_num_rows());
 
@@ -83,12 +60,14 @@ pub fn populate_person_table(data: &Internal) -> Result<()> {
 ///
 /// Inserts distinct person pairs, e.g., p1 -> p2, p3 -> p4.
 /// Each person node has only a single edge in or out.
-pub fn populate_person_knows_person_table(data: &Internal, _rng: &mut StdRng) -> Result<()> {
-    let knows = data.get_table("knows")?;
-    let knows_idx = data.get_index(&knows.get_primary_index()?)?;
+pub fn populate_person_knows_person_table(
+    config: Arc<Config>,
+    tables: &mut HashMap<String, Arc<Table>>,
+    indexes: &mut HashMap<String, Index>,
+) -> Result<()> {
+    let knows = tables.get_mut("knows").unwrap();
+    let knows_idx = indexes.get_mut("knows_idx").unwrap();
 
-    let config = data.get_config();
-    let protocol = config.get_str("protocol")?;
     let sf = config.get_int("scale_factor")? as u64;
 
     let persons = *ACID_SF_MAP.get(&sf).unwrap();
@@ -102,7 +81,7 @@ pub fn populate_person_knows_person_table(data: &Internal, _rng: &mut StdRng) ->
         row.init_value("p1_id", Data::Uint(p1_id))?;
         row.init_value("p2_id", Data::Uint(p2_id))?;
         row.init_value("version_history", Data::List(vec![]))?;
-        knows_idx.insert(&pk, row)?;
+        knows_idx.insert(&pk, row);
     }
 
     info!("Loaded {} row(s) into knows", knows.get_num_rows());

@@ -1,10 +1,10 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
-use crate::server::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
-use crate::server::scheduler::hit_list::error::HitListError;
-use crate::server::scheduler::opt_hit_list::error::OptimisedHitListError;
-use crate::server::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
-use crate::server::scheduler::two_phase_locking::error::TwoPhaseLockingError;
+use crate::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
+use crate::scheduler::hit_list::error::HitListError;
+use crate::scheduler::opt_hit_list::error::OptimisedHitListError;
+use crate::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
+use crate::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::TatpTransaction;

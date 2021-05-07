@@ -12,10 +12,6 @@ A concurrency control evaluation framework.
 debug = true
 
 [[bin]]
-name = "spag-gen"
-path = "src/bin/datagen.rs"
-
-[[bin]]
 name = "spag-gpc"
 path = "src/bin/gpc.rs"
 

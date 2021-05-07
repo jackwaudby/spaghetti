@@ -1,6 +1,6 @@
 use crate::common::error::NonFatalError;
-use crate::server::scheduler::Protocol;
-use crate::server::storage::datatype::{self, Data};
+use crate::scheduler::Protocol;
+use crate::storage::datatype::{self, Data};
 use crate::workloads::acid::keys::AcidPrimaryKey::*;
 use crate::workloads::acid::paramgen::{
     G0Read, G0Write, G1aRead, G1aWrite, G1cReadWrite, G2itemRead, G2itemWrite, ImpRead, ImpWrite,
