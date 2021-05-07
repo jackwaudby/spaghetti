@@ -16,7 +16,7 @@ name = "spag-gpc"
 path = "src/bin/gpc.rs"
 
 [[bench]]
-name = "my_benchmark"
+name = "bsgt_bench"
 harness = false
 
 [dev-dependencies]

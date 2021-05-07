@@ -1,13 +1,13 @@
 log = "info"
 record = false
 log_results = false
-transactions = 100000
+transactions = 50000
 timeout = 10
 warmup = 1
 set_seed = false
 protocol="basic-sgt"
 workers = 1
-scale_factor = 0
+scale_factor = 1
 workload = "smallbank"
 load = false
 use_balance_mix = false

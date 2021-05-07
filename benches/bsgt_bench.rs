@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion, SamplingMode};
 use spaghetti::gpc::helper;
 
 use config::Config;
@@ -25,8 +25,8 @@ fn gpc(cores: usize) {
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("basic-sgt");
     group.sample_size(10);
+    group.sampling_mode(SamplingMode::Flat);
     group.bench_function("1-core", |b| b.iter(|| gpc(1)));
-    group.bench_function("4-cores", |b| b.iter(|| gpc(4)));
     group.finish();
 }
 
