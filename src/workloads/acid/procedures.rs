@@ -148,13 +148,11 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
     let delay = params.delay;
     let params = vec![Data::Uint(params.version)];
 
-    let update_version = |columns: &[&str],
-                          _current: Option<Vec<Data>>,
+    let update_version = |_current: Option<Vec<Data>>,
                           params: Option<&[Data]>|
-     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+     -> Result<Vec<Data>, NonFatalError> {
         let new_values = vec![params.unwrap()[0].clone()];
-        Ok((new_columns, new_values))
+        Ok(new_values)
     };
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
@@ -164,7 +162,7 @@ pub fn g1a_write(params: G1aWrite, protocol: Arc<Protocol>) -> Result<String, No
         Some("person_idx"),
         &pk,
         &columns,
-        false,
+        None,
         Some(&params),
         &update_version,
         &meta,
@@ -191,13 +189,11 @@ pub fn g1c_read_write(
     let tid = params.transaction_id as i64;
     let params = vec![Data::Uint(params.transaction_id as u64)];
 
-    let update_version = |columns: &[&str],
-                          _current: Option<Vec<Data>>,
+    let update_version = |_current: Option<Vec<Data>>,
                           params: Option<&[Data]>|
-     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+     -> Result<Vec<Data>, NonFatalError> {
         let new_values = vec![params.unwrap()[0].clone()];
-        Ok((new_columns, new_values))
+        Ok(new_values)
     };
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
@@ -207,7 +203,7 @@ pub fn g1c_read_write(
         Some("person_idx"),
         &pk1,
         &columns,
-        false,
+        None,
         Some(&params),
         &update_version,
         &meta,
@@ -262,14 +258,12 @@ pub fn imp_write(params: ImpWrite, protocol: Arc<Protocol>) -> Result<String, No
     let pk = Acid(Person(params.p_id)); // --- setup
     let columns = ["version"];
 
-    let inc_version = |columns: &[&str],
-                       current: Option<Vec<Data>>,
+    let inc_version = |current: Option<Vec<Data>>,
                        _params: Option<&[Data]>|
-     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+     -> Result<Vec<Data>, NonFatalError> {
         let current_value = u64::try_from(current.unwrap()[0].clone())?;
         let new_values = vec![Data::Uint(current_value + 1)];
-        Ok((new_columns, new_values))
+        Ok(new_values)
     };
 
     let meta = protocol.scheduler.register().unwrap(); // --- register
@@ -279,7 +273,7 @@ pub fn imp_write(params: ImpWrite, protocol: Arc<Protocol>) -> Result<String, No
         Some("person_idx"),
         &pk,
         &columns,
-        true,
+        Some(&columns),
         None,
         &inc_version,
         &meta,
@@ -304,14 +298,11 @@ pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFata
 
     let column = ["version"];
 
-    let inc_version = |columns: &[&str],
-                       current: Option<Vec<Data>>,
+    let inc_version = |current: Option<Vec<Data>>,
                        _params: Option<&[Data]>|
-     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+     -> Result<Vec<Data>, NonFatalError> {
         let current_value = u64::try_from(current.unwrap()[0].clone())?;
-        let new_values = vec![Data::Uint(current_value + 1)];
-        Ok((new_columns, new_values))
+        Ok(vec![Data::Uint(current_value + 1)])
     };
 
     let meta = protocol.scheduler.register().unwrap(); // register
@@ -322,7 +313,7 @@ pub fn otv_write(params: Otv, protocol: Arc<Protocol>) -> Result<String, NonFata
             Some("person_idx"),
             &pk,
             &column,
-            true,
+            Some(&column),
             None,
             &inc_version,
             &meta,
@@ -373,14 +364,11 @@ pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<Stri
     let pk = Acid(Person(params.p_id)); // key
     let columns = ["num_friends"]; // columns
 
-    let inc_version = |columns: &[&str],
-                       current: Option<Vec<Data>>,
+    let inc_version = |current: Option<Vec<Data>>,
                        _params: Option<&[Data]>|
-     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
+     -> Result<Vec<Data>, NonFatalError> {
         let current_value = u64::try_from(current.unwrap()[0].clone())?;
-        let new_values = vec![Data::Uint(current_value + 1)];
-        Ok((new_columns, new_values))
+        Ok(vec![Data::Uint(current_value + 1)])
     };
 
     let meta = protocol.scheduler.register().unwrap(); // register
@@ -390,7 +378,7 @@ pub fn lu_write(params: LostUpdateWrite, protocol: Arc<Protocol>) -> Result<Stri
         Some("person_idx"),
         &pk,
         &columns,
-        true,
+        Some(&columns),
         None,
         &inc_version,
         &meta,
@@ -436,21 +424,17 @@ pub fn g2_item_write(
     let meta = protocol.scheduler.register().unwrap(); // register
 
     // takes in current value of p1 and value of p2 via params
-    let deduct = |columns: &[&str],
-                  current: Option<Vec<Data>>,
-                  params: Option<&[Data]>|
-     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let current_value = i64::try_from(current.unwrap()[0].clone())?;
-        let other_value = i64::try_from(params.unwrap()[0].clone())?;
+    let deduct =
+        |current: Option<Vec<Data>>, params: Option<&[Data]>| -> Result<Vec<Data>, NonFatalError> {
+            let current_value = i64::try_from(current.unwrap()[0].clone())?;
+            let other_value = i64::try_from(params.unwrap()[0].clone())?;
 
-        if current_value + other_value < 100 {
-            return Err(NonFatalError::NonSerializable);
-        }
+            if current_value + other_value < 100 {
+                return Err(NonFatalError::NonSerializable);
+            }
 
-        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let new_values = vec![Data::Int(current_value - 100)];
-        Ok((new_columns, new_values))
-    };
+            Ok(vec![Data::Int(current_value - 100)])
+        };
 
     if params.p_id_update == params.p1_id {
         let read = protocol
@@ -462,7 +446,7 @@ pub fn g2_item_write(
             Some("person_idx"),
             &pk1,
             &column,
-            true,
+            Some(&column),
             Some(&read),
             &deduct,
             &meta,
@@ -477,7 +461,7 @@ pub fn g2_item_write(
             Some("person_idx"),
             &pk2,
             &column,
-            true,
+            Some(&column),
             Some(&read),
             &deduct,
             &meta,
@@ -491,8 +475,6 @@ pub fn g2_item_write(
 }
 
 /// Write Skew (G2-item) Read Transaction.
-///
-/// TODO
 pub fn g2_item_read(params: G2itemRead, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
     let columns = ["value"]; // columns to read
     let pk1 = Acid(Person(params.p1_id)); // pk

@@ -165,20 +165,19 @@ impl Scheduler for OptimisedHitList {
         }
     }
 
-    /// Execute a write operation.
+    /// Execute a write operation. TODO: incorrect
     fn update(
         &self,
         table: &str,
         _index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
-        read: bool,
+        read: Option<&[&str]>,
         params: Option<&[Data]>,
         f: &dyn Fn(
-            &[&str],           // columns
             Option<Vec<Data>>, // current values
             Option<&[Data]>,   // parameters
-        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
+        ) -> Result<Vec<Data>, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {

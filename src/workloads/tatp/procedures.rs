@@ -1,11 +1,11 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::Protocol;
-use crate::storage::datatype::{self, Data};
-use crate::workloads::tatp::keys::TatpPrimaryKey;
+use crate::storage::datatype::Data;
+use crate::workloads::tatp::keys::TatpPrimaryKey::*;
 use crate::workloads::tatp::paramgen::{
     GetAccessData, GetNewDestination, GetSubscriberData, UpdateLocationData, UpdateSubscriberData,
 };
-use crate::workloads::PrimaryKey;
+use crate::workloads::PrimaryKey::*;
 
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -51,19 +51,17 @@ pub fn get_subscriber_data(
         "msc_location",
     ];
 
-    let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    let pk = Tatp(Subscriber(params.s_id));
 
     let meta = protocol.scheduler.register()?;
 
-    let values = protocol
+    protocol
         .scheduler
         .read("subscriber", Some("sub_idx"), &pk, &columns, &meta)?;
 
     protocol.scheduler.commit(&meta)?;
 
-    let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
-
-    Ok(res)
+    Ok("ok".to_string())
 }
 
 /// GetNewDestination transaction.
@@ -71,13 +69,11 @@ pub fn get_new_destination(
     params: GetNewDestination,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    use TatpPrimaryKey::*;
-
     let sf_columns = ["s_id", "sf_type", "is_active"];
     let cf_columns = ["s_id", "sf_type", "start_time", "end_time", "number_x"];
 
-    let sf_pk = PrimaryKey::Tatp(SpecialFacility(params.s_id, params.sf_type.into()));
-    let cf_pk = PrimaryKey::Tatp(CallForwarding(
+    let sf_pk = Tatp(SpecialFacility(params.s_id, params.sf_type.into()));
+    let cf_pk = Tatp(CallForwarding(
         params.s_id,
         params.sf_type.into(),
         params.start_time.into(),
@@ -123,15 +119,7 @@ pub fn get_new_destination(
 
     protocol.scheduler.commit(&meta)?;
 
-    let res = datatype::to_result(
-        None,
-        None,
-        None,
-        Some(&vec!["number_x"]),
-        Some(&vec![cf_res[4].clone()]),
-    )
-    .unwrap();
-    Ok(res)
+    Ok("ok".to_string())
 }
 
 /// GetAccessData transaction.
@@ -139,25 +127,19 @@ pub fn get_access_data(
     params: GetAccessData,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    let columns: Vec<&str> = vec!["data_1", "data_2", "data_3", "data_4"];
+    let columns = ["data_1", "data_2", "data_3", "data_4"];
 
-    let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(
-        params.s_id,
-        params.ai_type.into(),
-    ));
+    let pk = Tatp(AccessInfo(params.s_id, params.ai_type.into()));
 
     let meta = protocol.scheduler.register().unwrap();
 
-    let values =
-        protocol
-            .scheduler
-            .read("access_info", Some("access_idx"), &pk, &columns, &meta)?;
+    protocol
+        .scheduler
+        .read("access_info", Some("access_idx"), &pk, &columns, &meta)?;
 
     protocol.scheduler.commit(&meta)?;
 
-    let res = datatype::to_result(None, None, None, Some(&columns), Some(&values)).unwrap();
-
-    Ok(res)
+    Ok("ok".to_string())
 }
 
 /// Update subscriber transaction.
@@ -165,11 +147,8 @@ pub fn update_subscriber_data(
     params: UpdateSubscriberData,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
-    let pk1 = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
-    let pk2 = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(
-        params.s_id,
-        params.sf_type.into(),
-    ));
+    let pk1 = Tatp(Subscriber(params.s_id));
+    let pk2 = Tatp(SpecialFacility(params.s_id, params.sf_type.into()));
 
     let columns1 = ["bit_1"];
     let columns2 = ["data_a"];
@@ -177,13 +156,10 @@ pub fn update_subscriber_data(
     let values1 = vec![Data::Int(params.bit_1.into())];
     let values2 = vec![Data::Int(params.data_a.into())];
 
-    let update = |columns: &[&str],
-                  _current: Option<Vec<Data>>,
+    let update = |_current: Option<Vec<Data>>,
                   params: Option<&[Data]>|
-     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let new_values = vec![params.unwrap()[0].clone().clone()];
-        Ok((new_columns, new_values))
+     -> Result<Vec<Data>, NonFatalError> {
+        Ok(vec![params.unwrap()[0].clone().clone()])
     };
 
     let meta = protocol.scheduler.register().unwrap();
@@ -193,7 +169,7 @@ pub fn update_subscriber_data(
         Some("sub_idx"),
         &pk1,
         &columns1,
-        false,
+        None,
         Some(&values1),
         &update,
         &meta,
@@ -204,16 +180,15 @@ pub fn update_subscriber_data(
         Some("special_idx"),
         &pk2,
         &columns2,
-        false,
+        None,
         Some(&values2),
         &update,
         &meta,
     )?;
 
     protocol.scheduler.commit(&meta)?;
-    let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
-    Ok(res)
+    Ok("ok".to_string())
 }
 
 /// Update location transaction.
@@ -222,16 +197,13 @@ pub fn update_location(
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
     let columns = ["vlr_location"];
-    let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id));
+    let pk = Tatp(Subscriber(params.s_id));
     let params = vec![Data::Int(params.vlr_location.into())];
 
-    let update_vlr = |columns: &[&str],
-                      _current: Option<Vec<Data>>,
+    let update_vlr = |_current: Option<Vec<Data>>,
                       params: Option<&[Data]>|
-     -> Result<(Vec<String>, Vec<Data>), NonFatalError> {
-        let new_columns: Vec<String> = columns.into_iter().map(|s| s.to_string()).collect();
-        let new_values = vec![params.unwrap()[0].clone().clone()];
-        Ok((new_columns, new_values))
+     -> Result<Vec<Data>, NonFatalError> {
+        Ok(vec![params.unwrap()[0].clone().clone()])
     };
 
     let meta = protocol.scheduler.register().unwrap();
@@ -241,14 +213,13 @@ pub fn update_location(
         Some("sub_idx"),
         &pk,
         &columns,
-        false,
+        None,
         Some(&params),
         &update_vlr,
         &meta,
     )?;
 
     protocol.scheduler.commit(&meta)?;
-    let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
 
-    Ok(res)
+    Ok("ok".to_string())
 }

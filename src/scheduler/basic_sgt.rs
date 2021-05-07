@@ -379,21 +379,18 @@ impl Scheduler for BasicSerializationGraphTesting {
     }
 
     /// Execute an update operation.
-    ///
-    /// Adds an edge in the graph for each WW and RW conflict.
     fn update(
         &self,
         table: &str,
         index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
-        read: bool,
+        read: Option<&[&str]>,
         params: Option<&[Data]>,
         f: &dyn Fn(
-            &[&str],
-            Option<Vec<Data>>,
-            Option<&[Data]>,
-        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
+            Option<Vec<Data>>, // current values
+            Option<&[Data]>,   // parameters
+        ) -> Result<Vec<Data>, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
@@ -439,7 +436,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                         }
 
                         let current_values;
-                        if read {
+                        if let Some(columns) = read {
                             let mut res = row.get_values(columns, meta).unwrap(); // should not fail
                             let node = rlock.get_transaction(*txn_id);
                             node.add_key2(Arc::clone(&index), key, OperationType::Read);
@@ -448,7 +445,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             current_values = None;
                         }
 
-                        let (new_columns, new_values) = match f(columns, current_values, params) {
+                        let new_values = match f(current_values, params) {
                             Ok(res) => res,
                             Err(e) => {
                                 drop(rlock);
@@ -459,8 +456,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         };
 
-                        let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
-                        row.set_values(&cols, &new_values, meta).unwrap();
+                        row.set_values(columns, &new_values, meta).unwrap();
                         let node = rlock.get_transaction(*txn_id);
                         node.add_key2(Arc::clone(&index), key, OperationType::Update);
                         drop(rlock);
@@ -513,7 +509,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 }
 
                                 let current_values;
-                                if read {
+                                if let Some(columns) = read {
                                     let mut res = row.get_values(columns, meta).unwrap(); // should not fail
                                     let node = rlock.get_transaction(*txn_id);
                                     node.add_key2(Arc::clone(&index), key, OperationType::Read);
@@ -522,19 +518,18 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     current_values = None;
                                 }
 
-                                let (new_columns, new_values) =
-                                    match f(columns, current_values, params) {
-                                        Ok(res) => res,
-                                        Err(e) => {
-                                            drop(rlock);
-                                            drop(mg);
-                                            drop(rh);
-                                            self.abort(&meta).unwrap(); // abort -- due to integrity constraint
-                                            return Err(e);
-                                        }
-                                    };
-                                let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
-                                row.set_values(&cols, &new_values, meta).unwrap();
+                                let new_values = match f(current_values, params) {
+                                    Ok(res) => res,
+                                    Err(e) => {
+                                        drop(rlock);
+                                        drop(mg);
+                                        drop(rh);
+                                        self.abort(&meta).unwrap(); // abort -- due to integrity constraint
+                                        return Err(e);
+                                    }
+                                };
+
+                                row.set_values(columns, &new_values, meta).unwrap();
                                 let node = rlock.get_transaction(*txn_id);
                                 node.add_key2(Arc::clone(&index), key, OperationType::Update);
                                 drop(rlock);
@@ -620,30 +615,27 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 }
 
                                 let current_values;
-                                if read {
+                                if let Some(columns) = read {
                                     let mut res = row.get_values(columns, meta).unwrap(); // should not fail
                                     let node = rlock.get_transaction(*txn_id);
                                     node.add_key2(Arc::clone(&index), key, OperationType::Read);
-
                                     current_values = Some(res.get_values());
                                 } else {
                                     current_values = None;
                                 }
 
-                                let (new_columns, new_values) =
-                                    match f(columns, current_values, params) {
-                                        Ok(res) => res,
-                                        Err(e) => {
-                                            drop(rlock);
-                                            drop(mg);
-                                            drop(rh);
-                                            self.abort(&meta).unwrap(); // abort -- due to integrity constraint
-                                            return Err(e);
-                                        }
-                                    };
-                                let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
+                                let new_values = match f(current_values, params) {
+                                    Ok(res) => res,
+                                    Err(e) => {
+                                        drop(rlock);
+                                        drop(mg);
+                                        drop(rh);
+                                        self.abort(&meta).unwrap(); // abort -- due to integrity constraint
+                                        return Err(e);
+                                    }
+                                };
 
-                                row.set_values(&cols, &new_values, meta).unwrap();
+                                row.set_values(columns, &new_values, meta).unwrap();
 
                                 rlock.get_transaction(*txn_id).add_key2(
                                     Arc::clone(&index),

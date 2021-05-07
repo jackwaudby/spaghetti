@@ -149,13 +149,12 @@ impl Scheduler for TwoPhaseLocking {
         _index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
-        read: bool,
+        read: Option<&[&str]>,
         params: Option<&[Data]>,
         f: &dyn Fn(
-            &[&str],           // columns
             Option<Vec<Data>>, // current values
             Option<&[Data]>,   // parameters
-        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
+        ) -> Result<Vec<Data>, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::TwoPhaseLocking { txn_id, timestamp } = meta {

@@ -72,17 +72,13 @@ impl Index {
         &self,
         key: &PrimaryKey,
         columns: &[&str],
-        read: bool,
+        read: Option<&[&str]>,
         params: Option<&[Data]>,
         f: F,
         tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError>
     where
-        F: Fn(
-            &[&str],
-            Option<Vec<Data>>,
-            Option<&[Data]>,
-        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
+        F: Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
     {
         let rh = self
             .map
@@ -90,15 +86,15 @@ impl Index {
             .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
         let mut row = rh.lock();
         let current_values;
-        if read {
+        if let Some(columns) = read {
             let mut res = row.get_values(columns, tid)?;
             current_values = Some(res.get_values());
         } else {
             current_values = None;
         }
-        let (new_columns, new_values) = f(columns, current_values, params)?;
-        let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
-        let res = row.set_values(&cols, &new_values, tid)?;
+        let new_values = f(current_values, params)?;
+
+        let res = row.set_values(&columns, &new_values, tid)?;
         Ok(res)
     }
 

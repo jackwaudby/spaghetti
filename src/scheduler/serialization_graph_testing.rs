@@ -262,13 +262,12 @@ impl Scheduler for SerializationGraphTesting {
         _index: Option<&str>,
         key: &PrimaryKey,
         columns: &[&str],
-        read: bool,
+        read: Option<&[&str]>,
         params: Option<&[Data]>,
         f: &dyn Fn(
-            &[&str],           // columns
             Option<Vec<Data>>, // current values
             Option<&[Data]>,   // parameters
-        ) -> Result<(Vec<String>, Vec<Data>), NonFatalError>,
+        ) -> Result<Vec<Data>, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::OptimisticSerializationGraph { thread_id, .. } = meta {
@@ -289,7 +288,7 @@ impl Scheduler for SerializationGraphTesting {
             let row = &mut *mg; // deref to row
 
             let current_values;
-            if read {
+            if let Some(columns) = read {
                 let mut res = row.get_values(columns, meta).unwrap(); // should not fail
                 let rlock = self.get_shared_lock(*thread_id);
                 rlock.add_key(&index.get_name(), key.clone(), OperationType::Read); // register operation
@@ -299,7 +298,7 @@ impl Scheduler for SerializationGraphTesting {
                 current_values = None;
             }
 
-            let (new_columns, new_values) = match f(columns, current_values, params) {
+            let new_values = match f(current_values, params) {
                 Ok(res) => res,
                 Err(e) => {
                     drop(mg);
@@ -308,9 +307,8 @@ impl Scheduler for SerializationGraphTesting {
                     return Err(e);
                 }
             };
-            let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
 
-            match row.set_values(&cols, &new_values, meta) {
+            match row.set_values(&columns, &new_values, meta) {
                 Ok(mut res) => {
                     let rlock = self.get_shared_lock(*thread_id);
 
