@@ -372,7 +372,6 @@ impl Scheduler for BasicSerializationGraphTesting {
     }
 
     /// Execute a read operation.
-
     fn read(
         &self,
         table: &str,
