@@ -57,8 +57,8 @@ impl std::hash::Hash for PrimaryKey {
         use PrimaryKey::*;
         use SmallBankPrimaryKey::*;
         match &self {
-            Acid(pk) => hasher.write_u64(0),
-            Tatp(pk) => hasher.write_u64(1),
+            Acid(_) => hasher.write_u64(0),
+            Tatp(_) => hasher.write_u64(1),
             SmallBank(pk) => match pk {
                 Account(id) => hasher.write_u64(*id),
                 Savings(id) => hasher.write_u64(*id),
