@@ -22,7 +22,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
 
     let meta = protocol.scheduler.register()?; // register
 
-    let read1 = protocol.scheduler.read(
+    protocol.scheduler.read(
         "accounts",
         Some("account_name"),
         &accounts_pk,
@@ -30,11 +30,10 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
         &meta,
     )?; // read 1 -- get customer id
 
-    let cust_id = u64::try_from(read1[0].clone()).unwrap();
-    let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
-    let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
+    let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(params.name));
+    let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(params.name));
 
-    let read2 = protocol.scheduler.read(
+    protocol.scheduler.read(
         "savings",
         Some("savings_idx"),
         &savings_pk,
@@ -42,7 +41,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
         &meta,
     )?; // read 2 -- get savings
 
-    let read3 = protocol.scheduler.read(
+    protocol.scheduler.read(
         "checking",
         Some("checking_idx"),
         &checking_pk,
@@ -52,11 +51,10 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
 
     protocol.scheduler.commit(&meta)?; // commit
 
-    let savings_balance = f64::try_from(read2[0].clone()).unwrap();
-    let checking_balance = f64::try_from(read3[0].clone()).unwrap();
-    let total_balance = vec![Data::Double(savings_balance + checking_balance)]; // calculate total balance
-    let res_cols = vec!["total_balance"];
-
+    // let savings_balance = f64::try_from(read2[0].clone()).unwrap();
+    // let checking_balance = f64::try_from(read3[0].clone()).unwrap();
+    // let total_balance = vec![Data::Double(savings_balance + checking_balance)]; // calculate total balance
+    // let res_cols = vec!["total_balance"];
     //    let res = datatype::to_result(None, None, None, Some(&res_cols), Some(&total_balance)).unwrap();
     let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
@@ -86,7 +84,7 @@ pub fn deposit_checking(
 
     let meta = protocol.scheduler.register()?; // register
 
-    let res1 = protocol.scheduler.read(
+    protocol.scheduler.read(
         "accounts",
         Some("account_name"),
         &accounts_pk,
@@ -94,8 +92,7 @@ pub fn deposit_checking(
         &meta,
     )?; // read -- get customer ID
 
-    let cust_id = u64::try_from(res1[0].clone()).unwrap();
-    let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(cust_id));
+    let checking_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(params.name));
     let params = vec![Data::Double(params.value)];
 
     protocol.scheduler.update(
@@ -125,6 +122,7 @@ pub fn transact_savings(
 ) -> Result<String, NonFatalError> {
     let accounts_cols = ["customer_id"];
     let savings_cols = ["balance"];
+    let id = params.name;
     let accounts_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(params.name));
     let params = vec![Data::Double(params.value)];
     let savings_withdrawal = |columns: &[&str],
@@ -144,7 +142,7 @@ pub fn transact_savings(
 
     let meta = protocol.scheduler.register()?; // register
 
-    let res1 = protocol.scheduler.read(
+    protocol.scheduler.read(
         "accounts",
         Some("account_name"),
         &accounts_pk,
@@ -152,8 +150,7 @@ pub fn transact_savings(
         &meta,
     )?; // read -- get customer ID
 
-    let cust_id = u64::try_from(res1[0].clone()).unwrap();
-    let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(cust_id));
+    let savings_pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(id));
 
     protocol.scheduler.update(
         "savings",

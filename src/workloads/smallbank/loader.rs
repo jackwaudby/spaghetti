@@ -51,8 +51,7 @@ pub fn populate_account(
     };
 
     for a_id in 0..n_accounts {
-        let name = format!("cust{}", a_id);
-        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(name.clone()));
+        let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(a_id));
         let mut row = Row::new(
             pk.clone(),
             Arc::clone(&accounts),
@@ -60,7 +59,6 @@ pub fn populate_account(
             track_delayed,
         );
 
-        row.init_value("name", Data::from(name)).unwrap();
         row.init_value("customer_id", Data::from(a_id)).unwrap();
         accounts_idx.insert(&pk, row);
     }

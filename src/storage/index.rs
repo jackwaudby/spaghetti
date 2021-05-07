@@ -4,8 +4,9 @@ use crate::storage::datatype::Data;
 use crate::storage::row::{OperationResult, Row};
 use crate::workloads::PrimaryKey;
 
+use nohash_hasher::IntMap;
 use parking_lot::Mutex;
-use std::collections::HashMap;
+//use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 
@@ -16,7 +17,7 @@ pub struct Index {
     name: String,
 
     /// Data.
-    map: HashMap<PrimaryKey, Arc<Mutex<Row>>>,
+    map: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
 }
 
 impl Index {
@@ -24,7 +25,7 @@ impl Index {
     pub fn init(name: &str) -> Self {
         Index {
             name: String::from(name),
-            map: HashMap::new(), // TODO: with_capacity()
+            map: IntMap::default(), // TODO: with_capacity()
         }
     }
 

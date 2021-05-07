@@ -1,6 +1,5 @@
 //size,type,name
 TABLE=ACCOUNTS
-   1,string,NAME
    1,uint,CUSTOMER_ID
 
 TABLE=SAVINGS

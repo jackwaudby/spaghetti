@@ -7,7 +7,6 @@ use std::fmt;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
-use tracing::debug;
 
 /// SmallBank workload transaction generator.
 pub struct SmallBankGenerator {
@@ -44,18 +43,6 @@ impl SmallBankGenerator {
         seed: Option<u64>,
         use_balance_mix: bool,
     ) -> SmallBankGenerator {
-        let contention = match sf {
-            0 => "NA",
-            1 => "high",
-            2 => "mid",
-            3 => "low",
-            _ => panic!("invalid scale factor"),
-        };
-
-        debug!("Parameter generator set seed: {}", set_seed);
-        debug!("Balance mix: {}", use_balance_mix);
-        debug!("Contention: {}", contention);
-
         let rng: StdRng;
         if set_seed {
             rng = SeedableRng::seed_from_u64(seed.unwrap());
@@ -274,28 +261,32 @@ impl SmallBankGenerator {
     }
 
     /// Get customer name.
-    pub fn get_name(&mut self) -> String {
+    pub fn get_name(&mut self) -> u64 {
         if self.accounts == 10 {
-            let id = self.rng.gen_range(0..self.accounts);
-            return format!("cust{}", id);
+            let id: u64 = self.rng.gen_range(0..self.accounts).into();
+            return id;
         }
 
         if self.accounts == 100 {
-            let id = self.rng.gen_range(0..self.accounts);
-            return format!("cust{}", id);
+            let id: u64 = self.rng.gen_range(0..self.accounts).into();
+            return id;
         }
 
         let n: f32 = self.rng.gen();
-        let id = match n {
-            x if x < 0.25 => self.rng.gen_range(0..100),
-
-            _ => self.rng.gen_range(100..self.accounts),
-        };
-        format!("cust{}", id)
+        match n {
+            x if x < 0.25 => {
+                let id = self.rng.gen_range(0..100) as u32;
+                id as u64
+            }
+            _ => {
+                let id: u64 = self.rng.gen_range(100..self.accounts).into();
+                id
+            }
+        }
     }
 
     /// Get distinct customer names.
-    pub fn get_names(&mut self) -> (String, String) {
+    pub fn get_names(&mut self) -> (u64, u64) {
         let name1 = self.get_name();
         let mut name2 = self.get_name();
 
@@ -319,37 +310,37 @@ pub enum SmallBankTransactionProfile {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Balance {
-    pub name: String,
+    pub name: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct DepositChecking {
-    pub name: String,
+    pub name: u64,
     pub value: f64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct TransactSaving {
-    pub name: String,
+    pub name: u64,
     pub value: f64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Amalgamate {
-    pub name1: String,
-    pub name2: String,
+    pub name1: u64,
+    pub name2: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct WriteCheck {
-    pub name: String,
+    pub name: u64,
     pub value: f64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct SendPayment {
-    pub name1: String,
-    pub name2: String,
+    pub name1: u64,
+    pub name2: u64,
     pub value: f64,
 }
 
@@ -385,28 +376,5 @@ impl fmt::Display for SmallBankTransactionProfile {
                 write!(f, "5,{},{},{}", name1, name2, value)
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use config::Config;
-
-    #[test]
-    fn generate_test() {
-        let mut c = Config::default();
-        c.merge(config::File::with_name("./tests/Test-smallbank.toml"))
-            .unwrap();
-        let mut gen = SmallBankGenerator::new(1, true, Some(1), true);
-        assert_eq!(
-            (
-                SmallBankTransaction::Balance,
-                SmallBankTransactionProfile::Balance(Balance {
-                    name: "cust82".to_string()
-                })
-            ),
-            gen.get_params(0.1)
-        );
     }
 }

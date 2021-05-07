@@ -45,12 +45,30 @@ pub struct Internal {
 }
 
 /// Primary keys of workloads.
-#[derive(PartialEq, Debug, Clone, Eq, Hash)]
+#[derive(PartialEq, Debug, Clone, Eq)]
 pub enum PrimaryKey {
     Acid(AcidPrimaryKey),
     Tatp(TatpPrimaryKey),
     SmallBank(SmallBankPrimaryKey),
 }
+
+impl std::hash::Hash for PrimaryKey {
+    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+        use PrimaryKey::*;
+        use SmallBankPrimaryKey::*;
+        match &self {
+            Acid(pk) => hasher.write_u64(0),
+            Tatp(pk) => hasher.write_u64(1),
+            SmallBank(pk) => match pk {
+                Account(id) => hasher.write_u64(*id),
+                Savings(id) => hasher.write_u64(*id),
+                Checking(id) => hasher.write_u64(*id),
+            },
+        }
+    }
+}
+
+impl nohash_hasher::IsEnabled for PrimaryKey {}
 
 impl Workload {
     /// Create new `Workload`.
@@ -72,52 +90,6 @@ impl Workload {
             _ => Err(Box::new(FatalError::IncorrectWorkload(workload))),
         }
     }
-
-    // /// Populate indexes with data.
-    // pub fn populate_tables(&self, rng: &mut StdRng) -> crate::Result<()> {
-    //     use Workload::*;
-    //     match *self {
-    //         Acid(ref i) => {
-    //             let config = self.get_internals().get_config();
-    //             let sf = config.get_int("scale_factor")?;
-    //             let set_seed = config.get_bool("set_seed")?;
-    //             info!("Parameter generator set seed: {}", set_seed);
-    //             info!("Generate ACID SF-{} ", sf);
-    //             acid::loader::populate_person_table(i)?;
-    //             acid::loader::populate_person_knows_person_table(i, rng)?;
-    //         }
-    //         Tatp(ref i) => {
-    //             let config = self.get_internals().get_config();
-    //             let sf = config.get_int("scale_factor")?;
-    //             let set_seed = config.get_bool("set_seed")?;
-    //             let use_nurand = config.get_bool("nurand")?;
-    //             info!("Generate TATP SF-{}", sf);
-    //             tatp::loader::populate_tables(i, rng)?;
-    //             info!("Generator set seed: {}", set_seed);
-    //             info!("Generator nurand: {}", use_nurand);
-    //         }
-    //         SmallBank(ref i) => {
-    //             let config = self.get_internals().get_config();
-    //             let sf = config.get_int("scale_factor")?;
-    //             let set_seed = config.get_bool("set_seed")?;
-    //             let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
-    //             let contention = match sf {
-    //                 0 => "NA",
-    //                 1 => "high",
-    //                 2 => "mid",
-    //                 3 => "low",
-    //                 _ => panic!("invalid scale factor"),
-    //             };
-
-    //             info!("Generate SmallBank SF-{}", sf);
-    //             smallbank::loader::populate_tables(i, rng)?;
-    //             info!("Parameter generator set seed: {}", set_seed);
-    //             info!("Balance mix: {}", use_balance_mix);
-    //             info!("Contention: {}", contention);
-    //         }
-    //     }
-    //     Ok(())
-    // }
 
     /// Get reference to internals of workload.
     pub fn get_internals(&self) -> &Internal {

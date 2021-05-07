@@ -1,8 +1,8 @@
 /// Primary keys of each table in the SmallBank workload.
-#[derive(Debug, PartialEq, Clone, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Eq)]
 pub enum SmallBankPrimaryKey {
-    /// Account (Name string PK, CustomerID int)
-    Account(String),
+    /// Account (CustomerID int PK)
+    Account(u64),
 
     /// Savings (CustomerID int PK, Balance int)
     Savings(u64),
@@ -11,16 +11,15 @@ pub enum SmallBankPrimaryKey {
     Checking(u64),
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// impl std::hash::Hash for SmallBankPrimaryKey {
+//     fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+//         use SmallBankPrimaryKey::*;
+//         match &self {
+//             Account(id) => hasher.write_u64(*id),
+//             Savings(id) => hasher.write_u64(*id),
+//             Checking(id) => hasher.write_u64(*id),
+//         }
+//     }
+// }
 
-    #[test]
-    fn smallbank_key_test() {
-        assert!(
-            SmallBankPrimaryKey::Account("name".to_string())
-                == SmallBankPrimaryKey::Account("name".to_string())
-        );
-        assert!(SmallBankPrimaryKey::Savings(1) != SmallBankPrimaryKey::Checking(1));
-    }
-}
+// impl nohash_hasher::IsEnabled for SmallBankPrimaryKey {}
