@@ -3,8 +3,11 @@ use crate::workloads::PrimaryKey;
 
 use nohash_hasher::IntMap;
 use parking_lot::Mutex;
+use std::cell::UnsafeCell;
 use std::fmt;
 use std::sync::Arc;
+
+unsafe impl Sync for Node {}
 
 #[derive(Debug)]
 pub struct NodeSet {
@@ -67,10 +70,10 @@ pub struct Node {
     incoming: Mutex<Option<Vec<(usize, u64)>>>,
 
     /// List of keys read by transaction.
-    keys_read: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
+    keys_read: UnsafeCell<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
 
     /// List of keys updated by transaction.
-    keys_updated: Mutex<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
+    keys_updated: UnsafeCell<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
 }
 
 /// Represents states a `Node` can be in.
@@ -107,8 +110,8 @@ impl Node {
             outgoing: Mutex::new(Some(vec![])),
             incoming: Mutex::new(Some(vec![])),
             state: Mutex::new(Some(State::Active)),
-            keys_read: Mutex::new(Some(vec![])),
-            keys_updated: Mutex::new(Some(vec![])),
+            keys_read: UnsafeCell::new(Some(vec![])),
+            keys_updated: UnsafeCell::new(Some(vec![])),
         }
     }
 
@@ -121,13 +124,9 @@ impl Node {
     pub fn reset(&self) {
         let mut outgoing = self.outgoing.lock();
         let mut incoming = self.incoming.lock();
-        let mut read = self.keys_read.lock();
-        let mut updated = self.keys_updated.lock();
 
         *outgoing = Some(vec![]);
         *incoming = Some(vec![]);
-        *read = Some(vec![]);
-        *updated = Some(vec![]);
     }
 
     /// Insert edge into a `Node`.
@@ -176,18 +175,34 @@ impl Node {
 
     pub fn get_keys2(&self, operation_type: OperationType) -> Vec<(Arc<Index>, PrimaryKey)> {
         use OperationType::*;
-        match operation_type {
-            Read => self.keys_read.lock().take().unwrap(),
-            Update => self.keys_updated.lock().take().unwrap(),
+        unsafe {
+            match operation_type {
+                Read => {
+                    let raw = &mut *self.keys_read.get();
+                    raw.take().unwrap()
+                }
+                Update => {
+                    let raw = &mut *self.keys_updated.get();
+                    raw.take().unwrap()
+                }
+            }
         }
     }
 
     pub fn add_key2(&self, index: Arc<Index>, key: &PrimaryKey, operation_type: OperationType) {
         let pair = (index, key.clone());
         use OperationType::*;
-        match operation_type {
-            Read => self.keys_read.lock().as_mut().unwrap().push(pair),
-            Update => self.keys_updated.lock().as_mut().unwrap().push(pair),
+        unsafe {
+            match operation_type {
+                Read => {
+                    let raw = &mut *self.keys_read.get();
+                    raw.as_mut().unwrap().push(pair)
+                }
+                Update => {
+                    let raw = &mut *self.keys_updated.get();
+                    raw.as_mut().unwrap().push(pair)
+                }
+            }
         }
     }
 
