@@ -96,6 +96,7 @@ impl Worker {
                 let st = Instant::now();
                 let runtime = Duration::new(timeout * 60, 0);
                 let et = st + runtime; // timeout
+                stats.start();
                 loop {
                     if sent == max_transactions {
                         tracing::debug!("All transactions sent: {} = {}", sent, max_transactions);
@@ -124,7 +125,7 @@ impl Worker {
                         sent += 1;
                     }
                 }
-
+                stats.end();
                 if record {
                     tx.send(stats).unwrap();
                 }

@@ -48,6 +48,8 @@ pub struct GlobalStatistics {
     /// Number of cores.
     cores: u32,
 
+    cum_time: u128,
+
     /// Protocol.
     protocol: String,
 
@@ -94,6 +96,7 @@ impl GlobalStatistics {
             clients: None,
             protocol,
             workload,
+            cum_time: 0,
             anomaly,
             cores,
             workload_breakdown,
@@ -126,6 +129,8 @@ impl GlobalStatistics {
 
     /// Merge local stats into global stats.
     pub fn merge_into(&mut self, local: LocalStatistics) {
+        self.cum_time += local.end.unwrap().as_millis();
+
         // 1. merge workload breakdown.
         self.workload_breakdown.merge(local.workload_breakdown);
 
@@ -203,7 +208,8 @@ impl GlobalStatistics {
                 WorkloadAbortBreakdown::SmallBank(reason) => {
                     abort_rate =
                         ((aborted - reason.insufficient_funds) as f64 / completed as f64) * 100.0;
-                    throughput = committed as f64 / self.end.unwrap().as_secs() as f64;
+                    let x = (self.cum_time as f64 / self.cores as f64) / 1000.0;
+                    throughput = committed as f64 / x;
                 }
             }
         } else {
@@ -267,6 +273,10 @@ pub struct LocalStatistics {
     /// Client id.
     client_id: u32,
 
+    start: Option<Instant>,
+
+    end: Option<Duration>,
+
     /// Per-transaction metrics.
     workload_breakdown: WorkloadBreakdown,
 
@@ -283,6 +293,8 @@ impl LocalStatistics {
 
         LocalStatistics {
             client_id,
+            start: None,
+            end: None,
             workload_breakdown,
             abort_breakdown,
         }
@@ -291,7 +303,15 @@ impl LocalStatistics {
     pub fn get_client_id(&self) -> u32 {
         self.client_id
     }
+    /// Set server start time.
+    pub fn start(&mut self) {
+        self.start = Some(Instant::now());
+    }
 
+    /// Set server end time.
+    pub fn end(&mut self) {
+        self.end = Some(self.start.unwrap().elapsed());
+    }
     /// Record response.
     pub fn record(
         &mut self,
