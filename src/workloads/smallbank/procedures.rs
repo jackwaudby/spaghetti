@@ -56,9 +56,9 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
     // let total_balance = vec![Data::Double(savings_balance + checking_balance)]; // calculate total balance
     // let res_cols = vec!["total_balance"];
     //    let res = datatype::to_result(None, None, None, Some(&res_cols), Some(&total_balance)).unwrap();
-    let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
+    //    let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
-    Ok(res)
+    Ok("ok".to_string())
 }
 
 /// Deposit checking transaction.
@@ -108,9 +108,9 @@ pub fn deposit_checking(
 
     protocol.scheduler.commit(&meta)?; // commit
 
-    let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
+    //    let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
-    Ok(res)
+    Ok("ok".to_string())
 }
 
 /// TransactSavings transaction.
@@ -165,9 +165,8 @@ pub fn transact_savings(
 
     protocol.scheduler.commit(&meta)?; // commit
 
-    let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
-
-    Ok(res)
+    //    let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
+    Ok("ok".to_string())
 }
 
 /// Amalgamate transaction.
@@ -256,9 +255,9 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 
     protocol.scheduler.commit(&meta)?; // commit
 
-    let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
+    //    let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
-    Ok(res)
+    Ok("res".to_string())
 }
 
 /// Write check transaction.
@@ -328,9 +327,9 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 
     protocol.scheduler.commit(&meta)?;
 
-    let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
+    //   let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
-    Ok(res)
+    Ok("ok".to_string())
 }
 
 /// Send payment transaction.
@@ -420,7 +419,8 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
 
     protocol.scheduler.commit(&meta)?;
 
-    let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
+    //  let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
-    Ok(res)
+    Ok("ok".to_string())
+    //    Ok(res)
 }
