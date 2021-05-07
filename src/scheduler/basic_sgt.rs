@@ -356,7 +356,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
 
             match row.get_values(columns, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let node = rlock.get_transaction(*txn_id);
                     node.add_key2(Arc::clone(&index), key, OperationType::Read);
                     drop(rlock);
@@ -440,7 +440,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                         let current_values;
                         if read {
-                            let res = row.get_values(columns, meta).unwrap(); // should not fail
+                            let mut res = row.get_values(columns, meta).unwrap(); // should not fail
                             let node = rlock.get_transaction(*txn_id);
                             node.add_key2(Arc::clone(&index), key, OperationType::Read);
                             current_values = Some(res.get_values());
@@ -514,7 +514,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 let current_values;
                                 if read {
-                                    let res = row.get_values(columns, meta).unwrap(); // should not fail
+                                    let mut res = row.get_values(columns, meta).unwrap(); // should not fail
                                     let node = rlock.get_transaction(*txn_id);
                                     node.add_key2(Arc::clone(&index), key, OperationType::Read);
                                     current_values = Some(res.get_values());
@@ -621,7 +621,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
                                 let current_values;
                                 if read {
-                                    let res = row.get_values(columns, meta).unwrap(); // should not fail
+                                    let mut res = row.get_values(columns, meta).unwrap(); // should not fail
                                     let node = rlock.get_transaction(*txn_id);
                                     node.add_key2(Arc::clone(&index), key, OperationType::Read);
 
@@ -976,7 +976,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             return Err(e.into()); // cascading abort or cycle found
                         }
 
-                        let res = row.get_and_set_values(columns, values, meta).unwrap();
+                        let mut res = row.get_and_set_values(columns, values, meta).unwrap();
                         let vals = res.get_values(); // get values
                         rlock.get_transaction(*txn_id).add_key2(
                             Arc::clone(&index),
@@ -1074,7 +1074,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     return Err(e.into()); // cascading abort or cycle found
                                 }
 
-                                let res = row.get_and_set_values(columns, values, meta).unwrap();
+                                let mut res =
+                                    row.get_and_set_values(columns, values, meta).unwrap();
                                 let vals = res.get_values(); // get values
                                 rlock.get_transaction(*txn_id).add_key2(
                                     Arc::clone(&index),
@@ -1184,7 +1185,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                                     return Err(e.into()); // abort -- cascading abort
                                 }
 
-                                let res = row.get_and_set_values(columns, values, meta).unwrap();
+                                let mut res =
+                                    row.get_and_set_values(columns, values, meta).unwrap();
                                 let vals = res.get_values(); // get values
                                 rlock.get_transaction(*txn_id).add_key2(
                                     Arc::clone(&index),

@@ -397,13 +397,13 @@ impl OperationResult {
     }
 
     /// Get values.
-    pub fn get_values(&self) -> Vec<Data> {
-        self.values.as_ref().unwrap().clone()
+    pub fn get_values(&mut self) -> Vec<Data> {
+        self.values.take().unwrap()
     }
 
     /// Get access history.
-    pub fn get_access_history(&self) -> Vec<Access> {
-        self.access_history.as_ref().unwrap().clone()
+    pub fn get_access_history(&mut self) -> Vec<Access> {
+        self.access_history.take().unwrap()
     }
 }
 

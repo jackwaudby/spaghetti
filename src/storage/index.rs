@@ -91,7 +91,7 @@ impl Index {
         let mut row = rh.lock();
         let current_values;
         if read {
-            let res = row.get_values(columns, tid)?;
+            let mut res = row.get_values(columns, tid)?;
             current_values = Some(res.get_values());
         } else {
             current_values = None;

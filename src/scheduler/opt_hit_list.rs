@@ -79,7 +79,7 @@ impl Scheduler for OptimisedHitList {
             let index = self.get_index(table, &meta)?;
 
             match index.read(key, columns, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let access_history = res.get_access_history();
                     for access in access_history {
                         if let Access::Write(predecessor_id) = access {
@@ -123,7 +123,7 @@ impl Scheduler for OptimisedHitList {
             let index = self.get_index(Arc::clone(&table), &meta)?;
 
             match index.read_and_update(key, columns, values, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let access_history = res.get_access_history();
                     for access in access_history {
                         match access {
@@ -187,7 +187,7 @@ impl Scheduler for OptimisedHitList {
             let index = self.get_index(table, &meta)?;
 
             match index.update(key, columns, read, params, f, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let access_history = res.get_access_history();
                     for access in access_history {
                         match access {
@@ -243,7 +243,7 @@ impl Scheduler for OptimisedHitList {
             let index = self.get_index(Arc::clone(&table), &meta)?;
 
             match index.append(key, column, value, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let access_history = res.get_access_history();
                     for access in access_history {
                         match access {

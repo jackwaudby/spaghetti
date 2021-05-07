@@ -206,7 +206,7 @@ impl Scheduler for SerializationGraphTesting {
             let mut mg = rh.lock(); // acquire mutex on the row
             let row = &mut *mg; // deref to row
             match row.get_values(columns, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let node = self.get_shared_lock(*thread_id); // take shared lock on this_node
                     node.add_key(&index.get_name(), key.clone(), OperationType::Read); // operation succeeded -- register
                     drop(node); // drop shared lock on node
@@ -290,7 +290,7 @@ impl Scheduler for SerializationGraphTesting {
 
             let current_values;
             if read {
-                let res = row.get_values(columns, meta).unwrap(); // should not fail
+                let mut res = row.get_values(columns, meta).unwrap(); // should not fail
                 let rlock = self.get_shared_lock(*thread_id);
                 rlock.add_key(&index.get_name(), key.clone(), OperationType::Read); // register operation
                 drop(rlock);
@@ -311,7 +311,7 @@ impl Scheduler for SerializationGraphTesting {
             let cols: Vec<&str> = new_columns.iter().map(|s| &**s).collect();
 
             match row.set_values(&cols, &new_values, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let rlock = self.get_shared_lock(*thread_id);
 
                     rlock.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded register
@@ -406,7 +406,7 @@ impl Scheduler for SerializationGraphTesting {
             let row = &mut *mg; // deref to row
 
             match row.append_value(column, value, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let node = self.get_shared_lock(*this_node);
                     node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
                     drop(node);
@@ -496,7 +496,7 @@ impl Scheduler for SerializationGraphTesting {
 
             // get and set values
             match row.get_and_set_values(columns, values, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let node = self.get_shared_lock(*this_node); // get shared lock
                     node.add_key(&index.get_name(), key.clone(), OperationType::Update); // operation succeeded -- register
                     drop(node);

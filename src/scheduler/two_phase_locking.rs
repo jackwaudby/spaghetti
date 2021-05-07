@@ -97,7 +97,7 @@ impl Scheduler for TwoPhaseLocking {
                         .add_lock(key.clone()); // register lock
 
                     match index.read(key, columns, meta) {
-                        Ok(res) => {
+                        Ok(mut res) => {
                             let vals = res.get_values(); // get values
                             Ok(vals)
                         }
@@ -121,7 +121,7 @@ impl Scheduler for TwoPhaseLocking {
                         .add_lock(key.clone()); // register lock
 
                     match index.read(key, columns, meta) {
-                        Ok(res) => {
+                        Ok(mut res) => {
                             let vals = res.get_values(); // Get values
                             Ok(vals)
                         }
@@ -312,7 +312,7 @@ impl Scheduler for TwoPhaseLocking {
                         .add_lock(key.clone());
 
                     match index.read_and_update(key, columns, values, meta) {
-                        Ok(res) => {
+                        Ok(mut res) => {
                             let vals = res.get_values(); // Get values.
                             Ok(vals)
                         }
@@ -337,7 +337,7 @@ impl Scheduler for TwoPhaseLocking {
                     // Execute update.
 
                     match index.read_and_update(key, columns, values, meta) {
-                        Ok(res) => {
+                        Ok(mut res) => {
                             let vals = res.get_values();
                             Ok(vals)
                         }

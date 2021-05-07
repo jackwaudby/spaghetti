@@ -117,7 +117,7 @@ impl Scheduler for HitList {
 
             // execute read
             match index.read(key, columns, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let access_history = res.get_access_history();
                     for access in access_history {
                         // WR conflict
@@ -167,7 +167,7 @@ impl Scheduler for HitList {
 
             // execute read and update
             match index.read_and_update(key, columns, values, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let access_history = res.get_access_history();
 
                     for access in access_history {
@@ -234,7 +234,7 @@ impl Scheduler for HitList {
             let index = self.get_index(Arc::clone(&table), &meta)?;
 
             match index.update(key, columns, read, params, f, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let access_history = res.get_access_history();
                     for access in access_history {
                         match access {
@@ -292,7 +292,7 @@ impl Scheduler for HitList {
             let index = self.get_index(Arc::clone(&table), &meta)?;
 
             match index.append(key, column, value, meta) {
-                Ok(res) => {
+                Ok(mut res) => {
                     let access_history = res.get_access_history();
                     for access in access_history {
                         match access {
