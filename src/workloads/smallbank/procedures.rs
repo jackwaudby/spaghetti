@@ -57,7 +57,8 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
     let total_balance = vec![Data::Double(savings_balance + checking_balance)]; // calculate total balance
     let res_cols = vec!["total_balance"];
 
-    let res = datatype::to_result(None, None, None, Some(&res_cols), Some(&total_balance)).unwrap();
+    //    let res = datatype::to_result(None, None, None, Some(&res_cols), Some(&total_balance)).unwrap();
+    let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // convert
 
     Ok(res)
 }
