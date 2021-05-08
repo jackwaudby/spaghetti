@@ -5,8 +5,8 @@ use crate::storage::row::{OperationResult, Row};
 use crate::workloads::PrimaryKey;
 
 use nohash_hasher::IntMap;
-use parking_lot::Mutex;
-//use std::collections::HashMap;
+//use parking_lot::Mutex;
+use spin::Mutex;
 use std::fmt;
 use std::sync::Arc;
 
