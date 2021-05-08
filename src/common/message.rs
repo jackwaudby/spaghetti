@@ -65,24 +65,6 @@ pub enum Parameters {
 //// Internal messages /////
 ///////////////////////////////////////
 
-/// Sent from read handlers to the transaction manager.
-///
-/// Contains a chanel to route the response to the correct write handler.
-#[derive(Debug)]
-pub struct InternalRequest {
-    /// Request number from this client.
-    pub request_no: u32,
-
-    /// Transaction type
-    pub transaction: Transaction,
-
-    /// Trasaction parameters.
-    pub parameters: Parameters,
-
-    /// Channel to route response to `WriteHandler`.
-    pub response_sender: tokio::sync::mpsc::UnboundedSender<InternalResponse>,
-}
-
 /// Sent from the transaction manager to a write handler.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct InternalResponse {
