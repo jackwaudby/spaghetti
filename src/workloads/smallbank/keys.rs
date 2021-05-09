@@ -1,3 +1,5 @@
+use std::fmt;
+
 /// Primary keys of each table in the SmallBank workload.
 #[derive(Debug, PartialEq, Clone, Eq)]
 pub enum SmallBankPrimaryKey {
@@ -11,15 +13,13 @@ pub enum SmallBankPrimaryKey {
     Checking(u64),
 }
 
-// impl std::hash::Hash for SmallBankPrimaryKey {
-//     fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
-//         use SmallBankPrimaryKey::*;
-//         match &self {
-//             Account(id) => hasher.write_u64(*id),
-//             Savings(id) => hasher.write_u64(*id),
-//             Checking(id) => hasher.write_u64(*id),
-//         }
-//     }
-// }
-
-// impl nohash_hasher::IsEnabled for SmallBankPrimaryKey {}
+impl fmt::Display for SmallBankPrimaryKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use SmallBankPrimaryKey::*;
+        match &self {
+            Account(id) => write!(f, "{}", id),
+            Savings(id) => write!(f, "{}", id),
+            Checking(id) => write!(f, "{}", id),
+        }
+    }
+}

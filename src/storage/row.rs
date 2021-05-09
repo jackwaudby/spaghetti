@@ -417,9 +417,22 @@ impl fmt::Display for State {
         }
     }
 }
+
+impl fmt::Display for Access {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Access::*;
+        match &self {
+            Read(id) => write!(f, "(r,{})", id),
+            Write(id) => write!(f, "(w,{})", id),
+        }
+    }
+}
+
 impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let table = Arc::clone(&self.table);
+
+        // fields
         let fc = self.current_fields.len();
         let mut fields = String::new();
         for field in &self.current_fields[0..fc - 1] {
@@ -427,16 +440,40 @@ impl fmt::Display for Row {
         }
         let last = &self.current_fields[fc - 1];
         fields.push_str(format!("{}", last).as_str());
+
+        // access
+        let ac = self.access_history.as_ref().unwrap().len();
+        let mut ah = String::new();
+        if ac > 0 {
+            for a in &self.access_history.as_ref().unwrap()[0..ac - 1] {
+                ah.push_str(format!("{}, ", a).as_str());
+            }
+            let last = &self.access_history.as_ref().unwrap()[ac - 1];
+            ah.push_str(format!("{}", last).as_str());
+        }
+
+        // access
+        let dc = self.delayed.as_ref().unwrap().len();
+        let mut de = String::new();
+        if dc > 0 {
+            for d in &self.delayed.as_ref().unwrap()[0..dc - 1] {
+                de.push_str(format!("{}, ", d).as_str());
+            }
+            let last = &self.delayed.as_ref().unwrap()[dc - 1];
+            de.push_str(format!("{}", last).as_str());
+        }
+
         write!(
             f,
-            "[{}, {:?}, {:?}, {}, {}, {:?}, {:?}]",
+            "[rid: {}, table: {}, pk: {}, state: {}, fields: [{}], writer: {}, accesses: [{}], delayed: [{}]]",
             self.get_row_id(),
+            table.get_table_name(),
             self.get_primary_key(),
             self.state,
-            table.get_table_name(),
             fields,
-            self.access_history,
-            self.delayed,
+            self.written_by.as_ref().unwrap(),
+            ah,
+            de,
         )
     }
 }

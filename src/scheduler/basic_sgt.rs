@@ -277,6 +277,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
+        // tracing::info!("read by {} on {}", meta, key);
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let rlock = self.get_shared_lock(*thread_id); // take shared lock
 
@@ -338,6 +339,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         f: &dyn Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
+        // tracing::info!("update by {} on {}", meta, key);
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let rlock = self.get_shared_lock(*thread_id); // take shared lock
 
@@ -420,26 +422,40 @@ impl Scheduler for BasicSerializationGraphTesting {
                     {
                         let dep = self.get_shared_lock(dep_thread_id); // get read lock on dependency
                         let dep_node = dep.get_transaction(dep_txn_id); // get transaction node
-                                                                        // if active do cycle check
-                        if let State::Active = dep_node.get_state() {
-                            drop(dep); // drop read lock
-                            if let Err(e) =
-                                self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id))
-                            {
-                                // if cycle found remove from dependency
+                        let dep_state = dep_node.get_state();
+                        match dep_state {
+                            // if active do cycle check
+                            State::Active => {
+                                drop(dep); // drop read lock
+                                if let Err(e) =
+                                    self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id))
+                                {
+                                    // if cycle found remove from dependency
+                                    let rh = index.get_row(&key).unwrap();
+                                    let mut guard = rh.lock();
+                                    guard.remove_delayed(meta); // remove from delayed queue
+                                    drop(guard);
+                                    drop(rlock);
+                                    self.abort(meta).unwrap();
+                                    return Err(e.into());
+                                }
+                            }
+                            // if dependency aborted then cascading abort
+                            State::Aborted => {
+                                drop(dep); // drop read lock
                                 let rh = index.get_row(&key).unwrap();
                                 let mut guard = rh.lock();
                                 guard.remove_delayed(meta); // remove from delayed queue
                                 drop(guard);
                                 drop(rlock);
                                 self.abort(meta).unwrap();
-                                return Err(e.into());
+                                return Err(ProtocolError::CascadingAbort.into());
                             }
-                        } else {
-                            // node has terminated
-
-                            drop(dep);
-                            break;
+                            // dependency committed then it is my turn
+                            State::Committed => {
+                                drop(dep); // drop read lock
+                                break;
+                            }
                         }
                     }
                 }
@@ -715,6 +731,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
+        // tracing::info!("read + update by {} on {}", meta, key);
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let rlock = self.get_shared_lock(*thread_id); // take shared lock
 
@@ -777,26 +794,41 @@ impl Scheduler for BasicSerializationGraphTesting {
                     {
                         let dep = self.get_shared_lock(dep_thread_id); // get read lock on dependency
                         let dep_node = dep.get_transaction(dep_txn_id); // get transaction node
-                                                                        // if active do cycle check
-                        if let State::Active = dep_node.get_state() {
-                            drop(dep); // drop read lock
-                            if let Err(e) =
-                                self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id))
-                            {
-                                // if cycle found remove from dependency
+
+                        let dep_state = dep_node.get_state();
+                        match dep_state {
+                            // if active do cycle check
+                            State::Active => {
+                                drop(dep); // drop read lock
+                                if let Err(e) =
+                                    self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id))
+                                {
+                                    // if cycle found remove from dependency
+                                    let rh = index.get_row(&key).unwrap();
+                                    let mut guard = rh.lock();
+                                    guard.remove_delayed(meta); // remove from delayed queue
+                                    drop(guard);
+                                    drop(rlock);
+                                    self.abort(meta).unwrap();
+                                    return Err(e.into());
+                                }
+                            }
+                            // if dependency aborted then cascading abort
+                            State::Aborted => {
+                                drop(dep); // drop read lock
                                 let rh = index.get_row(&key).unwrap();
                                 let mut guard = rh.lock();
                                 guard.remove_delayed(meta); // remove from delayed queue
                                 drop(guard);
                                 drop(rlock);
                                 self.abort(meta).unwrap();
-                                return Err(e.into());
+                                return Err(ProtocolError::CascadingAbort.into());
                             }
-                        } else {
-                            // node has terminated
-
-                            drop(dep);
-                            break;
+                            // dependency committed then it is my turn
+                            State::Committed => {
+                                drop(dep); // drop read lock
+                                break;
+                            }
                         }
                     }
                 }
@@ -830,6 +862,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
     /// Abort a transaction.
     fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
+        //    tracing::info!("aborting {}", meta);
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let rlock = self.get_shared_lock(*thread_id); // get read lock
 
@@ -869,6 +902,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
     /// Commit a transaction.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
+        // tracing::info!("committing {}", meta);
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             loop {
                 let wlock = self.get_exculsive_lock(*thread_id); // get write lock
