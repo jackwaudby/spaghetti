@@ -128,7 +128,6 @@ impl BasicSerializationGraphTesting {
                         from_node
                     {
                         self.add_edge(rlock, (thread_id, txn_id), this_node, false)?;
-                        // w-w conflict
                     }
                 }
                 Access::Read(from_node) => {
@@ -136,7 +135,6 @@ impl BasicSerializationGraphTesting {
                         from_node
                     {
                         self.add_edge(rlock, (thread_id, txn_id), this_node, true)?;
-                        // r-w conflict
                     }
                 }
             }
@@ -176,35 +174,6 @@ impl BasicSerializationGraphTesting {
         self.detect_write_conflicts(rlock, this_node, access_history)?;
         self.reduced_depth_first_search(rlock, this_node)?;
         Ok(())
-    }
-
-    /// Attempt to commit a transaction.
-    pub fn commit_check(&self, id: (usize, u64)) -> Result<(), ProtocolError> {
-        let (thread_id, txn_id) = id;
-
-        let wlock = self.get_exculsive_lock(thread_id);
-
-        let node = wlock.get_transaction(txn_id);
-        let state = node.get_state();
-
-        match state {
-            State::Active => {
-                let incoming = node.has_incoming();
-                if !incoming {
-                    node.set_state(State::Committed); // if active and no incoming edges
-                    drop(wlock);
-                    Ok(())
-                } else {
-                    drop(wlock);
-                    Err(ProtocolError::HasIncomingEdges)
-                }
-            }
-            State::Aborted => {
-                drop(wlock);
-                Err(ProtocolError::CascadingAbort)
-            }
-            State::Committed => unreachable!(),
-        }
     }
 
     /// Perform a reduced depth first search from `start` node.
@@ -317,14 +286,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                 return Err(e.into()); // abort -- cascading abort
             }
 
-            let index = match self.get_ind(index.unwrap()) {
-                Ok(index) => index,
-                Err(e) => {
-                    drop(rlock);
-                    self.abort(meta).unwrap();
-                    return Err(e.into());
-                }
-            };
+            let index = self.get_ind(index.unwrap()).unwrap(); // never fails
 
             let rh = match index.get_row(&key) {
                 Ok(rh) => rh,
@@ -335,44 +297,30 @@ impl Scheduler for BasicSerializationGraphTesting {
                 }
             };
 
-            let mut mg = rh.lock();
-            let row = &mut *mg;
+            let mut guard = rh.lock();
 
-            let ah = row.get_access_history();
+            let ah = guard.get_access_history();
             if let Err(e) = self.detect_read_conflicts(&rlock, (*thread_id, *txn_id), ah) {
                 drop(rlock);
-                drop(mg);
-                drop(rh);
+                drop(guard);
                 self.abort(meta).unwrap();
                 return Err(e.into()); // abort -- cascading abort
             }
 
             if let Err(e) = self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id)) {
                 drop(rlock);
-                drop(mg);
-                drop(rh);
+                drop(guard);
                 self.abort(&meta).unwrap(); // abort -- cycle found
                 return Err(e.into());
             }
 
-            match row.get_values(columns, meta) {
-                Ok(mut res) => {
-                    let node = rlock.get_transaction(*txn_id);
-                    node.add_key2(Arc::clone(&index), key, OperationType::Read);
-                    drop(rlock);
-                    let vals = res.get_values();
-                    drop(mg);
-                    drop(rh);
-                    Ok(vals)
-                }
-                Err(e) => {
-                    drop(rlock);
-                    drop(mg);
-                    drop(rh);
-                    self.abort(meta).unwrap(); // abort -- row marked for delete
-                    Err(e)
-                }
-            }
+            let mut res = guard.get_values(columns, meta).unwrap();
+            let node = rlock.get_transaction(*txn_id);
+            node.add_key2(Arc::clone(&index), key, OperationType::Read);
+            drop(rlock);
+            let vals = res.get_values();
+            drop(guard);
+            Ok(vals)
         } else {
             panic!("unexpected transaction info");
         }
@@ -401,14 +349,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
 
             // get handle to index
-            let index = match self.get_ind(index.unwrap()) {
-                Ok(index) => index,
-                Err(e) => {
-                    drop(rlock);
-                    self.abort(meta).unwrap();
-                    return Err(e.into()); // abort -- index not found
-                }
-            };
+            let index = self.get_ind(index.unwrap()).unwrap(); // never fails
 
             // get handle to row
             let rh = match index.get_row(&key) {
@@ -428,7 +369,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                     drop(guard);
                     drop(rlock);
                     self.abort(meta).unwrap();
-                    return Err(e.into()); // abort -- cascading abort or cycle found
+                    return Err(e.into()); // abort-- cascading abort or cycle found
                 }
 
                 let node = rlock.get_transaction(*txn_id); // get handle to node
@@ -462,6 +403,7 @@ impl Scheduler for BasicSerializationGraphTesting {
             } else {
                 let mut ah = guard.get_access_history(); // get access history
                 let dependency = guard.append_delayed(meta); // add to delayed queue and get dependency
+
                 drop(guard); // drop row lock
                 ah.push(Access::Write(dependency.clone()));
                 if let Err(e) = self.detect_write_conflicts(&rlock, (*thread_id, *txn_id), ah) {
@@ -471,16 +413,18 @@ impl Scheduler for BasicSerializationGraphTesting {
                 }
 
                 loop {
-                    if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } =
-                        dependency
+                    if let TransactionInfo::BasicSerializationGraph {
+                        thread_id: dep_thread_id,
+                        txn_id: dep_txn_id,
+                    } = dependency
                     {
-                        let dep = self.get_shared_lock(thread_id); // get read lock on dependency
-                        let dep_node = dep.get_transaction(txn_id); // get transaction node
-                                                                    // if active do cycle check
+                        let dep = self.get_shared_lock(dep_thread_id); // get read lock on dependency
+                        let dep_node = dep.get_transaction(dep_txn_id); // get transaction node
+                                                                        // if active do cycle check
                         if let State::Active = dep_node.get_state() {
                             drop(dep); // drop read lock
                             if let Err(e) =
-                                self.reduced_depth_first_search(&rlock, (thread_id, txn_id))
+                                self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id))
                             {
                                 // if cycle found remove from dependency
                                 let rh = index.get_row(&key).unwrap();
@@ -493,6 +437,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                             }
                         } else {
                             // node has terminated
+
                             drop(dep);
                             break;
                         }
@@ -502,7 +447,7 @@ impl Scheduler for BasicSerializationGraphTesting {
                 // get handle to row
                 let rh = index.get_row(&key).unwrap(); // row must exist
                 let mut guard = rh.lock(); // take lock on row
-                assert!(guard.resume(meta));
+                assert!(guard.resume(meta), "{} failed: {}", meta, guard);
                 guard.remove_delayed(meta); // remove from delayed queue
 
                 let ah = guard.get_access_history();
@@ -512,11 +457,11 @@ impl Scheduler for BasicSerializationGraphTesting {
                     self.abort(meta).unwrap();
                     return Err(e.into()); // abort -- cascading abort or cycle
                 }
-
+                let node = rlock.get_transaction(*txn_id);
                 let current_values;
                 if let Some(columns) = read {
                     let mut res = guard.get_values(columns, meta).unwrap(); // should not fail
-                    let node = rlock.get_transaction(*txn_id);
+
                     node.add_key2(Arc::clone(&index), key, OperationType::Read);
                     current_values = Some(res.get_values());
                 } else {
@@ -526,18 +471,18 @@ impl Scheduler for BasicSerializationGraphTesting {
                 let new_values = match f(current_values, params) {
                     Ok(res) => res,
                     Err(e) => {
+                        drop(guard);
                         drop(rlock);
-                        drop(rh);
+
                         self.abort(&meta).unwrap(); // abort -- due to integrity constraint
                         return Err(e);
                     }
                 };
 
                 guard.set_values(columns, &new_values, meta).unwrap();
-                let node = rlock.get_transaction(*txn_id);
                 node.add_key2(Arc::clone(&index), key, OperationType::Update);
                 drop(rlock);
-                drop(rh);
+                drop(guard);
                 return Ok(());
             }
         } else {
@@ -773,21 +718,17 @@ impl Scheduler for BasicSerializationGraphTesting {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             let rlock = self.get_shared_lock(*thread_id); // take shared lock
 
+            // abort check
             if let Err(e) = self.abort_check(&rlock, *txn_id) {
                 drop(rlock);
                 self.abort(meta).unwrap();
                 return Err(e.into()); // abort -- cascading abort
             }
 
-            let index = match self.get_ind(index.unwrap()) {
-                Ok(index) => index,
-                Err(e) => {
-                    drop(rlock);
-                    self.abort(meta).unwrap();
-                    return Err(e.into());
-                }
-            };
+            // get handle to index
+            let index = self.get_ind(index.unwrap()).unwrap();
 
+            // get handle to row
             let rh = match index.get_row(&key) {
                 Ok(rh) => rh,
                 Err(e) => {
@@ -797,252 +738,90 @@ impl Scheduler for BasicSerializationGraphTesting {
                 }
             };
 
-            let mut mg = rh.lock(); // get mutex on row
-            let row = &mut *mg; // deref to row
+            let mut guard = rh.lock(); // get mutex on row
 
-            if !row.is_delayed() {
-                match row.get_state() {
-                    RowState::Clean => {
-                        let ah = row.get_access_history();
-                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
-                            drop(rlock);
-                            drop(mg);
-                            drop(rh);
-                            self.abort(meta).unwrap();
-                            return Err(e.into()); // cascading abort or cycle found
-                        }
-
-                        let mut res = row.get_and_set_values(columns, values, meta).unwrap();
-                        let vals = res.get_values(); // get values
-                        rlock.get_transaction(*txn_id).add_key2(
-                            Arc::clone(&index),
-                            key,
-                            OperationType::Update,
-                        );
-
-                        drop(rlock);
-                        drop(mg);
-                        drop(rh);
-
-                        Ok(vals)
-                    }
-                    RowState::Modified => {
-                        let ah = row.get_access_history(); // insert and check
-
-                        // let doorman = ah
-                        //     .iter()
-                        //     .filter(|i| {
-                        //         access_eq(
-                        //             i,
-                        //             &Access::Write(TransactionInfo::BasicSerializationGraph {
-                        //                 thread_id: 0,
-                        //                 txn_id: 0,
-                        //             }),
-                        //         )
-                        //     })
-                        //     .last()
-                        //     .unwrap();
-
-                        // let tid = match doorman {
-                        //     Access::Write(id) => id,
-                        //     _ => unimplemented!(),
-                        // };
-
-                        // if let TransactionInfo::BasicSerializationGraph {
-                        //     thread_id: doorman_th,
-                        //     txn_id: doorman_id,
-                        // } = tid
-                        // {
-                        if let Err(e) =
-                            self.insert_and_check(&rlock, (*thread_id, *txn_id), ah.clone())
-                        {
-                            drop(rlock);
-                            drop(mg);
-                            drop(rh);
-                            self.abort(meta).unwrap();
-                            return Err(e.into()); // cascading abort or cycle found
-                        }
-                        // let (doorman_th, doorman_id) = doorman;
-
-                        row.append_delayed(meta); // add to delayed queue
-
-                        drop(mg);
-                        drop(rh);
-
-                        // loop {
-                        //     let rlock2 = self.get_shared_lock(*doorman_th);
-                        //     let state = rlock2.get_transaction(*doorman_id).get_state();
-                        //     match state {
-                        //         State::Aborted | State::Committed => {
-                        //             drop(rlock2);
-                        //             break;
-                        //         }
-                        //         State::Active => drop(rlock2),
-                        //     }
-                        // }
-                        // }
-
-                        loop {
-                            let rh = match index.get_row(&key) {
-                                Ok(rg) => rg,
-                                Err(e) => {
-                                    drop(rlock);
-                                    self.abort(meta).unwrap(); // row not found
-                                    return Err(e);
-                                }
-                            };
-
-                            let mut mg = rh.lock();
-                            let row = &mut *mg;
-
-                            if row.resume(meta) {
-                                row.remove_delayed(meta);
-
-                                let ah = row.get_access_history(); // insert and check
-                                if let Err(e) =
-                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
-                                {
-                                    drop(rlock);
-                                    drop(mg);
-                                    drop(rh);
-
-                                    self.abort(meta).unwrap();
-                                    return Err(e.into()); // cascading abort or cycle found
-                                }
-
-                                let mut res =
-                                    row.get_and_set_values(columns, values, meta).unwrap();
-                                let vals = res.get_values(); // get values
-                                rlock.get_transaction(*txn_id).add_key2(
-                                    Arc::clone(&index),
-                                    key,
-                                    OperationType::Update,
-                                );
-
-                                drop(rlock);
-                                drop(mg);
-                                drop(rh);
-                                return Ok(vals);
-                            } else {
-                                let ah = row.get_access_history();
-                                if let Err(e) =
-                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
-                                {
-                                    row.remove_delayed(meta);
-                                    drop(rlock);
-                                    drop(mg);
-                                    drop(rh);
-                                    self.abort(meta).unwrap();
-                                    return Err(e.into()); // abort -- cascading abort or cycle
-                                }
-
-                                drop(mg);
-                                drop(rh);
-                            }
-                        }
-                    }
+            if !guard.is_delayed() && guard.get_state() == RowState::Clean {
+                let ah = guard.get_access_history();
+                if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                    drop(guard);
+                    drop(rlock);
+                    self.abort(meta).unwrap();
+                    return Err(e.into()); // abort-- cascading abort or cycle found
                 }
+
+                let node = rlock.get_transaction(*txn_id); // get handle to node
+                let mut res = guard.get_and_set_values(columns, values, meta).unwrap();
+                let vals = res.get_values(); // get values
+                node.add_key2(Arc::clone(&index), key, OperationType::Update);
+                drop(guard);
+                drop(rlock);
+
+                Ok(vals)
             } else {
-                match row.get_state() {
-                    RowState::Clean | RowState::Modified => {
-                        let mut ah = row.get_access_history(); // get access history
-                        let delayed = row.get_delayed(); // other delayed transactions; multiple w-w conflicts
+                let mut ah = guard.get_access_history(); // get access history
+                let dependency = guard.append_delayed(meta); // add to delayed queue and get dependency
 
-                        for tid in &delayed {
-                            ah.push(Access::Write(tid.clone()));
-                        }
+                drop(guard); // drop row lock
+                ah.push(Access::Write(dependency.clone()));
+                if let Err(e) = self.detect_write_conflicts(&rlock, (*thread_id, *txn_id), ah) {
+                    drop(rlock);
+                    self.abort(meta).unwrap();
+                    return Err(e.into());
+                }
 
-                        // let doorman = delayed.last().unwrap();
-                        // if let TransactionInfo::BasicSerializationGraph {
-                        //     thread_id: doorman_th,
-                        //     txn_id: doorman_id,
-                        // } = doorman
-                        // {
-                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
-                            drop(rlock);
-                            drop(mg);
-                            drop(rh);
-                            self.abort(&meta).unwrap();
-                            return Err(e.into());
-                        }
-
-                        row.append_delayed(meta); // add to delayed queue; returns wait on
-
-                        drop(mg);
-                        drop(rh);
-
-                        // loop {
-                        //     let rlock2 = self.get_shared_lock(*doorman_th);
-                        //     let state = rlock2.get_transaction(*doorman_id).get_state();
-                        //     match state {
-                        //         State::Aborted | State::Committed => {
-                        //             drop(rlock2);
-                        //             break;
-                        //         }
-                        //         State::Active => drop(rlock2),
-                        //     }
-                        // }
-                        // }
-
-                        loop {
-                            let rh = match index.get_row(&key) {
-                                Ok(rg) => rg,
-                                Err(e) => {
-                                    drop(rlock);
-                                    self.abort(meta).unwrap(); // abort -- row not found
-                                    return Err(e);
-                                }
-                            };
-
-                            let mut mg = rh.lock();
-                            let row = &mut *mg;
-
-                            if row.resume(meta) {
-                                row.remove_delayed(meta);
-
-                                let ah = row.get_access_history();
-                                if let Err(e) =
-                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
-                                {
-                                    drop(rlock);
-                                    drop(mg);
-                                    drop(rh);
-                                    self.abort(meta).unwrap();
-                                    return Err(e.into()); // abort -- cascading abort
-                                }
-
-                                let mut res =
-                                    row.get_and_set_values(columns, values, meta).unwrap();
-                                let vals = res.get_values(); // get values
-                                rlock.get_transaction(*txn_id).add_key2(
-                                    Arc::clone(&index),
-                                    key,
-                                    OperationType::Update,
-                                );
-
+                loop {
+                    if let TransactionInfo::BasicSerializationGraph {
+                        thread_id: dep_thread_id,
+                        txn_id: dep_txn_id,
+                    } = dependency
+                    {
+                        let dep = self.get_shared_lock(dep_thread_id); // get read lock on dependency
+                        let dep_node = dep.get_transaction(dep_txn_id); // get transaction node
+                                                                        // if active do cycle check
+                        if let State::Active = dep_node.get_state() {
+                            drop(dep); // drop read lock
+                            if let Err(e) =
+                                self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id))
+                            {
+                                // if cycle found remove from dependency
+                                let rh = index.get_row(&key).unwrap();
+                                let mut guard = rh.lock();
+                                guard.remove_delayed(meta); // remove from delayed queue
+                                drop(guard);
                                 drop(rlock);
-                                drop(mg);
-                                drop(rh);
-                                return Ok(vals);
-                            } else {
-                                let ah = row.get_access_history();
-                                if let Err(e) =
-                                    self.insert_and_check(&rlock, (*thread_id, *txn_id), ah)
-                                {
-                                    row.remove_delayed(meta);
-                                    drop(rlock);
-                                    drop(mg);
-                                    drop(rh);
-                                    self.abort(meta).unwrap();
-                                    return Err(e.into()); // abort -- cascading abort or cycle
-                                }
-
-                                drop(mg);
-                                drop(rh);
+                                self.abort(meta).unwrap();
+                                return Err(e.into());
                             }
+                        } else {
+                            // node has terminated
+
+                            drop(dep);
+                            break;
                         }
                     }
                 }
+
+                // get handle to row
+                let rh = index.get_row(&key).unwrap(); // row must exist
+                let mut guard = rh.lock(); // take lock on row
+                assert!(guard.resume(meta), "{} failed: {}", meta, guard);
+                guard.remove_delayed(meta); // remove from delayed queue
+
+                let ah = guard.get_access_history();
+                if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                    drop(rlock);
+                    drop(guard);
+                    self.abort(meta).unwrap();
+                    return Err(e.into()); // abort -- cascading abort or cycle
+                }
+                let node = rlock.get_transaction(*txn_id);
+
+                let mut res = guard.get_and_set_values(columns, values, meta).unwrap();
+                let vals = res.get_values(); // get values
+                node.add_key2(Arc::clone(&index), key, OperationType::Update);
+                drop(rlock);
+                drop(guard);
+                return Ok(vals);
             }
         } else {
             panic!("unexpected transaction info");
@@ -1091,63 +870,74 @@ impl Scheduler for BasicSerializationGraphTesting {
     /// Commit a transaction.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
-            while let Err(ProtocolError::HasIncomingEdges) =
-                self.commit_check((*thread_id, *txn_id))
-            {
-                let rlock = self.get_shared_lock(*thread_id);
+            loop {
+                let wlock = self.get_exculsive_lock(*thread_id); // get write lock
+                let node = wlock.get_transaction(*txn_id); // get transaction
+                let state = node.get_state(); // get state
 
-                if let Err(ProtocolError::CycleFound) =
-                    self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id))
-                {
-                    let node = rlock.get_transaction(*txn_id);
-                    node.set_state(State::Aborted);
-                }
-                drop(rlock);
-            }
+                match state {
+                    State::Active => {
+                        let incoming = node.has_incoming();
+                        if !incoming {
+                            let reads = node.get_keys2(OperationType::Read);
+                            let updates = node.get_keys2(OperationType::Update);
+                            drop(wlock); // drop write lock
 
-            let rlock = self.get_shared_lock(*thread_id);
-            let node = rlock.get_transaction(*txn_id);
-            let state = node.get_state();
+                            // important to drop write lock whilst making changes as other wise can deadlock
 
-            match state {
-                State::Aborted => {
-                    drop(rlock);
-                    self.abort(&meta).unwrap();
-                    return Err(ProtocolError::CascadingAbort.into());
-                }
-                State::Committed => {
-                    self.clean_up_graph(&rlock, (*thread_id, *txn_id)); // remove outgoing edges
+                            for (index, key) in &reads {
+                                if let Ok(rh) = index.get_row(&key) {
+                                    let mut guard = rh.lock();
+                                    guard.revert_read(meta);
+                                    drop(guard);
+                                };
+                            }
 
-                    let node = rlock.get_transaction(*txn_id);
-                    let reads = node.get_keys2(OperationType::Read);
-                    let updates = node.get_keys2(OperationType::Update);
-                    drop(rlock);
+                            for (index, key) in updates {
+                                if let Ok(rh) = index.get_row(&key) {
+                                    let mut guard = rh.lock();
+                                    guard.commit(meta);
+                                    drop(guard);
+                                };
+                            }
 
-                    for (index, key) in &reads {
-                        if let Ok(rh) = index.get_row(&key) {
-                            let mut mg = rh.lock();
-                            let row = &mut *mg;
-                            row.revert_read(meta);
-                            drop(mg);
-                            drop(rh);
-                        };
+                            // if active and no incoming edges
+                            let wlock = self.get_exculsive_lock(*thread_id); // get write lock
+                            let node = wlock.get_transaction(*txn_id); // get transaction
+                            node.set_state(State::Committed);
+                            drop(wlock); // drop write lock
+
+                            let rlock = self.get_shared_lock(*thread_id); // TODO: potenrial deadlock
+                            self.clean_up_graph(&rlock, (*thread_id, *txn_id)); // remove outgoing edges
+                            drop(rlock);
+
+                            return Ok(());
+                        } else {
+                            // if active but incoming edges
+
+                            drop(wlock); // drop write lock
+                            let rlock = self.get_shared_lock(*thread_id); // get read lock
+                            if let Err(ProtocolError::CycleFound) =
+                                self.reduced_depth_first_search(&rlock, (*thread_id, *txn_id))
+                            {
+                                drop(rlock); // drop read lock
+                                self.abort(meta).unwrap(); // start abort procedure
+                                return Err(ProtocolError::CycleFound.into());
+                            }
+                            drop(rlock); // drop read lock
+                        }
                     }
-
-                    for (index, key) in updates {
-                        if let Ok(rh) = index.get_row(&key) {
-                            let mut mg = rh.lock();
-                            let row = &mut *mg;
-                            row.commit(meta);
-                            drop(mg);
-                            drop(rh);
-                        };
+                    State::Aborted => {
+                        drop(wlock);
+                        self.abort(meta).unwrap(); // start abort procedure
+                        return Err(ProtocolError::CascadingAbort.into());
                     }
+                    State::Committed => unreachable!(),
                 }
-
-                State::Active => panic!("node should not be active"),
             }
+        } else {
+            panic!("unexpected transaction info");
         }
-        Ok(())
     }
 
     fn get_data(&self) -> Arc<Workload> {
