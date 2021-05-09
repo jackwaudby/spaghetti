@@ -12,7 +12,6 @@ use std::sync::Arc;
 pub enum State {
     Clean,
     Modified,
-    Deleted,
 }
 
 /// Represents a row in the database.
@@ -32,6 +31,10 @@ pub struct Row {
 
     /// Previous version of fields.
     prev_fields: Option<Vec<Field>>,
+
+    written_by: Option<TransactionInfo>,
+
+    prev_written_by: Option<TransactionInfo>,
 
     /// Row state.
     state: State,
@@ -97,6 +100,8 @@ impl Row {
             current_fields,
             prev_fields: None,
             state: State::Clean,
+            written_by: None,
+            prev_written_by: None,
             access_history,
             delayed,
         }
@@ -136,13 +141,6 @@ impl Row {
         columns: &[&str],
         tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
-        if let State::Deleted = self.state {
-            return Err(NonFatalError::RowDeleted(
-                self.primary_key.to_string(),
-                self.table.get_table_name(),
-            ));
-        }
-
         let access_history;
         if let TransactionInfo::TwoPhaseLocking { .. } = tid {
             access_history = None;
@@ -172,10 +170,6 @@ impl Row {
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
-                self.primary_key.to_string(),
-                self.table.get_table_name(),
-            )),
-            State::Deleted => Err(NonFatalError::RowDeleted(
                 self.primary_key.to_string(),
                 self.table.get_table_name(),
             )),
@@ -219,15 +213,15 @@ impl Row {
                 self.primary_key.to_string(),
                 self.table.get_table_name(),
             )),
-            State::Deleted => Err(NonFatalError::RowDeleted(
-                self.primary_key.to_string(),
-                self.table.get_table_name(),
-            )),
             State::Clean => {
                 let prev_fields = self.current_fields.clone(); // set prev fields
+
                 self.prev_fields = Some(prev_fields);
 
+                self.prev_written_by = self.written_by.take();
+
                 self.state = State::Modified; // set state
+                self.written_by = Some(tid.clone());
 
                 let access_history;
                 if let TransactionInfo::TwoPhaseLocking { .. } = tid {
@@ -267,36 +261,6 @@ impl Row {
         res
     }
 
-    /// Mark row as deleted.
-    ///
-    /// Committing a delete is handled at the index level.
-    pub fn delete(&mut self, tid: &TransactionInfo) -> Result<OperationResult, NonFatalError> {
-        match self.state {
-            State::Modified => Err(NonFatalError::RowDirty(
-                format!("{:?}", self.primary_key),
-                self.table.get_table_name(),
-            )),
-            State::Deleted => Err(NonFatalError::RowDeleted(
-                format!("{:?}", self.primary_key),
-                self.table.get_table_name(),
-            )),
-            State::Clean => {
-                self.state = State::Deleted; // set state
-
-                let access_history;
-                if let TransactionInfo::TwoPhaseLocking { .. } = tid {
-                    access_history = None;
-                } else {
-                    let ah = self.access_history.as_ref().unwrap().clone();
-                    access_history = Some(ah);
-                }
-
-                let res = OperationResult::new(None, access_history);
-                Ok(res)
-            }
-        }
-    }
-
     /// Make an update permanent.
     pub fn commit(&mut self, tid: &TransactionInfo) {
         self.state = State::Clean;
@@ -318,10 +282,11 @@ impl Row {
     /// Handles reverting a delete and an update.
     pub fn revert(&mut self, tid: &TransactionInfo) {
         match self.state {
-            State::Deleted => self.state = State::Clean,
             State::Modified => {
                 self.current_fields = self.prev_fields.take().unwrap(); // revert to old values
                 self.state = State::Clean;
+                self.written_by = self.prev_written_by.take();
+                self.prev_written_by = None;
 
                 // remove all accesses after this write as they should also have aborted
                 if let Some(ref mut ah) = &mut self.access_history {
@@ -377,8 +342,25 @@ impl Row {
     }
 
     /// Append a transaction to the delayed queue.
-    pub fn append_delayed(&mut self, t: &TransactionInfo) {
+    pub fn append_delayed(&mut self, t: &TransactionInfo) -> TransactionInfo {
+        // if there are no delayed transactions the dependency is the last write
+        // else it is the last element of the delayed queue
+        let dependency;
+        if !self.is_delayed() {
+            dependency = self.written_by.as_ref().unwrap().clone();
+        } else {
+            dependency = self
+                .delayed
+                .as_mut()
+                .unwrap()
+                .last()
+                .clone()
+                .unwrap()
+                .clone();
+        }
+
         self.delayed.as_mut().unwrap().push(t.clone());
+        dependency
     }
 
     /// Returns true if the transaction is the head of the delayed queue and the row is clean.
@@ -432,7 +414,6 @@ impl fmt::Display for State {
         match &self {
             State::Clean => write!(f, "clean"),
             State::Modified => write!(f, "dirty"),
-            State::Deleted => write!(f, "deleted"),
         }
     }
 }
