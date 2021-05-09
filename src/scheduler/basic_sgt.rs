@@ -412,7 +412,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             // get handle to row
             let rh = match index.get_row(&key) {
-                Ok(rg) => rg,
+                Ok(rh) => rh,
                 Err(e) => {
                     drop(rlock);
                     self.abort(meta).unwrap(); // abort -- row not found
@@ -422,133 +422,122 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             let mut guard = rh.lock(); // take lock on row
 
-            if !guard.is_delayed() {
-                match guard.get_state() {
-                    RowState::Clean => {
-                        let ah = guard.get_access_history();
-                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
-                            drop(guard);
-                            drop(rlock);
-                            self.abort(meta).unwrap();
-                            return Err(e.into()); // abort -- cascading abort or cycle found
-                        }
+            if !guard.is_delayed() && guard.get_state() == RowState::Clean {
+                let ah = guard.get_access_history();
+                if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                    drop(guard);
+                    drop(rlock);
+                    self.abort(meta).unwrap();
+                    return Err(e.into()); // abort -- cascading abort or cycle found
+                }
 
-                        let node = rlock.get_transaction(*txn_id); // get handle to node
+                let node = rlock.get_transaction(*txn_id); // get handle to node
 
-                        let current_values;
-                        if let Some(columns) = read {
-                            let mut res = guard.get_values(columns, meta).unwrap();
-                            node.add_key2(Arc::clone(&index), key, OperationType::Read);
-                            current_values = Some(res.get_values());
-                        } else {
-                            current_values = None;
-                        }
+                let current_values;
+                if let Some(columns) = read {
+                    let mut res = guard.get_values(columns, meta).unwrap();
+                    node.add_key2(Arc::clone(&index), key, OperationType::Read);
+                    current_values = Some(res.get_values());
+                } else {
+                    current_values = None;
+                }
 
-                        let new_values = match f(current_values, params) {
-                            Ok(res) => res,
-                            Err(e) => {
-                                drop(guard);
-                                drop(rlock);
-                                self.abort(meta).unwrap(); // abort -- due to integrity constraint
-                                return Err(e);
-                            }
-                        };
-
-                        guard.set_values(columns, &new_values, meta).unwrap();
-                        node.add_key2(Arc::clone(&index), key, OperationType::Update);
-
+                let new_values = match f(current_values, params) {
+                    Ok(res) => res,
+                    Err(e) => {
                         drop(guard);
                         drop(rlock);
-
-                        Ok(())
+                        self.abort(meta).unwrap(); // abort -- due to integrity constraint
+                        return Err(e);
                     }
+                };
 
-                    RowState::Modified => {
-                        let mut ah = guard.get_access_history(); // get access history
-                        let dependency = guard.append_delayed(meta); // add to delayed queue and get dependency
-                        drop(guard); // drop row lock
-                        ah.push(Access::Write(dependency.clone()));
-                        if let Err(e) =
-                            self.detect_write_conflicts(&rlock, (*thread_id, *txn_id), ah)
-                        {
-                            drop(rlock);
-                            self.abort(meta).unwrap();
-                            return Err(e.into());
-                        }
+                guard.set_values(columns, &new_values, meta).unwrap();
+                node.add_key2(Arc::clone(&index), key, OperationType::Update);
 
-                        loop {
-                            if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } =
-                                dependency
+                drop(guard);
+                drop(rlock);
+
+                Ok(())
+            } else {
+                let mut ah = guard.get_access_history(); // get access history
+                let dependency = guard.append_delayed(meta); // add to delayed queue and get dependency
+                drop(guard); // drop row lock
+                ah.push(Access::Write(dependency.clone()));
+                if let Err(e) = self.detect_write_conflicts(&rlock, (*thread_id, *txn_id), ah) {
+                    drop(rlock);
+                    self.abort(meta).unwrap();
+                    return Err(e.into());
+                }
+
+                loop {
+                    if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } =
+                        dependency
+                    {
+                        let dep = self.get_shared_lock(thread_id); // get read lock on dependency
+                        let dep_node = dep.get_transaction(txn_id); // get transaction node
+                                                                    // if active do cycle check
+                        if let State::Active = dep_node.get_state() {
+                            drop(dep); // drop read lock
+                            if let Err(e) =
+                                self.reduced_depth_first_search(&rlock, (thread_id, txn_id))
                             {
-                                let dep = self.get_shared_lock(thread_id); // get read lock on dependency
-                                let dep_node = dep.get_transaction(txn_id); // get transaction node
-                                                                            // if active do cycle check
-                                if let State::Active = dep_node.get_state() {
-                                    drop(dep); // drop read lock
-                                    if let Err(e) =
-                                        self.reduced_depth_first_search(&rlock, (thread_id, txn_id))
-                                    {
-                                        // if cycle found remove from dependency
-                                        let rh = index.get_row(&key).unwrap();
-                                        let mut guard = rh.lock();
-                                        guard.remove_delayed(meta); // remove from delayed queue
-                                        drop(guard);
-                                        drop(rlock);
-                                        self.abort(meta).unwrap();
-                                        return Err(e.into());
-                                    }
-                                } else {
-                                    // node has terminated
-                                    drop(dep);
-                                    break;
-                                }
-                            }
-                        }
-
-                        // get handle to row
-                        let rh = index.get_row(&key).unwrap(); // row must exist
-                        let mut guard = rh.lock(); // take lock on row
-                        assert!(guard.resume(meta));
-                        guard.remove_delayed(meta); // remove from delayed queue
-
-                        let ah = guard.get_access_history();
-                        if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
-                            drop(rlock);
-                            drop(guard);
-                            self.abort(meta).unwrap();
-                            return Err(e.into()); // abort -- cascading abort or cycle
-                        }
-
-                        let current_values;
-                        if let Some(columns) = read {
-                            let mut res = guard.get_values(columns, meta).unwrap(); // should not fail
-                            let node = rlock.get_transaction(*txn_id);
-                            node.add_key2(Arc::clone(&index), key, OperationType::Read);
-                            current_values = Some(res.get_values());
-                        } else {
-                            current_values = None;
-                        }
-
-                        let new_values = match f(current_values, params) {
-                            Ok(res) => res,
-                            Err(e) => {
+                                // if cycle found remove from dependency
+                                let rh = index.get_row(&key).unwrap();
+                                let mut guard = rh.lock();
+                                guard.remove_delayed(meta); // remove from delayed queue
+                                drop(guard);
                                 drop(rlock);
-                                drop(rh);
-                                self.abort(&meta).unwrap(); // abort -- due to integrity constraint
-                                return Err(e);
+                                self.abort(meta).unwrap();
+                                return Err(e.into());
                             }
-                        };
-
-                        guard.set_values(columns, &new_values, meta).unwrap();
-                        let node = rlock.get_transaction(*txn_id);
-                        node.add_key2(Arc::clone(&index), key, OperationType::Update);
-                        drop(rlock);
-                        drop(rh);
-                        return Ok(());
+                        } else {
+                            // node has terminated
+                            drop(dep);
+                            break;
+                        }
                     }
                 }
-            } else {
-                // same as modified
+
+                // get handle to row
+                let rh = index.get_row(&key).unwrap(); // row must exist
+                let mut guard = rh.lock(); // take lock on row
+                assert!(guard.resume(meta));
+                guard.remove_delayed(meta); // remove from delayed queue
+
+                let ah = guard.get_access_history();
+                if let Err(e) = self.insert_and_check(&rlock, (*thread_id, *txn_id), ah) {
+                    drop(rlock);
+                    drop(guard);
+                    self.abort(meta).unwrap();
+                    return Err(e.into()); // abort -- cascading abort or cycle
+                }
+
+                let current_values;
+                if let Some(columns) = read {
+                    let mut res = guard.get_values(columns, meta).unwrap(); // should not fail
+                    let node = rlock.get_transaction(*txn_id);
+                    node.add_key2(Arc::clone(&index), key, OperationType::Read);
+                    current_values = Some(res.get_values());
+                } else {
+                    current_values = None;
+                }
+
+                let new_values = match f(current_values, params) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        drop(rlock);
+                        drop(rh);
+                        self.abort(&meta).unwrap(); // abort -- due to integrity constraint
+                        return Err(e);
+                    }
+                };
+
+                guard.set_values(columns, &new_values, meta).unwrap();
+                let node = rlock.get_transaction(*txn_id);
+                node.add_key2(Arc::clone(&index), key, OperationType::Update);
+                drop(rlock);
+                drop(rh);
                 return Ok(());
             }
         } else {
