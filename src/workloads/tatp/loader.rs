@@ -42,24 +42,9 @@ pub fn populate_subscriber_table(
     let sf = config.get_int("scale_factor")? as u64;
     let subs = *TATP_SF_MAP.get(&sf).unwrap();
 
-    let track_access = match protocol.as_str() {
-        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
-        _ => false,
-    };
-
-    let track_delayed = match protocol.as_str() {
-        "basic-sgt" => true,
-        _ => false,
-    };
-
     for s_id in 1..=subs {
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
-        let mut row = Row::new(
-            pk.clone(),
-            Arc::clone(&subscriber),
-            track_access,
-            track_delayed,
-        );
+        let mut row = Row::new(pk.clone(), Arc::clone(&subscriber));
 
         row.init_value("s_id", Data::from(s_id))?;
         row.init_value("sub_nbr", Data::from(helper::to_sub_nbr(s_id)))?;
@@ -107,16 +92,6 @@ pub fn populate_access_info(
     let sf = config.get_int("scale_factor")? as u64;
     let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
 
-    let track_access = match protocol.as_str() {
-        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
-        _ => false,
-    };
-
-    let track_delayed = match protocol.as_str() {
-        "basic-sgt" => true,
-        _ => false,
-    };
-
     let ai_type_values = vec![1, 2, 3, 4]; // range of values for ai_type records
 
     for s_id in 1..=subscribers {
@@ -125,12 +100,7 @@ pub fn populate_access_info(
         let sample = ai_type_values.iter().choose_multiple(rng, n_ai); // randomly sample w.o. replacement from range of ai_type values
         for record in 1..=n_ai {
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(s_id, record as u64));
-            let mut row = Row::new(
-                pk.clone(),
-                Arc::clone(&access_info),
-                track_access,
-                track_delayed,
-            );
+            let mut row = Row::new(pk.clone(), Arc::clone(&access_info));
 
             row.init_value("s_id", Data::from(s_id))?;
             row.init_value("ai_type", Data::from(*sample[record - 1] as u64))?;
@@ -173,28 +143,13 @@ pub fn populate_special_facility_call_forwarding(
     let sf = config.get_int("scale_factor")? as u64;
     let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
 
-    let track_access = match protocol.as_str() {
-        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
-        _ => false,
-    };
-
-    let track_delayed = match protocol.as_str() {
-        "basic-sgt" => true,
-        _ => false,
-    };
-
     for s_id in 1..=subscribers {
         let n_sf = rng.gen_range(1..=4); // generate number of records for a given s_id
         let sample = sf_type_values.iter().choose_multiple(rng, n_sf); // randomly sample w.o. replacement from range of ai_type values
 
         for record in 1..=n_sf {
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(s_id, record as u64)); // calculate primary key
-            let mut row = Row::new(
-                pk.clone(),
-                Arc::clone(&special_facility),
-                track_access,
-                track_delayed,
-            ); // initialise empty row
+            let mut row = Row::new(pk.clone(), Arc::clone(&special_facility)); // initialise empty row
             let is_active = helper::is_active(rng); // calculate is_active
 
             row.init_value("s_id", Data::from(s_id))?;
@@ -219,12 +174,7 @@ pub fn populate_special_facility_call_forwarding(
                     let pk =
                         PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(s_id, record as u64, st));
 
-                    let mut row = Row::new(
-                        pk.clone(),
-                        Arc::clone(&call_forwarding),
-                        track_access,
-                        track_delayed,
-                    );
+                    let mut row = Row::new(pk.clone(), Arc::clone(&call_forwarding));
 
                     row.init_value("s_id", Data::from(s_id))?;
                     row.init_value("sf_type", Data::from(*sample[record - 1] as u64))?;

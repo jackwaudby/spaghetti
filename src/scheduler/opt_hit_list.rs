@@ -73,38 +73,39 @@ impl Scheduler for OptimisedHitList {
         columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
-            let seq_num = *txn_id;
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(table, &meta)?;
+        // if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+        //     let seq_num = *txn_id;
+        //     let table = self.get_table(table, &meta)?;
+        //     let index = self.get_index(table, &meta)?;
 
-            match index.read(key, columns, meta) {
-                Ok(mut res) => {
-                    let access_history = res.get_access_history();
-                    for access in access_history {
-                        if let Access::Write(predecessor_id) = access {
-                            if &predecessor_id != meta {
-                                self.thread_states[*thread_id].add_predecessor(
-                                    seq_num,
-                                    predecessor_id.to_string(),
-                                    PredecessorUpon::Read,
-                                );
-                            }
-                        }
-                    }
-                    let pair = (index.get_name(), key.clone());
-                    self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Read); // register operation; used to clean up.
-                    let vals = res.get_values(); // get the values
-                    Ok(vals)
-                }
-                Err(e) => {
-                    self.abort(meta).unwrap();
-                    Err(e)
-                }
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //     match index.read(key, columns, meta) {
+        //         Ok(mut res) => {
+        //             let access_history = res.get_access_history();
+        //             for access in access_history {
+        //                 if let Access::Write(predecessor_id) = access {
+        //                     if &predecessor_id != meta {
+        //                         self.thread_states[*thread_id].add_predecessor(
+        //                             seq_num,
+        //                             predecessor_id.to_string(),
+        //                             PredecessorUpon::Read,
+        //                         );
+        //                     }
+        //                 }
+        //             }
+        //             let pair = (index.get_name(), key.clone());
+        //             self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Read); // register operation; used to clean up.
+        //             let vals = res.get_values(); // get the values
+        //             Ok(vals)
+        //         }
+        //         Err(e) => {
+        //             self.abort(meta).unwrap();
+        //             Err(e)
+        //         }
+        //     }
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Err(NonFatalError::NonSerializable)
     }
 
     /// Execute a write operation.
@@ -117,52 +118,53 @@ impl Scheduler for OptimisedHitList {
         values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
-            let seq_num = *txn_id;
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(Arc::clone(&table), &meta)?;
+        // if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+        //     let seq_num = *txn_id;
+        //     let table = self.get_table(table, &meta)?;
+        //     let index = self.get_index(Arc::clone(&table), &meta)?;
 
-            match index.read_and_update(key, columns, values, meta) {
-                Ok(mut res) => {
-                    let access_history = res.get_access_history();
-                    for access in access_history {
-                        match access {
-                            Access::Write(predecessor_id) => {
-                                if &predecessor_id != meta {
-                                    self.thread_states[*thread_id].add_predecessor(
-                                        seq_num,
-                                        predecessor_id.to_string(),
-                                        PredecessorUpon::Write,
-                                    );
-                                }
-                            }
+        //     match index.read_and_update(key, columns, values, meta) {
+        //         Ok(mut res) => {
+        //             let access_history = res.get_access_history();
+        //             for access in access_history {
+        //                 match access {
+        //                     Access::Write(predecessor_id) => {
+        //                         if &predecessor_id != meta {
+        //                             self.thread_states[*thread_id].add_predecessor(
+        //                                 seq_num,
+        //                                 predecessor_id.to_string(),
+        //                                 PredecessorUpon::Write,
+        //                             );
+        //                         }
+        //                     }
 
-                            Access::Read(predecessor_id) => {
-                                if &predecessor_id != meta {
-                                    self.thread_states[*thread_id].add_predecessor(
-                                        seq_num,
-                                        predecessor_id.to_string(),
-                                        PredecessorUpon::Write,
-                                    );
-                                }
-                            }
-                        }
-                    }
+        //                     Access::Read(predecessor_id) => {
+        //                         if &predecessor_id != meta {
+        //                             self.thread_states[*thread_id].add_predecessor(
+        //                                 seq_num,
+        //                                 predecessor_id.to_string(),
+        //                                 PredecessorUpon::Write,
+        //                             );
+        //                         }
+        //                     }
+        //                 }
+        //             }
 
-                    // TODO: register read operation as well
-                    let pair = (index.get_name(), key.clone());
-                    self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Update); // register operation; used to clean up.
-                    let vals = res.get_values(); // get vals
-                    Ok(vals)
-                }
-                Err(e) => {
-                    self.abort(&meta).unwrap();
-                    Err(e)
-                }
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //             // TODO: register read operation as well
+        //             let pair = (index.get_name(), key.clone());
+        //             self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Update); // register operation; used to clean up.
+        //             let vals = res.get_values(); // get vals
+        //             Ok(vals)
+        //         }
+        //         Err(e) => {
+        //             self.abort(&meta).unwrap();
+        //             Err(e)
+        //         }
+        //     }
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Err(NonFatalError::NonSerializable)
     }
 
     /// Execute a write operation. TODO: incorrect
@@ -180,49 +182,50 @@ impl Scheduler for OptimisedHitList {
         ) -> Result<Vec<Data>, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
-            let seq_num = *txn_id;
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(table, &meta)?;
+        // if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+        //     let seq_num = *txn_id;
+        //     let table = self.get_table(table, &meta)?;
+        //     let index = self.get_index(table, &meta)?;
 
-            match index.update(key, columns, read, params, f, meta) {
-                Ok(mut res) => {
-                    let access_history = res.get_access_history();
-                    for access in access_history {
-                        match access {
-                            Access::Write(predecessor_id) => {
-                                if &predecessor_id != meta {
-                                    self.thread_states[*thread_id].add_predecessor(
-                                        seq_num,
-                                        predecessor_id.to_string(),
-                                        PredecessorUpon::Write,
-                                    );
-                                }
-                            }
+        //     match index.update(key, columns, read, params, f, meta) {
+        //         Ok(mut res) => {
+        //             let access_history = res.get_access_history();
+        //             for access in access_history {
+        //                 match access {
+        //                     Access::Write(predecessor_id) => {
+        //                         if &predecessor_id != meta {
+        //                             self.thread_states[*thread_id].add_predecessor(
+        //                                 seq_num,
+        //                                 predecessor_id.to_string(),
+        //                                 PredecessorUpon::Write,
+        //                             );
+        //                         }
+        //                     }
 
-                            Access::Read(predecessor_id) => {
-                                if &predecessor_id != meta {
-                                    self.thread_states[*thread_id].add_predecessor(
-                                        seq_num,
-                                        predecessor_id.to_string(),
-                                        PredecessorUpon::Write,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    let pair = (index.get_name(), key.clone());
-                    self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Update);
-                    Ok(())
-                }
-                Err(e) => {
-                    self.abort(meta).unwrap();
-                    Err(e)
-                }
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //                     Access::Read(predecessor_id) => {
+        //                         if &predecessor_id != meta {
+        //                             self.thread_states[*thread_id].add_predecessor(
+        //                                 seq_num,
+        //                                 predecessor_id.to_string(),
+        //                                 PredecessorUpon::Write,
+        //                             );
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             let pair = (index.get_name(), key.clone());
+        //             self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Update);
+        //             Ok(())
+        //         }
+        //         Err(e) => {
+        //             self.abort(meta).unwrap();
+        //             Err(e)
+        //         }
+        //     }
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Err(NonFatalError::NonSerializable)
     }
 
     /// Execute an append operation.
@@ -235,194 +238,197 @@ impl Scheduler for OptimisedHitList {
         value: Data,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
-            let seq_num = *txn_id;
+        // if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+        //     let seq_num = *txn_id;
 
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(Arc::clone(&table), &meta)?;
+        //     let table = self.get_table(table, &meta)?;
+        //     let index = self.get_index(Arc::clone(&table), &meta)?;
 
-            match index.append(key, column, value, meta) {
-                Ok(mut res) => {
-                    let access_history = res.get_access_history();
-                    for access in access_history {
-                        match access {
-                            Access::Write(predecessor_id) => {
-                                if &predecessor_id != meta {
-                                    self.thread_states[*thread_id].add_predecessor(
-                                        seq_num,
-                                        predecessor_id.to_string(),
-                                        PredecessorUpon::Write,
-                                    );
-                                }
-                            }
-                            // RW conflict
-                            Access::Read(predecessor_id) => {
-                                if predecessor_id != *meta {
-                                    self.thread_states[*thread_id].add_predecessor(
-                                        seq_num,
-                                        predecessor_id.to_string(),
-                                        PredecessorUpon::Write,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    let pair = (index.get_name(), key.clone());
-                    self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Update);
-                    Ok(())
-                }
-                Err(e) => {
-                    self.abort(meta).unwrap();
-                    Err(e)
-                }
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //     match index.append(key, column, value, meta) {
+        //         Ok(mut res) => {
+        //             let access_history = res.get_access_history();
+        //             for access in access_history {
+        //                 match access {
+        //                     Access::Write(predecessor_id) => {
+        //                         if &predecessor_id != meta {
+        //                             self.thread_states[*thread_id].add_predecessor(
+        //                                 seq_num,
+        //                                 predecessor_id.to_string(),
+        //                                 PredecessorUpon::Write,
+        //                             );
+        //                         }
+        //                     }
+        //                     // RW conflict
+        //                     Access::Read(predecessor_id) => {
+        //                         if predecessor_id != *meta {
+        //                             self.thread_states[*thread_id].add_predecessor(
+        //                                 seq_num,
+        //                                 predecessor_id.to_string(),
+        //                                 PredecessorUpon::Write,
+        //                             );
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             let pair = (index.get_name(), key.clone());
+        //             self.thread_states[*thread_id].add_key(seq_num, pair, Operation::Update);
+        //             Ok(())
+        //         }
+        //         Err(e) => {
+        //             self.abort(meta).unwrap();
+        //             Err(e)
+        //         }
+        //     }
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Err(NonFatalError::NonSerializable)
     }
 
     /// Abort a transaction.
     fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
-        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
-            let seq_num = *txn_id;
-            self.thread_states[*thread_id].set_state(seq_num, TransactionState::Aborted); // set state.
+        // if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+        //     let seq_num = *txn_id;
+        //     self.thread_states[*thread_id].set_state(seq_num, TransactionState::Aborted); // set state.
 
-            let rg = &self.thread_states[*thread_id];
-            let x = rg.get_transaction_id(seq_num);
+        //     let rg = &self.thread_states[*thread_id];
+        //     let x = rg.get_transaction_id(seq_num);
 
-            assert_eq!(x, seq_num, "{} != {}", x, seq_num);
+        //     assert_eq!(x, seq_num, "{} != {}", x, seq_num);
 
-            let read = rg.get_keys(seq_num, Operation::Read);
-            let updated = rg.get_keys(seq_num, Operation::Update);
+        //     let read = rg.get_keys(seq_num, Operation::Read);
+        //     let updated = rg.get_keys(seq_num, Operation::Update);
 
-            // This operation can fail of the transaction you read from has already aborted and removed the record.
-            for (index, key) in read {
-                let index = self.data.get_internals().get_index(&index).unwrap();
-                match index.revert_read(&key, meta) {
-                    Ok(()) => {} // record was there
-                    Err(_) => {} // record already removed
-                }
-            }
+        //     // This operation can fail of the transaction you read from has already aborted and removed the record.
+        //     for (index, key) in read {
+        //         let index = self.data.get_internals().get_index(&index).unwrap();
+        //         match index.revert_read(&key, meta) {
+        //             Ok(()) => {} // record was there
+        //             Err(_) => {} // record already removed
+        //         }
+        //     }
 
-            for (index, key) in &updated {
-                let index = self.data.get_internals().get_index(&index).unwrap();
-                index.revert(key, meta).unwrap();
-            }
+        //     for (index, key) in &updated {
+        //         let index = self.data.get_internals().get_index(&index).unwrap();
+        //         index.revert(key, meta).unwrap();
+        //     }
 
-            let se = rg.get_start_epoch(seq_num);
-            rg.get_epoch_tracker().add_terminated(seq_num, se);
+        //     let se = rg.get_start_epoch(seq_num);
+        //     rg.get_epoch_tracker().add_terminated(seq_num, se);
 
-            Ok(())
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //     Ok(())
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Ok(())
     }
 
     /// Commit a transaction.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
-        if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
-            let seq_num = *txn_id;
-            // CHECK //
+        // if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
+        //     let seq_num = *txn_id;
+        //     // CHECK //
 
-            if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(seq_num) {
-                self.abort(&meta).unwrap(); // abort txn
-                return Err(OptimisedHitListError::Hit(meta.to_string()).into());
-            }
+        //     if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(seq_num) {
+        //         self.abort(&meta).unwrap(); // abort txn
+        //         return Err(OptimisedHitListError::Hit(meta.to_string()).into());
+        //     }
 
-            // HIT PHASE //
+        //     // HIT PHASE //
 
-            let mut hit_list = self.thread_states[*thread_id].get_hit_list(seq_num); // get hit list
+        //     let mut hit_list = self.thread_states[*thread_id].get_hit_list(seq_num); // get hit list
 
-            while !hit_list.is_empty() {
-                let predecessor = hit_list.pop().unwrap(); // take a predecessor
-                let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
+        //     while !hit_list.is_empty() {
+        //         let predecessor = hit_list.pop().unwrap(); // take a predecessor
+        //         let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
 
-                // if active then hit
-                if let TransactionState::Active =
-                    self.thread_states[p_thread_id].get_state(p_seq_num)
-                {
-                    self.thread_states[p_thread_id].set_state(p_seq_num, TransactionState::Aborted);
-                }
-            }
+        //         // if active then hit
+        //         if let TransactionState::Active =
+        //             self.thread_states[p_thread_id].get_state(p_seq_num)
+        //         {
+        //             self.thread_states[p_thread_id].set_state(p_seq_num, TransactionState::Aborted);
+        //         }
+        //     }
 
-            // CHECK //
-            if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(seq_num) {
-                self.abort(&meta).unwrap(); // abort txn
-                return Err(OptimisedHitListError::Hit(meta.to_string()).into());
-            }
+        //     // CHECK //
+        //     if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(seq_num) {
+        //         self.abort(&meta).unwrap(); // abort txn
+        //         return Err(OptimisedHitListError::Hit(meta.to_string()).into());
+        //     }
 
-            // WAIT PHASE //
+        //     // WAIT PHASE //
 
-            let mut wait_list = self.thread_states[*thread_id].get_wait_list(seq_num); // get wait list
+        //     let mut wait_list = self.thread_states[*thread_id].get_wait_list(seq_num); // get wait list
 
-            while !wait_list.is_empty() {
-                let predecessor = wait_list.pop().unwrap(); // take a predecessor
-                let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
+        //     while !wait_list.is_empty() {
+        //         let predecessor = wait_list.pop().unwrap(); // take a predecessor
+        //         let (p_thread_id, p_seq_num) = parse_id(predecessor); // split ids
 
-                match self.thread_states[p_thread_id].get_state(p_seq_num) {
-                    TransactionState::Active => {
-                        self.abort(&meta).unwrap(); // abort txn
+        //         match self.thread_states[p_thread_id].get_state(p_seq_num) {
+        //             TransactionState::Active => {
+        //                 self.abort(&meta).unwrap(); // abort txn
 
-                        return Err(
-                            OptimisedHitListError::PredecessorActive(meta.to_string()).into()
-                        );
-                    }
-                    TransactionState::Aborted => {
-                        self.abort(&meta).unwrap(); // abort txn
+        //                 return Err(
+        //                     OptimisedHitListError::PredecessorActive(meta.to_string()).into()
+        //                 );
+        //             }
+        //             TransactionState::Aborted => {
+        //                 self.abort(&meta).unwrap(); // abort txn
 
-                        return Err(
-                            OptimisedHitListError::PredecessorAborted(meta.to_string()).into()
-                        );
-                    }
-                    TransactionState::Committed => {}
-                }
-            }
+        //                 return Err(
+        //                     OptimisedHitListError::PredecessorAborted(meta.to_string()).into()
+        //                 );
+        //             }
+        //             TransactionState::Committed => {}
+        //         }
+        //     }
 
-            // CHECK //
-            if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(seq_num) {
-                self.abort(&meta).unwrap(); // abort txn
-                return Err(OptimisedHitListError::Hit(meta.to_string()).into());
-            }
+        //     // CHECK //
+        //     if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(seq_num) {
+        //         self.abort(&meta).unwrap(); // abort txn
+        //         return Err(OptimisedHitListError::Hit(meta.to_string()).into());
+        //     }
 
-            // TRY COMMIT //
+        //     // TRY COMMIT //
 
-            let outcome = self.thread_states[*thread_id].try_commit(seq_num);
-            match outcome {
-                Ok(_) => {
-                    // commit changes
+        //     let outcome = self.thread_states[*thread_id].try_commit(seq_num);
+        //     match outcome {
+        //         Ok(_) => {
+        //             // commit changes
 
-                    let rg = &self.thread_states[*thread_id];
+        //             let rg = &self.thread_states[*thread_id];
 
-                    let x = rg.get_transaction_id(seq_num);
-                    assert_eq!(x, seq_num, "{} != {}", x, seq_num);
+        //             let x = rg.get_transaction_id(seq_num);
+        //             assert_eq!(x, seq_num, "{} != {}", x, seq_num);
 
-                    let read = rg.get_keys(seq_num, Operation::Read);
-                    let updated = rg.get_keys(seq_num, Operation::Update);
+        //             let read = rg.get_keys(seq_num, Operation::Read);
+        //             let updated = rg.get_keys(seq_num, Operation::Update);
 
-                    for (index, key) in updated {
-                        let index = self.data.get_internals().get_index(&index).unwrap();
-                        index.commit(&key, meta).unwrap();
-                    }
-                    // TODO: bug here
-                    // would imply I have read from uncommitted data but if so should have not got to this point.
-                    for (index, key) in read {
-                        let index = self.data.get_internals().get_index(&index).unwrap();
-                        index.revert_read(&key, meta).unwrap();
-                    }
+        //             for (index, key) in updated {
+        //                 let index = self.data.get_internals().get_index(&index).unwrap();
+        //                 index.commit(&key, meta).unwrap();
+        //             }
+        //             // TODO: bug here
+        //             // would imply I have read from uncommitted data but if so should have not got to this point.
+        //             for (index, key) in read {
+        //                 let index = self.data.get_internals().get_index(&index).unwrap();
+        //                 index.revert_read(&key, meta).unwrap();
+        //             }
 
-                    let se = rg.get_start_epoch(seq_num);
-                    rg.get_epoch_tracker().add_terminated(seq_num, se);
+        //             let se = rg.get_start_epoch(seq_num);
+        //             rg.get_epoch_tracker().add_terminated(seq_num, se);
 
-                    Ok(())
-                }
-                Err(e) => {
-                    self.abort(&meta).unwrap(); // abort txn
-                    Err(e)
-                }
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //             Ok(())
+        //         }
+        //         Err(e) => {
+        //             self.abort(&meta).unwrap(); // abort txn
+        //             Err(e)
+        //         }
+        //     }
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Ok(())
     }
 
     /// Get handle to storage layer.

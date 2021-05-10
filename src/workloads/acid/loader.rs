@@ -34,7 +34,7 @@ pub fn populate_person_table(
     let mut ws_flag = true;
     for p_id in 0..persons {
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Person(p_id));
-        let mut row = Row::new(pk.clone(), Arc::clone(&person), true, true);
+        let mut row = Row::new(pk.clone(), Arc::clone(&person));
 
         row.init_value("p_id", Data::Uint(p_id))?;
         row.init_value("version", Data::Uint(1))?;
@@ -76,7 +76,7 @@ pub fn populate_person_knows_person_table(
     for p1_id in (0..persons).step_by(2) {
         let p2_id = p1_id + 1;
         let pk = PrimaryKey::Acid(AcidPrimaryKey::Knows(p1_id, p2_id));
-        let mut row = Row::new(pk.clone(), Arc::clone(&knows), true, true);
+        let mut row = Row::new(pk.clone(), Arc::clone(&knows));
 
         row.init_value("p1_id", Data::Uint(p1_id))?;
         row.init_value("p2_id", Data::Uint(p2_id))?;

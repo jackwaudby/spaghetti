@@ -109,45 +109,47 @@ impl Scheduler for HitList {
         columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        if let TransactionInfo::HitList { txn_id: _ } = meta {
-            let worker_id = 0;
+        // if let TransactionInfo::HitList { txn_id: _ } = meta {
+        //     let worker_id = 0;
 
-            let table = self.get_table(table, &meta)?; // get table
-            let index = self.get_index(table, &meta)?; // get index
+        //     let table = self.get_table(table, &meta)?; // get table
+        //     let index = self.get_index(table, &meta)?; // get index
 
-            // execute read
-            match index.read(key, columns, meta) {
-                Ok(mut res) => {
-                    let access_history = res.get_access_history();
-                    for access in access_history {
-                        // WR conflict
-                        if let Access::Write(tid) = access {
-                            if let TransactionInfo::HitList { txn_id } = tid {
-                                self.active_transactions.add_predecessor(
-                                    worker_id,
-                                    txn_id,
-                                    Predecessor::Read,
-                                );
-                            }
-                        }
-                    }
+        //     // execute read
+        //     match index.read(key, columns, meta) {
+        //         Ok(mut res) => {
 
-                    let pair = (index.get_name(), key.clone());
-                    self.active_transactions
-                        .add_key(worker_id, pair, Operation::Read);
+        //             let access_history = res.get_access_history();
+        //             for access in access_history {
+        //                 // WR conflict
+        //                 if let Access::Write(tid) = access {
+        //                     if let TransactionInfo::HitList { txn_id } = tid {
+        //                         self.active_transactions.add_predecessor(
+        //                             worker_id,
+        //                             txn_id,
+        //                             Predecessor::Read,
+        //                         );
+        //                     }
+        //                 }
+        //             }
 
-                    let vals = res.get_values(); // get the values
+        //             let pair = (index.get_name(), key.clone());
+        //             self.active_transactions
+        //                 .add_key(worker_id, pair, Operation::Read);
 
-                    Ok(vals)
-                }
-                Err(e) => {
-                    self.abort(meta).unwrap();
-                    Err(e)
-                }
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //             let vals = res.get_values(); // get the values
+
+        //             Ok(vals)
+        //         }
+        //         Err(e) => {
+        //             self.abort(meta).unwrap();
+        //             Err(e)
+        //         }
+        //     }
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Err(NonFatalError::NonSerializable)
     }
 
     /// Execute a write operation.
@@ -160,56 +162,57 @@ impl Scheduler for HitList {
         values: &[Data],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        if let TransactionInfo::HitList { txn_id: _ } = meta {
-            let worker_id = 0;
-            let table = self.get_table(table, &meta)?; // get table
-            let index = self.get_index(table, &meta)?; // get index
+        // if let TransactionInfo::HitList { txn_id: _ } = meta {
+        //     let worker_id = 0;
+        //     let table = self.get_table(table, &meta)?; // get table
+        //     let index = self.get_index(table, &meta)?; // get index
 
-            // execute read and update
-            match index.read_and_update(key, columns, values, meta) {
-                Ok(mut res) => {
-                    let access_history = res.get_access_history();
+        //     // execute read and update
+        //     match index.read_and_update(key, columns, values, meta) {
+        //         Ok(mut res) => {
+        //             let access_history = res.get_access_history();
 
-                    for access in access_history {
-                        match access {
-                            Access::Write(tid) => {
-                                if let TransactionInfo::HitList { txn_id } = tid {
-                                    self.active_transactions.add_predecessor(
-                                        worker_id,
-                                        txn_id,
-                                        Predecessor::Write,
-                                    );
-                                }
-                            }
+        //             for access in access_history {
+        //                 match access {
+        //                     Access::Write(tid) => {
+        //                         if let TransactionInfo::HitList { txn_id } = tid {
+        //                             self.active_transactions.add_predecessor(
+        //                                 worker_id,
+        //                                 txn_id,
+        //                                 Predecessor::Write,
+        //                             );
+        //                         }
+        //                     }
 
-                            Access::Read(tid) => {
-                                if let TransactionInfo::HitList { txn_id } = tid {
-                                    self.active_transactions.add_predecessor(
-                                        worker_id,
-                                        txn_id,
-                                        Predecessor::Write,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    let pair = (index.get_name(), key.clone());
-                    self.active_transactions
-                        .add_key(worker_id, pair, Operation::Update);
-                    // TODO: register as read as well?
+        //                     Access::Read(tid) => {
+        //                         if let TransactionInfo::HitList { txn_id } = tid {
+        //                             self.active_transactions.add_predecessor(
+        //                                 worker_id,
+        //                                 txn_id,
+        //                                 Predecessor::Write,
+        //                             );
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             let pair = (index.get_name(), key.clone());
+        //             self.active_transactions
+        //                 .add_key(worker_id, pair, Operation::Update);
+        //             // TODO: register as read as well?
 
-                    let vals = res.get_values();
+        //             let vals = res.get_values();
 
-                    Ok(vals)
-                }
-                Err(e) => {
-                    self.abort(&meta).unwrap();
-                    Err(e)
-                }
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //             Ok(vals)
+        //         }
+        //         Err(e) => {
+        //             self.abort(&meta).unwrap();
+        //             Err(e)
+        //         }
+        //     }
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Err(NonFatalError::NonSerializable)
     }
 
     /// Execute a write operation.
@@ -227,51 +230,52 @@ impl Scheduler for HitList {
         ) -> Result<Vec<Data>, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        if let TransactionInfo::HitList { txn_id: _ } = meta {
-            let worker_id = 0;
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(Arc::clone(&table), &meta)?;
+        // if let TransactionInfo::HitList { txn_id: _ } = meta {
+        //     let worker_id = 0;
+        //     let table = self.get_table(table, &meta)?;
+        //     let index = self.get_index(Arc::clone(&table), &meta)?;
 
-            match index.update(key, columns, read, params, f, meta) {
-                Ok(mut res) => {
-                    let access_history = res.get_access_history();
-                    for access in access_history {
-                        match access {
-                            // WW conflict
-                            Access::Write(tid) => {
-                                if let TransactionInfo::HitList { txn_id } = tid {
-                                    self.active_transactions.add_predecessor(
-                                        worker_id,
-                                        txn_id,
-                                        Predecessor::Write,
-                                    );
-                                }
-                            }
-                            // RW conflict
-                            Access::Read(tid) => {
-                                if let TransactionInfo::HitList { txn_id } = tid {
-                                    self.active_transactions.add_predecessor(
-                                        worker_id,
-                                        txn_id,
-                                        Predecessor::Write,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    let pair = (index.get_name(), key.clone());
-                    self.active_transactions
-                        .add_key(worker_id, pair, Operation::Update);
-                    Ok(())
-                }
-                Err(e) => {
-                    self.abort(meta).unwrap();
-                    Err(e)
-                }
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //     match index.update(key, columns, read, params, f, meta) {
+        //         Ok(mut res) => {
+        //             let access_history = res.get_access_history();
+        //             for access in access_history {
+        //                 match access {
+        //                     // WW conflict
+        //                     Access::Write(tid) => {
+        //                         if let TransactionInfo::HitList { txn_id } = tid {
+        //                             self.active_transactions.add_predecessor(
+        //                                 worker_id,
+        //                                 txn_id,
+        //                                 Predecessor::Write,
+        //                             );
+        //                         }
+        //                     }
+        //                     // RW conflict
+        //                     Access::Read(tid) => {
+        //                         if let TransactionInfo::HitList { txn_id } = tid {
+        //                             self.active_transactions.add_predecessor(
+        //                                 worker_id,
+        //                                 txn_id,
+        //                                 Predecessor::Write,
+        //                             );
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             let pair = (index.get_name(), key.clone());
+        //             self.active_transactions
+        //                 .add_key(worker_id, pair, Operation::Update);
+        //             Ok(())
+        //         }
+        //         Err(e) => {
+        //             self.abort(meta).unwrap();
+        //             Err(e)
+        //         }
+        //     }
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Err(NonFatalError::NonSerializable)
     }
 
     /// Execute an append operation.
@@ -284,92 +288,97 @@ impl Scheduler for HitList {
         value: Data,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
-        if let TransactionInfo::HitList { txn_id: _ } = meta {
-            let worker_id = 0; // TODO
+        //         if let TransactionInfo::HitList { txn_id: _ } = meta {
+        //             let worker_id = 0; // TODO
 
-            let table = self.get_table(table, &meta)?;
-            let index = self.get_index(Arc::clone(&table), &meta)?;
+        //             let table = self.get_table(table, &meta)?;
+        //             let index = self.get_index(Arc::clone(&table), &meta)?;
 
-            match index.append(key, column, value, meta) {
-                Ok(mut res) => {
-                    let access_history = res.get_access_history();
-                    for access in access_history {
-                        match access {
-                            // WW conflict
-                            Access::Write(tid) => {
-                                if let TransactionInfo::HitList { txn_id } = tid {
-                                    self.active_transactions.add_predecessor(
-                                        worker_id,
-                                        txn_id,
-                                        Predecessor::Write,
-                                    );
-                                }
-                            }
-                            // RW conflict
-                            Access::Read(tid) => {
-                                if let TransactionInfo::HitList { txn_id } = tid {
-                                    self.active_transactions.add_predecessor(
-                                        worker_id,
-                                        txn_id,
-                                        Predecessor::Write,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                    let pair = (index.get_name(), key.clone());
-                    self.active_transactions
-                        .add_key(worker_id, pair, Operation::Update);
-                    Ok(())
-                }
-                Err(e) => {
-                    self.abort(meta).unwrap();
-                    Err(e)
-                }
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //             match index.append(key, column, value, meta) {
+        //                 Ok(mut res) => {
+        //                     let access_history = res.get_access_history();
+        //                     for access in access_history {
+        //                         match access {
+        //                             // WW conflict
+        //                             Access::Write(tid) => {
+        //                                 if let TransactionInfo::HitList { txn_id } = tid {
+        //                                     self.active_transactions.add_predecessor(
+        //                                         worker_id,
+        //                                         txn_id,
+        //                                         Predecessor::Write,
+        //                                     );
+        //                                 }
+        //                             }
+        //                             // RW conflict
+        //                             Access::Read(tid) => {
+        //                                 if let TransactionInfo::HitList { txn_id } = tid {
+        //                                     self.active_transactions.add_predecessor(
+        //                                         worker_id,
+        //                                         txn_id,
+        //                                         Predecessor::Write,
+        //                                     );
+        //                                 }
+        //                             }
+        //                         }
+        //                     }
+        //                     let pair = (index.get_name(), key.clone());
+        //                     self.active_transactions
+        //                         .add_key(worker_id, pair, Operation::Update);
+        //                     Ok(())
+        //                 }
+        //                 Err(e) => {
+        //                     self.abort(meta).unwrap();
+        //                     Err(e)
+        //                 }
+        //             }
+        //         } else {
+        //             panic!(
+        //                 "unexpected transactio
+        // n info"
+        //             );
+        //         }
+        Err(NonFatalError::NonSerializable)
     }
 
     /// Abort a transaction.
     fn abort(&self, meta: &TransactionInfo) -> crate::Result<()> {
-        if let TransactionInfo::HitList { txn_id } = meta {
-            let id = *txn_id;
-            let worker_id = 0;
+        // if let TransactionInfo::HitList { txn_id } = meta {
+        //     let id = *txn_id;
+        //     let worker_id = 0;
 
-            let mut lock = self.asr.get_lock(); // get lock on resources
+        //     let mut lock = self.asr.get_lock(); // get lock on resources
 
-            lock.remove_from_hit_list(id); // remove aborted txn from hit list
-            lock.add_to_terminated_list(id, TransactionOutcome::Aborted); // add txn to terminated list
-            let se = self.active_transactions.get_start_epoch(worker_id); // register txn with gc
-            lock.get_mut_epoch_tracker().add_terminated(id, se); // add to epoch terminated
+        //     lock.remove_from_hit_list(id); // remove aborted txn from hit list
+        //     lock.add_to_terminated_list(id, TransactionOutcome::Aborted); // add txn to terminated list
+        //     let se = self.active_transactions.get_start_epoch(worker_id); // register txn with gc
+        //     lock.get_mut_epoch_tracker().add_terminated(id, se); // add to epoch terminated
 
-            // remove inserts/reads/updates/deletes
-            let read = self
-                .active_transactions
-                .get_keys(worker_id, Operation::Read);
-            let updated = self
-                .active_transactions
-                .get_keys(worker_id, Operation::Update);
+        //     // remove inserts/reads/updates/deletes
+        //     let read = self
+        //         .active_transactions
+        //         .get_keys(worker_id, Operation::Read);
+        //     let updated = self
+        //         .active_transactions
+        //         .get_keys(worker_id, Operation::Update);
 
-            for (index, key) in read {
-                let index = self.data.get_internals().get_index(&index).unwrap();
-                index.revert_read(&key, meta).unwrap();
-            }
+        //     for (index, key) in read {
+        //         let index = self.data.get_internals().get_index(&index).unwrap();
+        //         index.revert_read(&key, meta).unwrap();
+        //     }
 
-            for (index, key) in &updated {
-                let index = self.data.get_internals().get_index(&index).unwrap();
-                index.revert(&key, meta).unwrap();
-            }
+        //     for (index, key) in &updated {
+        //         let index = self.data.get_internals().get_index(&index).unwrap();
+        //         index.revert(&key, meta).unwrap();
+        //     }
 
-            drop(lock); // drop lock on resources
+        //     drop(lock); // drop lock on resources
 
-            self.active_transactions.clear(worker_id);
-            Ok(())
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //     self.active_transactions.clear(worker_id);
+        //     Ok(())
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Ok(())
     }
 
     /// Commit a transaction.
@@ -378,84 +387,85 @@ impl Scheduler for HitList {
     /// 1) Wait-phase; for each predecessor upon read; abort if active or aborted.
     /// 2) Hit-phase; for each predecessor upon write; if in hit list then abort; else hit predecessors if they are active
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
-        if let TransactionInfo::HitList { txn_id } = meta {
-            let id = *txn_id;
-            let worker_id = 0;
+        // if let TransactionInfo::HitList { txn_id } = meta {
+        //     let id = *txn_id;
+        //     let worker_id = 0;
 
-            let mut lock = self.asr.get_lock(); // get lock on resources
+        //     let mut lock = self.asr.get_lock(); // get lock on resources
 
-            let pur = self
-                .active_transactions
-                .get_predecessors(worker_id, Predecessor::Read);
-            let mut pur: Vec<u64> = pur.iter().cloned().collect(); // convert to vec
+        //     let pur = self
+        //         .active_transactions
+        //         .get_predecessors(worker_id, Predecessor::Read);
+        //     let mut pur: Vec<u64> = pur.iter().cloned().collect(); // convert to vec
 
-            // while pur is not empty;
-            // for each predecessor upon read;
-            while !pur.is_empty() {
-                let predecessor = pur.pop().unwrap(); // take a predecessor
+        //     // while pur is not empty;
+        //     // for each predecessor upon read;
+        //     while !pur.is_empty() {
+        //         let predecessor = pur.pop().unwrap(); // take a predecessor
 
-                // if terminated but aborted; then abort
-                if lock.has_terminated(predecessor) {
-                    if lock.get_terminated_outcome(predecessor) == TransactionOutcome::Aborted {
-                        drop(lock); // drop lock on shared resources
+        //         // if terminated but aborted; then abort
+        //         if lock.has_terminated(predecessor) {
+        //             if lock.get_terminated_outcome(predecessor) == TransactionOutcome::Aborted {
+        //                 drop(lock); // drop lock on shared resources
 
-                        self.abort(&meta).unwrap(); // abort txn
-                        return Err(HitListError::PredecessorAborted(id).into());
-                    } // else; terminated and committed, continue
-                } else {
-                    // if not terminated and committed; then abort
-                    drop(lock); // drop lock on shared resources
+        //                 self.abort(&meta).unwrap(); // abort txn
+        //                 return Err(HitListError::PredecessorAborted(id).into());
+        //             } // else; terminated and committed, continue
+        //         } else {
+        //             // if not terminated and committed; then abort
+        //             drop(lock); // drop lock on shared resources
 
-                    self.abort(&meta).unwrap();
-                    return Err(HitListError::PredecessorActive(id).into());
-                }
-            }
+        //             self.abort(&meta).unwrap();
+        //             return Err(HitListError::PredecessorActive(id).into());
+        //         }
+        //     }
 
-            // if txn is not in hit list; then commit txn
-            if !lock.is_in_hit_list(id) {
-                let read = self
-                    .active_transactions
-                    .get_keys(worker_id, Operation::Read);
-                let updated = self
-                    .active_transactions
-                    .get_keys(worker_id, Operation::Update);
+        //     // if txn is not in hit list; then commit txn
+        //     if !lock.is_in_hit_list(id) {
+        //         let read = self
+        //             .active_transactions
+        //             .get_keys(worker_id, Operation::Read);
+        //         let updated = self
+        //             .active_transactions
+        //             .get_keys(worker_id, Operation::Update);
 
-                for (index, key) in updated {
-                    let index = self.data.get_internals().get_index(&index).unwrap();
-                    index.commit(&key, meta).unwrap();
-                }
-                for (index, key) in read {
-                    let index = self.data.get_internals().get_index(&index).unwrap();
-                    index.revert_read(&key, meta).unwrap();
-                }
+        //         for (index, key) in updated {
+        //             let index = self.data.get_internals().get_index(&index).unwrap();
+        //             index.commit(&key, meta).unwrap();
+        //         }
+        //         for (index, key) in read {
+        //             let index = self.data.get_internals().get_index(&index).unwrap();
+        //             index.revert_read(&key, meta).unwrap();
+        //         }
 
-                // merge active transactions in PuW into hit list.
-                let puw = self
-                    .active_transactions
-                    .get_predecessors(worker_id, Predecessor::Write);
-                for predecessor in puw {
-                    if !lock.has_terminated(predecessor) {
-                        lock.add_to_hit_list(predecessor);
-                    }
-                }
+        //         // merge active transactions in PuW into hit list.
+        //         let puw = self
+        //             .active_transactions
+        //             .get_predecessors(worker_id, Predecessor::Write);
+        //         for predecessor in puw {
+        //             if !lock.has_terminated(predecessor) {
+        //                 lock.add_to_hit_list(predecessor);
+        //             }
+        //         }
 
-                let se = self.active_transactions.get_start_epoch(worker_id);
-                lock.get_mut_epoch_tracker().add_terminated(id, se);
-                lock.add_to_terminated_list(id, TransactionOutcome::Committed);
+        //         let se = self.active_transactions.get_start_epoch(worker_id);
+        //         lock.get_mut_epoch_tracker().add_terminated(id, se);
+        //         lock.add_to_terminated_list(id, TransactionOutcome::Committed);
 
-                self.active_transactions.clear(worker_id);
-                drop(lock);
+        //         self.active_transactions.clear(worker_id);
+        //         drop(lock);
 
-                Ok(())
-            } else {
-                drop(lock);
+        //         Ok(())
+        //     } else {
+        //         drop(lock);
 
-                self.abort(&meta).unwrap();
-                Err(HitListError::TransactionInHitList(id).into())
-            }
-        } else {
-            panic!("unexpected transaction info");
-        }
+        //         self.abort(&meta).unwrap();
+        //         Err(HitListError::TransactionInHitList(id).into())
+        //     }
+        // } else {
+        //     panic!("unexpected transaction info");
+        // }
+        Ok(())
     }
 
     /// Get handle to storage layer.

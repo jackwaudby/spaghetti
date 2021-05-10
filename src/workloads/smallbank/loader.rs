@@ -40,24 +40,9 @@ pub fn populate_account(
     let sf = config.get_int("scale_factor")? as u64; // get sf
     let n_accounts = *SB_SF_MAP.get(&sf).unwrap(); // get accounts
 
-    let track_access = match protocol.as_str() {
-        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
-        _ => false,
-    };
-
-    let track_delayed = match protocol.as_str() {
-        "basic-sgt" => true,
-        _ => false,
-    };
-
     for a_id in 0..n_accounts {
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(a_id));
-        let mut row = Row::new(
-            pk.clone(),
-            Arc::clone(&accounts),
-            track_access,
-            track_delayed,
-        );
+        let mut row = Row::new(pk.clone(), Arc::clone(&accounts));
 
         row.init_value("customer_id", Data::from(a_id)).unwrap();
         accounts_idx.insert(&pk, row);
@@ -84,24 +69,9 @@ pub fn populate_savings(
     let min_bal = MIN_BALANCE;
     let max_bal = MAX_BALANCE;
 
-    let track_access = match protocol.as_str() {
-        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
-        _ => false,
-    };
-
-    let track_delayed = match protocol.as_str() {
-        "basic-sgt" => true,
-        _ => false,
-    };
-
     for customer_id in 0..accounts {
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(customer_id));
-        let mut row = Row::new(
-            pk.clone(),
-            Arc::clone(&savings),
-            track_access,
-            track_delayed,
-        );
+        let mut row = Row::new(pk.clone(), Arc::clone(&savings));
         row.init_value("customer_id", Data::from(customer_id))
             .unwrap();
         let balance = rng.gen_range(min_bal..=max_bal) as f64;
@@ -129,24 +99,9 @@ pub fn populate_checking(
     let min_bal = MIN_BALANCE;
     let max_bal = MAX_BALANCE;
 
-    let track_access = match protocol.as_str() {
-        "sgt" | "basic-sgt" | "hit" | "opt-hit" => true,
-        _ => false,
-    };
-
-    let track_delayed = match protocol.as_str() {
-        "basic-sgt" => true,
-        _ => false,
-    };
-
     for customer_id in 0..accounts {
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(customer_id));
-        let mut row = Row::new(
-            pk.clone(),
-            Arc::clone(&checking),
-            track_access,
-            track_delayed,
-        );
+        let mut row = Row::new(pk.clone(), Arc::clone(&checking));
         row.init_value("customer_id", Data::from(customer_id))
             .unwrap();
         let balance = rng.gen_range(min_bal..=max_bal) as f64;

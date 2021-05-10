@@ -8,14 +8,15 @@ use std::time::Instant;
 
 fn main() {
     let matches = clap_app!(spag =>
-    (version: "0.1.0")
-    (author: "j. waudby <j.waudby2@newcastle.ac.uk>")
-    (about: "spaghetti")
-    (@arg WORKLOAD: -w --workload +takes_value "Set a workload")
-    (@arg PROTOCOL: -p --protocol +takes_value "Set a protocol")
-    (@arg SF: -s --scalefactor +takes_value "Set a scale factor")
-    (@arg TRANSACTIONS: -t --transactions +takes_value "Transactions per core")
-    (@arg CORES: -c --cores +takes_value "Number of cores to use")
+                            (version: "0.1.0")
+                            (author: "j. waudby <j.waudby2@newcastle.ac.uk>")
+                            (about: "spaghetti")
+                            (@arg WORKLOAD: -w --workload +takes_value "Set a workload")
+                            (@arg PROTOCOL: -p --protocol +takes_value "Set a protocol")
+                            (@arg SF: -s --scalefactor +takes_value "Set a scale factor")
+                            (@arg TRANSACTIONS: -t --transactions +takes_value "Transactions per core")
+                            (@arg CORES: -c --cores +takes_value "Number of cores to use")
+                            (@arg LOG: -l --log +takes_value "Log level")
     )
     .get_matches();
 
@@ -40,6 +41,10 @@ fn main() {
 
     if let Some(c) = matches.value_of("CORES") {
         settings.set("workers", c).unwrap();
+    }
+
+    if let Some(l) = matches.value_of("LOG") {
+        settings.set("log", l).unwrap();
     }
 
     let config = Arc::new(settings);
