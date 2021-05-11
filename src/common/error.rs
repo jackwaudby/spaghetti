@@ -1,8 +1,8 @@
 use crate::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
-use crate::scheduler::hit_list::error::HitListError;
-use crate::scheduler::opt_hit_list::error::OptimisedHitListError;
-use crate::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
-use crate::scheduler::two_phase_locking::error::TwoPhaseLockingError;
+// use crate::scheduler::hit_list::error::HitListError;
+// use crate::scheduler::opt_hit_list::error::OptimisedHitListError;
+// use crate::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
+// use crate::scheduler::two_phase_locking::error::TwoPhaseLockingError;
 use crate::workloads::smallbank::error::SmallBankError;
 
 use serde::{Deserialize, Serialize};
@@ -30,12 +30,11 @@ pub enum FatalError {
     /// Connection unexpectedly closed.
     ConnectionUnexpectedlyClosed,
 
-    /// Two phase locking error.
-    TwoPhaseLocking(TwoPhaseLockingError),
+    // /// Two phase locking error.
+    // TwoPhaseLocking(TwoPhaseLockingError),
 
-    /// SGT error.
-    SerializationGraphTesting(SerializationGraphTestingError),
-
+    // /// SGT error.
+    // SerializationGraphTesting(SerializationGraphTestingError),
     /// Access history not initalised.
     NotTrackingAccessHistory,
 
@@ -100,21 +99,19 @@ pub enum NonFatalError {
     /// Manual abort. Used in ACID test.
     NonSerializable,
 
-    /// Two phase locking error.
-    TwoPhaseLocking(TwoPhaseLockingError),
-
+    // /// Two phase locking error.
+    // TwoPhaseLocking(TwoPhaseLockingError),
     /// Basic SGT error.
     BasicSerializationGraphTesting(BasicSerializationGraphTestingError),
 
-    /// SGT error.
-    SerializationGraphTesting(SerializationGraphTestingError),
+    // /// SGT error.
+    // SerializationGraphTesting(SerializationGraphTestingError),
 
-    /// Hit-list error.
-    HitList(HitListError),
+    // /// Hit-list error.
+    // HitList(HitListError),
 
-    /// Optimised Hit-list error.
-    OptimisedHitListError(OptimisedHitListError),
-
+    // /// Optimised Hit-list error.
+    // OptimisedHitListError(OptimisedHitListError),
     /// Smallbank error.
     SmallBankError(SmallBankError),
 }
@@ -132,8 +129,8 @@ impl fmt::Display for FatalError {
             IncorrectWorkload(ref workload) => write!(f, "workload not recognised: {}", workload),
             UnexpectedMessage => write!(f, "unexpected message"),
             ConnectionUnexpectedlyClosed => write!(f, "connection unexpectedly closed"),
-            TwoPhaseLocking(ref e) => write!(f, "{}", e),
-            SerializationGraphTesting(ref e) => write!(f, "{}", e),
+            // TwoPhaseLocking(ref e) => write!(f, "{}", e),
+            // SerializationGraphTesting(ref e) => write!(f, "{}", e),
             NotTrackingAccessHistory => write!(f, "not tracking access history"),
             ReadSocketUnexpectedlyClosed => write!(f, "read socket unexpectedly closed"),
             WriteHandlerUnexpectedlyClosed => write!(
@@ -164,10 +161,10 @@ impl fmt::Display for NonFatalError {
                 "unable to initalise: column {} in table {} with value {}",
                 column, table, value
             ),
-            HitList(ref e) => write!(f, "{}", e),
-            OptimisedHitListError(ref e) => write!(f, "{}", e),
-            TwoPhaseLocking(ref e) => write!(f, "{}", e),
-            SerializationGraphTesting(ref e) => write!(f, "{}", e),
+            // HitList(ref e) => write!(f, "{}", e),
+            // OptimisedHitListError(ref e) => write!(f, "{}", e),
+            // TwoPhaseLocking(ref e) => write!(f, "{}", e),
+            // SerializationGraphTesting(ref e) => write!(f, "{}", e),
             BasicSerializationGraphTesting(ref e) => write!(f, "{}", e),
             RowAlreadyExists(ref key, ref index) => {
                 write!(f, "already exists: {} in {}", key, index)
@@ -195,37 +192,37 @@ impl std::error::Error for NonFatalError {}
 
 impl error::Error for FatalError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        use FatalError::*;
+        // use FatalError::*;
         match *self {
-            TwoPhaseLocking(ref e) => Some(e),
+            // TwoPhaseLocking(ref e) => Some(e),
             _ => Some(self),
         }
     }
 }
 
-impl From<TwoPhaseLockingError> for FatalError {
-    fn from(error: TwoPhaseLockingError) -> Self {
-        FatalError::TwoPhaseLocking(error)
-    }
-}
+// impl From<TwoPhaseLockingError> for FatalError {
+//     fn from(error: TwoPhaseLockingError) -> Self {
+//         FatalError::TwoPhaseLocking(error)
+//     }
+// }
 
-impl From<TwoPhaseLockingError> for NonFatalError {
-    fn from(error: TwoPhaseLockingError) -> Self {
-        NonFatalError::TwoPhaseLocking(error)
-    }
-}
+// impl From<TwoPhaseLockingError> for NonFatalError {
+//     fn from(error: TwoPhaseLockingError) -> Self {
+//         NonFatalError::TwoPhaseLocking(error)
+//     }
+// }
 
-impl From<SerializationGraphTestingError> for FatalError {
-    fn from(error: SerializationGraphTestingError) -> Self {
-        FatalError::SerializationGraphTesting(error)
-    }
-}
+// impl From<SerializationGraphTestingError> for FatalError {
+//     fn from(error: SerializationGraphTestingError) -> Self {
+//         FatalError::SerializationGraphTesting(error)
+//     }
+// }
 
-impl From<SerializationGraphTestingError> for NonFatalError {
-    fn from(error: SerializationGraphTestingError) -> Self {
-        NonFatalError::SerializationGraphTesting(error)
-    }
-}
+// impl From<SerializationGraphTestingError> for NonFatalError {
+//     fn from(error: SerializationGraphTestingError) -> Self {
+//         NonFatalError::SerializationGraphTesting(error)
+//     }
+// }
 
 impl From<BasicSerializationGraphTestingError> for NonFatalError {
     fn from(error: BasicSerializationGraphTestingError) -> Self {
@@ -239,17 +236,17 @@ impl From<SmallBankError> for NonFatalError {
     }
 }
 
-impl From<HitListError> for NonFatalError {
-    fn from(error: HitListError) -> Self {
-        NonFatalError::HitList(error)
-    }
-}
+// impl From<HitListError> for NonFatalError {
+//     fn from(error: HitListError) -> Self {
+//         NonFatalError::HitList(error)
+//     }
+// }
 
-impl From<OptimisedHitListError> for NonFatalError {
-    fn from(error: OptimisedHitListError) -> Self {
-        NonFatalError::OptimisedHitListError(error)
-    }
-}
+// impl From<OptimisedHitListError> for NonFatalError {
+//     fn from(error: OptimisedHitListError) -> Self {
+//         NonFatalError::OptimisedHitListError(error)
+//     }
+//}
 
 #[cfg(test)]
 mod tests {

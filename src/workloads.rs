@@ -2,9 +2,9 @@ use crate::common::error::{FatalError, NonFatalError};
 use crate::storage::catalog::Catalog;
 use crate::storage::index::Index;
 use crate::storage::table::Table;
-use crate::workloads::acid::keys::AcidPrimaryKey;
+// use crate::workloads::acid::keys::AcidPrimaryKey;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
-use crate::workloads::tatp::keys::TatpPrimaryKey;
+// use crate::workloads::tatp::keys::TatpPrimaryKey;
 
 use config::Config;
 use rand::rngs::StdRng;
@@ -15,106 +15,54 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
 use std::sync::Arc;
-use tracing::{debug, info};
+use tracing::info;
 
-pub mod acid;
+// pub mod acid;
 
-pub mod tatp;
+// pub mod tatp;
 
 pub mod smallbank;
 
-/// Represent the workload.
-#[derive(Debug)]
-pub enum Workload {
-    Acid(Internal),
-    Tatp(Internal),
-    SmallBank(Internal),
-}
-
 /// Represents the data for a given workload.
 #[derive(Debug)]
-pub struct Internal {
+pub struct Workload {
     /// Hashmap of tables.
-    tables: Arc<HashMap<String, Arc<Table>>>,
+    tables: HashMap<String, Arc<Table>>,
 
     /// Hashmap of indexes; data is owned by the index.
-    indexes: Arc<HashMap<String, Arc<Index>>>,
+    indexes: HashMap<String, Index>,
 
-    /// Reference to configuration.
-    config: Arc<Config>,
+    /// Configuration.
+    config: Config,
 }
 
 /// Primary keys of workloads.
 #[derive(PartialEq, Debug, Clone, Eq)]
 pub enum PrimaryKey {
-    Acid(AcidPrimaryKey),
-    Tatp(TatpPrimaryKey),
+    // Acid(AcidPrimaryKey),
+    // Tatp(TatpPrimaryKey)
     SmallBank(SmallBankPrimaryKey),
 }
 
-impl std::hash::Hash for PrimaryKey {
-    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
-        use PrimaryKey::*;
-        use SmallBankPrimaryKey::*;
-        match &self {
-            Acid(_) => hasher.write_u64(0),
-            Tatp(_) => hasher.write_u64(1),
-            SmallBank(pk) => match pk {
-                Account(id) => hasher.write_u64(*id),
-                Savings(id) => hasher.write_u64(*id),
-                Checking(id) => hasher.write_u64(*id),
-            },
-        }
-    }
-}
-
-impl nohash_hasher::IsEnabled for PrimaryKey {}
-
 impl Workload {
-    /// Create new `Workload`.
-    pub fn new(config: Arc<Config>) -> crate::Result<Workload> {
+    /// Initialise workload.
+    pub fn init(config: Config) -> crate::Result<Self> {
         let workload = config.get_str("workload")?;
-        match workload.as_str() {
-            "acid" => {
-                let internals = Internal::new("./schema/acid_schema.txt", config)?;
-                Ok(Workload::Acid(internals))
-            }
-            "tatp" => {
-                let internals = Internal::new("./schema/tatp_schema.txt", config)?;
-                Ok(Workload::Tatp(internals))
-            }
-            "smallbank" => {
-                let internals = Internal::new("./schema/smallbank_schema.txt", config)?;
-                Ok(Workload::SmallBank(internals))
-            }
-            _ => Err(Box::new(FatalError::IncorrectWorkload(workload))),
-        }
-    }
+        let filename = match workload.as_str() {
+            "acid" => "./schema/acid_schema.txt",
+            "tatp" => "./schema/tatp_schema.txt",
+            "smallbank" => "./schema/smallbank_schema.txt",
+            _ => return Err(Box::new(FatalError::IncorrectWorkload(workload))),
+        };
 
-    /// Get reference to internals of workload.
-    pub fn get_internals(&self) -> &Internal {
-        use Workload::*;
-        match *self {
-            Acid(ref i) => &i,
-            Tatp(ref i) => &i,
-            SmallBank(ref i) => &i,
-        }
-    }
-}
-
-impl Internal {
-    /// Create tables and initialise empty indexes.
-    pub fn new(filename: &str, config: Arc<Config>) -> crate::Result<Internal> {
-        // Load schema file.
-        let path = Path::new(filename);
+        let path = Path::new(filename); // load schema file
         let mut file = File::open(&path)?;
         let mut contents = String::new();
         file.read_to_string(&mut contents)?;
         let mut lines = contents.lines();
 
-        // Initialise tables and indexes.
-        let mut tables = HashMap::new(); // String: table_name, table: Table
-        let mut indexes = HashMap::new(); // String: table_name, index: Index
+        let mut tables = HashMap::new(); // initialise tables and indexes
+        let mut indexes = HashMap::new();
 
         let mut next_table_id = 0;
 
@@ -138,9 +86,8 @@ impl Internal {
                     catalog.add_column((&c_name, c_type))?;
                 }
                 let table = Table::init(catalog);
-                //      let table = Arc::new(table);
-                debug!("Initialise table: {}", table.get_table_name());
-                tables.insert(table_name, table);
+
+                tables.insert(table_name, Arc::new(table));
             } else if line.starts_with("INDEX") {
                 let index_name: String = match line.strip_prefix("INDEX=") {
                     Some(name) => name.to_lowercase(),
@@ -152,56 +99,33 @@ impl Internal {
                     None => break,
                 };
 
-                let table_name: String = attributes[0].trim().to_lowercase();
-
-                match tables.get_mut(&table_name) {
-                    Some(table) => table.set_primary_index(&index_name),
-                    None => panic!("table does not exist: {:?}", &table_name),
-                }
-
                 let index = Index::init(&index_name);
-                debug!("Initialise index: {}", index);
 
                 indexes.insert(index_name, index);
             }
         }
 
-        let mut atomic_tables = HashMap::new();
-        for (key, val) in tables.drain() {
-            atomic_tables.insert(key, Arc::new(val));
-        }
-
-        let workload = config.get_str("workload")?;
-        let sf = config.get_int("scale_factor")?;
+        let sf = config.get_int("scale_factor")?; // populate index
         let set_seed = config.get_bool("set_seed")?;
         let mut rng: StdRng = SeedableRng::from_entropy();
         match workload.as_str() {
-            "acid" => {
-                info!("Parameter generator set seed: {}", set_seed);
-                info!("Generate ACID SF-{} ", sf);
-                acid::loader::populate_person_table(
-                    Arc::clone(&config),
-                    &mut atomic_tables,
-                    &mut indexes,
-                )?;
-                acid::loader::populate_person_knows_person_table(
-                    Arc::clone(&config),
-                    &mut atomic_tables,
-                    &mut indexes,
-                )?;
-            }
-            "tatp" => {
-                let use_nurand = config.get_bool("nurand")?;
-                info!("Generate TATP SF-{}", sf);
-                tatp::loader::populate_tables(
-                    Arc::clone(&config),
-                    &mut atomic_tables,
-                    &mut indexes,
-                    &mut rng,
-                )?;
-                info!("Generator set seed: {}", set_seed);
-                info!("Generator nurand: {}", use_nurand);
-            }
+            // "acid" => {
+            //     info!("Parameter generator set seed: {}", set_seed);
+            //     info!("Generate ACID SF-{} ", sf);
+            //     acid::loader::populate_person_table(&config, &mut tables, &mut indexes)?;
+            //     acid::loader::populate_person_knows_person_table(
+            //         &config,
+            //         &mut tables,
+            //         &mut indexes,
+            //     )?;
+            // }
+            // "tatp" => {
+            //     let use_nurand = config.get_bool("nurand")?;
+            //     info!("Generate TATP SF-{}", sf);
+            //     tatp::loader::populate_tables(&config, &mut tables, &mut indexes, &mut rng)?;
+            //     info!("Generator set seed: {}", set_seed);
+            //     info!("Generator nurand: {}", use_nurand);
+            // }
             "smallbank" => {
                 let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
                 let contention = match sf {
@@ -213,12 +137,7 @@ impl Internal {
                 };
 
                 info!("Generate SmallBank SF-{}", sf);
-                smallbank::loader::populate_tables(
-                    Arc::clone(&config),
-                    &mut atomic_tables,
-                    &mut indexes,
-                    &mut rng,
-                )?;
+                smallbank::loader::populate_tables(&config, &tables, &mut indexes, &mut rng)?;
                 info!("Parameter generator set seed: {}", set_seed);
                 info!("Balance mix: {}", use_balance_mix);
                 info!("Contention: {}", contention);
@@ -226,50 +145,54 @@ impl Internal {
             _ => unimplemented!(),
         }
 
-        let mut atomic_indexes = HashMap::new();
-        for (key, val) in indexes.drain() {
-            atomic_indexes.insert(key, Arc::new(val));
-        }
-
-        Ok(Internal {
-            tables: Arc::new(atomic_tables),
-            indexes: Arc::new(atomic_indexes),
+        Ok(Workload {
+            tables,
+            indexes,
             config,
         })
     }
 
-    /// Get atomic shared reference to `Table`.
-    pub fn get_table(&self, name: &str) -> Result<Arc<Table>, NonFatalError> {
+    /// Get shared reference to table.
+    pub fn get_table(&self, name: &str) -> Result<&Table, NonFatalError> {
         match self.tables.get(name) {
-            Some(table) => Ok(Arc::clone(table)),
+            Some(table) => Ok(&table),
             None => Err(NonFatalError::TableNotFound(name.to_string())),
         }
     }
 
-    /// Get atomic shared reference to `Index`.
-    pub fn get_index(&self, name: &str) -> Result<Arc<Index>, NonFatalError> {
+    /// Get shared reference to index.
+    pub fn get_index(&self, name: &str) -> Result<&Index, NonFatalError> {
         match self.indexes.get(name) {
-            Some(index) => Ok(Arc::clone(index)),
-            None => Err(NonFatalError::IndexNotFound(name.to_string())),
+            Some(index) => Ok(&index),
+            None => Err(NonFatalError::IndexNotFound("test".to_string())),
         }
     }
 
-    /// Get atomic shared reference to `Config`.
-    pub fn get_config(&self) -> Arc<Config> {
-        Arc::clone(&self.config)
+    /// Get shared reference to config
+    pub fn get_config(&self) -> &Config {
+        &self.config
     }
 }
+
+impl std::hash::Hash for PrimaryKey {
+    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+        use PrimaryKey::*;
+        use SmallBankPrimaryKey::*;
+        match &self {
+            // Acid(_) => hasher.write_u64(0), // TODO
+            // Tatp(_) => hasher.write_u64(1),
+            SmallBank(pk) => match pk {
+                Account(id) => hasher.write_u64(*id),
+                Savings(id) => hasher.write_u64(*id),
+                Checking(id) => hasher.write_u64(*id),
+            },
+        }
+    }
+}
+
+impl nohash_hasher::IsEnabled for PrimaryKey {}
 
 impl fmt::Display for Workload {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Workload::Acid(ref i) => write!(f, "{}", i),
-            _ => unimplemented!(),
-        }
-    }
-}
-
-impl fmt::Display for Internal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for index in self.indexes.values() {
             write!(f, "{}", index).unwrap();
@@ -282,8 +205,8 @@ impl fmt::Display for PrimaryKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use PrimaryKey::*;
         match &self {
-            Acid(pk) => write!(f, "{:?}", pk),
-            Tatp(pk) => write!(f, "{:?}", pk),
+            // Acid(pk) => write!(f, "{:?}", pk),
+            // Tatp(pk) => write!(f, "{:?}", pk),
             SmallBank(pk) => write!(f, "{:?}", pk),
         }
     }

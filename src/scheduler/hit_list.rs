@@ -43,7 +43,7 @@ pub struct HitList {
     asr: AtomicSharedResources,
 
     /// Handle to storage layer.
-    data: Arc<Workload>,
+    data: Workload,
 
     /// Epoch based garbage collector.
     garbage_collector: Option<GarbageCollector>,
@@ -469,14 +469,14 @@ impl Scheduler for HitList {
     }
 
     /// Get handle to storage layer.
-    fn get_data(&self) -> Arc<Workload> {
-        Arc::clone(&self.data)
+    fn get_data(&self) -> &Workload {
+        &self.data
     }
 }
 
 impl HitList {
     /// Create a `HitList` scheduler.
-    pub fn new(data: Arc<Workload>) -> HitList {
+    pub fn new(data: Workload) -> HitList {
         let config = data.get_internals().get_config();
         let workers = config.get_int("workers").unwrap() as usize;
         let gc = config.get_bool("garbage_collection").unwrap();

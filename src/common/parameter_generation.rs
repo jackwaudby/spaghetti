@@ -1,34 +1,33 @@
 use crate::common::message::Message;
-use crate::workloads::acid::paramgen::AcidGenerator;
+// use crate::workloads::acid::paramgen::AcidGenerator;
 use crate::workloads::smallbank::paramgen::SmallBankGenerator;
-use crate::workloads::tatp::paramgen::TatpGenerator;
+// use crate::workloads::tatp::paramgen::TatpGenerator;
 
 /// Parameter generator.
 pub enum ParameterGenerator {
-    Acid(AcidGenerator),
-    Tatp(TatpGenerator),
+    // Acid(AcidGenerator),
+    // Tatp(TatpGenerator)        ,
     SmallBank(SmallBankGenerator),
 }
 
 impl ParameterGenerator {
-    /// Get next transaction (async).
-    pub async fn get_transaction(&mut self) -> Message {
-        use ParameterGenerator::*;
-        match self {
-            Acid(ref mut gen) => gen.generate(),
-            Tatp(ref mut gen) => gen.generate(),
+    // /// Get next transaction (async).
+    // pub async fn get_transaction(&mut self) -> Message {
+    //     use ParameterGenerator::*;
+    //     match self {
+    //         Acid(ref mut gen) => gen.generate(),
+    //         Tatp(ref mut gen) => gen.generate(),
 
-            SmallBank(ref mut gen) => gen.generate(),
-        }
-    }
+    //         SmallBank(ref mut gen) => gen.generate(),
+    //     }
+    // }
 
     /// Get next transaction (sync).
     pub fn get_next(&mut self) -> Message {
         use ParameterGenerator::*;
         match self {
-            Acid(ref mut gen) => gen.generate(),
-            Tatp(ref mut gen) => gen.generate(),
-
+            // Acid(ref mut gen) => gen.generate(),
+            // Tatp(ref mut gen) => gen.generate(),
             SmallBank(ref mut gen) => gen.generate(),
         }
     }
@@ -37,9 +36,8 @@ impl ParameterGenerator {
     pub fn get_generated(&mut self) -> u32 {
         use ParameterGenerator::*;
         match self {
-            Acid(ref mut gen) => gen.get_generated(),
-            Tatp(ref mut gen) => gen.get_generated(),
-
+            // Acid(ref mut gen) => gen.get_generated(),
+            // Tatp(ref mut gen) => gen.get_generated(),
             SmallBank(ref mut gen) => gen.get_generated(),
         }
     }

@@ -4,7 +4,7 @@ use crate::scheduler::basic_sgt::node::{EdgeType, NodeSet, OperationType, State}
 use crate::scheduler::{Scheduler, TransactionInfo};
 use crate::storage::datatype::Data;
 use crate::storage::index::Index;
-use crate::storage::row::{Access, State as RowState};
+use crate::storage::row::Access;
 use crate::workloads::{PrimaryKey, Workload};
 
 use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -23,20 +23,23 @@ pub struct BasicSerializationGraphTesting {
     /// Graph.
     nodes: Vec<RwLock<NodeSet>>,
 
-    /// Handle to storage layer.
+    /// Data.
     data: Arc<Workload>,
 }
 
 impl BasicSerializationGraphTesting {
     /// Initialise serialization graph with `size` nodes.
-    pub fn new(size: u32, data: Arc<Workload>) -> Self {
+    pub fn new(size: u32, data: Workload) -> Self {
         info!("Initialise basic serialization graph with {} node(s)", size);
         let mut nodes = vec![];
         for i in 0..size {
             let node = RwLock::new(NodeSet::new(i as usize));
             nodes.push(node);
         }
-        BasicSerializationGraphTesting { nodes, data }
+        BasicSerializationGraphTesting {
+            nodes,
+            data: Arc::new(data),
+        }
     }
 
     /// Get shared lock on the node.
@@ -49,12 +52,17 @@ impl BasicSerializationGraphTesting {
         self.nodes[id].write()
     }
 
+    fn get_index(&self, name: &str) -> Result<&Index, NonFatalError> {
+        self.data.get_index(name)
+    }
+
     /// Insert an edge into the serialization graph `(from) --> (to)`.
     ///
     /// If the edges is (i) a self edge, (ii) already exists, or (iii) from node is committed no edge is added.
     pub fn add_edge(
         &self,
         rlock: &RwLockReadGuard<NodeSet>,
+
         from: (usize, u64),
         to: (usize, u64),
         rw_edge: bool,
@@ -245,10 +253,6 @@ impl BasicSerializationGraphTesting {
             drop(rlock2);
         }
     }
-
-    fn get_ind(&self, name: &str) -> Result<Arc<Index>, NonFatalError> {
-        self.get_data().get_internals().get_index(name)
-    }
 }
 
 impl Scheduler for BasicSerializationGraphTesting {
@@ -290,7 +294,8 @@ impl Scheduler for BasicSerializationGraphTesting {
             }
             //debug!("read on {} by txn {}: passed abort check", key, meta);
 
-            let index = self.get_ind(index.unwrap()).unwrap();
+            let index_name = index.unwrap();
+            let index = self.get_index(index_name).unwrap();
 
             let rh = match index.get_row(&key) {
                 Ok(rh) => rh,
@@ -377,7 +382,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             // 12. Register operation; so access can be removed at commit/abort time
             let node = rlock.get_transaction(*txn_id);
-            node.add_key2(Arc::clone(&index), key, OperationType::Read);
+            node.add_key(index_name.to_string(), key, OperationType::Read);
             drop(rlock);
             drop(guard);
 
@@ -402,8 +407,8 @@ impl Scheduler for BasicSerializationGraphTesting {
     ) -> Result<(), NonFatalError> {
         if let TransactionInfo::BasicSerializationGraph { thread_id, txn_id } = meta {
             //debug!("update on {} by txn {}: begin", key, meta);
-
-            let index = self.get_ind(index.unwrap()).unwrap(); // handle to index
+            let index_name = index.unwrap();
+            let index = self.get_index(index_name).unwrap(); // handle to index
 
             let mut prv;
             let mut lsn;
@@ -660,7 +665,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             // 13. register
             let node = rlock.get_transaction(*txn_id); // get handle to node
-            node.add_key2(Arc::clone(&index), key, OperationType::Update);
+            node.add_key(index_name.to_string(), key, OperationType::Update);
             drop(guard);
             drop(rlock);
             lsn.replace(prv + 1);
@@ -689,7 +694,7 @@ impl Scheduler for BasicSerializationGraphTesting {
         //         return Err(e.into()); // abort -- cascading abort
         //     }
 
-        //     let index = match self.get_ind(index.unwrap()) {
+        //     let index = match self.get_index(index.unwrap()) {
         //         Ok(index) => index,
         //         Err(e) => {
         //             drop(rlock);
@@ -900,7 +905,8 @@ impl Scheduler for BasicSerializationGraphTesting {
             // 1. get read lock
 
             // 3. get handle to index
-            let index = self.get_ind(index.unwrap()).unwrap(); // never fails
+            let index_name = index.unwrap();
+            let index = self.get_index(index_name).unwrap(); // never fails
 
             let mut prv;
             let mut lsn;
@@ -1101,7 +1107,7 @@ impl Scheduler for BasicSerializationGraphTesting {
 
             // 13. register
             let node = rlock.get_transaction(*txn_id); // get handle to node
-            node.add_key2(Arc::clone(&index), key, OperationType::Update);
+            node.add_key(index_name.to_string(), key, OperationType::Update);
             drop(guard);
             drop(rlock);
             lsn.replace(prv + 1);
@@ -1120,10 +1126,11 @@ impl Scheduler for BasicSerializationGraphTesting {
             let node = rlock.get_transaction(*txn_id);
             node.set_state(State::Aborted);
 
-            let reads = node.get_keys2(OperationType::Read);
-            let updates = node.get_keys2(OperationType::Update);
+            let reads = node.get_keys(OperationType::Read);
+            let updates = node.get_keys(OperationType::Update);
 
-            for (index, key) in &reads {
+            for (name, key) in &reads {
+                let index = self.get_index(&name).unwrap();
                 if let Ok(rh) = index.get_row(&key) {
                     // get handle to row
                     let rh = index.get_row(&key).unwrap();
@@ -1138,7 +1145,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                 };
             }
 
-            for (index, key) in &updates {
+            for (name, key) in &updates {
+                let index = self.get_index(&name).unwrap();
                 if let Ok(rh) = index.get_row(&key) {
                     // revert changes
                     let rh = index.get_row(&key).unwrap();
@@ -1177,13 +1185,14 @@ impl Scheduler for BasicSerializationGraphTesting {
                     State::Active => {
                         let incoming = node.has_incoming();
                         if !incoming {
-                            let reads = node.get_keys2(OperationType::Read);
-                            let updates = node.get_keys2(OperationType::Update);
+                            let reads = node.get_keys(OperationType::Read);
+                            let updates = node.get_keys(OperationType::Update);
                             drop(wlock); // drop write lock
 
                             // important to drop write lock whilst making changes as other wise can deadlock
 
-                            for (index, key) in &reads {
+                            for (name, key) in &reads {
+                                let index = self.get_index(&name).unwrap();
                                 if let Ok(rh) = index.get_row(&key) {
                                     // get handle to row
                                     let rh = index.get_row(&key).unwrap();
@@ -1198,7 +1207,8 @@ impl Scheduler for BasicSerializationGraphTesting {
                                 };
                             }
 
-                            for (index, key) in &updates {
+                            for (name, key) in &updates {
+                                let index = self.get_index(&name).unwrap();
                                 if let Ok(rh) = index.get_row(&key) {
                                     // revert changes
                                     let rh = index.get_row(&key).unwrap();
@@ -1253,10 +1263,6 @@ impl Scheduler for BasicSerializationGraphTesting {
         } else {
             panic!("unexpected transaction info");
         }
-    }
-
-    fn get_data(&self) -> Arc<Workload> {
-        Arc::clone(&self.data)
     }
 }
 

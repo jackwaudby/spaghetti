@@ -5,7 +5,6 @@ use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use std::cell::UnsafeCell;
 use std::fmt;
-use std::sync::Arc;
 
 unsafe impl Sync for Node {}
 
@@ -70,10 +69,10 @@ pub struct Node {
     incoming: Mutex<Option<Vec<(usize, u64)>>>,
 
     /// List of keys read by transaction.
-    keys_read: UnsafeCell<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
+    keys_read: UnsafeCell<Option<Vec<(String, PrimaryKey)>>>,
 
     /// List of keys updated by transaction.
-    keys_updated: UnsafeCell<Option<Vec<(Arc<Index>, PrimaryKey)>>>,
+    keys_updated: UnsafeCell<Option<Vec<(String, PrimaryKey)>>>,
 }
 
 /// Represents states a `Node` can be in.
@@ -103,7 +102,7 @@ pub enum OperationType {
 
 impl Node {
     /// Create a new `Node`.
-    pub fn new(thread_id: usize, id: u64) -> Node {
+    pub fn new(thread_id: usize, id: u64) -> Self {
         Node {
             thread_id,
             id,
@@ -173,7 +172,7 @@ impl Node {
         self.outgoing.lock().clone().unwrap()
     }
 
-    pub fn get_keys2(&self, operation_type: OperationType) -> Vec<(Arc<Index>, PrimaryKey)> {
+    pub fn get_keys(&self, operation_type: OperationType) -> Vec<(String, PrimaryKey)> {
         use OperationType::*;
         unsafe {
             match operation_type {
@@ -189,7 +188,7 @@ impl Node {
         }
     }
 
-    pub fn add_key2(&self, index: Arc<Index>, key: &PrimaryKey, operation_type: OperationType) {
+    pub fn add_key(&self, index: String, key: &PrimaryKey, operation_type: OperationType) {
         let pair = (index, key.clone());
         use OperationType::*;
         unsafe {

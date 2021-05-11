@@ -22,9 +22,9 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
     let savings_pk = SmallBank(Savings(params.name));
     let checking_pk = SmallBank(Checking(params.name));
 
-    let meta = protocol.scheduler.register()?; // register
+    let meta = protocol.register()?; // register
 
-    protocol.scheduler.read(
+    protocol.read(
         "accounts",
         Some("account_name"),
         &accounts_pk,
@@ -32,7 +32,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
         &meta,
     )?; // read 1 -- get customer id
 
-    protocol.scheduler.read(
+    protocol.read(
         "savings",
         Some("savings_idx"),
         &savings_pk,
@@ -40,7 +40,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
         &meta,
     )?; // read 2 -- get savings
 
-    protocol.scheduler.read(
+    protocol.read(
         "checking",
         Some("checking_idx"),
         &checking_pk,
@@ -48,7 +48,7 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
         &meta,
     )?; // read 3 -- get checking
 
-    protocol.scheduler.commit(&meta)?; // commit
+    protocol.commit(&meta)?; // commit
 
     Ok("ok".to_string())
 }
@@ -74,9 +74,9 @@ pub fn deposit_checking(
 
     let params = vec![Data::Double(params.value)];
 
-    let meta = protocol.scheduler.register()?;
+    let meta = protocol.register()?;
 
-    protocol.scheduler.read(
+    protocol.read(
         "accounts",
         Some("account_name"),
         &accounts_pk,
@@ -84,7 +84,7 @@ pub fn deposit_checking(
         &meta,
     )?;
 
-    protocol.scheduler.update(
+    protocol.update(
         "checking",
         Some("checking_idx"),
         &checking_pk,
@@ -95,7 +95,7 @@ pub fn deposit_checking(
         &meta,
     )?; // update -- set balance
 
-    protocol.scheduler.commit(&meta)?;
+    protocol.commit(&meta)?;
 
     Ok("ok".to_string())
 }
@@ -126,9 +126,9 @@ pub fn transact_savings(
             }
         };
 
-    let meta = protocol.scheduler.register()?; // register
+    let meta = protocol.register()?; // register
 
-    protocol.scheduler.read(
+    protocol.read(
         "accounts",
         Some("account_name"),
         &accounts_pk,
@@ -136,7 +136,7 @@ pub fn transact_savings(
         &meta,
     )?; // read -- get customer ID
 
-    protocol.scheduler.update(
+    protocol.update(
         "savings",
         Some("savings_idx"),
         &savings_pk,
@@ -147,7 +147,7 @@ pub fn transact_savings(
         &meta,
     )?; // update -- set savings balance
 
-    protocol.scheduler.commit(&meta)?;
+    protocol.commit(&meta)?;
 
     Ok("ok".to_string())
 }
@@ -175,9 +175,9 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
             Ok(vec![Data::from(balance + value)])
         };
 
-    let meta = protocol.scheduler.register()?; // register
+    let meta = protocol.register()?; // register
 
-    protocol.scheduler.read(
+    protocol.read(
         "accounts",
         Some("account_name"),
         &accounts_pk1,
@@ -185,7 +185,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         &meta,
     )?; // read -- cust1
 
-    let res2 = protocol.scheduler.read_and_update(
+    let res2 = protocol.read_and_update(
         "savings",
         Some("savings_idx"),
         &savings_pk1,
@@ -194,7 +194,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         &meta,
     )?; // get and set savings -- cust1
 
-    let res3 = protocol.scheduler.read_and_update(
+    let res3 = protocol.read_and_update(
         "checking",
         Some("checking_idx"),
         &checking_pk1,
@@ -207,7 +207,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let b = f64::try_from(res3[0].clone()).unwrap();
     let params: Vec<Data> = vec![Data::Double(a + b)]; // amount to send to cust2
 
-    protocol.scheduler.read(
+    protocol.read(
         "accounts",
         Some("account_name"),
         &accounts_pk2,
@@ -215,7 +215,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         &meta,
     )?; // read -- cust2
 
-    protocol.scheduler.update(
+    protocol.update(
         "checking",
         Some("checking_idx"),
         &checking_pk2,
@@ -226,7 +226,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
         &meta,
     )?; // update -- cust2
 
-    protocol.scheduler.commit(&meta)?;
+    protocol.commit(&meta)?;
 
     Ok("ok".to_string())
 }
@@ -258,9 +258,9 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
             Ok(new_balance)
         };
 
-    let meta = protocol.scheduler.register()?;
+    let meta = protocol.register()?;
 
-    protocol.scheduler.read(
+    protocol.read(
         "accounts",
         Some("account_name"),
         &accounts_pk,
@@ -268,7 +268,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
         &meta,
     )?;
 
-    let res2 = protocol.scheduler.read(
+    let res2 = protocol.read(
         "savings",
         Some("savings_idx"),
         &savings_pk,
@@ -278,7 +278,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 
     let params = vec![Data::Double(params.value), res2[0].clone()];
 
-    protocol.scheduler.update(
+    protocol.update(
         "checking",
         Some("checking_idx"),
         &checking_pk,
@@ -289,7 +289,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
         &meta,
     )?; // update checking balance
 
-    protocol.scheduler.commit(&meta)?;
+    protocol.commit(&meta)?;
 
     Ok("ok".to_string())
 }
@@ -328,9 +328,9 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
             Ok(vec![Data::Double(current_balance + value)])
         };
 
-    let meta = protocol.scheduler.register()?; // register
+    let meta = protocol.register()?; // register
 
-    protocol.scheduler.read(
+    protocol.read(
         "accounts",
         Some("account_name"),
         &accounts_pk1,
@@ -338,7 +338,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         &meta,
     )?; // read -- get customer ID 1
 
-    protocol.scheduler.read(
+    protocol.read(
         "accounts",
         Some("account_name"),
         &accounts_pk2,
@@ -346,7 +346,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         &meta,
     )?; // read -- get customer ID 2
 
-    protocol.scheduler.update(
+    protocol.update(
         "checking",
         Some("checking_idx"),
         &checking_pk1,
@@ -357,7 +357,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         &meta,
     )?;
 
-    protocol.scheduler.update(
+    protocol.update(
         "checking",
         Some("checking_idx"),
         &checking_pk2,
@@ -368,7 +368,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         &meta,
     )?;
 
-    protocol.scheduler.commit(&meta)?;
+    protocol.commit(&meta)?;
 
     Ok("ok".to_string())
 }

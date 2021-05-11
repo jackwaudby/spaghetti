@@ -1,13 +1,13 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
 use crate::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
-use crate::scheduler::hit_list::error::HitListError;
-use crate::scheduler::opt_hit_list::error::OptimisedHitListError;
-use crate::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
-use crate::scheduler::two_phase_locking::error::TwoPhaseLockingError;
-use crate::workloads::acid::AcidTransaction;
+// use crate::scheduler::hit_list::error::HitListError;
+// use crate::scheduler::opt_hit_list::error::OptimisedHitListError;
+// use crate::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
+// use crate::scheduler::two_phase_locking::error::TwoPhaseLockingError;
+// use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::SmallBankTransaction;
-use crate::workloads::tatp::TatpTransaction;
+// use crate::workloads::tatp::TatpTransaction;
 
 use config::Config;
 use serde::{Deserialize, Serialize};
@@ -16,7 +16,7 @@ use statrs::statistics::OrderStatistics;
 use statrs::statistics::{Max, Mean, Min};
 use std::fs::{self, OpenOptions};
 use std::path::Path;
-use std::sync::Arc;
+
 use std::time::Duration;
 use std::time::Instant;
 use strum::IntoEnumIterator;
@@ -68,7 +68,7 @@ pub struct GlobalStatistics {
 
 impl GlobalStatistics {
     /// Create global metrics container.
-    pub fn new(config: Arc<Config>) -> GlobalStatistics {
+    pub fn new(config: &Config) -> GlobalStatistics {
         let scale_factor = config.get_int("scale_factor").unwrap() as u64;
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
@@ -345,26 +345,26 @@ impl LocalStatistics {
                         ProtocolAbortBreakdown::HitList(ref mut metric) => match reason {
                             NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
                             NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
-                            NonFatalError::HitList(e) => match e {
-                                HitListError::TransactionInHitList(_) => metric.inc_hit(),
-                                HitListError::PredecessorAborted(_) => metric.inc_pur_aborted(),
-                                HitListError::PredecessorActive(_) => metric.inc_pur_active(),
-                                _ => {}
-                            },
+                            // NonFatalError::HitList(e) => match e {
+                            //     HitListError::TransactionInHitList(_) => metric.inc_hit(),
+                            //     HitListError::PredecessorAborted(_) => metric.inc_pur_aborted(),
+                            //     HitListError::PredecessorActive(_) => metric.inc_pur_active(),
+                            //     _ => {}
+                            // },
                             _ => {}
                         },
                         ProtocolAbortBreakdown::OptimisedHitList(ref mut metric) => match reason {
                             NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
                             NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
-                            NonFatalError::OptimisedHitListError(e) => match e {
-                                OptimisedHitListError::Hit(_) => metric.inc_hit(),
-                                OptimisedHitListError::PredecessorAborted(_) => {
-                                    metric.inc_pur_aborted()
-                                }
-                                OptimisedHitListError::PredecessorActive(_) => {
-                                    metric.inc_pur_active()
-                                }
-                            },
+                            // NonFatalError::OptimisedHitListError(e) => match e {
+                            //     OptimisedHitListError::Hit(_) => metric.inc_hit(),
+                            //     OptimisedHitListError::PredecessorAborted(_) => {
+                            //         metric.inc_pur_aborted()
+                            //     }
+                            //     OptimisedHitListError::PredecessorActive(_) => {
+                            //         metric.inc_pur_active()
+                            //     }
+                            // },
                             _ => {}
                         },
 
@@ -372,13 +372,13 @@ impl LocalStatistics {
                             match reason {
                                 NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
                                 NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
-                                NonFatalError::SerializationGraphTesting(e) => {
-                                    if let SerializationGraphTestingError::ParentAborted = e {
-                                        metric.inc_parent_aborted();
-                                    } else {
-                                        tracing::info!("Other: {:?}", e);
-                                    }
-                                }
+                                // NonFatalError::SerializationGraphTesting(e) => {
+                                //     if let SerializationGraphTestingError::ParentAborted = e {
+                                //         metric.inc_parent_aborted();
+                                //     } else {
+                                //         tracing::info!("Other: {:?}", e);
+                                //     }
+                                // }
                                 _ => {}
                             }
                         }
@@ -398,17 +398,17 @@ impl LocalStatistics {
                             }
                         }
                         ProtocolAbortBreakdown::TwoPhaseLocking(ref mut metric) => {
-                            if let NonFatalError::TwoPhaseLocking(e) = reason {
-                                match e {
-                                    TwoPhaseLockingError::ReadLockRequestDenied(_) => {
-                                        metric.inc_read_lock_denied()
-                                    }
-                                    TwoPhaseLockingError::WriteLockRequestDenied(_) => {
-                                        metric.inc_write_lock_denied()
-                                    }
-                                    _ => {}
-                                }
-                            }
+                            // if let NonFatalError::TwoPhaseLocking(e) = reason {
+                            //     match e {
+                            //         TwoPhaseLockingError::ReadLockRequestDenied(_) => {
+                            //             metric.inc_read_lock_denied()
+                            //         }
+                            //         TwoPhaseLockingError::WriteLockRequestDenied(_) => {
+                            //             metric.inc_write_lock_denied()
+                            //         }
+                            //         _ => {}
+                            //     }
+                            // }
                         }
                     }
                 }
@@ -431,15 +431,16 @@ impl WorkloadBreakdown {
     /// Create new workload breakdown.
     fn new(workload: &str) -> WorkloadBreakdown {
         match workload {
-            "tatp" => {
-                let name = workload.to_string();
-                let mut transactions = vec![];
-                for transaction in TatpTransaction::iter() {
-                    let metrics = TransactionMetrics::new(Transaction::Tatp(transaction));
-                    transactions.push(metrics);
-                }
-                WorkloadBreakdown { name, transactions }
-            }
+            // "tatp" => {
+            //     let name = workload.to_string();
+            //     let mut transactions = vec![];
+
+            //     for transaction in TatpTransaction::iter() {
+            //         let metrics = TransactionMetrics::new(Transaction::Tatp(transaction));
+            //         transactions.push(metrics);
+            //     }
+            //     WorkloadBreakdown { name, transactions }
+            // }
             "smallbank" => {
                 let name = workload.to_string();
                 let mut transactions = vec![];
@@ -449,15 +450,15 @@ impl WorkloadBreakdown {
                 }
                 WorkloadBreakdown { name, transactions }
             }
-            "acid" => {
-                let name = workload.to_string();
-                let mut transactions = vec![];
-                for transaction in AcidTransaction::iter() {
-                    let metrics = TransactionMetrics::new(Transaction::Acid(transaction));
-                    transactions.push(metrics);
-                }
-                WorkloadBreakdown { name, transactions }
-            }
+            // "acid" => {
+            //     let name = workload.to_string();
+            //     let mut transactions = vec![];
+            //     for transaction in AcidTransaction::iter() {
+            //         let metrics = TransactionMetrics::new(Transaction::Acid(transaction));
+            //         transactions.push(metrics);
+            //     }
+            //     WorkloadBreakdown { name, transactions }
+            // }
             _ => unimplemented!(),
         }
     }

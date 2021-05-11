@@ -12,33 +12,34 @@ use rand::rngs::StdRng;
 use rand::Rng;
 use std::collections::HashMap;
 use std::sync::Arc;
+
 use tracing::info;
 
 /// Populate tables.
 pub fn populate_tables(
-    config: Arc<Config>,
-    tables: &mut HashMap<String, Arc<Table>>,
+    config: &Config,
+    tables: &HashMap<String, Arc<Table>>,
     indexes: &mut HashMap<String, Index>,
     rng: &mut StdRng,
 ) -> Result<()> {
-    populate_account(Arc::clone(&config), tables, indexes)?;
-    populate_savings(Arc::clone(&config), tables, indexes, rng)?;
+    populate_account(config, tables, indexes)?;
+    populate_savings(config, tables, indexes, rng)?;
     populate_checking(config, tables, indexes, rng)?;
     Ok(())
 }
 
 /// Populate the `Account` table.
 pub fn populate_account(
-    config: Arc<Config>,
-    tables: &mut HashMap<String, Arc<Table>>,
+    config: &Config,
+    tables: &HashMap<String, Arc<Table>>,
     indexes: &mut HashMap<String, Index>,
 ) -> Result<()> {
-    let accounts = tables.get("accounts").unwrap(); // get handle to table
+    let accounts = tables.get("accounts").unwrap();
     let accounts_idx = indexes.get_mut("account_name").unwrap();
 
-    let protocol = config.get_str("protocol")?; // get protocol
-    let sf = config.get_int("scale_factor")? as u64; // get sf
-    let n_accounts = *SB_SF_MAP.get(&sf).unwrap(); // get accounts
+    let protocol = config.get_str("protocol")?;
+    let sf = config.get_int("scale_factor")? as u64;
+    let n_accounts = *SB_SF_MAP.get(&sf).unwrap();
 
     for a_id in 0..n_accounts {
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(a_id));
@@ -47,19 +48,19 @@ pub fn populate_account(
         row.init_value("customer_id", Data::from(a_id)).unwrap();
         accounts_idx.insert(&pk, row);
     }
-    info!("Loaded {} rows into account", accounts.get_num_rows());
+    info!("Loaded {} rows into account", n_accounts);
 
     Ok(())
 }
 
 /// Populate the `Savings` table.
 pub fn populate_savings(
-    config: Arc<Config>,
-    tables: &mut HashMap<String, Arc<Table>>,
+    config: &Config,
+    tables: &HashMap<String, Arc<Table>>,
     indexes: &mut HashMap<String, Index>,
     rng: &mut StdRng,
 ) -> Result<()> {
-    let savings = tables.get_mut("savings").unwrap();
+    let savings = tables.get("savings").unwrap();
     let savings_idx = indexes.get_mut("savings_idx").unwrap();
 
     let protocol = config.get_str("protocol")?;
@@ -78,14 +79,14 @@ pub fn populate_savings(
         row.init_value("balance", Data::from(balance)).unwrap();
         savings_idx.insert(&pk, row);
     }
-    info!("Loaded {} rows into savings", savings.get_num_rows());
+    info!("Loaded {} rows into savings", accounts);
     Ok(())
 }
 
 /// Populate the `Checking` table.
 pub fn populate_checking(
-    config: Arc<Config>,
-    tables: &mut HashMap<String, Arc<Table>>,
+    config: &Config,
+    tables: &HashMap<String, Arc<Table>>,
     indexes: &mut HashMap<String, Index>,
     rng: &mut StdRng,
 ) -> Result<()> {
@@ -108,6 +109,6 @@ pub fn populate_checking(
         row.init_value("balance", Data::from(balance)).unwrap();
         checking_idx.insert(&pk, row);
     }
-    info!("Loaded {} rows into savings", checking.get_num_rows());
+    info!("Loaded {} rows into savings", accounts);
     Ok(())
 }

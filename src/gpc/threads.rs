@@ -1,12 +1,13 @@
-use crate::common::message::{InternalResponse, Message, Outcome};
-use crate::common::message::{Parameters, Transaction};
+use crate::common::message::InternalResponse;
+use crate::common::message::Outcome;
+//use crate::common::message::{Parameters, Transaction};
 use crate::common::statistics::LocalStatistics;
 use crate::gpc::helper;
 use crate::scheduler::Protocol;
-use crate::workloads::acid::paramgen::{
-    AcidTransactionProfile, G0Read, G2itemRead, LostUpdateRead,
-};
-use crate::workloads::acid::{AcidTransaction, ACID_SF_MAP};
+// use crate::workloads::acid::paramgen::{
+//     AcidTransactionProfile, G0Read, G2itemRead, LostUpdateRead,
+// };
+// use crate::workloads::acid::{AcidTransaction, ACID_SF_MAP};
 
 use config::Config;
 use std::fs;
@@ -152,7 +153,7 @@ impl Recon {
         let anomaly = config.get_str("anomaly").unwrap();
         let sf = config.get_int("scale_factor").unwrap() as u64;
 
-        let persons = *ACID_SF_MAP.get(&sf).unwrap();
+        // let persons = *ACID_SF_MAP.get(&sf).unwrap();
         let mut stats = LocalStatistics::new(0, &workload, &protocol);
 
         let builder = thread::Builder::new().name("0".to_string()); // fix id - only thread running
@@ -180,92 +181,92 @@ impl Recon {
                         .expect("cannot open file"),
                 );
 
-                match anomaly.as_str() {
-                    "g0" => {
-                        log::info!("Executing {} recon queries", anomaly);
+                // match anomaly.as_str() {
+                //     "g0" => {
+                //         log::info!("Executing {} recon queries", anomaly);
 
-                        for p1_id in (0..persons).step_by(2) {
-                            let p2_id = p1_id + 1;
-                            let payload = G0Read { p1_id, p2_id };
+                //         for p1_id in (0..persons).step_by(2) {
+                //             let p2_id = p1_id + 1;
+                //             let payload = G0Read { p1_id, p2_id };
 
-                            let txn = Message::Request {
-                                request_no: 0, // TODO
-                                transaction: Transaction::Acid(AcidTransaction::G0Read),
-                                parameters: Parameters::Acid(AcidTransactionProfile::G0Read(
-                                    payload,
-                                )),
-                            };
+                //             let txn = Message::Request {
+                //                 request_no: 0, // TODO
+                //                 transaction: Transaction::Acid(AcidTransaction::G0Read),
+                //                 parameters: Parameters::Acid(AcidTransactionProfile::G0Read(
+                //                     payload,
+                //                 )),
+                //             };
 
-                            let ir = helper::execute(txn, Arc::clone(&scheduler)); // execute txn
-                            let InternalResponse {
-                                transaction,
-                                outcome,
-                                latency,
-                                ..
-                            } = ir;
+                //             let ir = helper::execute(txn, Arc::clone(&scheduler)); // execute txn
+                //             let InternalResponse {
+                //                 transaction,
+                //                 outcome,
+                //                 latency,
+                //                 ..
+                //             } = ir;
 
-                            log_result(&mut fh, outcome.clone()); // log result
-                            stats.record(transaction, outcome.clone(), latency);
-                            // record txn
-                        }
-                    }
-                    "lu" => {
-                        log::info!("Executing {} recon queries", anomaly);
+                //             log_result(&mut fh, outcome.clone()); // log result
+                //             stats.record(transaction, outcome.clone(), latency);
+                //             // record txn
+                //         }
+                //     }
+                //     "lu" => {
+                //         log::info!("Executing {} recon queries", anomaly);
 
-                        for p_id in 0..persons {
-                            let payload = LostUpdateRead { p_id };
+                //         for p_id in 0..persons {
+                //             let payload = LostUpdateRead { p_id };
 
-                            let txn = Message::Request {
-                                request_no: 0, // TODO
-                                transaction: Transaction::Acid(AcidTransaction::LostUpdateRead),
-                                parameters: Parameters::Acid(
-                                    AcidTransactionProfile::LostUpdateRead(payload),
-                                ),
-                            };
+                //             let txn = Message::Request {
+                //                 request_no: 0, // TODO
+                //                 transaction: Transaction::Acid(AcidTransaction::LostUpdateRead),
+                //                 parameters: Parameters::Acid(
+                //                     AcidTransactionProfile::LostUpdateRead(payload),
+                //                 ),
+                //             };
 
-                            let ir = helper::execute(txn, Arc::clone(&scheduler)); // execute txn
-                            let InternalResponse {
-                                transaction,
-                                outcome,
-                                latency,
-                                ..
-                            } = ir;
-                            log_result(&mut fh, outcome.clone()); // log result
-                            stats.record(transaction, outcome.clone(), latency);
-                        }
-                    }
-                    "g2item" => {
-                        log::info!("Executing {} recon queries", anomaly);
+                //             let ir = helper::execute(txn, Arc::clone(&scheduler)); // execute txn
+                //             let InternalResponse {
+                //                 transaction,
+                //                 outcome,
+                //                 latency,
+                //                 ..
+                //             } = ir;
+                //             log_result(&mut fh, outcome.clone()); // log result
+                //             stats.record(transaction, outcome.clone(), latency);
+                //         }
+                //     }
+                //     "g2item" => {
+                //         log::info!("Executing {} recon queries", anomaly);
 
-                        let p = persons * 4;
-                        for p_id in (0..p).step_by(2) {
-                            let payload = G2itemRead {
-                                p1_id: p_id,
-                                p2_id: p_id + 1,
-                            };
+                //         let p = persons * 4;
+                //         for p_id in (0..p).step_by(2) {
+                //             let payload = G2itemRead {
+                //                 p1_id: p_id,
+                //                 p2_id: p_id + 1,
+                //             };
 
-                            let txn = Message::Request {
-                                request_no: 0, // TODO
-                                transaction: Transaction::Acid(AcidTransaction::G2itemRead),
-                                parameters: Parameters::Acid(AcidTransactionProfile::G2itemRead(
-                                    payload,
-                                )),
-                            };
+                //             let txn = Message::Request {
+                //                 request_no: 0, // TODO
+                //                 transaction: Transaction::Acid(AcidTransaction::G2itemRead),
+                //                 parameters: Parameters::Acid(AcidTransactionProfile::G2itemRead(
+                //                     payload,
+                //                 )),
+                //             };
 
-                            let ir = helper::execute(txn, Arc::clone(&scheduler)); // execute txn
-                            let InternalResponse {
-                                transaction,
-                                outcome,
-                                latency,
-                                ..
-                            } = ir;
-                            log_result(&mut fh, outcome.clone()); // log result
-                            stats.record(transaction, outcome.clone(), latency);
-                            // record txn
-                        }
-                    }
-                    _ => log::info!("No recon queries for {}", anomaly),
-                }
+                //             let ir = helper::execute(txn, Arc::clone(&scheduler)); // execute txn
+                //             let InternalResponse {
+                //                 transaction,
+                //                 outcome,
+                //                 latency,
+                //                 ..
+                //             } = ir;
+                //             log_result(&mut fh, outcome.clone()); // log result
+                //             stats.record(transaction, outcome.clone(), latency);
+                //             // record txn
+                //         }
+                //     }
+                //     _ => log::info!("No recon queries for {}", anomaly),
+                // }
 
                 tx.send(stats).unwrap();
             })

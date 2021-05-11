@@ -47,13 +47,13 @@ fn main() {
         settings.set("log", l).unwrap();
     }
 
-    let config = Arc::new(settings);
+    let config = settings;
 
-    helper::set_log_level(Arc::clone(&config)); // set log level
+    helper::set_log_level(&config); // set log level
 
-    helper::create_results_dir(Arc::clone(&config)); // create results dir
+    helper::create_results_dir(&config); // create results dir
 
-    let mut global_stats = GlobalStatistics::new(Arc::clone(&config)); // init stats
+    let mut global_stats = GlobalStatistics::new(&config); // init stats
 
     if config.get_str("workload").unwrap().as_str() == "acid" {
         let anomaly = config.get_str("anomaly").unwrap();
@@ -63,7 +63,7 @@ fn main() {
     }
 
     let dg_start = Instant::now(); // init database
-    let workload = helper::init_database(Arc::clone(&config));
+    let workload = helper::init_database(config.clone());
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
@@ -73,7 +73,7 @@ fn main() {
 
     tracing::info!("Starting execution");
     global_stats.start();
-    helper::run(workers, scheduler, Arc::clone(&config), tx);
+    helper::run(workers, scheduler, Arc::new(config.clone()), tx);
     global_stats.end();
     tracing::info!("Execution finished");
 

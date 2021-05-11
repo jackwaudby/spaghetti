@@ -14,9 +14,6 @@ pub struct Row {
     /// Primary key.
     primary_key: PrimaryKey,
 
-    /// Row id.
-    row_id: u64,
-
     /// Handle to table row belongs to.
     table: Arc<Table>,
 
@@ -52,10 +49,8 @@ pub struct OperationResult {
 }
 
 impl Row {
-    /// Return an empty row.
+    /// Return a row with null fields.
     pub fn new(primary_key: PrimaryKey, table: Arc<Table>) -> Self {
-        let row_id = table.get_next_row_id();
-
         let fields = table.get_schema().column_cnt();
         let mut current_fields = Vec::with_capacity(fields);
         for _ in 0..fields {
@@ -64,7 +59,6 @@ impl Row {
 
         Row {
             primary_key,
-            row_id,
             table,
             current_fields,
             prev_fields: None,
@@ -75,11 +69,6 @@ impl Row {
     /// Returns a row's primary key.
     pub fn get_primary_key(&self) -> PrimaryKey {
         self.primary_key.clone()
-    }
-
-    /// Returns the row id.
-    pub fn get_row_id(&self) -> u64 {
-        self.row_id
     }
 
     /// Returns a shared reference to the `Table` the row belongs to.
@@ -267,8 +256,6 @@ impl fmt::Display for Access {
 
 impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let table = Arc::clone(&self.table);
-
         // fields
         let fc = self.current_fields.len();
         let mut fields = String::new();
@@ -280,9 +267,8 @@ impl fmt::Display for Row {
 
         write!(
             f,
-            "[rid: {}, table: {}, pk: {}, state: {}, fields: [{}]",
-            self.get_row_id(),
-            table.get_table_name(),
+            "[table: {}, pk: {}, state: {}, fields: [{}]",
+            self.table.get_table_name(),
             self.get_primary_key(),
             self.state,
             fields,

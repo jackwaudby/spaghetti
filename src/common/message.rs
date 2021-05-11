@@ -1,10 +1,10 @@
 use crate::common::error::NonFatalError;
-use crate::workloads::acid::paramgen::AcidTransactionProfile;
-use crate::workloads::acid::AcidTransaction;
+// use crate::workloads::acid::paramgen::AcidTransactionProfile;
+// use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::smallbank::SmallBankTransaction;
-use crate::workloads::tatp::paramgen::TatpTransactionProfile;
-use crate::workloads::tatp::TatpTransaction;
+// use crate::workloads::tatp::paramgen::TatpTransactionProfile;
+// use crate::workloads::tatp::TatpTransaction;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -48,16 +48,17 @@ pub enum Message {
 /// Transaction types.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Transaction {
-    Acid(AcidTransaction),
-    Tatp(TatpTransaction),
+    // Acid(AcidTransaction),
+    // Tatp(TatpTransaction)
+    //        ,
     SmallBank(SmallBankTransaction),
 }
 
 /// Transaction parameters.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Parameters {
-    Acid(AcidTransactionProfile),
-    Tatp(TatpTransactionProfile),
+    // Acid(AcidTransactionProfile),
+    // Tatp(TatpTransactionProfile),
     SmallBank(SmallBankTransactionProfile),
 }
 

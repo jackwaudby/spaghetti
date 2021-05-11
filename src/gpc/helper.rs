@@ -3,11 +3,12 @@ use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
 use crate::gpc::threads::{Recon, Worker};
 use crate::scheduler::Protocol;
-use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
+// use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
-use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
+// use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
 use crate::workloads::Workload;
-use crate::workloads::{acid, smallbank, tatp};
+// use crate::workloads::{acid, smallbank, tatp};
+use crate::workloads::smallbank;
 
 use config::Config;
 use std::fs;
@@ -28,7 +29,7 @@ pub fn init_config(file: &str) -> Config {
 }
 
 /// Initialise result logging, creating the required directory
-pub fn create_results_dir(config: Arc<Config>) {
+pub fn create_results_dir(config: &Config) {
     let log_results = config.get_bool("log_results").unwrap();
 
     if log_results {
@@ -52,7 +53,7 @@ pub fn create_results_dir(config: Arc<Config>) {
 }
 
 /// Set logging level.
-pub fn set_log_level(config: Arc<Config>) {
+pub fn set_log_level(config: &Config) {
     let level = match config.get_str("log").unwrap().as_str() {
         "info" => Level::INFO,
         "debug" => Level::DEBUG,
@@ -64,14 +65,14 @@ pub fn set_log_level(config: Arc<Config>) {
 }
 
 /// Initialise database.
-pub fn init_database(config: Arc<Config>) -> Arc<Workload> {
-    let workload = Arc::new(Workload::new(Arc::clone(&config)).unwrap());
+pub fn init_database(config: Config) -> Workload {
+    let workload = Workload::init(config).unwrap();
     workload
 }
 
 /// Initialise the scheduler with a desired number of cores.
-pub fn init_scheduler(workload: Arc<Workload>, cores: usize) -> Arc<Protocol> {
-    Arc::new(Protocol::new(Arc::clone(&workload), cores).unwrap())
+pub fn init_scheduler(workload: Workload, cores: usize) -> Arc<Protocol> {
+    Arc::new(Protocol::new(workload, cores).unwrap())
 }
 
 /// Start execution with `cores` workers.
@@ -124,29 +125,29 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
     {
         let start = Instant::now(); // start timer
         let res = match transaction {
-            Transaction::Tatp(_) => {
-                if let Parameters::Tatp(params) = parameters {
-                    match params {
-                        TatpTransactionProfile::GetSubscriberData(params) => {
-                            tatp::procedures::get_subscriber_data(params, scheduler)
-                        }
-                        TatpTransactionProfile::GetNewDestination(params) => {
-                            tatp::procedures::get_new_destination(params, scheduler)
-                        }
-                        TatpTransactionProfile::GetAccessData(params) => {
-                            tatp::procedures::get_access_data(params, scheduler)
-                        }
-                        TatpTransactionProfile::UpdateSubscriberData(params) => {
-                            tatp::procedures::update_subscriber_data(params, scheduler)
-                        }
-                        TatpTransactionProfile::UpdateLocationData(params) => {
-                            tatp::procedures::update_location(params, scheduler)
-                        }
-                    }
-                } else {
-                    panic!("transaction type and parameters do not match");
-                }
-            }
+            // Transaction::Tatp(_) => {
+            //     if let Parameters::Tatp(params) = parameters {
+            //         match params {
+            //             TatpTransactionProfile::GetSubscriberData(params) => {
+            //                 tatp::procedures::get_subscriber_data(params, scheduler)
+            //             }
+            //             TatpTransactionProfile::GetNewDestination(params) => {
+            //                 tatp::procedures::get_new_destination(params, scheduler)
+            //             }
+            //             TatpTransactionProfile::GetAccessData(params) => {
+            //                 tatp::procedures::get_access_data(params, scheduler)
+            //             }
+            //             TatpTransactionProfile::UpdateSubscriberData(params) => {
+            //                 tatp::procedures::update_subscriber_data(params, scheduler)
+            //             }
+            //             TatpTransactionProfile::UpdateLocationData(params) => {
+            //                 tatp::procedures::update_location(params, scheduler)
+            //             }
+            //         }
+            //     } else {
+            //         panic!("transaction type and parameters do not match");
+            //     }
+            // }
             Transaction::SmallBank(_) => {
                 if let Parameters::SmallBank(params) = parameters {
                     match params {
@@ -172,54 +173,53 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
                 } else {
                     panic!("transaction type and parameters do not match");
                 }
-            }
-            Transaction::Acid(_) => {
-                if let Parameters::Acid(params) = parameters {
-                    match params {
-                        AcidTransactionProfile::G0Write(params) => {
-                            acid::procedures::g0_write(params, scheduler)
-                        }
-                        AcidTransactionProfile::G0Read(params) => {
-                            acid::procedures::g0_read(params, scheduler)
-                        }
-                        AcidTransactionProfile::G1aRead(params) => {
-                            acid::procedures::g1a_read(params, scheduler)
-                        }
-                        AcidTransactionProfile::G1aWrite(params) => {
-                            acid::procedures::g1a_write(params, scheduler)
-                        }
-                        AcidTransactionProfile::G1cReadWrite(params) => {
-                            acid::procedures::g1c_read_write(params, scheduler)
-                        }
-                        AcidTransactionProfile::ImpRead(params) => {
-                            acid::procedures::imp_read(params, scheduler)
-                        }
-                        AcidTransactionProfile::ImpWrite(params) => {
-                            acid::procedures::imp_write(params, scheduler)
-                        }
-                        AcidTransactionProfile::OtvRead(params) => {
-                            acid::procedures::otv_read(params, scheduler)
-                        }
-                        AcidTransactionProfile::OtvWrite(params) => {
-                            acid::procedures::otv_write(params, scheduler)
-                        }
-                        AcidTransactionProfile::LostUpdateRead(params) => {
-                            acid::procedures::lu_read(params, scheduler)
-                        }
-                        AcidTransactionProfile::LostUpdateWrite(params) => {
-                            acid::procedures::lu_write(params, scheduler)
-                        }
-                        AcidTransactionProfile::G2itemRead(params) => {
-                            acid::procedures::g2_item_read(params, scheduler)
-                        }
-                        AcidTransactionProfile::G2itemWrite(params) => {
-                            acid::procedures::g2_item_write(params, scheduler)
-                        }
-                    }
-                } else {
-                    panic!("transaction type and parameters do not match");
-                }
-            }
+            } // Transaction::Acid(_) => {
+              //     if let Parameters::Acid(params) = parameters {
+              //         match params {
+              //             AcidTransactionProfile::G0Write(params) => {
+              //                 acid::procedures::g0_write(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::G0Read(params) => {
+              //                 acid::procedures::g0_read(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::G1aRead(params) => {
+              //                 acid::procedures::g1a_read(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::G1aWrite(params) => {
+              //                 acid::procedures::g1a_write(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::G1cReadWrite(params) => {
+              //                 acid::procedures::g1c_read_write(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::ImpRead(params) => {
+              //                 acid::procedures::imp_read(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::ImpWrite(params) => {
+              //                 acid::procedures::imp_write(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::OtvRead(params) => {
+              //                 acid::procedures::otv_read(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::OtvWrite(params) => {
+              //                 acid::procedures::otv_write(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::LostUpdateRead(params) => {
+              //                 acid::procedures::lu_read(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::LostUpdateWrite(params) => {
+              //                 acid::procedures::lu_write(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::G2itemRead(params) => {
+              //                 acid::procedures::g2_item_read(params, scheduler)
+              //             }
+              //             AcidTransactionProfile::G2itemWrite(params) => {
+              //                 acid::procedures::g2_item_write(params, scheduler)
+              //             }
+              //         }
+              //     } else {
+              //         panic!("transaction type and parameters do not match");
+              //     }
+              //}
         };
         let latency = Some(start.elapsed()); // stop timer
         let outcome = match res {
@@ -250,18 +250,18 @@ pub fn get_transaction_generator(config: Arc<Config>) -> ParameterGenerator {
         seed = None;
     }
     match config.get_str("workload").unwrap().as_str() {
-        "acid" => {
-            let anomaly = config.get_str("anomaly").unwrap();
-            let delay = config.get_int("delay").unwrap() as u64;
-            let gen = AcidGenerator::new(sf, set_seed, seed, &anomaly, delay);
-            ParameterGenerator::Acid(gen)
-        }
-        "tatp" => {
-            let use_nurand = config.get_bool("nurand").unwrap();
+        // "acid" => {
+        //     let anomaly = config.get_str("anomaly").unwrap();
+        //     let delay = config.get_int("delay").unwrap() as u64;
+        //     let gen = AcidGenerator::new(sf, set_seed, seed, &anomaly, delay);
+        //     ParameterGenerator::Acid(gen)
+        // }
+        // "tatp" => {
+        //     let use_nurand = config.get_bool("nurand").unwrap();
 
-            let gen = TatpGenerator::new(sf, set_seed, seed, use_nurand);
-            ParameterGenerator::Tatp(gen)
-        }
+        //     let gen = TatpGenerator::new(sf, set_seed, seed, use_nurand);
+        //     ParameterGenerator::Tatp(gen)
+        // }
         "smallbank" => {
             let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
 
