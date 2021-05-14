@@ -1,8 +1,6 @@
-use crate::common::error::NonFatalError;
 use crate::storage::catalog::Catalog;
 
 use std::fmt;
-// use std::sync::Mutex;
 
 #[derive(Debug)]
 pub struct Table {

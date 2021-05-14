@@ -1,5 +1,4 @@
 use crate::common::error::NonFatalError;
-use crate::scheduler::TransactionInfo;
 use crate::storage::datatype::Data;
 use crate::storage::row::{Access, OperationResult, Row};
 use crate::workloads::PrimaryKey;
@@ -94,18 +93,18 @@ impl Index {
         &self,
         key: &PrimaryKey,
         columns: &[&str],
-        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
         let rh = self
             .data
             .get(key)
             .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
         let mut row = rh.lock();
-        let res = row.get_values(columns, tid)?;
+        let res = row.get_values(columns)?;
         Ok(res)
     }
 
     /// Write values to columns in a row with the given key.
+    // TODO: add get field
     pub fn update<F>(
         &self,
         key: &PrimaryKey,
@@ -113,7 +112,6 @@ impl Index {
         read: Option<&[&str]>,
         params: Option<&[Data]>,
         f: F,
-        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError>
     where
         F: Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
@@ -124,15 +122,17 @@ impl Index {
             .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
         let mut row = rh.lock();
         let current_values;
+
         if let Some(columns) = read {
-            let mut res = row.get_values(columns, tid)?;
+            let mut res = row.get_values(columns)?;
             current_values = Some(res.get_values());
         } else {
             current_values = None;
         }
+
         let new_values = f(current_values, params)?;
 
-        let res = row.set_values(&columns, &new_values, tid)?;
+        let res = row.set_values(&columns, &new_values)?;
         Ok(res)
     }
 
@@ -142,55 +142,37 @@ impl Index {
         key: &PrimaryKey,
         column: &str,
         value: Data,
-        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
         let rh = self
             .data
             .get(key)
             .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
         let mut row = rh.lock();
-        let res = row.append_value(column, value, tid)?;
-        Ok(res)
-    }
-
-    /// Set values in columns in a row with the given key, returning the old values.
-    pub fn read_and_update(
-        &self,
-        key: &PrimaryKey,
-        columns: &[&str],
-        values: &[Data],
-        tid: &TransactionInfo,
-    ) -> Result<OperationResult, NonFatalError> {
-        let rh = self
-            .data
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let mut row = rh.lock();
-        let res = row.get_and_set_values(columns, values, tid)?;
+        let res = row.append_value(column, value)?;
         Ok(res)
     }
 
     /// Commit modifications to a row - rows marked for delete are removed.
-    pub fn commit(&self, key: &PrimaryKey, tid: &TransactionInfo) -> Result<(), NonFatalError> {
+    pub fn commit(&self, key: &PrimaryKey) -> Result<(), NonFatalError> {
         let rh = self
             .data
             .get(key)
             .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
 
         let mut row = rh.lock(); // lock row
-        row.commit(tid); // commit
+        row.commit(); // commit
 
         Ok(())
     }
 
     /// Revert modifications to a row.
-    pub fn revert(&self, key: &PrimaryKey, tid: &TransactionInfo) -> Result<(), NonFatalError> {
+    pub fn revert(&self, key: &PrimaryKey) -> Result<(), NonFatalError> {
         let rh = self
             .data
             .get(key)
             .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
         let mut row = rh.lock();
-        row.revert(tid);
+        row.revert();
         Ok(())
     }
 }
@@ -226,15 +208,6 @@ impl RwTable {
         id
     }
 
-    fn begin(&self) -> (u64, Access) {
-        self.entries[0].clone()
-    }
-
-    fn end(&self) -> (u64, Access) {
-        let len = self.entries.len();
-        self.entries[len].clone()
-    }
-
     pub fn snapshot(&self) -> VecDeque<(u64, Access)> {
         self.entries.clone()
     }
@@ -245,7 +218,7 @@ impl RwTable {
     }
 
     pub fn erase_all(&mut self, entry: Access) {
-        self.entries.retain(|(x, y)| y != &entry);
+        self.entries.retain(|(_, y)| y != &entry);
     }
 }
 

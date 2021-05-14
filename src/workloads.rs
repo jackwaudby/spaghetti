@@ -1,5 +1,6 @@
 use crate::common::error::{FatalError, NonFatalError};
 use crate::storage::catalog::Catalog;
+
 use crate::storage::index::Index;
 use crate::storage::table::Table;
 // use crate::workloads::acid::keys::AcidPrimaryKey;
@@ -92,11 +93,6 @@ impl Workload {
                 let index_name: String = match line.strip_prefix("INDEX=") {
                     Some(name) => name.to_lowercase(),
                     None => panic!("invalid index assignment"),
-                };
-
-                let attributes: Vec<&str> = match lines.next() {
-                    Some(a) => a.split(',').collect(),
-                    None => break,
                 };
 
                 let index = Index::init(&index_name);

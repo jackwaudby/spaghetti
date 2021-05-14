@@ -37,7 +37,6 @@ pub fn populate_account(
     let accounts = tables.get("accounts").unwrap();
     let accounts_idx = indexes.get_mut("account_name").unwrap();
 
-    let protocol = config.get_str("protocol")?;
     let sf = config.get_int("scale_factor")? as u64;
     let n_accounts = *SB_SF_MAP.get(&sf).unwrap();
 
@@ -63,7 +62,6 @@ pub fn populate_savings(
     let savings = tables.get("savings").unwrap();
     let savings_idx = indexes.get_mut("savings_idx").unwrap();
 
-    let protocol = config.get_str("protocol")?;
     let sf = config.get_int("scale_factor")? as u64;
 
     let accounts = *SB_SF_MAP.get(&sf).unwrap();
@@ -93,7 +91,6 @@ pub fn populate_checking(
     let checking = tables.get("checking").unwrap();
     let checking_idx = indexes.get_mut("checking_idx").unwrap();
 
-    let protocol = config.get_str("protocol")?;
     let sf = config.get_int("scale_factor")? as u64;
 
     let accounts = *SB_SF_MAP.get(&sf).unwrap();

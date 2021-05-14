@@ -88,11 +88,7 @@ impl Row {
     }
 
     /// Get values of columns.
-    pub fn get_values(
-        &mut self,
-        columns: &[&str],
-        tid: &TransactionInfo,
-    ) -> Result<OperationResult, NonFatalError> {
+    pub fn get_values(&mut self, columns: &[&str]) -> Result<OperationResult, NonFatalError> {
         let mut values = Vec::with_capacity(columns.len());
         let schema = self.table.get_schema();
         for column in columns {
@@ -109,7 +105,6 @@ impl Row {
         &mut self,
         column: &str,
         value: Data,
-        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
@@ -136,7 +131,6 @@ impl Row {
         &mut self,
         columns: &[&str],
         values: &[Data],
-        tid: &TransactionInfo,
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
@@ -165,28 +159,14 @@ impl Row {
         }
     }
 
-    /// Get and set
-    pub fn get_and_set_values(
-        &mut self,
-        columns: &[&str],
-        values: &[Data],
-        tid: &TransactionInfo,
-    ) -> Result<OperationResult, NonFatalError> {
-        let res = self.get_values(columns, tid); // get old
-        self.set_values(columns, values, tid)?; // set new
-        res
-    }
-
     /// Make an update permanent.
-    pub fn commit(&mut self, tid: &TransactionInfo) {
+    pub fn commit(&mut self) {
         self.state = State::Clean;
         self.prev_fields = None;
     }
 
     /// Revert to previous version of row.
-    ///
-    /// Handles reverting a delete and an update.
-    pub fn revert(&mut self, tid: &TransactionInfo) {
+    pub fn revert(&mut self) {
         match self.state {
             State::Modified => {
                 self.current_fields = self.prev_fields.take().unwrap(); // revert to old values

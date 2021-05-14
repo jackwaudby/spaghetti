@@ -1,8 +1,4 @@
-use crate::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
-// use crate::scheduler::hit_list::error::HitListError;
-// use crate::scheduler::opt_hit_list::error::OptimisedHitListError;
-// use crate::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
-// use crate::scheduler::two_phase_locking::error::TwoPhaseLockingError;
+use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::workloads::smallbank::error::SmallBankError;
 
 use serde::{Deserialize, Serialize};
@@ -30,11 +26,6 @@ pub enum FatalError {
     /// Connection unexpectedly closed.
     ConnectionUnexpectedlyClosed,
 
-    // /// Two phase locking error.
-    // TwoPhaseLocking(TwoPhaseLockingError),
-
-    // /// SGT error.
-    // SerializationGraphTesting(SerializationGraphTestingError),
     /// Access history not initalised.
     NotTrackingAccessHistory,
 
@@ -99,21 +90,10 @@ pub enum NonFatalError {
     /// Manual abort. Used in ACID test.
     NonSerializable,
 
-    // /// Two phase locking error.
-    // TwoPhaseLocking(TwoPhaseLockingError),
-    /// Basic SGT error.
-    BasicSerializationGraphTesting(BasicSerializationGraphTestingError),
-
-    // /// SGT error.
-    // SerializationGraphTesting(SerializationGraphTestingError),
-
-    // /// Hit-list error.
-    // HitList(HitListError),
-
-    // /// Optimised Hit-list error.
-    // OptimisedHitListError(OptimisedHitListError),
     /// Smallbank error.
     SmallBankError(SmallBankError),
+
+    SerializationGraph(SerializationGraphError),
 }
 
 impl fmt::Display for FatalError {
@@ -129,8 +109,6 @@ impl fmt::Display for FatalError {
             IncorrectWorkload(ref workload) => write!(f, "workload not recognised: {}", workload),
             UnexpectedMessage => write!(f, "unexpected message"),
             ConnectionUnexpectedlyClosed => write!(f, "connection unexpectedly closed"),
-            // TwoPhaseLocking(ref e) => write!(f, "{}", e),
-            // SerializationGraphTesting(ref e) => write!(f, "{}", e),
             NotTrackingAccessHistory => write!(f, "not tracking access history"),
             ReadSocketUnexpectedlyClosed => write!(f, "read socket unexpectedly closed"),
             WriteHandlerUnexpectedlyClosed => write!(
@@ -161,11 +139,6 @@ impl fmt::Display for NonFatalError {
                 "unable to initalise: column {} in table {} with value {}",
                 column, table, value
             ),
-            // HitList(ref e) => write!(f, "{}", e),
-            // OptimisedHitListError(ref e) => write!(f, "{}", e),
-            // TwoPhaseLocking(ref e) => write!(f, "{}", e),
-            // SerializationGraphTesting(ref e) => write!(f, "{}", e),
-            BasicSerializationGraphTesting(ref e) => write!(f, "{}", e),
             RowAlreadyExists(ref key, ref index) => {
                 write!(f, "already exists: {} in {}", key, index)
             }
@@ -184,6 +157,7 @@ impl fmt::Display for NonFatalError {
             ),
             NonSerializable => write!(f, "non-serializable behaviour"),
             SmallBankError(ref e) => write!(f, "{}", e),
+            SerializationGraph(ref e) => write!(f, "{}", e),
         }
     }
 }
@@ -200,79 +174,14 @@ impl error::Error for FatalError {
     }
 }
 
-// impl From<TwoPhaseLockingError> for FatalError {
-//     fn from(error: TwoPhaseLockingError) -> Self {
-//         FatalError::TwoPhaseLocking(error)
-//     }
-// }
-
-// impl From<TwoPhaseLockingError> for NonFatalError {
-//     fn from(error: TwoPhaseLockingError) -> Self {
-//         NonFatalError::TwoPhaseLocking(error)
-//     }
-// }
-
-// impl From<SerializationGraphTestingError> for FatalError {
-//     fn from(error: SerializationGraphTestingError) -> Self {
-//         FatalError::SerializationGraphTesting(error)
-//     }
-// }
-
-// impl From<SerializationGraphTestingError> for NonFatalError {
-//     fn from(error: SerializationGraphTestingError) -> Self {
-//         NonFatalError::SerializationGraphTesting(error)
-//     }
-// }
-
-impl From<BasicSerializationGraphTestingError> for NonFatalError {
-    fn from(error: BasicSerializationGraphTestingError) -> Self {
-        NonFatalError::BasicSerializationGraphTesting(error)
+impl From<SerializationGraphError> for NonFatalError {
+    fn from(error: SerializationGraphError) -> Self {
+        NonFatalError::SerializationGraph(error)
     }
 }
 
 impl From<SmallBankError> for NonFatalError {
     fn from(error: SmallBankError) -> Self {
         NonFatalError::SmallBankError(error)
-    }
-}
-
-// impl From<HitListError> for NonFatalError {
-//     fn from(error: HitListError) -> Self {
-//         NonFatalError::HitList(error)
-//     }
-// }
-
-// impl From<OptimisedHitListError> for NonFatalError {
-//     fn from(error: OptimisedHitListError) -> Self {
-//         NonFatalError::OptimisedHitListError(error)
-//     }
-//}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tpl_error_test() {
-        let e1 = FatalError::Incomplete;
-        let e2 = FatalError::Invalid;
-        let e3 = FatalError::CorruptedFrame;
-        let e8 = FatalError::UnexpectedMessage;
-        let e9 = FatalError::ConnectionUnexpectedlyClosed;
-        let e14 = FatalError::NotTrackingAccessHistory;
-
-        assert_eq!(
-            format!("{}", e1),
-            format!("not enough data available in read buffer to parse message.")
-        );
-
-        assert_eq!(format!("{}", e2), format!("invalid message encoding."));
-        assert_eq!(
-            format!("{}", e3),
-            format!("remote connection closed during sending of a frame")
-        );
-        assert_eq!(format!("{}", e8), format!("unexpected message"));
-        assert_eq!(format!("{}", e9), format!("connection unexpectedly closed"));
-        assert_eq!(format!("{}", e14), format!("not tracking access history"));
     }
 }

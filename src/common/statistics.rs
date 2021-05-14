@@ -1,13 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
-use crate::scheduler::basic_sgt::error::BasicSerializationGraphTestingError;
-// use crate::scheduler::hit_list::error::HitListError;
-// use crate::scheduler::opt_hit_list::error::OptimisedHitListError;
-// use crate::scheduler::serialization_graph_testing::error::SerializationGraphTestingError;
-// use crate::scheduler::two_phase_locking::error::TwoPhaseLockingError;
-// use crate::workloads::acid::AcidTransaction;
+use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::workloads::smallbank::SmallBankTransaction;
-// use crate::workloads::tatp::TatpTransaction;
 
 use config::Config;
 use serde::{Deserialize, Serialize};
@@ -342,73 +336,19 @@ impl LocalStatistics {
                 // protocol dependent
                 {
                     match &mut self.abort_breakdown.protocol_specific {
-                        ProtocolAbortBreakdown::HitList(ref mut metric) => match reason {
-                            NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
-                            NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
-                            // NonFatalError::HitList(e) => match e {
-                            //     HitListError::TransactionInHitList(_) => metric.inc_hit(),
-                            //     HitListError::PredecessorAborted(_) => metric.inc_pur_aborted(),
-                            //     HitListError::PredecessorActive(_) => metric.inc_pur_active(),
-                            //     _ => {}
-                            // },
-                            _ => {}
-                        },
-                        ProtocolAbortBreakdown::OptimisedHitList(ref mut metric) => match reason {
-                            NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
-                            NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
-                            // NonFatalError::OptimisedHitListError(e) => match e {
-                            //     OptimisedHitListError::Hit(_) => metric.inc_hit(),
-                            //     OptimisedHitListError::PredecessorAborted(_) => {
-                            //         metric.inc_pur_aborted()
-                            //     }
-                            //     OptimisedHitListError::PredecessorActive(_) => {
-                            //         metric.inc_pur_active()
-                            //     }
-                            // },
-                            _ => {}
-                        },
-
                         ProtocolAbortBreakdown::SerializationGraph(ref mut metric) => {
                             match reason {
-                                NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
-                                NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
-                                // NonFatalError::SerializationGraphTesting(e) => {
-                                //     if let SerializationGraphTestingError::ParentAborted = e {
-                                //         metric.inc_parent_aborted();
-                                //     } else {
-                                //         tracing::info!("Other: {:?}", e);
-                                //     }
-                                // }
-                                _ => {}
-                            }
-                        }
-                        ProtocolAbortBreakdown::BasicSerializationGraph(ref mut metric) => {
-                            match reason {
-                                NonFatalError::RowDeleted(_, _) => metric.inc_row_deleted(),
-                                NonFatalError::BasicSerializationGraphTesting(e) => match e {
-                                    BasicSerializationGraphTestingError::CascadingAbort => {
+                                NonFatalError::SerializationGraph(e) => match e {
+                                    SerializationGraphError::CascadingAbort => {
                                         metric.inc_cascading_abort();
                                     }
-                                    BasicSerializationGraphTestingError::CycleFound => {
+                                    SerializationGraphError::CycleFound => {
                                         metric.inc_cycle_found();
                                     }
                                     _ => tracing::info!("Other: {:?}", e),
                                 },
                                 _ => {}
                             }
-                        }
-                        ProtocolAbortBreakdown::TwoPhaseLocking(ref mut metric) => {
-                            // if let NonFatalError::TwoPhaseLocking(e) = reason {
-                            //     match e {
-                            //         TwoPhaseLockingError::ReadLockRequestDenied(_) => {
-                            //             metric.inc_read_lock_denied()
-                            //         }
-                            //         TwoPhaseLockingError::WriteLockRequestDenied(_) => {
-                            //             metric.inc_write_lock_denied()
-                            //         }
-                            //         _ => {}
-                            //     }
-                            // }
                         }
                     }
                 }
@@ -600,12 +540,6 @@ impl AbortBreakdown {
     fn new(protocol: &str, workload: &str) -> AbortBreakdown {
         let protocol_specific = match protocol {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
-            "basic-sgt" => ProtocolAbortBreakdown::BasicSerializationGraph(
-                BasicSerializationGraphReasons::new(),
-            ),
-            "2pl" => ProtocolAbortBreakdown::TwoPhaseLocking(TwoPhaseLockingReasons::new()),
-            "hit" => ProtocolAbortBreakdown::HitList(HitListReasons::new()),
-            "opt-hit" => ProtocolAbortBreakdown::OptimisedHitList(HitListReasons::new()),
             _ => unimplemented!(),
         };
 
@@ -632,42 +566,8 @@ impl AbortBreakdown {
         self.row_not_found += other.row_not_found;
 
         match self.protocol_specific {
-            ProtocolAbortBreakdown::HitList(ref mut reasons) => {
-                if let ProtocolAbortBreakdown::HitList(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("abort breakdowns do not match");
-                }
-            }
-            ProtocolAbortBreakdown::OptimisedHitList(ref mut reasons) => {
-                if let ProtocolAbortBreakdown::OptimisedHitList(other_reasons) =
-                    other.protocol_specific
-                {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
             ProtocolAbortBreakdown::SerializationGraph(ref mut reasons) => {
                 if let ProtocolAbortBreakdown::SerializationGraph(other_reasons) =
-                    other.protocol_specific
-                {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            ProtocolAbortBreakdown::BasicSerializationGraph(ref mut reasons) => {
-                if let ProtocolAbortBreakdown::BasicSerializationGraph(other_reasons) =
-                    other.protocol_specific
-                {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            ProtocolAbortBreakdown::TwoPhaseLocking(ref mut reasons) => {
-                if let ProtocolAbortBreakdown::TwoPhaseLocking(other_reasons) =
                     other.protocol_specific
                 {
                     reasons.merge(other_reasons);
@@ -725,39 +625,11 @@ impl SmallBankConstraints {
 /// Protocol specific reasons for aborts.
 #[derive(Serialize, Deserialize, Debug, Clone)]
 enum ProtocolAbortBreakdown {
-    TwoPhaseLocking(TwoPhaseLockingReasons),
     SerializationGraph(SerializationGraphReasons),
-    BasicSerializationGraph(BasicSerializationGraphReasons),
-    HitList(HitListReasons),
-    OptimisedHitList(HitListReasons),
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct TwoPhaseLockingReasons {
-    /// Transaction was denied a read lock and aborted.
-    read_lock_denied: u32,
-
-    /// Transaction was denied a write lock and aborted.
-    write_lock_denied: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SerializationGraphReasons {
-    /// Transaction attempted to modify a row already modified.
-    row_dirty: u32,
-
-    /// Transaction attempted to read or modify a row already marked for deletion.
-    row_deleted: u32,
-
-    /// Transaction aborted as conflicting transaction was aborted (cascading abort).
-    parent_aborted: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct BasicSerializationGraphReasons {
-    /// Transaction attempted to read or modify a row already marked for deletion.
-    row_deleted: u32,
-
     /// Transaction aborted as conflicting transaction was aborted (cascading abort).
     cascading_abort: u32,
 
@@ -765,94 +637,13 @@ struct BasicSerializationGraphReasons {
     cycle_found: u32,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct HitListReasons {
-    /// Transaction attempted to modify a row already modified.
-    row_dirty: u32,
-
-    /// Transaction attempted to read or modify a row already marked for deletion.
-    row_deleted: u32,
-
-    /// Transaction was hit.
-    hit: u32,
-
-    /// Predecessor upon read was active.
-    pur_active: u32,
-
-    /// Predecessor upon read was aborted.
-    pur_aborted: u32,
-}
-
-impl TwoPhaseLockingReasons {
-    /// Create new holder for 2PL abort reasons.
-    fn new() -> TwoPhaseLockingReasons {
-        TwoPhaseLockingReasons {
-            read_lock_denied: 0,
-            write_lock_denied: 0,
-        }
-    }
-
-    /// Increment read lock denied counter.
-    fn inc_read_lock_denied(&mut self) {
-        self.read_lock_denied += 1;
-    }
-
-    /// Increment write lock denied counter.
-    fn inc_write_lock_denied(&mut self) {
-        self.write_lock_denied += 1;
-    }
-
-    fn merge(&mut self, other: TwoPhaseLockingReasons) {
-        self.read_lock_denied += other.read_lock_denied;
-        self.write_lock_denied += other.write_lock_denied;
-    }
-}
-
 impl SerializationGraphReasons {
     /// Create new holder for SGT abort reasons.
-    fn new() -> SerializationGraphReasons {
+    fn new() -> Self {
         SerializationGraphReasons {
-            row_dirty: 0,
-            row_deleted: 0,
-            parent_aborted: 0,
-        }
-    }
-
-    /// Increment row dirty counter.
-    fn inc_row_dirty(&mut self) {
-        self.row_dirty += 1;
-    }
-
-    /// Increment row deleted counter.
-    fn inc_row_deleted(&mut self) {
-        self.row_deleted += 1;
-    }
-
-    /// Increment parent aborted counter.
-    fn inc_parent_aborted(&mut self) {
-        self.parent_aborted += 1;
-    }
-
-    fn merge(&mut self, other: SerializationGraphReasons) {
-        self.row_dirty += other.row_dirty;
-        self.row_deleted += other.row_deleted;
-        self.parent_aborted += other.parent_aborted;
-    }
-}
-
-impl BasicSerializationGraphReasons {
-    /// Create new holder for SGT abort reasons.
-    fn new() -> BasicSerializationGraphReasons {
-        BasicSerializationGraphReasons {
-            row_deleted: 0,
             cascading_abort: 0,
             cycle_found: 0,
         }
-    }
-
-    /// Increment row deleted counter.
-    fn inc_row_deleted(&mut self) {
-        self.row_deleted += 1;
     }
 
     fn inc_cascading_abort(&mut self) {
@@ -863,56 +654,8 @@ impl BasicSerializationGraphReasons {
         self.cycle_found += 1;
     }
 
-    fn merge(&mut self, other: BasicSerializationGraphReasons) {
-        self.row_deleted += other.row_deleted;
+    fn merge(&mut self, other: SerializationGraphReasons) {
         self.cascading_abort += other.cascading_abort;
         self.cycle_found += other.cycle_found;
-    }
-}
-
-impl HitListReasons {
-    /// Create new holder for HIT abort reasons.
-    fn new() -> HitListReasons {
-        HitListReasons {
-            row_dirty: 0,
-            row_deleted: 0,
-            hit: 0,
-            pur_aborted: 0,
-            pur_active: 0,
-        }
-    }
-
-    /// Increment row dirty counter.
-    fn inc_row_dirty(&mut self) {
-        self.row_dirty += 1;
-    }
-
-    /// Increment row deleted counter.
-    fn inc_row_deleted(&mut self) {
-        self.row_deleted += 1;
-    }
-
-    /// Increment hit counter.
-    fn inc_hit(&mut self) {
-        self.hit += 1;
-    }
-
-    /// Increment pur active counter.
-    fn inc_pur_active(&mut self) {
-        self.pur_active += 1;
-    }
-
-    /// Increment pur aborted counter.
-    fn inc_pur_aborted(&mut self) {
-        self.pur_aborted += 1;
-    }
-
-    /// Merge hit list reasons.
-    fn merge(&mut self, other: HitListReasons) {
-        self.row_dirty += other.row_dirty;
-        self.row_deleted += other.row_deleted;
-        self.hit += other.hit;
-        self.pur_aborted += other.pur_aborted;
-        self.pur_active += other.pur_active;
     }
 }

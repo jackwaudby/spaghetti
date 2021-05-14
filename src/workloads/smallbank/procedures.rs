@@ -22,31 +22,13 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
     let savings_pk = SmallBank(Savings(params.name));
     let checking_pk = SmallBank(Checking(params.name));
 
-    let meta = protocol.register()?; // register
+    let meta = protocol.begin(); // register
 
-    protocol.read(
-        "accounts",
-        Some("account_name"),
-        &accounts_pk,
-        &accounts_cols,
-        &meta,
-    )?; // read 1 -- get customer id
+    protocol.read("account_name", &accounts_pk, &accounts_cols, &meta)?; // read 1 -- get customer id
 
-    protocol.read(
-        "savings",
-        Some("savings_idx"),
-        &savings_pk,
-        &other_cols,
-        &meta,
-    )?; // read 2 -- get savings
+    protocol.read("savings_idx", &savings_pk, &other_cols, &meta)?; // read 2 -- get savings
 
-    protocol.read(
-        "checking",
-        Some("checking_idx"),
-        &checking_pk,
-        &other_cols,
-        &meta,
-    )?; // read 3 -- get checking
+    protocol.read("checking_idx", &checking_pk, &other_cols, &meta)?; // read 3 -- get checking
 
     protocol.commit(&meta)?; // commit
 
@@ -74,19 +56,12 @@ pub fn deposit_checking(
 
     let params = vec![Data::Double(params.value)];
 
-    let meta = protocol.register()?;
+    let meta = protocol.begin();
 
-    protocol.read(
-        "accounts",
-        Some("account_name"),
-        &accounts_pk,
-        &accounts_cols,
-        &meta,
-    )?;
+    protocol.read("account_name", &accounts_pk, &accounts_cols, &meta)?;
 
-    protocol.update(
-        "checking",
-        Some("checking_idx"),
+    protocol.write(
+        "checking_idx",
         &checking_pk,
         &checking_cols,
         Some(&checking_cols),
@@ -126,19 +101,12 @@ pub fn transact_savings(
             }
         };
 
-    let meta = protocol.register()?; // register
+    let meta = protocol.begin(); // register
 
-    protocol.read(
-        "accounts",
-        Some("account_name"),
-        &accounts_pk,
-        &accounts_cols,
-        &meta,
-    )?; // read -- get customer ID
+    protocol.read("account_name", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
 
-    protocol.update(
-        "savings",
-        Some("savings_idx"),
+    protocol.write(
+        "savings_idx",
         &savings_pk,
         &savings_cols,
         Some(&savings_cols),
@@ -175,49 +143,45 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
             Ok(vec![Data::from(balance + value)])
         };
 
-    let meta = protocol.register()?; // register
+    let set = |_current: Option<Vec<Data>>,
+               params: Option<&[Data]>|
+     -> Result<Vec<Data>, NonFatalError> {
+        let value = f64::try_from(params.unwrap()[0].clone())?; // set from params
+        Ok(vec![Data::from(value)])
+    };
 
-    protocol.read(
-        "accounts",
-        Some("account_name"),
-        &accounts_pk1,
-        &accounts_cols,
-        &meta,
-    )?; // read -- cust1
+    let meta = protocol.begin(); // register
 
-    let res2 = protocol.read_and_update(
-        "savings",
-        Some("savings_idx"),
+    protocol.read("account_name", &accounts_pk1, &accounts_cols, &meta)?; // read -- cust1
+
+    let res2 = protocol.write(
+        "savings_idx",
         &savings_pk1,
         &other_cols,
-        &values,
+        Some(&other_cols),
+        Some(&values),
+        &set,
         &meta,
     )?; // get and set savings -- cust1
 
-    let res3 = protocol.read_and_update(
-        "checking",
-        Some("checking_idx"),
+    let res3 = protocol.write(
+        "checking_idx",
         &checking_pk1,
         &other_cols,
-        &values,
+        Some(&other_cols),
+        Some(&values),
+        &set,
         &meta,
     )?; // get and set checking -- cust1
 
-    let a = f64::try_from(res2[0].clone()).unwrap();
-    let b = f64::try_from(res3[0].clone()).unwrap();
+    let a = f64::try_from(res2.unwrap()[0].clone()).unwrap();
+    let b = f64::try_from(res3.unwrap()[0].clone()).unwrap();
     let params: Vec<Data> = vec![Data::Double(a + b)]; // amount to send to cust2
 
-    protocol.read(
-        "accounts",
-        Some("account_name"),
-        &accounts_pk2,
-        &accounts_cols,
-        &meta,
-    )?; // read -- cust2
+    protocol.read("account_name", &accounts_pk2, &accounts_cols, &meta)?; // read -- cust2
 
-    protocol.update(
-        "checking",
-        Some("checking_idx"),
+    protocol.write(
+        "checking_idx",
         &checking_pk2,
         &other_cols,
         Some(&other_cols),
@@ -258,29 +222,16 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
             Ok(new_balance)
         };
 
-    let meta = protocol.register()?;
+    let meta = protocol.begin();
 
-    protocol.read(
-        "accounts",
-        Some("account_name"),
-        &accounts_pk,
-        &accounts_cols,
-        &meta,
-    )?;
+    protocol.read("account_name", &accounts_pk, &accounts_cols, &meta)?;
 
-    let res2 = protocol.read(
-        "savings",
-        Some("savings_idx"),
-        &savings_pk,
-        &other_cols,
-        &meta,
-    )?; // get savings balance
+    let res2 = protocol.read("savings_idx", &savings_pk, &other_cols, &meta)?; // get savings balance
 
     let params = vec![Data::Double(params.value), res2[0].clone()];
 
-    protocol.update(
-        "checking",
-        Some("checking_idx"),
+    protocol.write(
+        "checking_idx",
         &checking_pk,
         &other_cols,
         Some(&other_cols),
@@ -328,27 +279,14 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
             Ok(vec![Data::Double(current_balance + value)])
         };
 
-    let meta = protocol.register()?; // register
+    let meta = protocol.begin(); // register
 
-    protocol.read(
-        "accounts",
-        Some("account_name"),
-        &accounts_pk1,
-        &accounts_cols,
-        &meta,
-    )?; // read -- get customer ID 1
+    protocol.read("account_name", &accounts_pk1, &accounts_cols, &meta)?; // read -- get customer ID 1
 
-    protocol.read(
-        "accounts",
-        Some("account_name"),
-        &accounts_pk2,
-        &accounts_cols,
-        &meta,
-    )?; // read -- get customer ID 2
+    protocol.read("account_name", &accounts_pk2, &accounts_cols, &meta)?; // read -- get customer ID 2
 
-    protocol.update(
-        "checking",
-        Some("checking_idx"),
+    protocol.write(
+        "checking_idx",
         &checking_pk1,
         &checking_cols,
         Some(&checking_cols),
@@ -357,9 +295,8 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
         &meta,
     )?;
 
-    protocol.update(
-        "checking",
-        Some("checking_idx"),
+    protocol.write(
+        "checking_idx",
         &checking_pk2,
         &checking_cols,
         Some(&checking_cols),

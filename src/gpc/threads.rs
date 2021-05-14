@@ -145,16 +145,16 @@ impl Recon {
     /// Create a new thread for ACID post-execution recon queries.
     pub fn new(
         config: Arc<Config>,
-        scheduler: Arc<Protocol>,
+        _scheduler: Arc<Protocol>,
         tx: mpsc::Sender<LocalStatistics>,
     ) -> Recon {
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
         let anomaly = config.get_str("anomaly").unwrap();
-        let sf = config.get_int("scale_factor").unwrap() as u64;
+        let _sf = config.get_int("scale_factor").unwrap() as u64;
 
         // let persons = *ACID_SF_MAP.get(&sf).unwrap();
-        let mut stats = LocalStatistics::new(0, &workload, &protocol);
+        let stats = LocalStatistics::new(0, &workload, &protocol);
 
         let builder = thread::Builder::new().name("0".to_string()); // fix id - only thread running
 
@@ -172,14 +172,14 @@ impl Recon {
                     panic!("dir: {} should exist", dir);
                 }
 
-                let mut fh = Some(
-                    OpenOptions::new()
-                        .write(true)
-                        .append(true)
-                        .create(true)
-                        .open(&file)
-                        .expect("cannot open file"),
-                );
+                // let fh = Some(
+                //     OpenOptions::new()
+                //         .write(true)
+                //         .append(true)
+                //         .create(true)
+                //         .open(&file)
+                //         .expect("cannot open file"),
+                // );
 
                 // match anomaly.as_str() {
                 //     "g0" => {
