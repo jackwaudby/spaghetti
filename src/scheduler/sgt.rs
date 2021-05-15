@@ -14,7 +14,7 @@ use std::collections::VecDeque;
 use std::fmt;
 use std::sync::{Arc, RwLock};
 use thread_local::ThreadLocal;
-use tracing::info;
+use tracing::{debug, info};
 
 pub mod transaction_information;
 
@@ -39,18 +39,11 @@ impl SerializationGraph {
     pub fn new(size: u32, data: Workload) -> Self {
         info!("Initialise basic serialization graph with {} node(s)", size);
         let this_node = ThreadLocal::new();
-        this_node.get_or(|| RefCell::new(None));
-
         let txn_ctr = ThreadLocal::new();
-        txn_ctr.get_or(|| RefCell::new(0));
-
         let txn_info = ThreadLocal::new();
-        txn_info.get_or(|| RefCell::new(Some(TransactionInformation::new())));
-
         let em = Arc::new(EpochManager::new(size.into()));
 
         let eg = ThreadLocal::new();
-        eg.get_or(|| RefCell::new(EpochGuard::new(Arc::clone(&em))));
 
         SerializationGraph {
             this_node,
@@ -64,9 +57,15 @@ impl SerializationGraph {
 
     /// Create a node.
     pub fn create_node(&self) -> WeakNode {
+        debug!("create_node");
         let node = Arc::new(RwLock::new(Node::new()));
         let weak = Arc::downgrade(&node);
         self.this_node.get_or(|| RefCell::new(Some(node))); // set thread local variable
+        let eg = self
+            .eg
+            .get_or(|| RefCell::new(EpochGuard::new(Arc::clone(&self.em)))); // set thread local variable
+        eg.borrow_mut().pin();
+
         weak
     }
 
@@ -78,6 +77,7 @@ impl SerializationGraph {
         this_node_rlock.set_checked(true); // set as checked
 
         let outgoing = this_node_rlock.get_outgoing();
+        debug!("remove {} outgoing edges", outgoing.len());
 
         for (that_node, rw_edge) in outgoing {
             let that_node = that_node.upgrade().unwrap();
@@ -157,15 +157,24 @@ impl SerializationGraph {
     }
 
     pub fn needs_abort(&self) -> bool {
+        assert!(self.this_node.get().is_some());
+        assert!(
+            self.this_node.get().unwrap().borrow().is_some(),
+            "{:?}",
+            self.this_node
+        );
+
         let this_node = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
         let rlock = this_node.read().unwrap();
         let aborted = rlock.is_aborted();
         let cascading_abort = rlock.is_cascading_abort();
         drop(rlock);
+        debug!("needs_abort: {}", aborted || cascading_abort);
         aborted || cascading_abort
     }
 
     pub fn is_committed(&self) -> bool {
+        debug!("is_committed");
         let this_node = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
         let rlock = this_node.read().unwrap();
         let committed = rlock.is_committed();
@@ -174,6 +183,7 @@ impl SerializationGraph {
     }
 
     pub fn abort_procedure(&self) {
+        debug!("abort_procedure");
         let this_node = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
         let rlock = this_node.read().unwrap();
         rlock.set_aborted();
@@ -211,7 +221,7 @@ impl SerializationGraph {
         }
 
         drop(rlock);
-
+        debug!("check_comitted: {}", success);
         return success;
     }
 
@@ -235,10 +245,25 @@ impl SerializationGraph {
 
 impl Scheduler for SerializationGraph {
     fn begin(&self) -> TransactionInfo {
-        *self.txn_ctr.get().unwrap().borrow_mut() += 1; // inc txn ctr
-        *self.txn_info.get().unwrap().borrow_mut() = Some(TransactionInformation::new()); // init txn info
+        debug!("begin");
+
+        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // inc txn ctr
+        *self
+            .txn_info
+            .get_or(|| RefCell::new(Some(TransactionInformation::new())))
+            .borrow_mut() = Some(TransactionInformation::new()); // init txn info
+
+        self.eg
+            .get_or(|| RefCell::new(EpochGuard::new(Arc::clone(&self.em))));
 
         let weak = self.create_node();
+
+        assert!(self.txn_ctr.get().is_some(), "{:?}", self.txn_ctr);
+        assert!(self.txn_info.get().is_some(), "{:?}", self.txn_info);
+        assert!(self.this_node.get().is_some(), "{:?}", self.this_node);
+
+        debug!("{}", self);
+
         TransactionInfo::SerializationGraph(weak)
     }
 
@@ -249,6 +274,7 @@ impl Scheduler for SerializationGraph {
         columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
+        debug!("read");
         if let TransactionInfo::SerializationGraph(_) = meta {
             if self.needs_abort() {
                 return Err(self.abort(meta));
@@ -260,6 +286,7 @@ impl Scheduler for SerializationGraph {
 
             let mut guard = rw_table.lock();
             let prv = guard.push_front(Access::Read(meta.clone())); // get prv
+            debug!("push read to rwtable");
             drop(guard);
 
             loop {
@@ -292,12 +319,14 @@ impl Scheduler for SerializationGraph {
             }
 
             if cyclic {
+                debug!("cycle found");
                 let mut guard = rw_table.lock();
                 guard.erase((prv, Access::Read(meta.clone()))); // remove from rw table
                 drop(guard);
                 lsn.replace(prv + 1); // increment to next operation
                 return Err(self.abort(meta));
             }
+            debug!("no cycle found");
 
             let row = match index.get_row(&key) {
                 Ok(rh) => rh,
@@ -325,7 +354,7 @@ impl Scheduler for SerializationGraph {
                 .add(OperationType::Read, key.clone(), index_id.to_string()); // record operation
 
             lsn.replace(prv + 1); // increment to next operation
-
+            debug!("execute read");
             Ok(vals)
         } else {
             panic!("unexpected transaction info");
@@ -343,6 +372,7 @@ impl Scheduler for SerializationGraph {
         f: &dyn Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<Option<Vec<Data>>, NonFatalError> {
+        debug!("write");
         if let TransactionInfo::SerializationGraph(_) = meta {
             let index = self.data.get_index(index_id).unwrap(); // get index
 
@@ -502,6 +532,7 @@ impl Scheduler for SerializationGraph {
     ///
     /// Loop, checking if transaction needs an abort, then checking if it can be committed.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
+        debug!("commit");
         loop {
             if self.needs_abort() {
                 return Err(self.abort(meta));
@@ -557,6 +588,7 @@ impl Scheduler for SerializationGraph {
     ///
     /// Call sg abort procedure then remove accesses and revert writes.
     fn abort(&self, meta: &TransactionInfo) -> NonFatalError {
+        debug!("abort");
         let ops = self
             .txn_info
             .get()
@@ -606,6 +638,13 @@ impl Scheduler for SerializationGraph {
 
 impl fmt::Display for SerializationGraph {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TODO")
+        writeln!(
+            f,
+            "this_node: {:?}",
+            self.this_node.get().unwrap().borrow().as_ref().unwrap()
+        )
+        .unwrap();
+        writeln!(f, "txn_ctr: {}", self.txn_ctr.get().unwrap().borrow()).unwrap();
+        Ok(())
     }
 }

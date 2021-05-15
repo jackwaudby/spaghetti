@@ -10,11 +10,13 @@ use crate::workloads::PrimaryKey::*;
 
 use std::convert::TryFrom;
 use std::sync::Arc;
+use tracing::debug;
 
 /// Balance transaction.
 ///
 /// Sum the balances of a customer's checking and savings accounts.
 pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    debug!("balance txn");
     let accounts_cols = ["customer_id"]; // columns
     let other_cols = ["balance"];
 
@@ -40,6 +42,7 @@ pub fn deposit_checking(
     params: DepositChecking,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
+    debug!("deposit checking txn");
     let accounts_cols = ["customer_id"];
     let checking_cols = ["balance"];
 
@@ -82,6 +85,7 @@ pub fn transact_savings(
     params: TransactSaving,
     protocol: Arc<Protocol>,
 ) -> Result<String, NonFatalError> {
+    debug!("transact savings txn");
     let accounts_cols = ["customer_id"];
     let savings_cols = ["balance"];
 
@@ -124,6 +128,7 @@ pub fn transact_savings(
 ///
 /// Move all the funds from one customer to another.
 pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    debug!("amalgmate");
     let accounts_cols = ["customer_id"]; // columns
     let other_cols = ["balance"];
 
@@ -199,6 +204,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 ///
 /// Write a check against an account taking funds from checking; applying overdraft charge if needed.
 pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    debug!("write check txn");
     let accounts_cols = ["customer_id"];
     let other_cols = ["balance"];
 
@@ -249,6 +255,7 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 ///
 /// Transfer money between accounts; if there is sufficient funds in the checking account.
 pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
+    debug!("send payment");
     let accounts_cols = ["customer_id"];
     let checking_cols = ["balance"];
 

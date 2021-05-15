@@ -122,11 +122,3 @@ impl Node {
         self.cleaned.store(true, Ordering::SeqCst);
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {}
-}

@@ -2,6 +2,7 @@ use crate::scheduler::sgt::node::ArcNode;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct EpochManager {
@@ -68,6 +69,7 @@ impl EpochGuard {
     }
 
     pub fn pin(&mut self) -> bool {
+        debug!("pin");
         let mut res = false;
         if self.active_ctr > 0 {
             self.active_ctr += 1;
@@ -94,10 +96,12 @@ impl EpochGuard {
     }
 
     pub fn unpin(&mut self) {
+        debug!("unpin");
         self.active_ctr -= 1;
     }
 
     pub fn add(&self, node: ArcNode) {
+        debug!("add");
         // TODO: add to txn info holder
         drop(node);
         self.cleanup();

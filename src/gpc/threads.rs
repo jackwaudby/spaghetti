@@ -1,17 +1,11 @@
 use crate::common::message::InternalResponse;
 use crate::common::message::Outcome;
-//use crate::common::message::{Parameters, Transaction};
 use crate::common::statistics::LocalStatistics;
 use crate::gpc::helper;
 use crate::scheduler::Protocol;
-// use crate::workloads::acid::paramgen::{
-//     AcidTransactionProfile, G0Read, G2itemRead, LostUpdateRead,
-// };
-// use crate::workloads::acid::{AcidTransaction, ACID_SF_MAP};
 
 use config::Config;
-use std::fs;
-use std::fs::OpenOptions;
+use std::fs::{self, OpenOptions};
 use std::io::prelude::*;
 use std::path::Path;
 use std::sync::{mpsc, Arc};
