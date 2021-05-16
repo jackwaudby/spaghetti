@@ -26,6 +26,7 @@ pub mod error;
 
 #[derive(Debug)]
 pub struct SerializationGraph {
+    thread_id: ThreadLocal<String>,
     this_node: ThreadLocal<RefCell<Option<ArcNode>>>,
     txn_ctr: ThreadLocal<RefCell<u64>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
@@ -38,6 +39,8 @@ impl SerializationGraph {
     /// Initialise a serialization graph.
     pub fn new(size: u32, data: Workload) -> Self {
         info!("Initialise basic serialization graph with {} node(s)", size);
+
+        let thread_id = ThreadLocal::new();
         let this_node = ThreadLocal::new();
         let txn_ctr = ThreadLocal::new();
         let txn_info = ThreadLocal::new();
@@ -46,6 +49,7 @@ impl SerializationGraph {
         let eg = ThreadLocal::new();
 
         SerializationGraph {
+            thread_id,
             this_node,
             txn_ctr,
             txn_info,
@@ -57,33 +61,46 @@ impl SerializationGraph {
 
     /// Create a node.
     pub fn create_node(&self) -> WeakNode {
-        debug!("create_node");
-        let node = Arc::new(RwLock::new(Node::new()));
-        let weak = Arc::downgrade(&node);
-        self.this_node.get_or(|| RefCell::new(Some(node))); // set thread local variable
-        let eg = self
-            .eg
-            .get_or(|| RefCell::new(EpochGuard::new(Arc::clone(&self.em)))); // set thread local variable
-        eg.borrow_mut().pin();
+        debug!("thread {}; create_node", self.thread_id.get().unwrap());
+        let node = Arc::new(Node::new()); // ArcNode
+        let weak = Arc::downgrade(&node); // WeakNode
+        self.this_node.get().unwrap().borrow_mut().replace(node); // replace local node
+        debug!("thread {}; {}", self.thread_id.get().unwrap(), self);
+
+        self.eg.get().unwrap().borrow_mut().pin(); // pin to epoch guard
 
         weak
     }
 
+    /// Cleanup a node
+    ///
+    /// Called during abort procedure and check committed.
     pub fn cleanup(&self) {
+        debug!("thread {}; cleanup", self.thread_id.get().unwrap());
         let this_node: ArcNode =
             Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
-        let this_node_rlock = this_node.read().unwrap();
 
+        let this_node_rlock = this_node.read(); // get read lock
         this_node_rlock.set_checked(true); // set as checked
+        let outgoing = this_node_rlock.get_outgoing(); // remove outgoing edges
 
-        let outgoing = this_node_rlock.get_outgoing();
-        debug!("remove {} outgoing edges", outgoing.len());
+        debug!(
+            "thread {}; remove {} outgoing edges",
+            self.thread_id.get().unwrap(),
+            outgoing.len()
+        );
 
         for (that_node, rw_edge) in outgoing {
+            assert!(
+                that_node.upgrade().is_some(),
+                "not found: {}",
+                that_node.as_ptr() as usize
+            );
             let that_node = that_node.upgrade().unwrap();
-            let that_node_rlock = that_node.read().unwrap();
+
+            let that_node_rlock = that_node.read(); // get read lock on outgoing
             if this_node_rlock.is_aborted() && !rw_edge {
-                that_node_rlock.set_cascading_abort(); // if abort and not rw; cascade abort
+                that_node_rlock.set_cascading_abort(); // if this_node is aborted and not rw; cascade abort on that_node
             } else {
                 if !that_node_rlock.is_cleaned() {
                     that_node_rlock.remove_incoming(Arc::downgrade(&this_node));
@@ -91,7 +108,7 @@ impl SerializationGraph {
                 }
             }
             drop(that_node_rlock);
-            this_node_rlock.clear_outgoing();
+            this_node_rlock.clear_outgoing(); // clear this node outgoing
         }
 
         if this_node_rlock.is_aborted() {
@@ -100,44 +117,75 @@ impl SerializationGraph {
 
         let node = self.this_node.get().unwrap().borrow_mut().take().unwrap();
 
-        self.eg.get().unwrap().borrow_mut().add(node);
+        debug!(
+            "thread {}; add {} to eg",
+            self.thread_id.get().unwrap(),
+            Arc::as_ptr(&node) as usize
+        );
+        self.eg.get().unwrap().borrow_mut().add(node); // add to garabge collector
     }
 
-    // Returns true operation can proceed; false if transaction should abort.
+    /// Insert an incoming edge into (this) node from (from) node, followed by a cycle check.
     pub fn insert_and_check(&self, from_node: WeakNode, rw_edge: bool) -> bool {
+        debug!("thread {}; insert_and_check", self.thread_id.get().unwrap());
         let this_node: WeakNode =
-            Arc::downgrade(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
+            Arc::downgrade(&self.this_node.get().unwrap().borrow().as_ref().unwrap()); // convert to WeakNode
 
         if this_node.ptr_eq(&from_node) {
-            return true; // self edge
+            debug!("thread {}; self edge", self.thread_id.get().unwrap());
+            return true; // check for self edge
         }
 
-        let this_node: ArcNode = this_node.upgrade().unwrap();
-        let this_node_rlock = this_node.read().unwrap();
-        let exists = this_node_rlock.incoming_edge_exists(from_node.clone());
+        let this_node: ArcNode = this_node.upgrade().unwrap(); // convert to ArcNode
+        let this_node_rlock = this_node.read(); // get read lock
+        let exists = this_node_rlock.incoming_edge_exists(from_node.clone()); // check if exists
+        debug!(
+            "thread {}; edge exists: {}",
+            self.thread_id.get().unwrap(),
+            exists
+        );
 
         loop {
             if !exists {
+                debug!(
+                    "thread {}; edge from {} does not exist",
+                    self.thread_id.get().unwrap(),
+                    Arc::as_ptr(&this_node) as usize
+                );
+
+                assert!(
+                    from_node.upgrade().is_some(),
+                    "not found: {}",
+                    from_node.as_ptr() as usize
+                );
+
                 let from_node = from_node.upgrade().unwrap();
-                let from_node_rlock = from_node.read().unwrap();
+                let from_node_rlock = from_node.read();
                 if from_node_rlock.is_aborted() && !rw_edge {
                     from_node_rlock.set_aborted();
                     drop(from_node_rlock);
                     drop(this_node_rlock);
-
+                    debug!("thread {}; cascading abort", self.thread_id.get().unwrap());
                     return false; // cascading abort
                 }
 
                 if from_node_rlock.is_cleaned() {
                     drop(from_node_rlock);
                     drop(this_node_rlock);
+                    debug!(
+                        "thread {}; from node cleaned",
+                        self.thread_id.get().unwrap()
+                    );
 
                     return true; // from node cleaned
                 }
 
                 if from_node_rlock.is_checked() {
                     drop(from_node_rlock);
-
+                    debug!(
+                        "thread {}; from node checked",
+                        self.thread_id.get().unwrap()
+                    );
                     continue; // from node checked
                 }
 
@@ -145,14 +193,26 @@ impl SerializationGraph {
                 from_node_rlock.insert_outgoing(Arc::downgrade(&this_node), rw_edge);
                 drop(from_node_rlock);
                 drop(this_node_rlock);
-
+                debug!("thread {}; edge inserted", self.thread_id.get().unwrap());
                 let is_cycle = self.cycle_check(); // cycle check
                 return !is_cycle;
+            } else {
+                debug!(
+                    "thread {}; edge from {} exists",
+                    self.thread_id.get().unwrap(),
+                    Arc::as_ptr(&this_node) as usize
+                );
+                return true;
             }
         }
     }
 
     pub fn cycle_check(&self) -> bool {
+        debug!(
+            "thread {}; cycle_check: {}",
+            self.thread_id.get().unwrap(),
+            true
+        );
         true // TODO
     }
 
@@ -165,27 +225,31 @@ impl SerializationGraph {
         );
 
         let this_node = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
-        let rlock = this_node.read().unwrap();
+        let rlock = this_node.read();
         let aborted = rlock.is_aborted();
         let cascading_abort = rlock.is_cascading_abort();
         drop(rlock);
-        debug!("needs_abort: {}", aborted || cascading_abort);
+        debug!(
+            "thread {}; needs_abort: {}",
+            self.thread_id.get().unwrap(),
+            aborted || cascading_abort
+        );
         aborted || cascading_abort
     }
 
     pub fn is_committed(&self) -> bool {
-        debug!("is_committed");
+        debug!("thread {}; is_committed", self.thread_id.get().unwrap());
         let this_node = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
-        let rlock = this_node.read().unwrap();
+        let rlock = this_node.read();
         let committed = rlock.is_committed();
         drop(rlock);
         committed
     }
 
     pub fn abort_procedure(&self) {
-        debug!("abort_procedure");
+        debug!("thread {}; abort_procedure", self.thread_id.get().unwrap());
         let this_node = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
-        let rlock = this_node.read().unwrap();
+        let rlock = this_node.read();
         rlock.set_aborted();
         drop(rlock);
 
@@ -194,7 +258,7 @@ impl SerializationGraph {
 
     pub fn check_committed(&self) -> bool {
         let this_node = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
-        let rlock = this_node.read().unwrap();
+        let rlock = this_node.read();
 
         if rlock.is_aborted() || rlock.is_cascading_abort() {
             drop(rlock);
@@ -221,19 +285,24 @@ impl SerializationGraph {
         }
 
         drop(rlock);
-        debug!("check_comitted: {}", success);
+        debug!(
+            "thread {}; check_comitted: {}",
+            self.thread_id.get().unwrap(),
+            success
+        );
         return success;
     }
 
     pub fn erase_graph_constraints(&self) -> bool {
         let this_node = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
-        let rlock = this_node.read().unwrap();
+        let rlock = this_node.read();
 
         let is_cycle = self.cycle_check();
 
         if is_cycle {
             rlock.set_aborted();
             drop(rlock);
+
             return false;
         }
 
@@ -245,25 +314,28 @@ impl SerializationGraph {
 
 impl Scheduler for SerializationGraph {
     fn begin(&self) -> TransactionInfo {
-        debug!("begin");
-
+        let handle = std::thread::current();
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // inc txn ctr
-        *self
-            .txn_info
-            .get_or(|| RefCell::new(Some(TransactionInformation::new())))
-            .borrow_mut() = Some(TransactionInformation::new()); // init txn info
+
+        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
+            Some(TransactionInformation::new()); // init txn info
 
         self.eg
-            .get_or(|| RefCell::new(EpochGuard::new(Arc::clone(&self.em))));
+            .get_or(|| RefCell::new(EpochGuard::new(Arc::clone(&self.em)))); // init epoch guard
 
+        self.this_node.get_or(|| RefCell::new(None)); // init this_node
+        self.thread_id.get_or(|| handle.name().unwrap().to_string());
         let weak = self.create_node();
 
         assert!(self.txn_ctr.get().is_some(), "{:?}", self.txn_ctr);
         assert!(self.txn_info.get().is_some(), "{:?}", self.txn_info);
         assert!(self.this_node.get().is_some(), "{:?}", self.this_node);
 
-        debug!("{}", self);
-
+        debug!(
+            "thread {}; begin: {}",
+            self.thread_id.get().unwrap(),
+            weak.as_ptr() as usize
+        );
         TransactionInfo::SerializationGraph(weak)
     }
 
@@ -274,7 +346,7 @@ impl Scheduler for SerializationGraph {
         columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
-        debug!("read");
+        debug!("thread {}; read", self.thread_id.get().unwrap());
         if let TransactionInfo::SerializationGraph(_) = meta {
             if self.needs_abort() {
                 return Err(self.abort(meta));
@@ -286,7 +358,16 @@ impl Scheduler for SerializationGraph {
 
             let mut guard = rw_table.lock();
             let prv = guard.push_front(Access::Read(meta.clone())); // get prv
-            debug!("push read to rwtable");
+            debug!(
+                "thread {}; push read to rwtable",
+                self.thread_id.get().unwrap()
+            );
+            debug!(
+                "thread {}; key: {}, rwtable: {}",
+                self.thread_id.get().unwrap(),
+                key,
+                guard
+            );
             drop(guard);
 
             loop {
@@ -298,6 +379,7 @@ impl Scheduler for SerializationGraph {
 
             let guard = rw_table.lock();
             let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
+
             drop(guard);
 
             let mut cyclic = false; // insert and check each access
@@ -319,14 +401,14 @@ impl Scheduler for SerializationGraph {
             }
 
             if cyclic {
-                debug!("cycle found");
+                debug!("thread {}; cycle found", self.thread_id.get().unwrap());
                 let mut guard = rw_table.lock();
                 guard.erase((prv, Access::Read(meta.clone()))); // remove from rw table
                 drop(guard);
                 lsn.replace(prv + 1); // increment to next operation
                 return Err(self.abort(meta));
             }
-            debug!("no cycle found");
+            debug!("thread {}; no cycle found", self.thread_id.get().unwrap());
 
             let row = match index.get_row(&key) {
                 Ok(rh) => rh,
@@ -354,7 +436,7 @@ impl Scheduler for SerializationGraph {
                 .add(OperationType::Read, key.clone(), index_id.to_string()); // record operation
 
             lsn.replace(prv + 1); // increment to next operation
-            debug!("execute read");
+            debug!("thread {}; execute read", self.thread_id.get().unwrap());
             Ok(vals)
         } else {
             panic!("unexpected transaction info");
@@ -372,13 +454,20 @@ impl Scheduler for SerializationGraph {
         f: &dyn Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<Option<Vec<Data>>, NonFatalError> {
-        debug!("write");
+        debug!("thread {}; write", self.thread_id.get().unwrap());
         if let TransactionInfo::SerializationGraph(_) = meta {
             let index = self.data.get_index(index_id).unwrap(); // get index
 
             let mut prv;
             let mut lsn;
+            let mut i = 0;
             loop {
+                i += 1;
+                debug!(
+                    "thread {}; write: attempt {}",
+                    self.thread_id.get().unwrap(),
+                    i
+                );
                 if self.needs_abort() {
                     return Err(self.abort(meta));
                 }
@@ -392,6 +481,12 @@ impl Scheduler for SerializationGraph {
                 let rw_table = index.get_rw_table(&key).unwrap();
                 let mut guard = rw_table.lock();
                 prv = guard.push_front(Access::Write(meta.clone()));
+                debug!(
+                    "thread {}; key: {}, rwtable: {}",
+                    self.thread_id.get().unwrap(),
+                    key,
+                    guard
+                );
                 drop(guard);
 
                 loop {
@@ -403,6 +498,7 @@ impl Scheduler for SerializationGraph {
 
                 let guard = rw_table.lock();
                 let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
+
                 drop(guard);
 
                 let mut wait = false;
@@ -412,8 +508,14 @@ impl Scheduler for SerializationGraph {
                         match access {
                             Access::Write(from) => {
                                 if let TransactionInfo::SerializationGraph(from_node) = from {
+                                    assert!(
+                                        from_node.upgrade().is_some(),
+                                        "not found: {}",
+                                        from_node.as_ptr() as usize
+                                    );
+
                                     let fm = from_node.upgrade().unwrap();
-                                    let rlock = fm.read().unwrap();
+                                    let rlock = fm.read();
                                     if !rlock.is_committed() {
                                         if self.insert_and_check(from_node, false) {
                                             cyclic = true;
@@ -532,7 +634,7 @@ impl Scheduler for SerializationGraph {
     ///
     /// Loop, checking if transaction needs an abort, then checking if it can be committed.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
-        debug!("commit");
+        debug!("thread {}; commit", self.thread_id.get().unwrap());
         loop {
             if self.needs_abort() {
                 return Err(self.abort(meta));
@@ -588,7 +690,7 @@ impl Scheduler for SerializationGraph {
     ///
     /// Call sg abort procedure then remove accesses and revert writes.
     fn abort(&self, meta: &TransactionInfo) -> NonFatalError {
-        debug!("abort");
+        debug!("thread {}; abort", self.thread_id.get().unwrap());
         let ops = self
             .txn_info
             .get()
@@ -623,7 +725,7 @@ impl Scheduler for SerializationGraph {
                     rguard.revert(); // revert write
                     drop(rguard);
 
-                    guard.erase_all(Access::Read(meta.clone())); // remove access
+                    guard.erase_all(Access::Write(meta.clone())); // remove access
                     drop(guard);
                 }
             }
@@ -631,16 +733,16 @@ impl Scheduler for SerializationGraph {
 
         self.eg.get().unwrap().borrow_mut().unpin(); // unpin txn
 
-        NonFatalError::NonSerializable
-        // TODO: return the why
+        NonFatalError::NonSerializable // TODO: return the why
     }
 }
 
 impl fmt::Display for SerializationGraph {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "");
         writeln!(
             f,
-            "this_node: {:?}",
+            "this_node: {}",
             self.this_node.get().unwrap().borrow().as_ref().unwrap()
         )
         .unwrap();

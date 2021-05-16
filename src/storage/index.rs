@@ -228,3 +228,28 @@ impl fmt::Display for Index {
         Ok(())
     }
 }
+
+impl fmt::Display for RwTable {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut rw = String::new();
+        let n = self.entries.len();
+
+        if n > 0 {
+            rw.push_str("[");
+
+            for (prv, access) in &self.entries {
+                rw.push_str(&format!("{}-{}", prv, access));
+                rw.push_str(", ");
+            }
+            let len = rw.len();
+            rw.truncate(len - 2);
+            let (prv, access) = self.entries[n - 1].clone();
+            rw.push_str(&format!("]"));
+        } else {
+            rw.push_str("[]");
+        }
+
+        write!(f, "prv: {}, rw: {}", self.prv, rw).unwrap();
+        Ok(())
+    }
+}

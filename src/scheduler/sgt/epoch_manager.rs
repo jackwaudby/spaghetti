@@ -17,6 +17,7 @@ pub struct EpochGuard {
     active_ctr: u64,
     local_ctr: u64,
     runs: u64,
+    used: Vec<ArcNode>,
 }
 
 impl EpochManager {
@@ -39,7 +40,7 @@ impl EpochManager {
         if this_epoch_ctr >= self.guard_ctr.load(Ordering::SeqCst) {
             self.global_ctr
                 .compare_exchange(old, old + 1, Ordering::SeqCst, Ordering::SeqCst);
-
+            debug!("increment global ctr");
             let global_ctr = self.global_ctr.load(Ordering::SeqCst);
             if global_ctr > 1 {
                 let n_bucket = (global_ctr + 2) % 6;
@@ -65,6 +66,7 @@ impl EpochGuard {
             active_ctr: 0,
             local_ctr: 0,
             runs: 0,
+            used: Vec::new(),
         }
     }
 
@@ -78,7 +80,6 @@ impl EpochGuard {
         self.active_ctr = 1;
         self.runs += 1;
 
-        //  println!("eg: {}; run: {}", self.id, self.runs);
         if self.runs >= self.em.guard_ctr.load(Ordering::SeqCst) {
             res = self.em.try_increment_ctr();
             self.runs = 0;
@@ -89,9 +90,8 @@ impl EpochGuard {
                 self.em.same_epoch_ctr[(self.local_ctr % 6) as usize]
                     .fetch_add(1, Ordering::SeqCst);
             }
-        } else {
-            //       println!("eg: {}; same epoch ctr < instance ctr ", self.id);
         }
+
         res
     }
 
@@ -100,14 +100,38 @@ impl EpochGuard {
         self.active_ctr -= 1;
     }
 
-    pub fn add(&self, node: ArcNode) {
-        debug!("add");
+    pub fn add(&mut self, node: ArcNode) {
         // TODO: add to txn info holder
-        drop(node);
+        debug!("drop: {}", Arc::as_ptr(&node) as usize);
+        self.used.push(node);
+
         self.cleanup();
     }
 
     fn cleanup(&self) {
         // TODO: remove stuff from next bucket
+    }
+}
+
+impl Drop for EpochGuard {
+    fn drop(&mut self) {
+        let mut u = String::new();
+        let n = self.used.len();
+
+        if n > 0 {
+            u.push_str("[");
+
+            for node in &self.used[0..n - 1] {
+                u.push_str(&format!("{}", Arc::as_ptr(&node) as usize));
+                u.push_str(", ");
+            }
+
+            let node = &self.used[n - 1].clone();
+            u.push_str(&format!("{}]", Arc::as_ptr(&node) as usize));
+        } else {
+            u.push_str("[]");
+        }
+
+        debug!("{:?}", u);
     }
 }

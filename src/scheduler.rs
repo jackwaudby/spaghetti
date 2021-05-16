@@ -158,7 +158,7 @@ impl fmt::Display for TransactionInfo {
         use TransactionInfo::*;
 
         match &self {
-            SerializationGraph(_) => write!(f, "TODO"),
+            SerializationGraph(node) => write!(f, "{}", node.as_ptr() as usize),
         }
     }
 }

@@ -1,11 +1,15 @@
+use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock, Weak};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
 
-pub type ArcNode = Arc<RwLock<Node>>;
-pub type WeakNode = Weak<RwLock<Node>>;
+pub type ArcNode = Arc<Node>;
+pub type WeakNode = Weak<Node>;
 
 #[derive(Debug)]
-pub struct Node {
+pub struct Node(RwLock<Attributes>);
+
+#[derive(Debug)]
+pub struct Attributes {
     incoming: Mutex<Vec<(WeakNode, bool)>>,
     outgoing: Mutex<Vec<(WeakNode, bool)>>,
     committed: AtomicBool,
@@ -17,7 +21,21 @@ pub struct Node {
 
 impl Node {
     pub fn new() -> Self {
-        Node {
+        Node(RwLock::new(Attributes::new()))
+    }
+
+    pub fn read(&self) -> RwLockReadGuard<Attributes> {
+        self.0.read().unwrap()
+    }
+
+    pub fn write(&self) -> RwLockWriteGuard<Attributes> {
+        self.0.write().unwrap()
+    }
+}
+
+impl Attributes {
+    pub fn new() -> Self {
+        Attributes {
             incoming: Mutex::new(vec![]),
             outgoing: Mutex::new(vec![]),
             committed: AtomicBool::new(false),
@@ -120,5 +138,54 @@ impl Node {
 
     pub fn set_cleaned(&self) {
         self.cleaned.store(true, Ordering::SeqCst);
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut incoming = String::new();
+        let n = self.read().incoming.lock().unwrap().len();
+
+        if n > 0 {
+            incoming.push_str("[");
+
+            for (node, rw_edge) in &self.read().incoming.lock().unwrap()[0..n - 1] {
+                incoming.push_str(&format!("{}-{}", node.as_ptr() as usize, rw_edge));
+                incoming.push_str(", ");
+            }
+
+            let (node, rw_edge) = &self.read().incoming.lock().unwrap()[n - 1].clone();
+            incoming.push_str(&format!("{}-{}]", node.as_ptr() as usize, rw_edge));
+        } else {
+            incoming.push_str("[]");
+        }
+
+        let mut outgoing = String::new();
+        let m = self.read().incoming.lock().unwrap().len();
+
+        if m > 0 {
+            outgoing.push_str("[");
+
+            for (node, rw_edge) in &self.read().outgoing.lock().unwrap()[0..m - 1] {
+                outgoing.push_str(&format!("{}-{}", node.as_ptr() as usize, rw_edge));
+                outgoing.push_str(", ");
+            }
+
+            let (node, rw_edge) = self.read().outgoing.lock().unwrap()[m - 1].clone();
+            outgoing.push_str(&format!("{}-{}]", node.as_ptr() as usize, rw_edge));
+        } else {
+            outgoing.push_str("[]");
+        }
+
+        writeln!(f, "");
+        writeln!(f, "incoming: {}", incoming);
+        writeln!(f, "outgoing: {}", outgoing);
+        writeln!(f, "committed: {:?}", self.read().committed);
+        writeln!(f, "cascading_abort: {:?}", self.read().cascading_abort);
+        writeln!(f, "aborted: {:?}", self.read().aborted);
+        writeln!(f, "cleaned: {:?}", self.read().cleaned);
+        write!(f, "checked: {:?}", self.read().checked);
+
+        Ok(())
     }
 }
