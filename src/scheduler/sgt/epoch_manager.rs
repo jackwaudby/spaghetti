@@ -35,6 +35,9 @@ pub struct EpochGuard {
 
     /// List of used ArcNodes.
     used: Option<Vec<ArcNode>>,
+
+    /// Used transaction information
+    txn_info: Vec<Option<Vec<ArcNode>>>,
 }
 
 impl EpochManager {
@@ -82,12 +85,18 @@ impl EpochGuard {
     pub fn new(em: Arc<EpochManager>) -> Self {
         em.same_epoch_ctr[0].fetch_add(1, Ordering::SeqCst);
 
+        let mut txn_info = Vec::with_capacity(6);
+        for _ in 0..6 {
+            txn_info.push(Some(Vec::new()));
+        }
+
         EpochGuard {
             em,
             active_ctr: 0,
             local_ctr: 0,
             runs: 0,
             used: Some(Vec::new()),
+            txn_info,
         }
     }
 
@@ -118,52 +127,57 @@ impl EpochGuard {
         res
     }
 
-    /// Unpin a transaction from the EpochGuard.
-    ///
-    /// Decrements the active counter.
     pub fn unpin(&mut self) {
         debug!("unpin");
         self.active_ctr -= 1;
     }
 
     pub fn add(&mut self, node: ArcNode) {
-        // TODO: add to txn info holder
         debug!("drop: {}", Arc::as_ptr(&node) as usize);
-        self.used.as_mut().unwrap().push(node);
-
+        self.txn_info[(self.local_ctr % 6) as usize]
+            .as_mut()
+            .unwrap()
+            .push(node);
+        //        self.used.as_mut().unwrap().push(node);
         self.cleanup();
     }
 
-    fn cleanup(&self) {
-        // TODO: remove stuff from next bucket
+    fn cleanup(&mut self) {
+        let delete_bucket = ((self.em.global_ctr.load(Ordering::SeqCst) + 1) % 6) as usize;
+        self.txn_info[delete_bucket].as_mut().unwrap().clear();
     }
 }
 
 impl Drop for EpochGuard {
     fn drop(&mut self) {
-        let mut u = String::new();
-        let n = self.used.as_ref().unwrap().len();
+        // let mut u = String::new();
+        // let n = self.used.as_ref().unwrap().len();
 
-        if n > 0 {
-            u.push_str("[");
+        // if n > 0 {
+        //     u.push_str("[");
 
-            for node in &self.used.as_ref().unwrap()[0..n - 1] {
-                u.push_str(&format!("{}", Arc::as_ptr(&node) as usize));
-                u.push_str(", ");
-            }
+        //     for node in &self.used.as_ref().unwrap()[0..n - 1] {
+        //         u.push_str(&format!("{}", Arc::as_ptr(&node) as usize));
+        //         u.push_str(", ");
+        //     }
 
-            let node = &self.used.as_ref().unwrap()[n - 1].clone();
-            u.push_str(&format!("{}]", Arc::as_ptr(&node) as usize));
-        } else {
-            u.push_str("[]");
+        //     let node = &self.used.as_ref().unwrap()[n - 1].clone();
+        //     u.push_str(&format!("{}]", Arc::as_ptr(&node) as usize));
+        // } else {
+        //     u.push_str("[]");
+        // }
+
+        // debug!("{:?}", u);
+        //  self.em
+        // .global_used
+        // .lock()
+        // .unwrap()
+        // .extend(self.used.take().unwrap());
+
+        for bucket in &mut self.txn_info {
+            let mut guard = self.em.global_used.lock().unwrap();
+            guard.extend(bucket.take().unwrap());
+            drop(guard);
         }
-
-        debug!("{:?}", u);
-
-        self.em
-            .global_used
-            .lock()
-            .unwrap()
-            .extend(self.used.take().unwrap());
     }
 }
