@@ -23,6 +23,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.sample_size(10);
     group.sampling_mode(SamplingMode::Flat);
     group.bench_function("1-core", |b| b.iter(|| gpc(1)));
+    group.bench_function("4-cores", |b| b.iter(|| gpc(4)));
     group.finish();
 }
 
