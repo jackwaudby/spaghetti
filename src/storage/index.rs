@@ -191,6 +191,10 @@ impl LogSequenceNumber {
     pub fn replace(&self, prv: u64) {
         self.lsn.store(prv, Ordering::SeqCst);
     }
+
+    pub fn inc(&self) {
+        self.lsn.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 impl RwTable {

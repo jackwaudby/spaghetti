@@ -10,7 +10,7 @@ use crate::storage::row::Access;
 use crate::workloads::{PrimaryKey, Workload};
 
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 use thread_local::ThreadLocal;
@@ -31,6 +31,8 @@ pub struct SerializationGraph {
     txn_ctr: ThreadLocal<RefCell<u64>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
     eg: ThreadLocal<RefCell<EpochGuard>>,
+    visited: ThreadLocal<RefCell<HashSet<usize>>>,
+    stack: ThreadLocal<RefCell<Vec<WeakNode>>>,
     em: Arc<EpochManager>,
     data: Arc<Workload>,
 }
@@ -40,21 +42,15 @@ impl SerializationGraph {
     pub fn new(size: u32, data: Workload) -> Self {
         info!("Initialise basic serialization graph with {} node(s)", size);
 
-        let thread_id = ThreadLocal::new();
-        let this_node = ThreadLocal::new();
-        let txn_ctr = ThreadLocal::new();
-        let txn_info = ThreadLocal::new();
-        let em = Arc::new(EpochManager::new(size.into()));
-
-        let eg = ThreadLocal::new();
-
         SerializationGraph {
-            thread_id,
-            this_node,
-            txn_ctr,
-            txn_info,
-            eg,
-            em,
+            thread_id: ThreadLocal::new(),
+            this_node: ThreadLocal::new(),
+            txn_ctr: ThreadLocal::new(),
+            txn_info: ThreadLocal::new(),
+            visited: ThreadLocal::new(),
+            stack: ThreadLocal::new(),
+            eg: ThreadLocal::new(),
+            em: Arc::new(EpochManager::new(size.into())),
             data: Arc::new(data),
         }
     }
@@ -191,12 +187,47 @@ impl SerializationGraph {
     }
 
     pub fn cycle_check(&self) -> bool {
-        debug!(
-            "thread {}; cycle_check: {}",
-            self.thread_id.get().unwrap(),
-            true
-        );
-        true // TODO
+        let this = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap()); // start
+        let start = Arc::downgrade(&this);
+        let mut visited = self
+            .visited
+            .get_or(|| RefCell::new(HashSet::new()))
+            .borrow_mut();
+
+        let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
+
+        visited.clear();
+        stack.clear();
+
+        let this_rlock = this.read();
+        let outgoing = this_rlock.get_outgoing();
+        let mut out: Vec<WeakNode> = outgoing.into_iter().map(|(node, _)| node).collect();
+        stack.append(&mut out);
+        drop(this_rlock);
+
+        while let Some(current) = stack.pop() {
+            if start.ptr_eq(&current) {
+                return true; // cycle found
+            }
+
+            let current_ptr = current.as_ptr() as usize;
+            if visited.contains(&current_ptr) {
+                continue; // already visited
+            }
+            visited.insert(current_ptr);
+
+            let arc_current = current.upgrade().unwrap();
+            let rlock = arc_current.read();
+            if !rlock.is_committed() || !rlock.is_aborted() || !rlock.is_cascading_abort() {
+                let outgoing = rlock.get_outgoing();
+                let mut out: Vec<WeakNode> = outgoing.into_iter().map(|(node, _)| node).collect();
+                stack.append(&mut out);
+            }
+
+            drop(rlock);
+        }
+
+        false
     }
 
     /// Check if a transaction needs to abort.
@@ -568,7 +599,7 @@ impl Scheduler for SerializationGraph {
             drop(guard);
 
             let mut cyclic = false;
-            for (id, access) in snapshot {
+            for (id, access) in snapshot.clone() {
                 if id < prv {
                     match access {
                         Access::Read(from) => {
@@ -619,7 +650,18 @@ impl Scheduler for SerializationGraph {
                 }
             };
 
-            guard.set_values(columns, &new_values).unwrap();
+            match guard.set_values(columns, &new_values) {
+                Ok(_) => {}
+                Err(_) => {
+                    panic!(
+                        "row: {}; lsn: {}; prv: {}; rwtable: {:?}",
+                        guard,
+                        lsn.get(),
+                        prv,
+                        snapshot
+                    );
+                }
+            }
 
             self.txn_info
                 .get()
@@ -629,7 +671,7 @@ impl Scheduler for SerializationGraph {
                 .unwrap()
                 .add(OperationType::Write, key.clone(), index_id.to_string());
 
-            lsn.replace(prv + 1);
+            //     lsn.replace(prv + 1); TODO:
 
             Ok(current_values)
         } else {
@@ -665,6 +707,7 @@ impl Scheduler for SerializationGraph {
                     } = op;
                     let index = self.data.get_index(&index).unwrap(); // get handle to index
                     let rw_table = index.get_rw_table(&key).unwrap(); // get handle to rwtable
+                    let lsn = index.get_lsn(&key).unwrap(); // TODO
 
                     let mut guard = rw_table.lock();
                     match op_type {
@@ -679,7 +722,9 @@ impl Scheduler for SerializationGraph {
                             drop(rguard);
 
                             guard.erase_all(Access::Write(meta.clone())); // remove access
+
                             drop(guard);
+                            lsn.inc(); // TODO
                         }
                     }
                 }
@@ -720,6 +765,7 @@ impl Scheduler for SerializationGraph {
 
             let rw_table = index.get_rw_table(&key).unwrap(); // get handle to rwtable
             let mut guard = rw_table.lock();
+            let lsn = index.get_lsn(&key).unwrap(); // TODO
 
             match op_type {
                 OperationType::Read => {
@@ -734,6 +780,8 @@ impl Scheduler for SerializationGraph {
 
                     guard.erase_all(Access::Write(meta.clone())); // remove access
                     drop(guard);
+
+                    lsn.inc(); // TODO
                 }
             }
         }
