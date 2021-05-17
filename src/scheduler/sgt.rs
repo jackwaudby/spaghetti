@@ -1,4 +1,5 @@
 use crate::scheduler::sgt::epoch_manager::{EpochGuard, EpochManager};
+use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::sgt::node::{ArcNode, Node, WeakNode};
 use crate::scheduler::sgt::transaction_information::{
     Operation, OperationType, TransactionInformation,
@@ -424,7 +425,8 @@ impl Scheduler for SerializationGraph {
                 guard.erase((prv, Access::Read(meta.clone()))); // remove from rw table
                 drop(guard);
                 lsn.replace(prv + 1); // increment to next operation
-                return Err(self.abort(meta));
+                self.abort(meta);
+                return Err(SerializationGraphError::CycleFound.into());
             }
 
             let row = match index.get_row(&key) {
@@ -575,7 +577,9 @@ impl Scheduler for SerializationGraph {
                     guard.erase((prv, Access::Write(meta.clone()))); // remove from rw_table
                     drop(guard);
                     lsn.replace(prv + 1); // increment to next operation
-                    return Err(self.abort(meta));
+
+                    self.abort(meta);
+                    return Err(SerializationGraphError::CycleFound.into());
                 }
 
                 if wait {
@@ -616,7 +620,8 @@ impl Scheduler for SerializationGraph {
                 guard.erase((prv, Access::Write(meta.clone()))); // remove from rw_table
                 drop(guard);
                 lsn.replace(prv + 1); // increment to next operation
-                return Err(self.abort(meta));
+                self.abort(meta);
+                return Err(SerializationGraphError::CycleFound.into());
             }
 
             let row = index.get_row(&key).unwrap();
