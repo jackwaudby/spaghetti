@@ -2,7 +2,7 @@ use crate::workloads::PrimaryKey;
 
 #[derive(Debug)]
 pub struct TransactionInformation {
-    operations: Vec<Operation>,
+    operations: Option<Vec<Operation>>,
 }
 
 #[derive(Debug, Clone)]
@@ -21,16 +21,19 @@ pub enum OperationType {
 impl TransactionInformation {
     pub fn new() -> Self {
         TransactionInformation {
-            operations: Vec::new(),
+            operations: Some(Vec::with_capacity(8)),
         }
     }
 
     pub fn add(&mut self, op_type: OperationType, key: PrimaryKey, index: String) {
-        self.operations.push(Operation::new(op_type, key, index));
+        self.operations
+            .as_mut()
+            .unwrap()
+            .push(Operation::new(op_type, key, index));
     }
 
-    pub fn get(&self) -> Vec<Operation> {
-        self.operations.clone()
+    pub fn get(&mut self) -> Vec<Operation> {
+        self.operations.take().unwrap()
     }
 }
 

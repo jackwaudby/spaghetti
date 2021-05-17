@@ -291,8 +291,8 @@ impl SerializationGraph {
             .txn_info
             .get()
             .unwrap()
-            .borrow()
-            .as_ref()
+            .borrow_mut()
+            .as_mut()
             .unwrap()
             .get(); // get operations
 
@@ -809,8 +809,8 @@ impl Scheduler for SerializationGraph {
             .txn_info
             .get()
             .unwrap()
-            .borrow()
-            .as_ref()
+            .borrow_mut()
+            .as_mut()
             .unwrap()
             .get(); // get operations
 
