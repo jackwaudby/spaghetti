@@ -1,7 +1,7 @@
-use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Weak};
 
 pub type ArcNode = Arc<Node>;
 pub type WeakNode = Weak<Node>;
@@ -48,14 +48,14 @@ impl Attributes {
     }
 
     pub fn incoming_edge_exists(&self, from_node: WeakNode) -> bool {
-        let guard = self.incoming.lock().unwrap();
+        let guard = self.incoming.lock();
         let exists = guard.iter().any(|(edge, _)| from_node.ptr_eq(&edge));
         drop(guard);
         exists
     }
 
     pub fn is_incoming(&self) -> bool {
-        let guard = self.incoming.lock().unwrap();
+        let guard = self.incoming.lock();
         let emp = !guard.is_empty();
 
         drop(guard);
@@ -63,38 +63,38 @@ impl Attributes {
     }
 
     pub fn insert_incoming(&self, from_node: WeakNode, rw_edge: bool) {
-        let mut guard = self.incoming.lock().unwrap();
+        let mut guard = self.incoming.lock();
         guard.push((from_node, rw_edge));
         drop(guard);
     }
 
     pub fn remove_incoming(&self, from_node: WeakNode) {
-        let mut guard = self.incoming.lock().unwrap();
+        let mut guard = self.incoming.lock();
         guard.retain(|(edge, _)| !from_node.ptr_eq(&edge));
 
         drop(guard);
     }
 
     pub fn insert_outgoing(&self, to_node: WeakNode, rw_edge: bool) {
-        let mut guard = self.outgoing.lock().unwrap();
+        let mut guard = self.outgoing.lock();
         guard.push((to_node, rw_edge));
         drop(guard);
     }
 
     pub fn clear_incoming(&self) {
-        let mut guard = self.incoming.lock().unwrap();
+        let mut guard = self.incoming.lock();
         guard.clear();
         drop(guard);
     }
 
     pub fn clear_outgoing(&self) {
-        let mut guard = self.outgoing.lock().unwrap();
+        let mut guard = self.outgoing.lock();
         guard.clear();
         drop(guard);
     }
 
     pub fn get_outgoing(&self) -> Vec<(WeakNode, bool)> {
-        let guard = self.outgoing.lock().unwrap();
+        let guard = self.outgoing.lock();
         let out = guard.clone();
 
         drop(guard);
@@ -145,34 +145,34 @@ impl Attributes {
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut incoming = String::new();
-        let n = self.read().incoming.lock().unwrap().len();
+        let n = self.read().incoming.lock().len();
 
         if n > 0 {
             incoming.push_str("[");
 
-            for (node, rw_edge) in &self.read().incoming.lock().unwrap()[0..n - 1] {
+            for (node, rw_edge) in &self.read().incoming.lock()[0..n - 1] {
                 incoming.push_str(&format!("{}-{}", node.as_ptr() as usize, rw_edge));
                 incoming.push_str(", ");
             }
 
-            let (node, rw_edge) = &self.read().incoming.lock().unwrap()[n - 1].clone();
+            let (node, rw_edge) = &self.read().incoming.lock()[n - 1].clone();
             incoming.push_str(&format!("{}-{}]", node.as_ptr() as usize, rw_edge));
         } else {
             incoming.push_str("[]");
         }
 
         let mut outgoing = String::new();
-        let m = self.read().incoming.lock().unwrap().len();
+        let m = self.read().incoming.lock().len();
 
         if m > 0 {
             outgoing.push_str("[");
 
-            for (node, rw_edge) in &self.read().outgoing.lock().unwrap()[0..m - 1] {
+            for (node, rw_edge) in &self.read().outgoing.lock()[0..m - 1] {
                 outgoing.push_str(&format!("{}-{}", node.as_ptr() as usize, rw_edge));
                 outgoing.push_str(", ");
             }
 
-            let (node, rw_edge) = self.read().outgoing.lock().unwrap()[m - 1].clone();
+            let (node, rw_edge) = self.read().outgoing.lock()[m - 1].clone();
             outgoing.push_str(&format!("{}-{}]", node.as_ptr() as usize, rw_edge));
         } else {
             outgoing.push_str("[]");
