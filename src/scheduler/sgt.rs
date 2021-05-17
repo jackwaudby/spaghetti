@@ -253,6 +253,7 @@ impl SerializationGraph {
         drop(this_wlock);
 
         let this_rlock = this.read();
+
         if this_rlock.is_incoming() {
             this_rlock.set_checked(false);
             drop(this_rlock);
@@ -380,21 +381,23 @@ impl Scheduler for SerializationGraph {
 
             drop(guard);
 
-            let timeout = std::time::Instant::now() + std::time::Duration::new(5, 0);
+            //    let timeout = std::time::Instant::now() + std::time::Duration::new(5, 0);
 
             loop {
                 let i = lsn.get(); // current lsn
 
                 if i == prv {
                     break; // break when my prv == lsn
-                } else if timeout < std::time::Instant::now() {
-                    panic!(
-                        "thread {}; lsn: {}; prv: {}",
-                        self.thread_id.get().unwrap(),
-                        i,
-                        prv
-                    );
                 }
+
+                // else if timeout < std::time::Instant::now() {
+                //     panic!(
+                //         "thread {}; lsn: {}; prv: {}",
+                //         self.thread_id.get().unwrap(),
+                //         i,
+                //         prv
+                //     );
+                // }
             }
 
             let guard = rw_table.lock();
@@ -495,45 +498,47 @@ impl Scheduler for SerializationGraph {
 
                 drop(guard);
 
-                let timeout = std::time::Instant::now() + std::time::Duration::new(5, 0);
+                //      let timeout = std::time::Instant::now() + std::time::Duration::new(5, 0);
 
                 loop {
                     let i = lsn.get(); // current operation number
 
                     if i == prv {
                         break; // if current = previous then this transaction can execute
-                    } else if timeout < std::time::Instant::now() {
-                        panic!(
-                            "thread {}; lsn: {}; prv: {}",
-                            self.thread_id.get().unwrap(),
-                            i,
-                            prv
-                        );
                     }
+
+                    // else if timeout < std::time::Instant::now() {
+                    //     panic!(
+                    //         "thread {}; lsn: {}; prv: {}",
+                    //         self.thread_id.get().unwrap(),
+                    //         i,
+                    //         prv
+                    //     );
+                    // }
                 }
 
                 let guard = rw_table.lock();
                 let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
                 drop(guard);
 
-                let mut rw = String::new();
-                let n = snapshot.len();
-                if n > 0 {
-                    rw.push_str("[");
+                // let mut rw = String::new();
+                // let n = snapshot.len();
+                // if n > 0 {
+                //     rw.push_str("[");
 
-                    for (prv, access) in &snapshot {
-                        rw.push_str(&format!("{}-{}", prv, access));
-                        rw.push_str(", ");
-                    }
-                    let len = rw.len();
-                    rw.truncate(len - 2);
-                    let (_, _) = snapshot[n - 1].clone();
-                    rw.push_str(&format!("]"));
-                } else {
-                    rw.push_str("[]");
-                }
+                //     for (prv, access) in &snapshot {
+                //         rw.push_str(&format!("{}-{}", prv, access));
+                //         rw.push_str(", ");
+                //     }
+                //     let len = rw.len();
+                //     rw.truncate(len - 2);
+                //     let (_, _) = snapshot[n - 1].clone();
+                //     rw.push_str(&format!("]"));
+                // } else {
+                //     rw.push_str("[]");
+                // }
 
-                debug!("thread {}; detected: {}", self.thread_id.get().unwrap(), rw);
+                // debug!("thread {}; detected: {}", self.thread_id.get().unwrap(), rw);
 
                 let mut wait = false;
                 let mut cyclic = false;
@@ -706,89 +711,89 @@ impl Scheduler for SerializationGraph {
     ///
     /// Loop, checking if transaction needs an abort, then checking if it can be committed.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
-        let timeout = std::time::Instant::now() + std::time::Duration::new(2, 0);
+        // let timeout = std::time::Instant::now() + std::time::Duration::new(2, 0);
         loop {
-            if timeout < std::time::Instant::now() {
-                tracing::info!("needs abort: {}", self.needs_abort());
-                tracing::info!("check committed: {}", self.check_committed(meta));
+            // if timeout < std::time::Instant::now() {
+            //     tracing::info!("needs abort: {}", self.needs_abort());
+            //     tracing::info!("check committed: {}", self.check_committed(meta));
 
-                let (trouble, _) = self
-                    .this_node
-                    .get()
-                    .unwrap()
-                    .borrow()
-                    .as_ref()
-                    .unwrap()
-                    .read()
-                    .incoming
-                    .lock()
-                    .unwrap()
-                    .clone()[0]
-                    .clone();
+            //     let (trouble, _) = self
+            //         .this_node
+            //         .get()
+            //         .unwrap()
+            //         .borrow()
+            //         .as_ref()
+            //         .unwrap()
+            //         .read()
+            //         .incoming
+            //         .lock()
+            //         .unwrap()
+            //         .clone()[0]
+            //         .clone();
 
-                tracing::info!("node: {:?}", trouble.upgrade().unwrap().read());
+            //     tracing::info!("node: {:?}", trouble.upgrade().unwrap().read());
 
-                panic!("commit timeout");
-            } else {
-                if self.needs_abort() {
-                    return Err(self.abort(meta));
-                }
-
-                debug!(
-                    "thread {}; committing: {}",
-                    self.thread_id.get().unwrap(),
-                    Arc::as_ptr(&self.this_node.get().unwrap().borrow().as_ref().unwrap()) as usize
-                );
-
-                if self.check_committed(meta) {
-                    // let ops = self
-                    //     .txn_info
-                    //     .get()
-                    //     .unwrap()
-                    //     .borrow()
-                    //     .as_ref()
-                    //     .unwrap()
-                    //     .get(); // get operations
-
-                    // for op in ops {
-                    //     let Operation {
-                    //         op_type,
-                    //         key,
-                    //         index,
-                    //     } = op;
-                    //     debug!(
-                    //         "thread {}; type: {:?}; key: {}; index: {}",
-                    //         self.thread_id.get().unwrap(),
-                    //         op_type,
-                    //         key,
-                    //         index
-                    //     );
-
-                    //     let index = self.data.get_index(&index).unwrap(); // get handle to index
-                    //     let rw_table = index.get_rw_table(&key).unwrap(); // get handle to rwtable
-
-                    //     let mut guard = rw_table.lock();
-                    //     match op_type {
-                    //         OperationType::Read => {
-                    //             guard.erase_all(Access::Read(meta.clone())); // remove access
-                    //             drop(guard);
-                    //         }
-                    //         OperationType::Write => {
-                    //             let row = index.get_row(&key).unwrap(); // get handle to row
-                    //             let mut rguard = row.lock();
-                    //             rguard.commit(); // commit write
-                    //             drop(rguard);
-
-                    //             guard.erase_all(Access::Write(meta.clone())); // remove access
-
-                    //             drop(guard);
-                    //         }
-                    //     }
-                    // }
-
-                    break;
-                }
+            //     panic!("commit timeout");
+            // } else {
+            if self.needs_abort() {
+                return Err(self.abort(meta));
             }
+
+            debug!(
+                "thread {}; committing: {}",
+                self.thread_id.get().unwrap(),
+                Arc::as_ptr(&self.this_node.get().unwrap().borrow().as_ref().unwrap()) as usize
+            );
+
+            if self.check_committed(meta) {
+                // let ops = self
+                //     .txn_info
+                //     .get()
+                //     .unwrap()
+                //     .borrow()
+                //     .as_ref()
+                //     .unwrap()
+                //     .get(); // get operations
+
+                // for op in ops {
+                //     let Operation {
+                //         op_type,
+                //         key,
+                //         index,
+                //     } = op;
+                //     debug!(
+                //         "thread {}; type: {:?}; key: {}; index: {}",
+                //         self.thread_id.get().unwrap(),
+                //         op_type,
+                //         key,
+                //         index
+                //     );
+
+                //     let index = self.data.get_index(&index).unwrap(); // get handle to index
+                //     let rw_table = index.get_rw_table(&key).unwrap(); // get handle to rwtable
+
+                //     let mut guard = rw_table.lock();
+                //     match op_type {
+                //         OperationType::Read => {
+                //             guard.erase_all(Access::Read(meta.clone())); // remove access
+                //             drop(guard);
+                //         }
+                //         OperationType::Write => {
+                //             let row = index.get_row(&key).unwrap(); // get handle to row
+                //             let mut rguard = row.lock();
+                //             rguard.commit(); // commit write
+                //             drop(rguard);
+
+                //             guard.erase_all(Access::Write(meta.clone())); // remove access
+
+                //             drop(guard);
+                //         }
+                //     }
+                // }
+
+                break;
+            }
+            //      }
         }
 
         self.eg.get().unwrap().borrow_mut().unpin(); // unpin txn
