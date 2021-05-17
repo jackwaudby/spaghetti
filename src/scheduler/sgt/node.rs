@@ -1,6 +1,7 @@
+use parking_lot::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak};
+use std::sync::{Arc, Mutex, Weak};
 
 pub type ArcNode = Arc<Node>;
 pub type WeakNode = Weak<Node>;
@@ -25,11 +26,11 @@ impl Node {
     }
 
     pub fn read(&self) -> RwLockReadGuard<Attributes> {
-        self.0.read().unwrap()
+        self.0.read()
     }
 
     pub fn write(&self) -> RwLockWriteGuard<Attributes> {
-        self.0.write().unwrap()
+        self.0.write()
     }
 }
 
@@ -177,14 +178,14 @@ impl fmt::Display for Node {
             outgoing.push_str("[]");
         }
 
-        writeln!(f, "");
-        writeln!(f, "incoming: {}", incoming);
-        writeln!(f, "outgoing: {}", outgoing);
-        writeln!(f, "committed: {:?}", self.read().committed);
-        writeln!(f, "cascading_abort: {:?}", self.read().cascading_abort);
-        writeln!(f, "aborted: {:?}", self.read().aborted);
-        writeln!(f, "cleaned: {:?}", self.read().cleaned);
-        write!(f, "checked: {:?}", self.read().checked);
+        writeln!(f, "").unwrap();
+        writeln!(f, "incoming: {}", incoming).unwrap();
+        writeln!(f, "outgoing: {}", outgoing).unwrap();
+        writeln!(f, "committed: {:?}", self.read().committed).unwrap();
+        writeln!(f, "cascading_abort: {:?}", self.read().cascading_abort).unwrap();
+        writeln!(f, "aborted: {:?}", self.read().aborted).unwrap();
+        writeln!(f, "cleaned: {:?}", self.read().cleaned).unwrap();
+        write!(f, "checked: {:?}", self.read().checked).unwrap();
 
         Ok(())
     }

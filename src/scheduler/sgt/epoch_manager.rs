@@ -1,26 +1,44 @@
 use crate::scheduler::sgt::node::ArcNode;
 
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tracing::debug;
 
 #[derive(Debug)]
 pub struct EpochManager {
+    /// Global epoch counter.
     global_ctr: AtomicU64,
+
+    /// Counter of EpochGuard that have the same view of the global counter.
     same_epoch_ctr: Vec<AtomicU64>,
+
+    /// EpochGuard counter.
     guard_ctr: AtomicU64,
+
+    /// Global used transactions.
+    global_used: Mutex<Vec<ArcNode>>,
 }
 
 #[derive(Debug)]
 pub struct EpochGuard {
+    /// Reference to the EpochManager.
     em: Arc<EpochManager>,
+
+    /// Coutner of active transactions registered with this EpochGuard.
     active_ctr: u64,
+
+    /// Local view of the global epoch counter.
     local_ctr: u64,
+
+    /// Runs when attempting to increment to the next global epoch
     runs: u64,
-    used: Vec<ArcNode>,
+
+    /// List of used ArcNodes.
+    used: Option<Vec<ArcNode>>,
 }
 
 impl EpochManager {
+    /// Create a new EpochManager.
     pub fn new(threads: u64) -> Self {
         let mut same_epoch_ctr: Vec<AtomicU64> = Vec::new();
         for _ in 0..6 {
@@ -31,6 +49,7 @@ impl EpochManager {
             global_ctr: AtomicU64::new(0),
             same_epoch_ctr,
             guard_ctr: AtomicU64::new(threads),
+            global_used: Mutex::new(Vec::new()),
         }
     }
 
@@ -58,6 +77,7 @@ impl EpochManager {
 }
 
 impl EpochGuard {
+    /// Create a new instance of an EpochGuard.
     pub fn new(em: Arc<EpochManager>) -> Self {
         em.same_epoch_ctr[0].fetch_add(1, Ordering::SeqCst);
 
@@ -66,7 +86,7 @@ impl EpochGuard {
             active_ctr: 0,
             local_ctr: 0,
             runs: 0,
-            used: Vec::new(),
+            used: Some(Vec::new()),
         }
     }
 
@@ -95,6 +115,9 @@ impl EpochGuard {
         res
     }
 
+    /// Unpin a transaction from the EpochGuard.
+    ///
+    /// Decrements the active counter.
     pub fn unpin(&mut self) {
         debug!("unpin");
         self.active_ctr -= 1;
@@ -103,7 +126,7 @@ impl EpochGuard {
     pub fn add(&mut self, node: ArcNode) {
         // TODO: add to txn info holder
         debug!("drop: {}", Arc::as_ptr(&node) as usize);
-        self.used.push(node);
+        self.used.as_mut().unwrap().push(node);
 
         self.cleanup();
     }
@@ -116,22 +139,28 @@ impl EpochGuard {
 impl Drop for EpochGuard {
     fn drop(&mut self) {
         let mut u = String::new();
-        let n = self.used.len();
+        let n = self.used.as_ref().unwrap().len();
 
         if n > 0 {
             u.push_str("[");
 
-            for node in &self.used[0..n - 1] {
+            for node in &self.used.as_ref().unwrap()[0..n - 1] {
                 u.push_str(&format!("{}", Arc::as_ptr(&node) as usize));
                 u.push_str(", ");
             }
 
-            let node = &self.used[n - 1].clone();
+            let node = &self.used.as_ref().unwrap()[n - 1].clone();
             u.push_str(&format!("{}]", Arc::as_ptr(&node) as usize));
         } else {
             u.push_str("[]");
         }
 
         debug!("{:?}", u);
+
+        self.em
+            .global_used
+            .lock()
+            .unwrap()
+            .extend(self.used.take().unwrap());
     }
 }

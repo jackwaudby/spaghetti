@@ -243,7 +243,7 @@ impl fmt::Display for RwTable {
             }
             let len = rw.len();
             rw.truncate(len - 2);
-            let (prv, access) = self.entries[n - 1].clone();
+            let (_, _) = self.entries[n - 1].clone();
             rw.push_str(&format!("]"));
         } else {
             rw.push_str("[]");
