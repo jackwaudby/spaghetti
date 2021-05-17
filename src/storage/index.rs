@@ -27,7 +27,7 @@ pub struct Index {
 }
 
 /// List of access made on a row.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RwTable {
     prv: u64,
     entries: VecDeque<(u64, Access)>,

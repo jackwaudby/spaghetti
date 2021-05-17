@@ -59,8 +59,9 @@ impl EpochManager {
         if this_epoch_ctr >= self.guard_ctr.load(Ordering::SeqCst) {
             self.global_ctr
                 .compare_exchange(old, old + 1, Ordering::SeqCst, Ordering::SeqCst);
-            debug!("increment global ctr");
+
             let global_ctr = self.global_ctr.load(Ordering::SeqCst);
+
             if global_ctr > 1 {
                 let n_bucket = (global_ctr + 2) % 6;
                 let next_epoch = self.same_epoch_ctr[n_bucket as usize].load(Ordering::SeqCst);
@@ -110,6 +111,8 @@ impl EpochGuard {
                 self.em.same_epoch_ctr[(self.local_ctr % 6) as usize]
                     .fetch_add(1, Ordering::SeqCst);
             }
+        } else if self.runs > 100 {
+            panic!("too many runs");
         }
 
         res
