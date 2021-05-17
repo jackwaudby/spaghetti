@@ -10,7 +10,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 fn main() {
-    test();
+    // deadlock_detection();
     let matches = clap_app!(spag =>
                             (version: "0.1.0")
                             (author: "j. waudby <j.waudby2@newcastle.ac.uk>")
@@ -92,7 +92,7 @@ fn main() {
     global_stats.write_to_file();
 }
 
-fn test() {
+fn deadlock_detection() {
     thread::spawn(move || loop {
         thread::sleep(Duration::from_secs(10));
 
