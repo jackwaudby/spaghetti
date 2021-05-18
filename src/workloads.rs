@@ -12,6 +12,7 @@ use nohash_hasher::IntMap;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::collections::HashMap;
+use std::convert::From;
 use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
@@ -103,7 +104,7 @@ impl Workload {
                 let index = Index::init(&index_name);
 
                 // indexes.insert(index_id, index);
-                indexes[index_id] = Some(index);
+                indexes.push(Some(index));
                 index_id += 1;
             }
         }
@@ -195,6 +196,22 @@ impl std::hash::Hash for PrimaryKey {
 }
 
 impl nohash_hasher::IsEnabled for PrimaryKey {}
+
+impl From<&PrimaryKey> for usize {
+    fn from(item: &PrimaryKey) -> Self {
+        use PrimaryKey::*;
+        use SmallBankPrimaryKey::*;
+        match item {
+            // Acid(_) => hasher.write_u64(0), // TODO
+            // Tatp(_) => hasher.write_u64(1),
+            SmallBank(pk) => match pk {
+                Account(id) => *id as usize,
+                Savings(id) => *id as usize,
+                Checking(id) => *id as usize,
+            },
+        }
+    }
+}
 
 impl fmt::Display for Workload {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

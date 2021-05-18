@@ -23,7 +23,7 @@ pub struct Index {
     lsns: IntMap<PrimaryKey, Arc<LogSequenceNumber>>,
 
     /// Accesses.
-    rws: IntMap<PrimaryKey, Arc<Mutex<RwTable>>>,
+    rws: Vec<Arc<Mutex<RwTable>>>,
 }
 
 /// List of access made on a row.
@@ -46,7 +46,8 @@ impl Index {
             name: String::from(name),
             data: IntMap::default(),
             lsns: IntMap::default(),
-            rws: IntMap::default(),
+            //            rws: IntMap::default(),
+            rws: Vec::new(),
         }
     }
 
@@ -65,8 +66,9 @@ impl Index {
         self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
         self.lsns
             .insert(key.clone(), Arc::new(LogSequenceNumber::new()));
-        self.rws
-            .insert(key.clone(), Arc::new(Mutex::new(RwTable::new())));
+        self.rws.push(Arc::new(Mutex::new(RwTable::new())));
+        //           self.rws
+        //    .insert(key.clone(), Arc::new(Mutex::new(RwTable::new())));
     }
 
     /// Get a handle to row with key.
@@ -83,9 +85,11 @@ impl Index {
     }
 
     pub fn get_rw_table(&self, key: &PrimaryKey) -> Result<&Arc<Mutex<RwTable>>, NonFatalError> {
-        self.rws
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+        // self.rws
+        //     .get(key)
+        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+        let offset: usize = key.into();
+        Ok(&self.rws[offset])
     }
 
     /// Read columns from a row with the given key.
