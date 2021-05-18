@@ -240,14 +240,14 @@ impl SerializationGraph {
     }
 
     /// Check if a transaction needs to abort.
-    pub fn needs_abort(&self) -> bool {
-        assert!(
-            self.this_node.get().unwrap().borrow().is_some(),
-            "{:?}",
-            self.this_node
-        );
+    pub fn needs_abort(&self, this: &ArcNode) -> bool {
+        // assert!(
+        //     self.this_node.get().unwrap().borrow().is_some(),
+        //     "{:?}",
+        //     self.this_node
+        // );
 
-        let this = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
+        //        let this = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
         let this_rlock = this.read();
         let aborted = this_rlock.is_aborted();
         let cascading_abort = this_rlock.is_cascading_abort();
@@ -279,7 +279,7 @@ impl SerializationGraph {
     pub fn check_committed(&self, meta: &TransactionInfo) -> bool {
         let this = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
 
-        if self.needs_abort() {
+        if self.needs_abort(&this) {
             return false; // abort check
         }
 
@@ -296,7 +296,7 @@ impl SerializationGraph {
         }
         drop(this_rlock);
 
-        if self.needs_abort() {
+        if self.needs_abort(&this) {
             return false; // abort check
         }
 
@@ -403,7 +403,10 @@ impl Scheduler for SerializationGraph {
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::SerializationGraph(_) = meta {
-            if self.needs_abort() {
+            let this: ArcNode =
+                Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
+
+            if self.needs_abort(&this) {
                 return Err(self.abort(meta));
             }
 
@@ -513,11 +516,13 @@ impl Scheduler for SerializationGraph {
     ) -> Result<Option<Vec<Data>>, NonFatalError> {
         if let TransactionInfo::SerializationGraph(_) = meta {
             let index = self.data.get_index(index_id).unwrap(); // get index
+            let this: ArcNode =
+                Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
 
             let mut prv;
             let mut lsn;
             loop {
-                if self.needs_abort() {
+                if self.needs_abort(&this) {
                     return Err(self.abort(meta));
                 }
 
@@ -747,6 +752,8 @@ impl Scheduler for SerializationGraph {
     /// Loop, checking if transaction needs an abort, then checking if it can be committed.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
         // let timeout = std::time::Instant::now() + std::time::Duration::new(2, 0);
+        let this: ArcNode = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
+
         loop {
             // if timeout < std::time::Instant::now() {
             //     tracing::info!("needs abort: {}", self.needs_abort());
@@ -770,7 +777,8 @@ impl Scheduler for SerializationGraph {
 
             //     panic!("commit timeout");
             // } else {
-            if self.needs_abort() {
+
+            if self.needs_abort(&this) {
                 return Err(self.abort(meta));
             }
 
