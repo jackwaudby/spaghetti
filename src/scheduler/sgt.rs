@@ -10,6 +10,7 @@ use crate::storage::datatype::Data;
 use crate::storage::row::Access;
 use crate::workloads::{PrimaryKey, Workload};
 
+use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
@@ -31,6 +32,7 @@ pub struct SerializationGraph {
     this_node: ThreadLocal<RefCell<Option<ArcNode>>>,
     txn_ctr: ThreadLocal<RefCell<u64>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
+    recycled_edge_sets: ThreadLocal<RefCell<Vec<Option<Mutex<Vec<(WeakNode, bool)>>>>>>,
     eg: ThreadLocal<RefCell<EpochGuard>>,
     visited: ThreadLocal<RefCell<HashSet<usize>>>,
     stack: ThreadLocal<RefCell<Vec<WeakNode>>>,
@@ -51,6 +53,7 @@ impl SerializationGraph {
             this_node: ThreadLocal::new(),
             txn_ctr: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
+            recycled_edge_sets: ThreadLocal::new(),
             visited: ThreadLocal::new(),
             stack: ThreadLocal::new(),
             eg: ThreadLocal::new(),
@@ -61,7 +64,22 @@ impl SerializationGraph {
 
     /// Create a node.
     pub fn create_node(&self) -> WeakNode {
-        let node: ArcNode = Arc::new(Node::new());
+        let mut rec = self
+            .recycled_edge_sets
+            .get_or(|| RefCell::new(Vec::new()))
+            .borrow_mut();
+
+        let node;
+        if rec.len() < 2 {
+            node = Arc::new(Node::new());
+            // TODO: populate
+        } else {
+            // let incoming = rec.pop().unwrap().unwrap();
+            // let outgoing = rec.pop().unwrap().unwrap();
+            // node = Arc::new(Node::new_with_sets(incoming, outgoing));
+            node = Arc::new(Node::new());
+        }
+
         let weak: WeakNode = Arc::downgrade(&node);
         self.this_node.get().unwrap().borrow_mut().replace(node); // replace local node
         self.eg.get().unwrap().borrow_mut().pin(); // pin to epoch guard
@@ -77,7 +95,7 @@ impl SerializationGraph {
         drop(this_wlock); // drop write lock
 
         let this_rlock = this.read(); // get read lock
-        let outgoing = this_rlock.get_outgoing(); // remove outgoing edges
+        let outgoing = this_rlock.get_outgoing(true, true); // remove outgoing edges
 
         for (that, rw_edge) in outgoing {
             assert!(
@@ -105,7 +123,21 @@ impl SerializationGraph {
 
         drop(this_rlock);
 
-        let node = self.this_node.get().unwrap().borrow_mut().take().unwrap();
+        let node: ArcNode = self.this_node.get().unwrap().borrow_mut().take().unwrap();
+
+        let incoming = node.write().take_incoming();
+        let outgoing = node.write().take_outgoing();
+
+        self.recycled_edge_sets
+            .get_or(|| RefCell::new(Vec::new()))
+            .borrow_mut()
+            .push(Some(incoming));
+
+        self.recycled_edge_sets
+            .get_or(|| RefCell::new(Vec::new()))
+            .borrow_mut()
+            .push(Some(outgoing));
+
         self.eg.get().unwrap().borrow_mut().add(node); // add to garabge collector
     }
 
@@ -174,7 +206,7 @@ impl SerializationGraph {
         stack.clear();
 
         let this_rlock = this.read();
-        let outgoing = this_rlock.get_outgoing();
+        let outgoing = this_rlock.get_outgoing(true, true);
         let mut out: Vec<WeakNode> = outgoing.into_iter().map(|(node, _)| node).collect();
         stack.append(&mut out);
         drop(this_rlock);
@@ -192,8 +224,11 @@ impl SerializationGraph {
 
             let arc_current = current.upgrade().unwrap();
             let rlock = arc_current.read();
-            if !rlock.is_committed() || !rlock.is_aborted() || !rlock.is_cascading_abort() {
-                let outgoing = rlock.get_outgoing();
+            let val1 = !(rlock.is_committed() || rlock.is_aborted() || rlock.is_cascading_abort());
+            if val1 {
+                let val2 =
+                    !(rlock.is_committed() || rlock.is_aborted() || rlock.is_cascading_abort());
+                let outgoing = rlock.get_outgoing(val1, val2);
                 let mut out: Vec<WeakNode> = outgoing.into_iter().map(|(node, _)| node).collect();
                 stack.append(&mut out);
             }
