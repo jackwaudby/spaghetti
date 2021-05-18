@@ -3,6 +3,7 @@ use crate::storage::datatype::Data;
 use crate::storage::row::{Access, OperationResult, Row};
 use crate::workloads::PrimaryKey;
 
+use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use std::collections::VecDeque;
 use std::fmt;
@@ -16,7 +17,7 @@ pub struct Index {
     name: String,
 
     /// Data.
-    data: Vec<Arc<Mutex<Row>>>,
+    data: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
 
     /// Log sequence number.
     lsns: Vec<Arc<LogSequenceNumber>>,
@@ -43,7 +44,7 @@ impl Index {
     pub fn init(name: &str) -> Self {
         Index {
             name: String::from(name),
-            data: Vec::new(),
+            data: IntMap::default(),
             lsns: Vec::new(),
             rws: Vec::new(),
         }
@@ -55,16 +56,17 @@ impl Index {
     }
 
     /// Insert a row with key into the index.
-    pub fn insert(&mut self, row: Row) {
-        self.data.push(Arc::new(Mutex::new(row)));
+    pub fn insert(&mut self, key: &PrimaryKey, row: Row) {
+        self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
         self.lsns.push(Arc::new(LogSequenceNumber::new()));
         self.rws.push(Arc::new(Mutex::new(RwTable::new())));
     }
 
     /// Get a handle to row with key.
     pub fn get_row(&self, key: &PrimaryKey) -> Result<&Arc<Mutex<Row>>, NonFatalError> {
-        let offset: usize = key.into();
-        Ok(&self.data[offset])
+        self.data
+            .get(key)
+            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
     }
 
     pub fn get_lsn(&self, key: &PrimaryKey) -> &Arc<LogSequenceNumber> {
@@ -72,12 +74,9 @@ impl Index {
         &self.lsns[offset]
     }
 
-    pub fn get_rw_table(&self, key: &PrimaryKey) -> Result<&Arc<Mutex<RwTable>>, NonFatalError> {
-        // self.rws
-        //     .get(key)
-        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+    pub fn get_rw_table(&self, key: &PrimaryKey) -> &Arc<Mutex<RwTable>> {
         let offset: usize = key.into();
-        Ok(&self.rws[offset])
+        &self.rws[offset]
     }
 
     /// Read columns from a row with the given key.

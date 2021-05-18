@@ -42,10 +42,10 @@ pub fn populate_account(
 
     for a_id in 0..n_accounts {
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Account(a_id));
-        let mut row = Row::new(pk, Arc::clone(&accounts));
+        let mut row = Row::new(pk.clone(), Arc::clone(&accounts));
 
         row.init_value("customer_id", Data::from(a_id)).unwrap();
-        accounts_idx.insert(row);
+        accounts_idx.insert(&pk, row);
     }
     info!("Loaded {} rows into account", n_accounts);
 
@@ -70,12 +70,12 @@ pub fn populate_savings(
 
     for customer_id in 0..accounts {
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Savings(customer_id));
-        let mut row = Row::new(pk, Arc::clone(&savings));
+        let mut row = Row::new(pk.clone(), Arc::clone(&savings));
         row.init_value("customer_id", Data::from(customer_id))
             .unwrap();
         let balance = rng.gen_range(min_bal..=max_bal) as f64;
         row.init_value("balance", Data::from(balance)).unwrap();
-        savings_idx.insert(row);
+        savings_idx.insert(&pk, row);
     }
     info!("Loaded {} rows into savings", accounts);
     Ok(())
@@ -99,12 +99,12 @@ pub fn populate_checking(
 
     for customer_id in 0..accounts {
         let pk = PrimaryKey::SmallBank(SmallBankPrimaryKey::Checking(customer_id));
-        let mut row = Row::new(pk, Arc::clone(&checking));
+        let mut row = Row::new(pk.clone(), Arc::clone(&checking));
         row.init_value("customer_id", Data::from(customer_id))
             .unwrap();
         let balance = rng.gen_range(min_bal..=max_bal) as f64;
         row.init_value("balance", Data::from(balance)).unwrap();
-        checking_idx.insert(row);
+        checking_idx.insert(&pk, row);
     }
     info!("Loaded {} rows into savings", accounts);
     Ok(())

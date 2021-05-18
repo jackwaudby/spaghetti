@@ -316,7 +316,7 @@ impl SerializationGraph {
             } = op;
 
             let index = self.data.get_index(index).unwrap(); // get handle to index
-            let rw_table = index.get_rw_table(&key).unwrap(); // get handle to rwtable
+            let rw_table = index.get_rw_table(&key); // get handle to rwtable
 
             let mut guard = rw_table.lock();
             match op_type {
@@ -381,8 +381,13 @@ impl Scheduler for SerializationGraph {
             }
 
             let index = self.data.get_index(index_id).unwrap();
+
+            if let Err(_) = index.get_row(&key) {
+                return Err(self.abort(meta)); // abort -- row not found (TATP only)
+            };
+
             let lsn = index.get_lsn(&key);
-            let rw_table = index.get_rw_table(&key).unwrap();
+            let rw_table = index.get_rw_table(&key);
 
             let mut guard = rw_table.lock();
             let prv = guard.push_front(Access::Read(meta.clone())); // get prv
@@ -491,7 +496,7 @@ impl Scheduler for SerializationGraph {
 
                 lsn = index.get_lsn(&key);
 
-                let rw_table = index.get_rw_table(&key).unwrap();
+                let rw_table = index.get_rw_table(&key);
                 let mut guard = rw_table.lock();
                 prv = guard.push_front(Access::Write(meta.clone()));
 
@@ -566,7 +571,7 @@ impl Scheduler for SerializationGraph {
                 break;
             }
 
-            let rw_table = index.get_rw_table(&key).unwrap();
+            let rw_table = index.get_rw_table(&key);
 
             let guard = rw_table.lock();
             let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
@@ -688,7 +693,7 @@ impl Scheduler for SerializationGraph {
 
             let index = self.data.get_index(index).unwrap(); // get handle to index
 
-            let rw_table = index.get_rw_table(&key).unwrap(); // get handle to rwtable
+            let rw_table = index.get_rw_table(&key);
             let mut guard = rw_table.lock();
 
             match op_type {

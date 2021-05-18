@@ -98,8 +98,8 @@ pub fn transact_savings(
         |current: Option<Vec<Data>>, params: Option<&[Data]>| -> Result<Vec<Data>, NonFatalError> {
             let balance = f64::try_from(current.unwrap()[0].clone()).unwrap(); // get current balance
             let value = f64::try_from(params.unwrap()[0].clone()).unwrap(); // get value
-            if balance - value > 0.0 {
-                Ok(vec![Data::Double(balance - value)])
+            if balance + value > 0.0 {
+                Ok(vec![Data::Double(balance + value)])
             } else {
                 Err(SmallBankError::InsufficientFunds.into())
             }
@@ -271,7 +271,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
             let current_balance = f64::try_from(current.unwrap()[0].clone())?; // checking balance of cust1
             let value = f64::try_from(params.unwrap()[0].clone())?; // proposed payment amount
 
-            if value < current_balance {
+            if current_balance - value > 0.0 {
                 Ok(vec![Data::Double(current_balance - value)])
             } else {
                 Err(SmallBankError::InsufficientFunds.into())
