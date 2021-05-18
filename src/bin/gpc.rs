@@ -2,7 +2,7 @@ use spaghetti::common::statistics::GlobalStatistics;
 use spaghetti::gpc::helper;
 
 use clap::clap_app;
-use parking_lot::deadlock;
+// use parking_lot::deadlock;
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::thread;
@@ -92,22 +92,22 @@ fn main() {
     global_stats.write_to_file();
 }
 
-fn deadlock_detection() {
-    thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(10));
+// fn deadlock_detection() {
+//     thread::spawn(move || loop {
+//         thread::sleep(Duration::from_secs(10));
 
-        let deadlocks = deadlock::check_deadlock();
-        if deadlocks.is_empty() {
-            continue;
-        }
+//         let deadlocks = deadlock::check_deadlock();
+//         if deadlocks.is_empty() {
+//             continue;
+//         }
 
-        println!("{} deadlocks detected", deadlocks.len());
-        for (i, threads) in deadlocks.iter().enumerate() {
-            println!("Deadlock #{}", i);
-            for t in threads {
-                println!("Thread Id {:#?}", t.thread_id());
-                println!("{:#?}", t.backtrace());
-            }
-        }
-    });
-}
+//         println!("{} deadlocks detected", deadlocks.len());
+//         for (i, threads) in deadlocks.iter().enumerate() {
+//             println!("Deadlock #{}", i);
+//             for t in threads {
+//                 println!("Thread Id {:#?}", t.thread_id());
+//                 println!("{:#?}", t.backtrace());
+//             }
+//         }
+//     });
+// }
