@@ -98,7 +98,7 @@ impl SerializationGraph {
         let outgoing = this_rlock.get_outgoing(true, true); // remove outgoing edges
 
         for (that, rw_edge) in outgoing {
-            assert!(
+            debug_assert!(
                 that.upgrade().is_some(),
                 "not found: {}",
                 that.as_ptr() as usize
@@ -241,7 +241,7 @@ impl SerializationGraph {
 
     /// Check if a transaction needs to abort.
     pub fn needs_abort(&self, this: &ArcNode) -> bool {
-        // assert!(
+        // debug_assert!(
         //     self.this_node.get().unwrap().borrow().is_some(),
         //     "{:?}",
         //     self.this_node
@@ -388,16 +388,16 @@ impl Scheduler for SerializationGraph {
         self.thread_id.get_or(|| handle.name().unwrap().to_string());
         let weak = self.create_node();
 
-        assert!(self.txn_ctr.get().is_some(), "{:?}", self.txn_ctr);
-        assert!(self.txn_info.get().is_some(), "{:?}", self.txn_info);
-        assert!(self.this_node.get().is_some(), "{:?}", self.this_node);
+        debug_assert!(self.txn_ctr.get().is_some(), "{:?}", self.txn_ctr);
+        debug_assert!(self.txn_info.get().is_some(), "{:?}", self.txn_info);
+        debug_assert!(self.this_node.get().is_some(), "{:?}", self.this_node);
 
         TransactionInfo::SerializationGraph(weak)
     }
 
     fn read(
         &self,
-        index_id: u8,
+        index_id: usize,
         key: &PrimaryKey,
         columns: &[&str],
         meta: &TransactionInfo,
@@ -506,7 +506,7 @@ impl Scheduler for SerializationGraph {
     /// Write operation.
     fn write(
         &self,
-        index_id: u8,
+        index_id: usize,
         key: &PrimaryKey,
         columns: &[&str],
         read: Option<&[&str]>,
@@ -588,7 +588,7 @@ impl Scheduler for SerializationGraph {
                         match access {
                             Access::Write(from) => {
                                 if let TransactionInfo::SerializationGraph(from_node) = from {
-                                    assert!(
+                                    debug_assert!(
                                         from_node.upgrade().is_some(),
                                         "not found: {}",
                                         from_node.as_ptr() as usize

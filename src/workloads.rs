@@ -32,7 +32,7 @@ pub struct Workload {
     tables: HashMap<String, Arc<Table>>,
 
     /// Hashmap of indexes; data is owned by the index.
-    indexes: IntMap<u8, Index>,
+    indexes: [Option<Index>; 5],
 
     /// Configuration.
     config: Config,
@@ -64,7 +64,9 @@ impl Workload {
         let mut lines = contents.lines();
 
         let mut tables = HashMap::new(); // initialise tables and indexes
-        let mut indexes = IntMap::default();
+                                         //   let mut indexes = IntMap::default();
+
+        let mut indexes = [None, None, None, None, None];
 
         let mut next_table_id = 0;
 
@@ -100,7 +102,8 @@ impl Workload {
 
                 let index = Index::init(&index_name);
 
-                indexes.insert(index_id, index);
+                // indexes.insert(index_id, index);
+                indexes[index_id] = Some(index);
                 index_id += 1;
             }
         }
@@ -161,11 +164,12 @@ impl Workload {
     }
 
     /// Get shared reference to index.
-    pub fn get_index(&self, id: u8) -> Result<&Index, NonFatalError> {
-        match self.indexes.get(&id) {
-            Some(index) => Ok(&index),
-            None => Err(NonFatalError::IndexNotFound("test".to_string())),
-        }
+    pub fn get_index(&self, id: usize) -> Result<&Index, NonFatalError> {
+        // match self.indexes.get(&id) {
+        //     Some(index) => Ok(&index),
+        //     None => Err(NonFatalError::IndexNotFound("test".to_string())),
+        // }
+        Ok(&self.indexes[id].as_ref().unwrap())
     }
 
     /// Get shared reference to config
@@ -194,8 +198,8 @@ impl nohash_hasher::IsEnabled for PrimaryKey {}
 
 impl fmt::Display for Workload {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for index in self.indexes.values() {
-            write!(f, "{}", index).unwrap();
+        for index in &self.indexes {
+            write!(f, "{:?}", index).unwrap();
         }
         Ok(())
     }

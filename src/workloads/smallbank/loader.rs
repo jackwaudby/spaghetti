@@ -20,7 +20,7 @@ use tracing::info;
 pub fn populate_tables(
     config: &Config,
     tables: &HashMap<String, Arc<Table>>,
-    indexes: &mut IntMap<u8, Index>,
+    indexes: &mut [Option<Index>; 5],
     rng: &mut StdRng,
 ) -> Result<()> {
     populate_account(config, tables, indexes)?;
@@ -33,10 +33,11 @@ pub fn populate_tables(
 pub fn populate_account(
     config: &Config,
     tables: &HashMap<String, Arc<Table>>,
-    indexes: &mut IntMap<u8, Index>,
+    indexes: &mut [Option<Index>; 5],
 ) -> Result<()> {
     let accounts = tables.get("accounts").unwrap();
-    let accounts_idx = indexes.get_mut(&0).unwrap();
+    //    let accounts_idx = indexes.get_mut(&0).unwrap();
+    let accounts_idx = indexes[0].as_mut().unwrap();
 
     let sf = config.get_int("scale_factor")? as u64;
     let n_accounts = *SB_SF_MAP.get(&sf).unwrap();
@@ -57,11 +58,12 @@ pub fn populate_account(
 pub fn populate_savings(
     config: &Config,
     tables: &HashMap<String, Arc<Table>>,
-    indexes: &mut IntMap<u8, Index>,
+    indexes: &mut [Option<Index>; 5],
     rng: &mut StdRng,
 ) -> Result<()> {
     let savings = tables.get("savings").unwrap();
-    let savings_idx = indexes.get_mut(&1).unwrap();
+    //    let savings_idx = indexes.get_mut(&1).unwrap();
+    let savings_idx = indexes[1].as_mut().unwrap();
 
     let sf = config.get_int("scale_factor")? as u64;
 
@@ -86,11 +88,12 @@ pub fn populate_savings(
 pub fn populate_checking(
     config: &Config,
     tables: &HashMap<String, Arc<Table>>,
-    indexes: &mut IntMap<u8, Index>,
+    indexes: &mut [Option<Index>; 5],
     rng: &mut StdRng,
 ) -> Result<()> {
     let checking = tables.get("checking").unwrap();
-    let checking_idx = indexes.get_mut(&2).unwrap();
+    //    let checking_idx = indexes.get_mut(&2).unwrap();
+    let checking_idx = indexes[2].as_mut().unwrap();
 
     let sf = config.get_int("scale_factor")? as u64;
 
