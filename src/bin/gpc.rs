@@ -2,15 +2,11 @@ use spaghetti::common::statistics::GlobalStatistics;
 use spaghetti::gpc::helper;
 
 use clap::clap_app;
-// use parking_lot::deadlock;
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::thread;
-use std::time::Duration;
 use std::time::Instant;
 
 fn main() {
-    // deadlock_detection();
     let matches = clap_app!(spag =>
                             (version: "0.1.0")
                             (author: "j. waudby <j.waudby2@newcastle.ac.uk>")
@@ -26,7 +22,7 @@ fn main() {
 
     let mut settings = helper::init_config("Embedded.toml"); // init config
 
-    // For each flag overwrite default with any supplied runtime value.
+    // overwrite default with any supplied runtime value
     if let Some(w) = matches.value_of("WORKLOAD") {
         settings.set("workload", w).unwrap();
     }
@@ -91,23 +87,3 @@ fn main() {
     }
     global_stats.write_to_file();
 }
-
-// fn deadlock_detection() {
-//     thread::spawn(move || loop {
-//         thread::sleep(Duration::from_secs(10));
-
-//         let deadlocks = deadlock::check_deadlock();
-//         if deadlocks.is_empty() {
-//             continue;
-//         }
-
-//         println!("{} deadlocks detected", deadlocks.len());
-//         for (i, threads) in deadlocks.iter().enumerate() {
-//             println!("Deadlock #{}", i);
-//             for t in threads {
-//                 println!("Thread Id {:#?}", t.thread_id());
-//                 println!("{:#?}", t.backtrace());
-//             }
-//         }
-//     });
-// }

@@ -3,7 +3,6 @@ use crate::storage::datatype::Data;
 use crate::storage::row::{Access, OperationResult, Row};
 use crate::workloads::PrimaryKey;
 
-use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use std::collections::VecDeque;
 use std::fmt;
@@ -44,9 +43,6 @@ impl Index {
     pub fn init(name: &str) -> Self {
         Index {
             name: String::from(name),
-            // data: IntMap::default(),
-            // lsns: IntMap::default(),
-            //            rws: IntMap::default(),
             data: Vec::new(),
             lsns: Vec::new(),
             rws: Vec::new(),
@@ -58,41 +54,22 @@ impl Index {
         self.name.clone()
     }
 
-    /// Check if a key exists in the index.
-    pub fn key_exists(&self, key: PrimaryKey) -> bool {
-        //   self.data.contains_key(&key)
-        true
-    }
-
     /// Insert a row with key into the index.
-    pub fn insert(&mut self, key: &PrimaryKey, row: Row) {
-        // self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
+    pub fn insert(&mut self, row: Row) {
         self.data.push(Arc::new(Mutex::new(row)));
         self.lsns.push(Arc::new(LogSequenceNumber::new()));
-
-        // self.lsns
-        //     .insert(key.clone(), Arc::new(LogSequenceNumber::new()));
         self.rws.push(Arc::new(Mutex::new(RwTable::new())));
-        //           self.rws
-        //    .insert(key.clone(), Arc::new(Mutex::new(RwTable::new())));
     }
 
     /// Get a handle to row with key.
     pub fn get_row(&self, key: &PrimaryKey) -> Result<&Arc<Mutex<Row>>, NonFatalError> {
-        // self.data
-        //     .get(key)
-        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
-
         let offset: usize = key.into();
         Ok(&self.data[offset])
     }
 
-    pub fn get_lsn(&self, key: &PrimaryKey) -> Result<&Arc<LogSequenceNumber>, NonFatalError> {
-        // self.lsns
-        //     .get(key)
-        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+    pub fn get_lsn(&self, key: &PrimaryKey) -> &Arc<LogSequenceNumber> {
         let offset: usize = key.into();
-        Ok(&self.lsns[offset])
+        &self.lsns[offset]
     }
 
     pub fn get_rw_table(&self, key: &PrimaryKey) -> Result<&Arc<Mutex<RwTable>>, NonFatalError> {
@@ -120,7 +97,6 @@ impl Index {
     }
 
     /// Write values to columns in a row with the given key.
-    // TODO: add get field
     pub fn update<F>(
         &self,
         key: &PrimaryKey,

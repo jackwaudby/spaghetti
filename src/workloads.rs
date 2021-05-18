@@ -8,7 +8,6 @@ use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
 // use crate::workloads::tatp::keys::TatpPrimaryKey;
 
 use config::Config;
-use nohash_hasher::IntMap;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::collections::HashMap;
@@ -65,13 +64,10 @@ impl Workload {
         let mut lines = contents.lines();
 
         let mut tables = HashMap::new(); // initialise tables and indexes
-                                         //   let mut indexes = IntMap::default();
 
         let mut indexes = Vec::new();
 
         let mut next_table_id = 0;
-
-        let mut index_id = 0;
 
         while let Some(line) = lines.next() {
             if line.starts_with("TABLE") {
@@ -103,9 +99,7 @@ impl Workload {
 
                 let index = Index::init(&index_name);
 
-                // indexes.insert(index_id, index);
                 indexes.push(Some(index));
-                index_id += 1;
             }
         }
 
