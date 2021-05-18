@@ -37,7 +37,7 @@ impl Protocol {
 
     pub fn read(
         &self,
-        index: &str,
+        index: u8,
         key: &PrimaryKey,
         columns: &[&str],
         meta: &TransactionInfo,
@@ -50,7 +50,7 @@ impl Protocol {
 
     pub fn write(
         &self,
-        index: &str,
+        index: u8,
         key: &PrimaryKey,
         columns: &[&str],
         read: Option<&[&str]>,
@@ -86,7 +86,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     /// Read operation.
     fn read(
         &self,
-        index_id: &str,
+        index_id: u8,
         key: &PrimaryKey,
         columns: &[&str],
         meta: &TransactionInfo,
@@ -105,7 +105,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
     /// * `meta` - Transaction information.
     fn write(
         &self,
-        index_id: &str,
+        index_id: u8,
         key: &PrimaryKey,
         columns: &[&str],
         read: Option<&[&str]>,

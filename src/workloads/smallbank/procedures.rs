@@ -26,11 +26,11 @@ pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFa
 
     let meta = protocol.begin(); // register
 
-    protocol.read("account_name", &accounts_pk, &accounts_cols, &meta)?; // read 1 -- get customer id
+    protocol.read(0, &accounts_pk, &accounts_cols, &meta)?; // read 1 -- get customer id
 
-    protocol.read("savings_idx", &savings_pk, &other_cols, &meta)?; // read 2 -- get savings
+    protocol.read(1, &savings_pk, &other_cols, &meta)?; // read 2 -- get savings
 
-    protocol.read("checking_idx", &checking_pk, &other_cols, &meta)?; // read 3 -- get checking
+    protocol.read(2, &checking_pk, &other_cols, &meta)?; // read 3 -- get checking
 
     protocol.commit(&meta)?; // commit
 
@@ -61,10 +61,10 @@ pub fn deposit_checking(
 
     let meta = protocol.begin();
 
-    protocol.read("account_name", &accounts_pk, &accounts_cols, &meta)?;
+    protocol.read(0, &accounts_pk, &accounts_cols, &meta)?;
 
     protocol.write(
-        "checking_idx",
+        2,
         &checking_pk,
         &checking_cols,
         Some(&checking_cols),
@@ -107,10 +107,10 @@ pub fn transact_savings(
 
     let meta = protocol.begin(); // register
 
-    protocol.read("account_name", &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
+    protocol.read(0, &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
 
     protocol.write(
-        "savings_idx",
+        1,
         &savings_pk,
         &savings_cols,
         Some(&savings_cols),
@@ -157,10 +157,10 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
 
     let meta = protocol.begin(); // register
 
-    protocol.read("account_name", &accounts_pk1, &accounts_cols, &meta)?; // read -- cust1
+    protocol.read(0, &accounts_pk1, &accounts_cols, &meta)?; // read -- cust1
 
     let res2 = protocol.write(
-        "savings_idx",
+        1,
         &savings_pk1,
         &other_cols,
         Some(&other_cols),
@@ -170,7 +170,7 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     )?; // get and set savings -- cust1
 
     let res3 = protocol.write(
-        "checking_idx",
+        2,
         &checking_pk1,
         &other_cols,
         Some(&other_cols),
@@ -183,10 +183,10 @@ pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, 
     let b = f64::try_from(res3.unwrap()[0].clone()).unwrap();
     let params: Vec<Data> = vec![Data::Double(a + b)]; // amount to send to cust2
 
-    protocol.read("account_name", &accounts_pk2, &accounts_cols, &meta)?; // read -- cust2
+    protocol.read(0, &accounts_pk2, &accounts_cols, &meta)?; // read -- cust2
 
     protocol.write(
-        "checking_idx",
+        2,
         &checking_pk2,
         &other_cols,
         Some(&other_cols),
@@ -230,14 +230,14 @@ pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String
 
     let meta = protocol.begin();
 
-    protocol.read("account_name", &accounts_pk, &accounts_cols, &meta)?;
+    protocol.read(0, &accounts_pk, &accounts_cols, &meta)?;
 
-    let res2 = protocol.read("savings_idx", &savings_pk, &other_cols, &meta)?; // get savings balance
+    let res2 = protocol.read(1, &savings_pk, &other_cols, &meta)?; // get savings balance
 
     let params = vec![Data::Double(params.value), res2[0].clone()];
 
     protocol.write(
-        "checking_idx",
+        2,
         &checking_pk,
         &other_cols,
         Some(&other_cols),
@@ -288,12 +288,12 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
 
     let meta = protocol.begin(); // register
 
-    protocol.read("account_name", &accounts_pk1, &accounts_cols, &meta)?; // read -- get customer ID 1
+    protocol.read(0, &accounts_pk1, &accounts_cols, &meta)?; // read -- get customer ID 1
 
-    protocol.read("account_name", &accounts_pk2, &accounts_cols, &meta)?; // read -- get customer ID 2
+    protocol.read(0, &accounts_pk2, &accounts_cols, &meta)?; // read -- get customer ID 2
 
     protocol.write(
-        "checking_idx",
+        2,
         &checking_pk1,
         &checking_cols,
         Some(&checking_cols),
@@ -303,7 +303,7 @@ pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<Stri
     )?;
 
     protocol.write(
-        "checking_idx",
+        2,
         &checking_pk2,
         &checking_cols,
         Some(&checking_cols),

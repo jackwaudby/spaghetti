@@ -345,7 +345,7 @@ impl SerializationGraph {
                 index
             );
 
-            let index = self.data.get_index(&index).unwrap(); // get handle to index
+            let index = self.data.get_index(index).unwrap(); // get handle to index
             let rw_table = index.get_rw_table(&key).unwrap(); // get handle to rwtable
 
             let mut guard = rw_table.lock();
@@ -397,7 +397,7 @@ impl Scheduler for SerializationGraph {
 
     fn read(
         &self,
-        index_id: &str,
+        index_id: u8,
         key: &PrimaryKey,
         columns: &[&str],
         meta: &TransactionInfo,
@@ -493,7 +493,7 @@ impl Scheduler for SerializationGraph {
                 .borrow_mut()
                 .as_mut()
                 .unwrap()
-                .add(OperationType::Read, key.clone(), index_id.to_string()); // record operation
+                .add(OperationType::Read, key.clone(), index_id); // record operation
 
             lsn.replace(prv + 1); // increment to next operation
 
@@ -506,7 +506,7 @@ impl Scheduler for SerializationGraph {
     /// Write operation.
     fn write(
         &self,
-        index_id: &str,
+        index_id: u8,
         key: &PrimaryKey,
         columns: &[&str],
         read: Option<&[&str]>,
@@ -737,7 +737,7 @@ impl Scheduler for SerializationGraph {
                 .borrow_mut()
                 .as_mut()
                 .unwrap()
-                .add(OperationType::Write, key.clone(), index_id.to_string());
+                .add(OperationType::Write, key.clone(), index_id);
 
             lsn.replace(prv + 1);
 
@@ -866,7 +866,7 @@ impl Scheduler for SerializationGraph {
                 index,
             } = op;
 
-            let index = self.data.get_index(&index).unwrap(); // get handle to index
+            let index = self.data.get_index(index).unwrap(); // get handle to index
 
             let rw_table = index.get_rw_table(&key).unwrap(); // get handle to rwtable
             let mut guard = rw_table.lock();

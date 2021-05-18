@@ -9,7 +9,7 @@ pub struct TransactionInformation {
 pub struct Operation {
     pub op_type: OperationType,
     pub key: PrimaryKey,
-    pub index: String,
+    pub index: u8,
 }
 
 #[derive(Debug, Clone)]
@@ -25,7 +25,7 @@ impl TransactionInformation {
         }
     }
 
-    pub fn add(&mut self, op_type: OperationType, key: PrimaryKey, index: String) {
+    pub fn add(&mut self, op_type: OperationType, key: PrimaryKey, index: u8) {
         self.operations
             .as_mut()
             .unwrap()
@@ -38,7 +38,7 @@ impl TransactionInformation {
 }
 
 impl Operation {
-    pub fn new(op_type: OperationType, key: PrimaryKey, index: String) -> Self {
+    pub fn new(op_type: OperationType, key: PrimaryKey, index: u8) -> Self {
         Operation {
             op_type,
             key,

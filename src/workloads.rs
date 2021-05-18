@@ -8,6 +8,7 @@ use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
 // use crate::workloads::tatp::keys::TatpPrimaryKey;
 
 use config::Config;
+use nohash_hasher::IntMap;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 use std::collections::HashMap;
@@ -31,7 +32,7 @@ pub struct Workload {
     tables: HashMap<String, Arc<Table>>,
 
     /// Hashmap of indexes; data is owned by the index.
-    indexes: HashMap<String, Index>,
+    indexes: IntMap<u8, Index>,
 
     /// Configuration.
     config: Config,
@@ -63,9 +64,11 @@ impl Workload {
         let mut lines = contents.lines();
 
         let mut tables = HashMap::new(); // initialise tables and indexes
-        let mut indexes = HashMap::new();
+        let mut indexes = IntMap::default();
 
         let mut next_table_id = 0;
+
+        let mut index_id = 0;
 
         while let Some(line) = lines.next() {
             if line.starts_with("TABLE") {
@@ -97,7 +100,8 @@ impl Workload {
 
                 let index = Index::init(&index_name);
 
-                indexes.insert(index_name, index);
+                indexes.insert(index_id, index);
+                index_id += 1;
             }
         }
 
@@ -157,8 +161,8 @@ impl Workload {
     }
 
     /// Get shared reference to index.
-    pub fn get_index(&self, name: &str) -> Result<&Index, NonFatalError> {
-        match self.indexes.get(name) {
+    pub fn get_index(&self, id: u8) -> Result<&Index, NonFatalError> {
+        match self.indexes.get(&id) {
             Some(index) => Ok(&index),
             None => Err(NonFatalError::IndexNotFound("test".to_string())),
         }
