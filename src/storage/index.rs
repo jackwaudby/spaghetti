@@ -17,10 +17,10 @@ pub struct Index {
     name: String,
 
     /// Data.
-    data: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
+    data: Vec<Arc<Mutex<Row>>>,
 
     /// Log sequence number.
-    lsns: IntMap<PrimaryKey, Arc<LogSequenceNumber>>,
+    lsns: Vec<Arc<LogSequenceNumber>>,
 
     /// Accesses.
     rws: Vec<Arc<Mutex<RwTable>>>,
@@ -44,9 +44,11 @@ impl Index {
     pub fn init(name: &str) -> Self {
         Index {
             name: String::from(name),
-            data: IntMap::default(),
-            lsns: IntMap::default(),
+            // data: IntMap::default(),
+            // lsns: IntMap::default(),
             //            rws: IntMap::default(),
+            data: Vec::new(),
+            lsns: Vec::new(),
             rws: Vec::new(),
         }
     }
@@ -58,14 +60,18 @@ impl Index {
 
     /// Check if a key exists in the index.
     pub fn key_exists(&self, key: PrimaryKey) -> bool {
-        self.data.contains_key(&key)
+        //   self.data.contains_key(&key)
+        true
     }
 
     /// Insert a row with key into the index.
     pub fn insert(&mut self, key: &PrimaryKey, row: Row) {
-        self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
-        self.lsns
-            .insert(key.clone(), Arc::new(LogSequenceNumber::new()));
+        // self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
+        self.data.push(Arc::new(Mutex::new(row)));
+        self.lsns.push(Arc::new(LogSequenceNumber::new()));
+
+        // self.lsns
+        //     .insert(key.clone(), Arc::new(LogSequenceNumber::new()));
         self.rws.push(Arc::new(Mutex::new(RwTable::new())));
         //           self.rws
         //    .insert(key.clone(), Arc::new(Mutex::new(RwTable::new())));
@@ -73,15 +79,20 @@ impl Index {
 
     /// Get a handle to row with key.
     pub fn get_row(&self, key: &PrimaryKey) -> Result<&Arc<Mutex<Row>>, NonFatalError> {
-        self.data
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+        // self.data
+        //     .get(key)
+        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+
+        let offset: usize = key.into();
+        Ok(&self.data[offset])
     }
 
     pub fn get_lsn(&self, key: &PrimaryKey) -> Result<&Arc<LogSequenceNumber>, NonFatalError> {
-        self.lsns
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+        // self.lsns
+        //     .get(key)
+        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+        let offset: usize = key.into();
+        Ok(&self.lsns[offset])
     }
 
     pub fn get_rw_table(&self, key: &PrimaryKey) -> Result<&Arc<Mutex<RwTable>>, NonFatalError> {
@@ -98,10 +109,11 @@ impl Index {
         key: &PrimaryKey,
         columns: &[&str],
     ) -> Result<OperationResult, NonFatalError> {
-        let rh = self
-            .data
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        // let rh = self
+        //     .data
+        //     .get(key)
+        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let rh = self.get_row(key).unwrap();
         let mut row = rh.lock();
         let res = row.get_values(columns)?;
         Ok(res)
@@ -120,10 +132,12 @@ impl Index {
     where
         F: Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
     {
-        let rh = self
-            .data
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        // let rh = self
+        //     .data
+        //     .get(key)
+        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let rh = self.get_row(key).unwrap();
+
         let mut row = rh.lock();
         let current_values;
 
@@ -147,10 +161,12 @@ impl Index {
         column: &str,
         value: Data,
     ) -> Result<OperationResult, NonFatalError> {
-        let rh = self
-            .data
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        // let rh = self
+        //     .data
+        //     .get(key)
+        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let rh = self.get_row(key).unwrap();
+
         let mut row = rh.lock();
         let res = row.append_value(column, value)?;
         Ok(res)
@@ -158,10 +174,11 @@ impl Index {
 
     /// Commit modifications to a row - rows marked for delete are removed.
     pub fn commit(&self, key: &PrimaryKey) -> Result<(), NonFatalError> {
-        let rh = self
-            .data
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        // let rh = self
+        //     .data
+        //     .get(key)
+        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let rh = self.get_row(key).unwrap();
 
         let mut row = rh.lock(); // lock row
         row.commit(); // commit
@@ -171,10 +188,11 @@ impl Index {
 
     /// Revert modifications to a row.
     pub fn revert(&self, key: &PrimaryKey) -> Result<(), NonFatalError> {
-        let rh = self
-            .data
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        // let rh = self
+        //     .data
+        //     .get(key)
+        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+        let rh = self.get_row(key).unwrap();
         let mut row = rh.lock();
         row.revert();
         Ok(())
