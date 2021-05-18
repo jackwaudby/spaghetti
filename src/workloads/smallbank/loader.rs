@@ -20,7 +20,7 @@ use tracing::info;
 pub fn populate_tables(
     config: &Config,
     tables: &HashMap<String, Arc<Table>>,
-    indexes: &mut [Option<Index>; 5],
+    indexes: &mut Vec<Option<Index>>,
     rng: &mut StdRng,
 ) -> Result<()> {
     populate_account(config, tables, indexes)?;
@@ -33,7 +33,7 @@ pub fn populate_tables(
 pub fn populate_account(
     config: &Config,
     tables: &HashMap<String, Arc<Table>>,
-    indexes: &mut [Option<Index>; 5],
+    indexes: &mut Vec<Option<Index>>,
 ) -> Result<()> {
     let accounts = tables.get("accounts").unwrap();
     //    let accounts_idx = indexes.get_mut(&0).unwrap();
@@ -58,7 +58,7 @@ pub fn populate_account(
 pub fn populate_savings(
     config: &Config,
     tables: &HashMap<String, Arc<Table>>,
-    indexes: &mut [Option<Index>; 5],
+    indexes: &mut Vec<Option<Index>>,
     rng: &mut StdRng,
 ) -> Result<()> {
     let savings = tables.get("savings").unwrap();
@@ -88,7 +88,7 @@ pub fn populate_savings(
 pub fn populate_checking(
     config: &Config,
     tables: &HashMap<String, Arc<Table>>,
-    indexes: &mut [Option<Index>; 5],
+    indexes: &mut Vec<Option<Index>>,
     rng: &mut StdRng,
 ) -> Result<()> {
     let checking = tables.get("checking").unwrap();

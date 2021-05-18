@@ -32,7 +32,7 @@ pub struct Workload {
     tables: HashMap<String, Arc<Table>>,
 
     /// Hashmap of indexes; data is owned by the index.
-    indexes: [Option<Index>; 5],
+    indexes: Vec<Option<Index>>,
 
     /// Configuration.
     config: Config,
@@ -66,7 +66,7 @@ impl Workload {
         let mut tables = HashMap::new(); // initialise tables and indexes
                                          //   let mut indexes = IntMap::default();
 
-        let mut indexes = [None, None, None, None, None];
+        let mut indexes = Vec::new();
 
         let mut next_table_id = 0;
 
