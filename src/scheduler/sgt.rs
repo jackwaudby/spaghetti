@@ -88,16 +88,17 @@ impl SerializationGraph {
 
     /// Cleanup a node.
     pub fn cleanup(&self) {
-        let this: ArcNode = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
+        let this: ArcNode = self.this_node.get().unwrap().borrow_mut().take().unwrap(); // take
 
-        let this_wlock = this.write(); // get write lock
+        let mut this_wlock = this.write(); // get write lock
         this_wlock.set_cleaned(); // set as cleaned
+        let outgoing = this_wlock.take_outgoing(); // remove edges
+        let incoming = this_wlock.take_incoming();
         drop(this_wlock); // drop write lock
 
-        let this_rlock = this.read(); // get read lock
-        let outgoing = this_rlock.get_outgoing(true, true); // remove outgoing edges
+        let this_rlock = this.read(); // get write lock
 
-        for (that, rw_edge) in outgoing {
+        for (that, rw_edge) in &*outgoing.lock() {
             debug_assert!(
                 that.upgrade().is_some(),
                 "not found: {}",
@@ -114,19 +115,23 @@ impl SerializationGraph {
                 }
             }
             drop(that_rlock);
-            this_rlock.clear_outgoing(); // clear this node outgoing
+            // this_rlock.clear_outgoing(); // clear this node outgoing
         }
+        outgoing.lock().clear();
 
         if this_rlock.is_aborted() {
-            this_rlock.clear_incoming(); // if aborted; clear incoming
+            //   this_rlock.clear_incoming(); // if aborted; clear incoming
+            incoming.lock().clear();
         }
 
         drop(this_rlock);
 
-        let node: ArcNode = self.this_node.get().unwrap().borrow_mut().take().unwrap();
+        //   let node: ArcNode = self.this_node.get().unwrap().borrow_mut().take().unwrap();
 
-        let incoming = node.write().take_incoming();
-        let outgoing = node.write().take_outgoing();
+        //  let incoming = this.write().take_incoming();
+
+        debug_assert!(incoming.lock().is_empty());
+        debug_assert!(outgoing.lock().is_empty());
 
         self.recycled_edge_sets
             .get_or(|| RefCell::new(Vec::new()))
@@ -138,7 +143,7 @@ impl SerializationGraph {
             .borrow_mut()
             .push(Some(outgoing));
 
-        self.eg.get().unwrap().borrow_mut().add(node); // add to garabge collector
+        self.eg.get().unwrap().borrow_mut().add(this); // add to garabge collector
     }
 
     /// Insert an incoming edge into (this) node from (from) node, followed by a cycle check.
@@ -241,13 +246,6 @@ impl SerializationGraph {
 
     /// Check if a transaction needs to abort.
     pub fn needs_abort(&self, this: &ArcNode) -> bool {
-        // debug_assert!(
-        //     self.this_node.get().unwrap().borrow().is_some(),
-        //     "{:?}",
-        //     self.this_node
-        // );
-
-        //        let this = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
         let this_rlock = this.read();
         let aborted = this_rlock.is_aborted();
         let cascading_abort = this_rlock.is_cascading_abort();
