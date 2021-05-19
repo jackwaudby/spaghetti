@@ -20,13 +20,13 @@ pub struct Index {
 
     /// Data.
     //  data: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
-    data: Vec<Arc<CachePadded<Mutex<Row>>>>,
+    data: Vec<CachePadded<Arc<Mutex<Row>>>>,
 
     /// Log sequence number.
     lsns: Vec<Arc<LogSequenceNumber>>,
 
     /// Accesses.
-    rws: Vec<Arc<CachePadded<Mutex<RwTable>>>>,
+    rws: Vec<CachePadded<Arc<Mutex<RwTable>>>>,
 }
 
 /// List of access made on a row.
@@ -62,17 +62,17 @@ impl Index {
     /// Insert a row with key into the index.
     pub fn insert(&mut self, key: &PrimaryKey, row: Row) {
         //    self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
-        self.data.push(Arc::new(CachePadded::new(Mutex::new(row))));
+        self.data.push(CachePadded::new(Arc::new(Mutex::new(row))));
         self.lsns.push(Arc::new(LogSequenceNumber::new()));
         self.rws
-            .push(Arc::new(CachePadded::new(Mutex::new(RwTable::new()))));
+            .push(CachePadded::new(Arc::new(Mutex::new(RwTable::new()))));
     }
 
     /// Get a handle to row with key.
     pub fn get_row(
         &self,
         key: &PrimaryKey,
-    ) -> Result<&Arc<CachePadded<Mutex<Row>>>, NonFatalError> {
+    ) -> Result<&CachePadded<Arc<Mutex<Row>>>, NonFatalError> {
         // self.data
         //     .get(key)
         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
@@ -85,7 +85,7 @@ impl Index {
         &self.lsns[offset]
     }
 
-    pub fn get_rw_table(&self, key: &PrimaryKey) -> &Arc<CachePadded<Mutex<RwTable>>> {
+    pub fn get_rw_table(&self, key: &PrimaryKey) -> &CachePadded<Arc<Mutex<RwTable>>> {
         let offset: usize = key.into();
         &self.rws[offset]
     }
