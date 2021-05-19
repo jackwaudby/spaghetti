@@ -347,28 +347,28 @@ impl SerializationGraph {
     }
 }
 
-fn cause_row(row: &CachePadded<Arc<Mutex<Row>>>, columns: &[&str]) -> OperationResult {
+fn cause_row(row: Arc<Mutex<Row>>, columns: &[&str]) -> OperationResult {
     let mut guard = row.lock();
     let mut res = guard.get_values(columns).unwrap(); // do read
     drop(guard);
     res
 }
 
-fn cause_prv(rw_table: &CachePadded<Arc<Mutex<RwTable>>>, meta: &TransactionInfo) -> u64 {
+fn cause_prv(rw_table: Arc<Mutex<RwTable>>, meta: &TransactionInfo) -> u64 {
     let mut guard = rw_table.lock();
     let prv = guard.push_front(Access::Read(meta.clone())); // get prv
     drop(guard);
     prv
 }
 
-fn cause_prv2(rw_table: &CachePadded<Arc<Mutex<RwTable>>>, meta: &TransactionInfo) -> u64 {
+fn cause_prv2(rw_table: Arc<Mutex<RwTable>>, meta: &TransactionInfo) -> u64 {
     let mut guard = rw_table.lock();
     let prv = guard.push_front(Access::Write(meta.clone())); // get prv
     drop(guard);
     prv
 }
 
-fn cause_snapshot(rw_table: &CachePadded<Arc<Mutex<RwTable>>>) -> VecDeque<(u64, Access)> {
+fn cause_snapshot(rw_table: Arc<Mutex<RwTable>>) -> VecDeque<(u64, Access)> {
     let guard = rw_table.lock();
     let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
     drop(guard);
@@ -421,7 +421,7 @@ impl Scheduler for SerializationGraph {
             let lsn = index.get_lsn(&key);
             let rw_table = index.get_rw_table(&key);
 
-            let prv = cause_prv(rw_table, meta);
+            let prv = cause_prv(Arc::clone(&rw_table), meta);
             // let mut guard = rw_table.lock();
             // let prv = guard.push_front(Access::Read(meta.clone())); // get prv
             // drop(guard);
@@ -434,7 +434,7 @@ impl Scheduler for SerializationGraph {
                 }
             }
 
-            let snapshot = cause_snapshot(rw_table);
+            let snapshot = cause_snapshot(Arc::clone(&rw_table));
             // let guard = rw_table.lock();
             // let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
             // drop(guard);
@@ -482,7 +482,7 @@ impl Scheduler for SerializationGraph {
             // let mut res = guard.get_values(columns).unwrap(); // do read
             // drop(guard);
 
-            let mut res = cause_row(row, columns);
+            let mut res = cause_row(Arc::clone(&row), columns);
             let vals = res.get_values();
 
             self.txn_info
@@ -532,7 +532,7 @@ impl Scheduler for SerializationGraph {
 
                 let rw_table = index.get_rw_table(&key);
 
-                prv = cause_prv2(rw_table, meta);
+                prv = cause_prv2(Arc::clone(&rw_table), meta);
                 // let mut guard = rw_table.lock();
                 // prv = guard.push_front(Access::Write(meta.clone()));
                 // drop(guard);
@@ -548,7 +548,7 @@ impl Scheduler for SerializationGraph {
                 // let guard = rw_table.lock();
                 // let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
                 // drop(guard);
-                let snapshot = cause_snapshot(rw_table);
+                let snapshot = cause_snapshot(Arc::clone(&rw_table));
 
                 let mut wait = false;
                 let mut cyclic = false;
@@ -609,7 +609,7 @@ impl Scheduler for SerializationGraph {
 
             let rw_table = index.get_rw_table(&key);
 
-            let snapshot = cause_snapshot(rw_table);
+            let snapshot = cause_snapshot(Arc::clone(&rw_table));
             // let guard = rw_table.lock();
             // let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
             // drop(guard);
