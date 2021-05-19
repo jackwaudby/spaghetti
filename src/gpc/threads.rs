@@ -1,3 +1,4 @@
+use crate::common::error::NonFatalError;
 use crate::common::message::InternalResponse;
 use crate::common::message::Outcome;
 use crate::common::statistics::LocalStatistics;
@@ -102,20 +103,39 @@ impl Worker {
                     } else {
                         let txn = generator.get_next(); // 1. get txn
 
-                        let ir = helper::execute(txn, Arc::clone(&scheduler)); // 2. execute txn
+                        let mut restart = true;
 
-                        let InternalResponse {
-                            transaction,
-                            outcome,
-                            latency,
-                            ..
-                        } = ir;
+                        while restart {
+                            let ir = helper::execute(txn.clone(), Arc::clone(&scheduler)); // 2. execute txn
 
-                        if log_results {
-                            log_result(&mut fh, outcome.clone()); // 3. log
+                            let InternalResponse {
+                                transaction,
+                                outcome,
+                                latency,
+                                ..
+                            } = ir;
+
+                            match outcome {
+                                Outcome::Committed { .. } => {
+                                    stats.record(transaction, outcome.clone(), latency);
+                                    restart = false;
+                                }
+                                Outcome::Aborted { ref reason } => {
+                                    if let NonFatalError::SmallBankError(_) = reason {
+                                        stats.record(transaction, outcome.clone(), latency);
+                                        restart = false;
+                                    } else {
+                                        stats.record(transaction, outcome.clone(), latency);
+
+                                        restart = true;
+                                    }
+                                }
+                            }
                         }
 
-                        stats.record(transaction, outcome.clone(), latency);
+                        // if log_results {
+                        //     log_result(&mut fh, outcome.clone()); // 3. log
+                        // }
 
                         sent += 1;
                     }
