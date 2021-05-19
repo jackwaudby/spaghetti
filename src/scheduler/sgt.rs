@@ -419,6 +419,7 @@ impl Scheduler for SerializationGraph {
             // };
 
             let lsn = index.get_lsn(&key);
+
             let rw_table = index.get_rw_table(&key);
 
             let prv = cause_prv(Arc::clone(&rw_table), meta);
