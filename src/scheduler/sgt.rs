@@ -532,7 +532,7 @@ impl Scheduler for SerializationGraph {
 
                 let rw_table = index.get_rw_table(&key);
 
-                prv = cause_prv(rw_table, meta);
+                prv = cause_prv2(rw_table, meta);
                 // let mut guard = rw_table.lock();
                 // prv = guard.push_front(Access::Write(meta.clone()));
                 // drop(guard);
