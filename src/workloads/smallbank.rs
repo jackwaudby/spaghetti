@@ -20,6 +20,8 @@ lazy_static! {
         m.insert(1, 100);
         m.insert(2, 1000);
         m.insert(3, 10000);
+        m.insert(4, 100000);
+
         m
     };
 }
