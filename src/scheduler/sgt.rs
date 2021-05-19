@@ -7,11 +7,11 @@ use crate::scheduler::sgt::transaction_information::{
 use crate::scheduler::NonFatalError;
 use crate::scheduler::{Scheduler, TransactionInfo};
 use crate::storage::datatype::Data;
+use crate::storage::index::RwTable;
 use crate::storage::row::Access;
 use crate::storage::row::OperationResult;
 use crate::storage::row::Row;
 use crate::workloads::{PrimaryKey, Workload};
-
 use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
@@ -344,12 +344,28 @@ impl SerializationGraph {
         true
     }
 }
+
 fn cause(row: &Arc<Mutex<Row>>, columns: &[&str]) -> OperationResult {
     let mut guard = row.lock();
     let mut res = guard.get_values(columns).unwrap(); // do read
     drop(guard);
     res
 }
+
+fn cause_prv(rw_table: &Arc<Mutex<RwTable>>, meta: &TransactionInfo) -> u64 {
+    let mut guard = rw_table.lock();
+    let prv = guard.push_front(Access::Read(meta.clone())); // get prv
+    drop(guard);
+    prv
+}
+
+fn cause_snapshot(rw_table: &Arc<Mutex<RwTable>>) -> VecDeque<(u64, Access)> {
+    let guard = rw_table.lock();
+    let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
+    drop(guard);
+    snapshot
+}
+
 impl Scheduler for SerializationGraph {
     fn begin(&self) -> TransactionInfo {
         let handle = std::thread::current();
@@ -396,10 +412,10 @@ impl Scheduler for SerializationGraph {
             let lsn = index.get_lsn(&key);
             let rw_table = index.get_rw_table(&key);
 
-            let mut guard = rw_table.lock();
-            let prv = guard.push_front(Access::Read(meta.clone())); // get prv
-
-            drop(guard);
+            let prv = cause_prv(rw_table, meta);
+            // let mut guard = rw_table.lock();
+            // let prv = guard.push_front(Access::Read(meta.clone())); // get prv
+            // drop(guard);
 
             loop {
                 let i = lsn.get(); // current lsn
@@ -409,9 +425,10 @@ impl Scheduler for SerializationGraph {
                 }
             }
 
-            let guard = rw_table.lock();
-            let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
-            drop(guard);
+            let snapshot = cause_snapshot(rw_table);
+            // let guard = rw_table.lock();
+            // let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
+            // drop(guard);
 
             let mut cyclic = false; // insert and check each access
             for (id, access) in snapshot {
