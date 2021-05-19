@@ -329,7 +329,7 @@ impl SerializationGraph {
                     drop(guard);
                 }
                 OperationType::Write => {
-                    let row = index.get_row(&key).unwrap(); // get handle to row
+                    let row = index.get_row(&key); // get handle to row
                     let mut rguard = row.lock();
                     rguard.commit(); // commit write
                     drop(rguard);
@@ -414,9 +414,9 @@ impl Scheduler for SerializationGraph {
 
             let index = self.data.get_index(index_id).unwrap();
 
-            if let Err(_) = index.get_row(&key) {
-                return Err(self.abort(meta)); // abort -- row not found (TATP only)
-            };
+            // if let Err(_) = index.get_row(&key) {
+            //     return Err(self.abort(meta)); // abort -- row not found (TATP only)
+            // };
 
             let lsn = index.get_lsn(&key);
             let rw_table = index.get_rw_table(&key);
@@ -466,17 +466,18 @@ impl Scheduler for SerializationGraph {
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            let row = match index.get_row(&key) {
-                Ok(rh) => rh,
-                Err(_) => {
-                    let mut guard = rw_table.lock();
-                    guard.erase((prv, Access::Read(meta.clone()))); // remove from rw table
-                    drop(guard);
-                    lsn.replace(prv + 1); // increment to next operation
+            // let row = match index.get_row(&key) {
+            //     Ok(rh) => rh,
+            //     Err(_) => {
+            //         let mut guard = rw_table.lock();
+            //         guard.erase((prv, Access::Read(meta.clone()))); // remove from rw table
+            //         drop(guard);
+            //         lsn.replace(prv + 1); // increment to next operation
 
-                    return Err(self.abort(meta));
-                }
-            };
+            //         return Err(self.abort(meta));
+            //     }
+            // };
+            let row = index.get_row(&key);
 
             // let mut guard = row.lock();
             // let mut res = guard.get_values(columns).unwrap(); // do read
@@ -519,9 +520,9 @@ impl Scheduler for SerializationGraph {
             let this: ArcNode =
                 Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
 
-            if let Err(_) = index.get_row(&key) {
-                return Err(self.abort(meta)); // abort -- row not found (TATP only)
-            };
+            // if let Err(_) = index.get_row(&key) {
+            //     return Err(self.abort(meta)); // abort -- row not found (TATP only)
+            // };
 
             let mut prv;
             let mut lsn;
@@ -642,7 +643,7 @@ impl Scheduler for SerializationGraph {
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            let row = index.get_row(&key).unwrap();
+            let row = index.get_row(&key);
             let mut guard = row.lock(); // lock row
 
             let current_values;
@@ -741,7 +742,7 @@ impl Scheduler for SerializationGraph {
                     drop(guard);
                 }
                 OperationType::Write => {
-                    let row = index.get_row(&key).unwrap(); // get handle to row
+                    let row = index.get_row(&key); // get handle to row
                     let mut rguard = row.lock();
                     rguard.revert(); // revert write
                     drop(rguard);

@@ -68,12 +68,12 @@ impl Index {
     }
 
     /// Get a handle to row with key.
-    pub fn get_row(&self, key: &PrimaryKey) -> Result<Arc<Mutex<Row>>, NonFatalError> {
+    pub fn get_row(&self, key: &PrimaryKey) -> Arc<Mutex<Row>> {
         // self.data
         //     .get(key)
         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
         let offset: usize = key.into();
-        Ok(Arc::clone(&self.data[offset]))
+        Arc::clone(&self.data[offset])
     }
 
     pub fn get_lsn(&self, key: &PrimaryKey) -> &Arc<LogSequenceNumber> {
@@ -96,7 +96,7 @@ impl Index {
         //     .data
         //     .get(key)
         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key).unwrap();
+        let rh = self.get_row(key);
         let mut row = rh.lock();
         let res = row.get_values(columns)?;
         Ok(res)
@@ -118,7 +118,7 @@ impl Index {
         //     .data
         //     .get(key)
         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key).unwrap();
+        let rh = self.get_row(key);
 
         let mut row = rh.lock();
         let current_values;
@@ -147,7 +147,7 @@ impl Index {
         //     .data
         //     .get(key)
         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key).unwrap();
+        let rh = self.get_row(key);
 
         let mut row = rh.lock();
         let res = row.append_value(column, value)?;
@@ -160,7 +160,7 @@ impl Index {
         //     .data
         //     .get(key)
         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key).unwrap();
+        let rh = self.get_row(key);
 
         let mut row = rh.lock(); // lock row
         row.commit(); // commit
@@ -174,7 +174,7 @@ impl Index {
         //     .data
         //     .get(key)
         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key).unwrap();
+        let rh = self.get_row(key);
         let mut row = rh.lock();
         row.revert();
         Ok(())
