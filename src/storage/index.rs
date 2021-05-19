@@ -18,7 +18,8 @@ pub struct Index {
     name: String,
 
     /// Data.
-    data: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
+    //  data: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
+    data: Vec<Arc<Mutex<Row>>>,
 
     /// Log sequence number.
     lsns: Vec<Arc<LogSequenceNumber>>,
@@ -45,7 +46,8 @@ impl Index {
     pub fn init(name: &str) -> Self {
         Index {
             name: String::from(name),
-            data: IntMap::default(),
+            //    data: IntMap::default(),
+            data: Vec::new(),
             lsns: Vec::new(),
             rws: Vec::new(),
         }
@@ -58,16 +60,19 @@ impl Index {
 
     /// Insert a row with key into the index.
     pub fn insert(&mut self, key: &PrimaryKey, row: Row) {
-        self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
+        //    self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
+        self.data.push(Arc::new(Mutex::new(row)));
         self.lsns.push(Arc::new(LogSequenceNumber::new()));
         self.rws.push(Arc::new(Mutex::new(RwTable::new())));
     }
 
     /// Get a handle to row with key.
     pub fn get_row(&self, key: &PrimaryKey) -> Result<&Arc<Mutex<Row>>, NonFatalError> {
-        self.data
-            .get(key)
-            .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+        // self.data
+        //     .get(key)
+        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+        let offset: usize = key.into();
+        Ok(&self.data[offset])
     }
 
     pub fn get_lsn(&self, key: &PrimaryKey) -> &Arc<LogSequenceNumber> {
