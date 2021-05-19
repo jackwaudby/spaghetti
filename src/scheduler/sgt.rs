@@ -404,7 +404,6 @@ impl Scheduler for SerializationGraph {
 
             let guard = rw_table.lock();
             let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
-
             drop(guard);
 
             let mut cyclic = false; // insert and check each access
