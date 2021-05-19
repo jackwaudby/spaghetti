@@ -1,209 +1,222 @@
 use crate::common::error::NonFatalError;
+use crate::scheduler::TransactionInfo;
 use crate::storage::datatype::Data;
-use crate::storage::row::{Access, OperationResult, Row};
+use crate::storage::row::{OperationResult, Row};
 use crate::workloads::PrimaryKey;
 
 use crossbeam_utils::CachePadded;
-use nohash_hasher::IntMap;
-use parking_lot::Mutex;
-//use spin::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-/// Each table has an index that owns all rows stored in that table.
+// /// Each table has an index that owns all rows stored in that table.
+// #[derive(Debug)]
+// pub struct Index {
+//     /// Index name.
+//     name: String,
+
+//     /// Data.
+//     //  data: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
+//     data: Vec<Arc<Mutex<Row>>>,
+
+//     /// Log sequence number.
+//     lsns: Vec<Arc<LogSequenceNumber>>,
+
+//     /// Accesses.
+//     rws: Vec<Arc<Mutex<RwTable>>>,
+
+// }
+
 #[derive(Debug)]
-pub struct Index {
-    /// Index name.
-    name: String,
+pub struct RwTable(Mutex<AccessHistory>);
 
-    /// Data.
-    //  data: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
-    data: Vec<Arc<Mutex<Row>>>,
-
-    /// Log sequence number.
-    lsns: Vec<Arc<LogSequenceNumber>>,
-
-    /// Accesses.
-    rws: Vec<Arc<Mutex<RwTable>>>,
-}
-
-/// List of access made on a row.
 #[derive(Debug, Clone)]
-pub struct RwTable {
+pub struct AccessHistory {
     prv: u64,
     entries: VecDeque<(u64, Access)>,
 }
 
-/// Log sequence number of operations on a row.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Access {
+    Read(TransactionInfo),
+    Write(TransactionInfo),
+}
+
 #[derive(Debug)]
-pub struct LogSequenceNumber {
-    lsn: AtomicU64,
-}
+pub struct LogSequenceNumber(AtomicU64);
 
-impl Index {
-    /// Create a new index.
-    pub fn init(name: &str) -> Self {
-        Index {
-            name: String::from(name),
-            //    data: IntMap::default(),
-            data: Vec::new(),
-            lsns: Vec::new(),
-            rws: Vec::new(),
-        }
-    }
+// impl Index {
+//     /// Create a new index.
+//     pub fn init(name: &str) -> Self {
+//         Index {
+//             name: String::from(name),
+//             //    data: IntMap::default(),
+//             data: Vec::new(),
+//             lsns: Vec::new(),
+//             rws: Vec::new(),
+//         }
+//     }
 
-    /// Get index name.
-    pub fn get_name(&self) -> String {
-        self.name.clone()
-    }
+//     /// Get index name.
+//     pub fn get_name(&self) -> String {
+//         self.name.clone()
+//     }
 
-    /// Insert a row with key into the index.
-    pub fn insert(&mut self, key: &PrimaryKey, row: Row) {
-        //    self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
-        self.data.push(Arc::new(Mutex::new(row)));
-        self.lsns.push(Arc::new(LogSequenceNumber::new()));
-        self.rws.push(Arc::new(Mutex::new(RwTable::new())));
-    }
+//     /// Insert a row with key into the index.
+//     pub fn insert(&mut self, key: &PrimaryKey, row: Row) {
+//         //    self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
+//         self.data.push(Arc::new(Mutex::new(row)));
+//         self.lsns.push(Arc::new(LogSequenceNumber::new()));
+//         self.rws.push(Arc::new(Mutex::new(RwTable::new())));
+//     }
 
-    /// Get a handle to row with key.
-    pub fn get_row(&self, key: &PrimaryKey) -> Arc<Mutex<Row>> {
-        // self.data
-        //     .get(key)
-        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
-        let offset: usize = key.into();
-        Arc::clone(&self.data[offset])
-    }
+//     /// Get a handle to row with key.
+//     pub fn get_row(&self, key: &PrimaryKey) -> Arc<Mutex<Row>> {
+//         // self.data
+//         //     .get(key)
+//         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
+//         let offset: usize = key.into();
+//         Arc::clone(&self.data[offset])
+//     }
 
-    pub fn get_lsn(&self, key: &PrimaryKey) -> &Arc<LogSequenceNumber> {
-        let offset: usize = key.into();
-        &self.lsns[offset]
-    }
+//     pub fn get_lsn(&self, key: &PrimaryKey) -> &Arc<LogSequenceNumber> {
+//         let offset: usize = key.into();
+//         &self.lsns[offset]
+//     }
 
-    pub fn get_rw_table(&self, key: &PrimaryKey) -> Arc<Mutex<RwTable>> {
-        let offset: usize = key.into();
-        Arc::clone(&self.rws[offset])
-    }
+//     pub fn get_rw_table(&self, key: &PrimaryKey) -> Arc<Mutex<RwTable>> {
+//         let offset: usize = key.into();
+//         Arc::clone(&self.rws[offset])
+//     }
 
-    /// Read columns from a row with the given key.
-    pub fn read(
-        &self,
-        key: &PrimaryKey,
-        columns: &[&str],
-    ) -> Result<OperationResult, NonFatalError> {
-        // let rh = self
-        //     .data
-        //     .get(key)
-        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key);
-        let mut row = rh.lock();
-        let res = row.get_values(columns)?;
-        Ok(res)
-    }
+//     /// Read columns from a row with the given key.
+//     pub fn read(
+//         &self,
+//         key: &PrimaryKey,
+//         columns: &[&str],
+//     ) -> Result<OperationResult, NonFatalError> {
+//         // let rh = self
+//         //     .data
+//         //     .get(key)
+//         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+//         let rh = self.get_row(key);
+//         let mut row = rh.lock();
+//         let res = row.get_values(columns)?;
+//         Ok(res)
+//     }
 
-    /// Write values to columns in a row with the given key.
-    pub fn update<F>(
-        &self,
-        key: &PrimaryKey,
-        columns: &[&str],
-        read: Option<&[&str]>,
-        params: Option<&[Data]>,
-        f: F,
-    ) -> Result<OperationResult, NonFatalError>
-    where
-        F: Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
-    {
-        // let rh = self
-        //     .data
-        //     .get(key)
-        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key);
+//     /// Write values to columns in a row with the given key.
+//     pub fn update<F>(
+//         &self,
+//         key: &PrimaryKey,
+//         columns: &[&str],
+//         read: Option<&[&str]>,
+//         params: Option<&[Data]>,
+//         f: F,
+//     ) -> Result<OperationResult, NonFatalError>
+//     where
+//         F: Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
+//     {
+//         // let rh = self
+//         //     .data
+//         //     .get(key)
+//         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+//         let rh = self.get_row(key);
 
-        let mut row = rh.lock();
-        let current_values;
+//         let mut row = rh.lock();
+//         let current_values;
 
-        if let Some(columns) = read {
-            let mut res = row.get_values(columns)?;
-            current_values = Some(res.get_values());
-        } else {
-            current_values = None;
-        }
+//         if let Some(columns) = read {
+//             let mut res = row.get_values(columns)?;
+//             current_values = Some(res.get_values());
+//         } else {
+//             current_values = None;
+//         }
 
-        let new_values = f(current_values, params)?;
+//         let new_values = f(current_values, params)?;
 
-        let res = row.set_values(&columns, &new_values)?;
-        Ok(res)
-    }
+//         let res = row.set_values(&columns, &new_values)?;
+//         Ok(res)
+//     }
 
-    /// Append value to column in a row with the given key.
-    pub fn append(
-        &self,
-        key: &PrimaryKey,
-        column: &str,
-        value: Data,
-    ) -> Result<OperationResult, NonFatalError> {
-        // let rh = self
-        //     .data
-        //     .get(key)
-        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key);
+//     /// Append value to column in a row with the given key.
+//     pub fn append(
+//         &self,
+//         key: &PrimaryKey,
+//         column: &str,
+//         value: Data,
+//     ) -> Result<OperationResult, NonFatalError> {
+//         // let rh = self
+//         //     .data
+//         //     .get(key)
+//         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+//         let rh = self.get_row(key);
 
-        let mut row = rh.lock();
-        let res = row.append_value(column, value)?;
-        Ok(res)
-    }
+//         let mut row = rh.lock();
+//         let res = row.append_value(column, value)?;
+//         Ok(res)
+//     }
 
-    /// Commit modifications to a row - rows marked for delete are removed.
-    pub fn commit(&self, key: &PrimaryKey) -> Result<(), NonFatalError> {
-        // let rh = self
-        //     .data
-        //     .get(key)
-        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key);
+//     /// Commit modifications to a row - rows marked for delete are removed.
+//     pub fn commit(&self, key: &PrimaryKey) -> Result<(), NonFatalError> {
+//         // let rh = self
+//         //     .data
+//         //     .get(key)
+//         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+//         let rh = self.get_row(key);
 
-        let mut row = rh.lock(); // lock row
-        row.commit(); // commit
+//         let mut row = rh.lock(); // lock row
+//         row.commit(); // commit
 
-        Ok(())
-    }
+//         Ok(())
+//     }
 
-    /// Revert modifications to a row.
-    pub fn revert(&self, key: &PrimaryKey) -> Result<(), NonFatalError> {
-        // let rh = self
-        //     .data
-        //     .get(key)
-        //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
-        let rh = self.get_row(key);
-        let mut row = rh.lock();
-        row.revert();
-        Ok(())
-    }
-}
+//     /// Revert modifications to a row.
+//     pub fn revert(&self, key: &PrimaryKey) -> Result<(), NonFatalError> {
+//         // let rh = self
+//         //     .data
+//         //     .get(key)
+//         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))?;
+//         let rh = self.get_row(key);
+//         let mut row = rh.lock();
+//         row.revert();
+//         Ok(())
+//     }
+// }
 
 impl LogSequenceNumber {
-    fn new() -> Self {
-        LogSequenceNumber {
-            lsn: AtomicU64::new(0),
-        }
+    pub fn new() -> Self {
+        LogSequenceNumber(AtomicU64::new(0))
     }
 
     pub fn get(&self) -> u64 {
-        self.lsn.load(Ordering::SeqCst)
+        self.0.load(Ordering::SeqCst)
     }
 
     pub fn replace(&self, prv: u64) {
-        self.lsn.store(prv, Ordering::SeqCst);
+        self.0.store(prv, Ordering::SeqCst);
     }
 
     pub fn inc(&self) {
-        self.lsn.fetch_add(1, Ordering::SeqCst);
+        self.0.fetch_add(1, Ordering::SeqCst);
     }
 }
 
 impl RwTable {
+    pub fn new() -> Self {
+        RwTable(Mutex::new(AccessHistory::new()))
+    }
+
+    pub fn get_lock(&self) -> MutexGuard<AccessHistory> {
+        self.0.lock()
+    }
+}
+
+impl AccessHistory {
     fn new() -> Self {
-        RwTable {
+        AccessHistory {
             prv: 0,
             entries: VecDeque::new(),
         }
@@ -230,34 +243,54 @@ impl RwTable {
     }
 }
 
-impl fmt::Display for Index {
+// impl fmt::Display for Index {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         write!(f, "{:#?}", self.data).unwrap();
+//         Ok(())
+//     }
+// }
+
+impl fmt::Display for RwTable {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:#?}", self.data).unwrap();
+        // let mut rw = String::new();
+        // let n = self.entries.len();
+
+        // if n > 0 {
+        //     rw.push_str("[");
+
+        //     for (prv, access) in &self.entries {
+        //         rw.push_str(&format!("{}-{}", prv, access));
+        //         rw.push_str(", ");
+        //     }
+        //     let len = rw.len();
+        //     rw.truncate(len - 2);
+        //     let (_, _) = self.entries[n - 1].clone();
+        //     rw.push_str(&format!("]"));
+        // } else {
+        //     rw.push_str("[]");
+        // }
+
+        // write!(f, "prv: {}, rw: {}", self.prv, rw).unwrap();
+        write!(f, "TODO");
         Ok(())
     }
 }
 
-impl fmt::Display for RwTable {
+/// Returns true if the access types are the same.
+pub fn access_eq(a: &Access, b: &Access) -> bool {
+    match (a, b) {
+        (&Access::Read(..), &Access::Read(..)) => true,
+        (&Access::Write(..), &Access::Write(..)) => true,
+        _ => false,
+    }
+}
+
+impl fmt::Display for Access {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut rw = String::new();
-        let n = self.entries.len();
-
-        if n > 0 {
-            rw.push_str("[");
-
-            for (prv, access) in &self.entries {
-                rw.push_str(&format!("{}-{}", prv, access));
-                rw.push_str(", ");
-            }
-            let len = rw.len();
-            rw.truncate(len - 2);
-            let (_, _) = self.entries[n - 1].clone();
-            rw.push_str(&format!("]"));
-        } else {
-            rw.push_str("[]");
+        use Access::*;
+        match &self {
+            Read(id) => write!(f, "r-{}", id),
+            Write(id) => write!(f, "w-{}", id),
         }
-
-        write!(f, "prv: {}, rw: {}", self.prv, rw).unwrap();
-        Ok(())
     }
 }

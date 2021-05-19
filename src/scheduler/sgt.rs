@@ -7,8 +7,8 @@ use crate::scheduler::sgt::transaction_information::{
 use crate::scheduler::NonFatalError;
 use crate::scheduler::{Scheduler, TransactionInfo};
 use crate::storage::datatype::Data;
-use crate::storage::index::RwTable;
-use crate::storage::row::Access;
+use crate::storage::index::{Access, RwTable};
+
 use crate::storage::row::OperationResult;
 use crate::storage::row::Row;
 use crate::workloads::{PrimaryKey, Workload};

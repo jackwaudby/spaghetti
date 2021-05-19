@@ -1,11 +1,9 @@
 use crate::common::error::{FatalError, NonFatalError};
 use crate::storage::catalog::Catalog;
-
-use crate::storage::index::Index;
 use crate::storage::table::Table;
-// use crate::workloads::acid::keys::AcidPrimaryKey;
+use crate::storage::Database;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
-// use crate::workloads::tatp::keys::TatpPrimaryKey;
+use crate::workloads::smallbank::*;
 
 use config::Config;
 use rand::rngs::StdRng;
@@ -19,35 +17,23 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::info;
 
-// pub mod acid;
-
-// pub mod tatp;
-
 pub mod smallbank;
 
-/// Represents the data for a given workload.
 #[derive(Debug)]
 pub struct Workload {
-    /// Hashmap of tables.
     tables: HashMap<String, Arc<Table>>,
 
-    /// Hashmap of indexes; data is owned by the index.
-    indexes: Vec<Option<Index>>,
+    database: Database,
 
-    /// Configuration.
     config: Config,
 }
 
-/// Primary keys of workloads.
 #[derive(PartialEq, Debug, Clone, Eq)]
 pub enum PrimaryKey {
-    // Acid(AcidPrimaryKey),
-    // Tatp(TatpPrimaryKey)
     SmallBank(SmallBankPrimaryKey),
 }
 
 impl Workload {
-    /// Initialise workload.
     pub fn init(config: Config) -> crate::Result<Self> {
         let workload = config.get_str("workload")?;
         let filename = match workload.as_str() {
@@ -65,7 +51,7 @@ impl Workload {
 
         let mut tables = HashMap::new(); // initialise tables and indexes
 
-        let mut indexes = Vec::new();
+        let mut index_cnt = 0;
 
         let mut next_table_id = 0;
 
@@ -97,33 +83,19 @@ impl Workload {
                     None => panic!("invalid index assignment"),
                 };
 
-                let index = Index::init(&index_name);
-
-                indexes.push(Some(index));
+                index_cnt += 1;
             }
         }
 
-        let sf = config.get_int("scale_factor")?; // populate index
+        let sf = config.get_int("scale_factor")? as u64;
+        let accounts = *SB_SF_MAP.get(&sf).unwrap() as usize;
+
+        let mut database = Database::new(accounts, index_cnt, tables);
+
         let set_seed = config.get_bool("set_seed")?;
         let mut rng: StdRng = SeedableRng::from_entropy();
+
         match workload.as_str() {
-            // "acid" => {
-            //     info!("Parameter generator set seed: {}", set_seed);
-            //     info!("Generate ACID SF-{} ", sf);
-            //     acid::loader::populate_person_table(&config, &mut tables, &mut indexes)?;
-            //     acid::loader::populate_person_knows_person_table(
-            //         &config,
-            //         &mut tables,
-            //         &mut indexes,
-            //     )?;
-            // }
-            // "tatp" => {
-            //     let use_nurand = config.get_bool("nurand")?;
-            //     info!("Generate TATP SF-{}", sf);
-            //     tatp::loader::populate_tables(&config, &mut tables, &mut indexes, &mut rng)?;
-            //     info!("Generator set seed: {}", set_seed);
-            //     info!("Generator nurand: {}", use_nurand);
-            // }
             "smallbank" => {
                 let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
                 let contention = match sf {
@@ -136,7 +108,7 @@ impl Workload {
                 };
 
                 info!("Generate SmallBank SF-{}", sf);
-                smallbank::loader::populate_tables(&config, &tables, &mut indexes, &mut rng)?;
+                smallbank::loader::populate_tables(&config, &tables, &mut database, &mut rng)?;
                 info!("Parameter generator set seed: {}", set_seed);
                 info!("Balance mix: {}", use_balance_mix);
                 info!("Contention: {}", contention);
@@ -146,7 +118,7 @@ impl Workload {
 
         Ok(Workload {
             tables,
-            indexes,
+            database,
             config,
         })
     }
@@ -158,47 +130,13 @@ impl Workload {
             None => Err(NonFatalError::TableNotFound(name.to_string())),
         }
     }
-
-    /// Get shared reference to index.
-    pub fn get_index(&self, id: usize) -> Result<&Index, NonFatalError> {
-        // match self.indexes.get(&id) {
-        //     Some(index) => Ok(&index),
-        //     None => Err(NonFatalError::IndexNotFound("test".to_string())),
-        // }
-        Ok(&self.indexes[id].as_ref().unwrap())
-    }
-
-    /// Get shared reference to config
-    pub fn get_config(&self) -> &Config {
-        &self.config
-    }
 }
-
-impl std::hash::Hash for PrimaryKey {
-    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
-        use PrimaryKey::*;
-        use SmallBankPrimaryKey::*;
-        match &self {
-            // Acid(_) => hasher.write_u64(0), // TODO
-            // Tatp(_) => hasher.write_u64(1),
-            SmallBank(pk) => match pk {
-                Account(id) => hasher.write_u64(*id),
-                Savings(id) => hasher.write_u64(*id),
-                Checking(id) => hasher.write_u64(*id),
-            },
-        }
-    }
-}
-
-impl nohash_hasher::IsEnabled for PrimaryKey {}
 
 impl From<&PrimaryKey> for usize {
     fn from(item: &PrimaryKey) -> Self {
         use PrimaryKey::*;
         use SmallBankPrimaryKey::*;
         match item {
-            // Acid(_) => hasher.write_u64(0), // TODO
-            // Tatp(_) => hasher.write_u64(1),
             SmallBank(pk) => match pk {
                 Account(id) => *id as usize,
                 Savings(id) => *id as usize,
@@ -210,9 +148,7 @@ impl From<&PrimaryKey> for usize {
 
 impl fmt::Display for Workload {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for index in &self.indexes {
-            write!(f, "{:?}", index).unwrap();
-        }
+        write!(f, "TODO").unwrap();
         Ok(())
     }
 }
@@ -221,8 +157,6 @@ impl fmt::Display for PrimaryKey {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use PrimaryKey::*;
         match &self {
-            // Acid(pk) => write!(f, "{:?}", pk),
-            // Tatp(pk) => write!(f, "{:?}", pk),
             SmallBank(pk) => write!(f, "{:?}", pk),
         }
     }

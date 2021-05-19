@@ -5,25 +5,18 @@ use crate::storage::datatype::{Data, Field};
 use crate::storage::table::Table;
 use crate::workloads::PrimaryKey;
 
+use parking_lot::{Mutex, MutexGuard};
 use std::fmt;
 use std::sync::Arc;
 
-/// Represents a row in the database.
 #[derive(Debug)]
-pub struct Row {
-    /// Primary key.
-    primary_key: PrimaryKey,
+pub struct Row(Mutex<Tuple>);
 
-    /// Handle to table row belongs to.
+#[derive(Debug)]
+pub struct Tuple {
     table: Arc<Table>,
-
-    /// Current version of fields.
     current_fields: Vec<Field>,
-
-    /// Previous version of fields.
     prev_fields: Option<Vec<Field>>,
-
-    /// Row state.
     state: State,
 }
 
@@ -34,31 +27,30 @@ pub enum State {
     Modified,
 }
 
-/// Represents the type of access made to row.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Access {
-    Read(TransactionInfo),
-    Write(TransactionInfo),
-}
-
-/// Represents the packet of information returned from a get/set operation on a row.
 #[derive(Debug)]
 pub struct OperationResult {
-    /// Optional values.
     values: Option<Vec<Data>>,
 }
 
 impl Row {
-    /// Return a row with null fields.
-    pub fn new(primary_key: PrimaryKey, table: Arc<Table>) -> Self {
+    pub fn new(table: Arc<Table>) -> Self {
+        Row(Mutex::new(Tuple::new(table)))
+    }
+
+    pub fn get_lock(&self) -> MutexGuard<Tuple> {
+        self.0.lock()
+    }
+}
+
+impl Tuple {
+    pub fn new(table: Arc<Table>) -> Self {
         let fields = table.get_schema().column_cnt();
         let mut current_fields = Vec::with_capacity(fields);
         for _ in 0..fields {
             current_fields.push(Field::new());
         }
 
-        Row {
-            primary_key,
+        Tuple {
             table,
             current_fields,
             prev_fields: None,
@@ -66,17 +58,10 @@ impl Row {
         }
     }
 
-    /// Returns a row's primary key.
-    pub fn get_primary_key(&self) -> PrimaryKey {
-        self.primary_key.clone()
-    }
-
-    /// Returns a shared reference to the `Table` the row belongs to.
     pub fn get_table(&self) -> Arc<Table> {
         Arc::clone(&self.table)
     }
 
-    /// Initialise the value of a field in a row. Used by loaders.
     pub fn init_value(&mut self, column: &str, value: Data) -> Result<(), NonFatalError> {
         let schema = self.table.get_schema();
         let field_index = schema.column_position_by_name(column)?;
@@ -87,7 +72,6 @@ impl Row {
         Ok(())
     }
 
-    /// Get values of columns.
     pub fn get_values(&mut self, columns: &[&str]) -> Result<OperationResult, NonFatalError> {
         let mut values = Vec::with_capacity(columns.len());
         let schema = self.table.get_schema();
@@ -100,7 +84,6 @@ impl Row {
         Ok(OperationResult::new(Some(values)))
     }
 
-    /// Append value to list. (list datatype only).
     pub fn append_value(
         &mut self,
         column: &str,
@@ -108,7 +91,7 @@ impl Row {
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
-                self.primary_key.to_string(),
+                "TODO".to_string(),
                 self.table.get_table_name(),
             )),
             State::Clean => {
@@ -126,7 +109,6 @@ impl Row {
         }
     }
 
-    /// Set the values of a field in a row.
     pub fn set_values(
         &mut self,
         columns: &[&str],
@@ -134,6 +116,7 @@ impl Row {
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
+                "TODO".to_string(),
                 self.primary_key.to_string(),
                 self.table.get_table_name(),
             )),
@@ -159,13 +142,11 @@ impl Row {
         }
     }
 
-    /// Make an update permanent.
     pub fn commit(&mut self) {
         self.state = State::Clean;
         self.prev_fields = None;
     }
 
-    /// Revert to previous version of row.
     pub fn revert(&mut self) {
         match self.state {
             State::Modified => {
@@ -176,19 +157,16 @@ impl Row {
         }
     }
 
-    /// Get row state
     pub fn get_state(&self) -> State {
         self.state.clone()
     }
 }
 
 impl OperationResult {
-    /// Create new operation result.
     pub fn new(values: Option<Vec<Data>>) -> Self {
         OperationResult { values }
     }
 
-    /// Get values.
     pub fn get_values(&mut self) -> Vec<Data> {
         self.values.take().unwrap()
     }
@@ -206,30 +184,11 @@ fn data_eq_column(a: &ColumnKind, b: &Data) -> Result<(), NonFatalError> {
     }
 }
 
-/// Returns true if the access types are the same.
-pub fn access_eq(a: &Access, b: &Access) -> bool {
-    match (a, b) {
-        (&Access::Read(..), &Access::Read(..)) => true,
-        (&Access::Write(..), &Access::Write(..)) => true,
-        _ => false,
-    }
-}
-
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             State::Clean => write!(f, "clean"),
             State::Modified => write!(f, "dirty"),
-        }
-    }
-}
-
-impl fmt::Display for Access {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Access::*;
-        match &self {
-            Read(id) => write!(f, "r-{}", id),
-            Write(id) => write!(f, "w-{}", id),
         }
     }
 }
@@ -247,9 +206,8 @@ impl fmt::Display for Row {
 
         write!(
             f,
-            "[table: {}, pk: {}, state: {}, fields: [{}]",
+            "[table: {}, state: {}, fields: [{}]",
             self.table.get_table_name(),
-            self.get_primary_key(),
             self.state,
             fields,
         )
