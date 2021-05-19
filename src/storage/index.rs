@@ -4,8 +4,8 @@ use crate::storage::row::{Access, OperationResult, Row};
 use crate::workloads::PrimaryKey;
 
 use nohash_hasher::IntMap;
-//use parking_lot::Mutex;
-use spin::Mutex;
+use parking_lot::Mutex;
+//use spin::Mutex;
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};

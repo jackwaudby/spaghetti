@@ -8,6 +8,8 @@ use crate::scheduler::NonFatalError;
 use crate::scheduler::{Scheduler, TransactionInfo};
 use crate::storage::datatype::Data;
 use crate::storage::row::Access;
+use crate::storage::row::OperationResult;
+use crate::storage::row::Row;
 use crate::workloads::{PrimaryKey, Workload};
 
 use parking_lot::Mutex;
@@ -342,7 +344,12 @@ impl SerializationGraph {
         true
     }
 }
-
+fn cause(row: &Arc<Mutex<Row>>, columns: &[&str]) -> OperationResult {
+    let mut guard = row.lock();
+    let mut res = guard.get_values(columns).unwrap(); // do read
+    drop(guard);
+    res
+}
 impl Scheduler for SerializationGraph {
     fn begin(&self) -> TransactionInfo {
         let handle = std::thread::current();
@@ -445,9 +452,11 @@ impl Scheduler for SerializationGraph {
                 }
             };
 
-            let mut guard = row.lock();
-            let mut res = guard.get_values(columns).unwrap(); // do read
-            drop(guard);
+            // let mut guard = row.lock();
+            // let mut res = guard.get_values(columns).unwrap(); // do read
+            // drop(guard);
+
+            let mut res = cause(row, columns);
             let vals = res.get_values();
 
             self.txn_info
