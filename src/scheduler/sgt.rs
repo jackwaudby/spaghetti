@@ -519,16 +519,16 @@ impl Scheduler for SerializationGraph {
             let this: ArcNode =
                 Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
 
+            if let Err(_) = index.get_row(&key) {
+                return Err(self.abort(meta)); // abort -- row not found (TATP only)
+            };
+
             let mut prv;
             let mut lsn;
             loop {
                 if self.needs_abort(&this) {
                     return Err(self.abort(meta));
                 }
-
-                if let Err(_) = index.get_row(&key) {
-                    return Err(self.abort(meta)); // abort -- row not found (TATP only)
-                };
 
                 lsn = index.get_lsn(&key);
 
