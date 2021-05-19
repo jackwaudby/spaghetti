@@ -262,27 +262,29 @@ impl SmallBankGenerator {
 
     /// Get customer name.
     pub fn get_name(&mut self) -> u64 {
-        if self.accounts == 10 {
-            let id: u64 = self.rng.gen_range(0..self.accounts).into();
-            return id;
-        }
+        let id: u64 = self.rng.gen_range(0..self.accounts).into();
+        return id;
+        // if self.accounts == 10 {
+        //     let id: u64 = self.rng.gen_range(0..self.accounts).into();
+        //     return id;
+        // }
 
-        if self.accounts == 100 {
-            let id: u64 = self.rng.gen_range(0..self.accounts).into();
-            return id;
-        }
+        // if self.accounts == 100 {
+        //     let id: u64 = self.rng.gen_range(0..self.accounts).into();
+        //     return id;
+        // }
 
-        let n: f32 = self.rng.gen();
-        match n {
-            x if x < 0.25 => {
-                let id = self.rng.gen_range(0..100) as u32;
-                id as u64
-            }
-            _ => {
-                let id: u64 = self.rng.gen_range(100..self.accounts).into();
-                id
-            }
-        }
+        // let n: f32 = self.rng.gen();
+        // match n {
+        //     x if x < 0.25 => {
+        //         let id = self.rng.gen_range(0..100) as u32;
+        //         id as u64
+        //     }
+        //     _ => {
+        //         let id: u64 = self.rng.gen_range(100..self.accounts).into();
+        //         id
+        //     }
+        // }
     }
 
     /// Get distinct customer names.
