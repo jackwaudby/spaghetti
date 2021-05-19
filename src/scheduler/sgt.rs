@@ -483,6 +483,8 @@ impl Scheduler for SerializationGraph {
             // drop(guard);
 
             let mut res = cause_row(Arc::clone(&row), columns);
+            drop(row);
+
             let vals = res.get_values();
 
             self.txn_info
@@ -668,7 +670,7 @@ impl Scheduler for SerializationGraph {
             };
 
             guard.set_values(columns, &new_values).unwrap();
-
+            drop(guard);
             self.txn_info
                 .get()
                 .unwrap()
