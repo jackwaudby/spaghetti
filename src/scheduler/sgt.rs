@@ -12,6 +12,8 @@ use crate::storage::row::Access;
 use crate::storage::row::OperationResult;
 use crate::storage::row::Row;
 use crate::workloads::{PrimaryKey, Workload};
+
+use crossbeam_utils::CachePadded;
 use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
@@ -345,21 +347,21 @@ impl SerializationGraph {
     }
 }
 
-fn cause(row: &Arc<Mutex<Row>>, columns: &[&str]) -> OperationResult {
+fn cause_row(row: &Arc<CachePadded<Mutex<Row>>>, columns: &[&str]) -> OperationResult {
     let mut guard = row.lock();
     let mut res = guard.get_values(columns).unwrap(); // do read
     drop(guard);
     res
 }
 
-fn cause_prv(rw_table: &Arc<Mutex<RwTable>>, meta: &TransactionInfo) -> u64 {
+fn cause_prv(rw_table: &Arc<CachePadded<Mutex<RwTable>>>, meta: &TransactionInfo) -> u64 {
     let mut guard = rw_table.lock();
     let prv = guard.push_front(Access::Read(meta.clone())); // get prv
     drop(guard);
     prv
 }
 
-fn cause_snapshot(rw_table: &Arc<Mutex<RwTable>>) -> VecDeque<(u64, Access)> {
+fn cause_snapshot(rw_table: &Arc<CachePadded<Mutex<RwTable>>>) -> VecDeque<(u64, Access)> {
     let guard = rw_table.lock();
     let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
     drop(guard);
@@ -473,7 +475,7 @@ impl Scheduler for SerializationGraph {
             // let mut res = guard.get_values(columns).unwrap(); // do read
             // drop(guard);
 
-            let mut res = cause(row, columns);
+            let mut res = cause_row(row, columns);
             let vals = res.get_values();
 
             self.txn_info

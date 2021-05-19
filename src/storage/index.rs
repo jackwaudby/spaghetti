@@ -3,6 +3,7 @@ use crate::storage::datatype::Data;
 use crate::storage::row::{Access, OperationResult, Row};
 use crate::workloads::PrimaryKey;
 
+use crossbeam_utils::CachePadded;
 use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 //use spin::Mutex;
@@ -19,13 +20,13 @@ pub struct Index {
 
     /// Data.
     //  data: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
-    data: Vec<Arc<Mutex<Row>>>,
+    data: Vec<Arc<CachePadded<Mutex<Row>>>>,
 
     /// Log sequence number.
     lsns: Vec<Arc<LogSequenceNumber>>,
 
     /// Accesses.
-    rws: Vec<Arc<Mutex<RwTable>>>,
+    rws: Vec<Arc<CachePadded<Mutex<RwTable>>>>,
 }
 
 /// List of access made on a row.
@@ -61,13 +62,17 @@ impl Index {
     /// Insert a row with key into the index.
     pub fn insert(&mut self, key: &PrimaryKey, row: Row) {
         //    self.data.insert(key.clone(), Arc::new(Mutex::new(row)));
-        self.data.push(Arc::new(Mutex::new(row)));
+        self.data.push(Arc::new(CachePadded::new(Mutex::new(row))));
         self.lsns.push(Arc::new(LogSequenceNumber::new()));
-        self.rws.push(Arc::new(Mutex::new(RwTable::new())));
+        self.rws
+            .push(Arc::new(CachePadded::new(Mutex::new(RwTable::new()))));
     }
 
     /// Get a handle to row with key.
-    pub fn get_row(&self, key: &PrimaryKey) -> Result<&Arc<Mutex<Row>>, NonFatalError> {
+    pub fn get_row(
+        &self,
+        key: &PrimaryKey,
+    ) -> Result<&Arc<CachePadded<Mutex<Row>>>, NonFatalError> {
         // self.data
         //     .get(key)
         //     .ok_or_else(|| NonFatalError::RowNotFound(key.to_string(), self.get_name()))
@@ -80,7 +85,7 @@ impl Index {
         &self.lsns[offset]
     }
 
-    pub fn get_rw_table(&self, key: &PrimaryKey) -> &Arc<Mutex<RwTable>> {
+    pub fn get_rw_table(&self, key: &PrimaryKey) -> &Arc<CachePadded<Mutex<RwTable>>> {
         let offset: usize = key.into();
         &self.rws[offset]
     }
