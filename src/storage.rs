@@ -1,20 +1,14 @@
-use crate::storage::index::AccessHistory;
-use crate::storage::index::LogSequenceNumber;
-use crate::storage::index::RwTable;
 use crate::storage::row::Row;
-use crate::storage::row::Tuple;
 use crate::storage::table::Table;
+use crate::storage::utils::{LogSequenceNumber, RwTable};
 
-use parking_lot::{Mutex, MutexGuard};
-use std::collections::VecDeque;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 pub mod datatype;
 
 pub mod catalog;
 
-pub mod index;
+pub mod utils;
 
 pub mod table;
 
@@ -34,8 +28,8 @@ impl Database {
     pub fn new(population: usize, index_cnt: usize) -> Self {
         let mut v = Vec::with_capacity(population * index_cnt);
 
-        for i in 0..(population * index_cnt) {
-            v.push(Record::new(i));
+        for _ in 0..(population * index_cnt) {
+            v.push(Record::new());
         }
 
         Database(v)
@@ -59,7 +53,7 @@ pub fn calculate_offset(key: usize, index_id: usize, population: usize) -> usize
 }
 
 impl Record {
-    fn new(primary_key: usize) -> Self {
+    fn new() -> Self {
         Record {
             lsn: LogSequenceNumber::new(),
             rw_table: RwTable::new(),
@@ -67,15 +61,15 @@ impl Record {
         }
     }
 
-    pub fn get_row(&self, offset: usize) -> &Row {
+    pub fn get_row(&self) -> &Row {
         &self.row.as_ref().unwrap()
     }
 
-    pub fn get_lsn(&self, offset: usize) -> &LogSequenceNumber {
+    pub fn get_lsn(&self) -> &LogSequenceNumber {
         &self.lsn
     }
 
-    pub fn get_rw_table(&self, offset: usize) -> &RwTable {
+    pub fn get_rw_table(&self) -> &RwTable {
         &self.rw_table
     }
 }

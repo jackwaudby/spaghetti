@@ -126,6 +126,7 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
     {
         let start = Instant::now(); // start timer
         let res = match transaction {
+            Transaction::Tatp => unimplemented!(),
             // Transaction::Tatp(_) => {
             //     if let Parameters::Tatp(params) = parameters {
             //         match params {

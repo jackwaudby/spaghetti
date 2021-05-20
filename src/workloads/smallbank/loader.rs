@@ -1,11 +1,8 @@
 use crate::storage;
 use crate::storage::datatype::Data;
-use crate::storage::row::Row;
-use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
+use crate::storage::table::Table;
 use crate::workloads::smallbank::{MAX_BALANCE, MIN_BALANCE, SB_SF_MAP};
 use crate::workloads::Database;
-use crate::workloads::PrimaryKey;
-use crate::workloads::Table;
 use crate::Result;
 
 use config::Config;

@@ -8,20 +8,18 @@ use crate::scheduler::NonFatalError;
 use crate::scheduler::{Scheduler, TransactionInfo};
 use crate::storage;
 use crate::storage::datatype::Data;
-use crate::storage::index::{Access, RwTable};
-use crate::storage::row::OperationResult;
-use crate::storage::row::Row;
+use crate::storage::utils::Access;
 use crate::workloads::smallbank::SB_SF_MAP;
 use crate::workloads::{PrimaryKey, Workload};
 
-use crossbeam_utils::CachePadded;
+//use crossbeam_utils::CachePadded;
 use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::collections::{HashSet, VecDeque};
 use std::fmt;
 use std::sync::Arc;
 use thread_local::ThreadLocal;
-use tracing::{debug, info};
+use tracing::info;
 
 pub mod transaction_information;
 
@@ -49,10 +47,7 @@ pub struct SerializationGraph {
 impl SerializationGraph {
     /// Initialise a serialization graph.
     pub fn new(size: u32, data: Workload) -> Self {
-        info!(
-            "Initialise basic serialization graph with {} thread(s)",
-            size
-        );
+        info!("Initialise serialization graph with {} thread(s)", size);
 
         let sf = data.get_config().get_int("scale_factor").unwrap() as u64;
         let accounts = *SB_SF_MAP.get(&sf).unwrap() as usize;
@@ -327,7 +322,7 @@ impl SerializationGraph {
             let offset = storage::calculate_offset(key.into(), index, self.accounts);
 
             let record = self.data.get_db().get_record(offset);
-            let rw_table = record.get_rw_table(offset);
+            let rw_table = record.get_rw_table();
             let mut guard = rw_table.get_lock();
 
             match op_type {
@@ -336,7 +331,7 @@ impl SerializationGraph {
                     drop(guard);
                 }
                 OperationType::Write => {
-                    let row = record.get_row(offset);
+                    let row = record.get_row();
                     let mut rguard = row.get_lock();
                     rguard.commit(); // commit write
                     drop(rguard);
@@ -399,9 +394,9 @@ impl Scheduler for SerializationGraph {
             //     return Err(self.abort(meta)); // abort -- row not found (TATP only)
             // };
 
-            let lsn = record.get_lsn(offset);
+            let lsn = record.get_lsn();
 
-            let mut guard = record.get_rw_table(offset).get_lock();
+            let mut guard = record.get_rw_table().get_lock();
             let prv = guard.push_front(Access::Read(meta.clone()));
             drop(guard);
 
@@ -413,7 +408,7 @@ impl Scheduler for SerializationGraph {
                 }
             }
 
-            let guard = record.get_rw_table(offset).get_lock();
+            let guard = record.get_rw_table().get_lock();
             let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
             drop(guard);
 
@@ -436,7 +431,7 @@ impl Scheduler for SerializationGraph {
             }
 
             if cyclic {
-                let mut guard = record.get_rw_table(offset).get_lock();
+                let mut guard = record.get_rw_table().get_lock();
                 guard.erase((prv, Access::Read(meta.clone()))); // remove from rw table
                 drop(guard);
                 lsn.replace(prv + 1); // increment to next operation
@@ -455,7 +450,7 @@ impl Scheduler for SerializationGraph {
             //         return Err(self.abort(meta));
             //     }
             // };
-            let row = record.get_row(offset);
+            let row = record.get_row();
 
             let mut guard = row.get_lock();
             let mut res = guard.get_values(columns).unwrap(); // do read
@@ -508,9 +503,9 @@ impl Scheduler for SerializationGraph {
                     return Err(self.abort(meta));
                 }
 
-                lsn = record.get_lsn(offset);
+                lsn = record.get_lsn();
 
-                let mut guard = record.get_rw_table(offset).get_lock();
+                let mut guard = record.get_rw_table().get_lock();
                 prv = guard.push_front(Access::Write(meta.clone()));
                 drop(guard);
 
@@ -522,7 +517,7 @@ impl Scheduler for SerializationGraph {
                     }
                 }
 
-                let guard = record.get_rw_table(offset).get_lock();
+                let guard = record.get_rw_table().get_lock();
                 let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
                 drop(guard);
 
@@ -561,7 +556,7 @@ impl Scheduler for SerializationGraph {
                 }
 
                 if cyclic {
-                    let mut guard = record.get_rw_table(offset).get_lock();
+                    let mut guard = record.get_rw_table().get_lock();
                     guard.erase((prv, Access::Write(meta.clone()))); // remove from rw_table
                     drop(guard);
                     lsn.replace(prv + 1); // increment to next operation
@@ -570,7 +565,7 @@ impl Scheduler for SerializationGraph {
                 }
 
                 if wait {
-                    let mut guard = record.get_rw_table(offset).get_lock();
+                    let mut guard = record.get_rw_table().get_lock();
                     guard.erase((prv, Access::Write(meta.clone()))); // remove from rw_table
                     drop(guard);
                     lsn.replace(prv + 1); // increment to next operation
@@ -579,7 +574,7 @@ impl Scheduler for SerializationGraph {
                 break;
             }
 
-            let guard = record.get_rw_table(offset).get_lock();
+            let guard = record.get_rw_table().get_lock();
             let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
             drop(guard);
 
@@ -601,7 +596,7 @@ impl Scheduler for SerializationGraph {
             }
 
             if cyclic {
-                let mut guard = record.get_rw_table(offset).get_lock();
+                let mut guard = record.get_rw_table().get_lock();
                 guard.erase((prv, Access::Write(meta.clone()))); // remove from rw_table
                 drop(guard);
                 lsn.replace(prv + 1); // increment to next operation
@@ -609,7 +604,7 @@ impl Scheduler for SerializationGraph {
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            let row = record.get_row(offset);
+            let row = record.get_row();
             let mut guard = row.get_lock();
 
             let current_values;
@@ -625,7 +620,7 @@ impl Scheduler for SerializationGraph {
                 Err(e) => {
                     drop(guard);
 
-                    let mut guard = record.get_rw_table(offset).get_lock();
+                    let mut guard = record.get_rw_table().get_lock();
                     guard.erase((prv, Access::Write(meta.clone())));
                     drop(guard);
 
@@ -702,7 +697,7 @@ impl Scheduler for SerializationGraph {
             let offset = storage::calculate_offset(key.into(), index, self.accounts);
 
             let record = self.data.get_db().get_record(offset);
-            let mut guard = record.get_rw_table(offset).get_lock();
+            let mut guard = record.get_rw_table().get_lock();
 
             match op_type {
                 OperationType::Read => {
@@ -710,7 +705,7 @@ impl Scheduler for SerializationGraph {
                     drop(guard);
                 }
                 OperationType::Write => {
-                    let row = record.get_row(offset); // get handle to row
+                    let row = record.get_row(); // get handle to row
                     let mut rguard = row.get_lock();
                     rguard.revert(); // revert write
                     drop(rguard);

@@ -11,11 +11,13 @@ pub mod sgt;
 #[derive(Debug)]
 pub enum Protocol {
     SerializationGraph(SerializationGraph),
+    OptimisticWaitHit,
 }
 
 #[derive(Debug, Clone)]
 pub enum TransactionInfo {
     SerializationGraph(WeakNode),
+    OptimisticWaitHit,
 }
 
 impl Protocol {
@@ -32,6 +34,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.begin(),
+            OptimisticWaitHit => unimplemented!(),
         }
     }
 
@@ -45,6 +48,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.read(index, key, columns, meta),
+            OptimisticWaitHit => unimplemented!(),
         }
     }
 
@@ -61,6 +65,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.write(index, key, columns, read, params, f, meta),
+            OptimisticWaitHit => unimplemented!(),
         }
     }
 
@@ -68,6 +73,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.commit(meta),
+            OptimisticWaitHit => unimplemented!(),
         }
     }
 
@@ -75,6 +81,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.abort(meta),
+            OptimisticWaitHit => unimplemented!(),
         }
     }
 }
@@ -159,6 +166,7 @@ impl fmt::Display for TransactionInfo {
 
         match &self {
             SerializationGraph(node) => write!(f, "{}", node.as_ptr() as usize),
+            OptimisticWaitHit => unimplemented!(),
         }
     }
 }

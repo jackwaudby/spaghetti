@@ -131,11 +131,11 @@ impl Worker {
                                     }
                                 }
                             }
-                        }
 
-                        // if log_results {
-                        //     log_result(&mut fh, outcome.clone()); // 3. log
-                        // }
+                            if log_results {
+                                log_result(&mut fh, outcome.clone()); // 3. log
+                            }
+                        }
 
                         sent += 1;
                     }

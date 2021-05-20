@@ -1,33 +1,10 @@
-use crate::common::error::NonFatalError;
 use crate::scheduler::TransactionInfo;
-use crate::storage::datatype::Data;
-use crate::storage::row::{OperationResult, Row};
-use crate::workloads::PrimaryKey;
 
-use crossbeam_utils::CachePadded;
+//use crossbeam_utils::CachePadded;
 use parking_lot::{Mutex, MutexGuard};
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
-
-// /// Each table has an index that owns all rows stored in that table.
-// #[derive(Debug)]
-// pub struct Index {
-//     /// Index name.
-//     name: String,
-
-//     /// Data.
-//     //  data: IntMap<PrimaryKey, Arc<Mutex<Row>>>,
-//     data: Vec<Arc<Mutex<Row>>>,
-
-//     /// Log sequence number.
-//     lsns: Vec<Arc<LogSequenceNumber>>,
-
-//     /// Accesses.
-//     rws: Vec<Arc<Mutex<RwTable>>>,
-
-// }
 
 #[derive(Debug)]
 pub struct RwTable(Mutex<AccessHistory>);
@@ -271,7 +248,7 @@ impl fmt::Display for RwTable {
         // }
 
         // write!(f, "prv: {}, rw: {}", self.prv, rw).unwrap();
-        write!(f, "TODO");
+        write!(f, "TODO").unwrap();
         Ok(())
     }
 }

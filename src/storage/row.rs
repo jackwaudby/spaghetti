@@ -1,9 +1,7 @@
 use crate::common::error::NonFatalError;
-use crate::scheduler::TransactionInfo;
 use crate::storage::catalog::ColumnKind;
 use crate::storage::datatype::{Data, Field};
 use crate::storage::table::Table;
-use crate::workloads::PrimaryKey;
 
 use parking_lot::{Mutex, MutexGuard};
 use std::fmt;

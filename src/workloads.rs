@@ -78,11 +78,6 @@ impl Workload {
 
                 tables.insert(table_name, Arc::new(table));
             } else if line.starts_with("INDEX") {
-                let index_name: String = match line.strip_prefix("INDEX=") {
-                    Some(name) => name.to_lowercase(),
-                    None => panic!("invalid index assignment"),
-                };
-
                 index_cnt += 1;
             }
         }

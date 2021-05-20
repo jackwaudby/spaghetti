@@ -51,6 +51,7 @@ pub enum Transaction {
     // Acid(AcidTransaction),
     // Tatp(TatpTransaction)
     //        ,
+    Tatp,
     SmallBank(SmallBankTransaction),
 }
 
@@ -59,6 +60,7 @@ pub enum Transaction {
 pub enum Parameters {
     // Acid(AcidTransactionProfile),
     // Tatp(TatpTransactionProfile),
+    Tatp,
     SmallBank(SmallBankTransactionProfile),
 }
 
