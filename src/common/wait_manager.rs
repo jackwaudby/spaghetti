@@ -34,7 +34,7 @@ impl WaitManager {
         if self.retries < MAX_SLOTS {
             self.retries += 1;
         }
-        let n = (2 ^ self.retries) as usize;
+        let n = usize::pow(2, self.retries);
         let ind = self.rng.gen_range(0..n);
         let wait_time = self.slots[ind];
         thread::sleep(Duration::from_micros(wait_time));
