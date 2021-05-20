@@ -6,9 +6,10 @@ use crate::scheduler::owh::transaction::{
 use crate::scheduler::NonFatalError;
 use crate::workloads::PrimaryKey;
 
+use parking_lot::{Mutex, MutexGuard, RwLock};
 use std::cell::UnsafeCell;
 use std::fmt;
-use std::sync::{Arc, Mutex, MutexGuard, RwLock};
+use std::sync::Arc;
 
 unsafe impl Sync for ThreadState {}
 
@@ -31,7 +32,7 @@ impl ThreadState {
     }
 
     pub fn get_epoch_tracker(&self) -> MutexGuard<EpochTracker> {
-        self.epoch_tracker.lock().unwrap()
+        self.epoch_tracker.lock()
     }
 
     fn get_id(&self) -> usize {
@@ -49,18 +50,18 @@ impl ThreadState {
         let se = wg.get_current_id(); // get start epoch for transaction
         wg.add_started(id); // register as started in this epoch
         let transaction = Arc::new(Transaction::new(id, se)); // create new list entry
-        self.terminated_list.write().unwrap().list.push(transaction);
+        self.terminated_list.write().list.push(transaction);
         id as usize
     }
 
     pub fn get_start_epoch(&self, seq_num: usize) -> u64 {
-        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let rlock = self.terminated_list.read(); // take read lock on terminated list
         let index = rlock.get_index(seq_num); // calculate offset in list
         rlock.list[index].get_start_epoch() // get start epoch
     }
 
     pub fn get_transaction_id(&self, seq_num: usize) -> usize {
-        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let rlock = self.terminated_list.read(); // take read lock on terminated list
         let index = rlock.get_index(seq_num); // calculate offset in list
         rlock.list[index].get_id()
     }
@@ -71,34 +72,34 @@ impl ThreadState {
         predecessor_id: (usize, usize),
         predecessor_upon: PredecessorUpon,
     ) {
-        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let rlock = self.terminated_list.read(); // take read lock on terminated list
         let index = rlock.get_index(seq_num); // calculate offset in list
         rlock.list[index].add_predecessor(predecessor_id, predecessor_upon);
     }
 
     pub fn get_wait_list(&self, seq_num: usize) -> Vec<(usize, usize)> {
-        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let rlock = self.terminated_list.read(); // take read lock on terminated list
         let index = rlock.get_index(seq_num); // calculate offset in list
         rlock.list[index].get_predecessors(PredecessorUpon::Read)
     }
 
     /// Get hit list for transaction `id`.
     pub fn get_hit_list(&self, seq_num: usize) -> Vec<(usize, usize)> {
-        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let rlock = self.terminated_list.read(); // take read lock on terminated list
         let index = rlock.get_index(seq_num); // calculate offset in list
         rlock.list[index].get_predecessors(PredecessorUpon::Write)
     }
 
     /// Set state for transaction `id`.
     pub fn set_state(&self, seq_num: usize, state: TransactionState) {
-        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let rlock = self.terminated_list.read(); // take read lock on terminated list
         let index = rlock.get_index(seq_num); // calculate offset in list
         rlock.list[index].set_state(state);
     }
 
     /// Set state for transaction `id`.
     pub fn try_commit(&self, seq_num: usize) -> Result<(), NonFatalError> {
-        let rlock: &TerminatedList = &*self.terminated_list.read().unwrap(); // get read lock
+        let rlock: &TerminatedList = &*self.terminated_list.read(); // get read lock
         let index = rlock.get_index(seq_num); // calculate offset in list
         let entry = &*rlock.list[index]; // get entry
         entry.try_commit()?;
@@ -107,7 +108,7 @@ impl ThreadState {
 
     /// Get state for transaction `id`.
     pub fn get_state(&self, seq_num: usize) -> TransactionState {
-        let rlock = self.terminated_list.read().unwrap(); // take read lock on terminated list
+        let rlock = self.terminated_list.read(); // take read lock on terminated list
         let index = rlock.get_index(seq_num); // calculate offset in list
         rlock.list[index].get_state()
     }
@@ -119,7 +120,7 @@ impl ThreadState {
         key: PrimaryKey,
         index_id: usize,
     ) {
-        let rlock: &TerminatedList = &*self.terminated_list.read().unwrap(); // get read lock
+        let rlock: &TerminatedList = &*self.terminated_list.read(); // get read lock
         let index = rlock.get_index(seq_num); // calculate offset in list
         let entry = &*rlock.list[index]; // get entry
 
@@ -127,7 +128,7 @@ impl ThreadState {
     }
 
     pub fn get_info(&self, seq_num: usize) -> Vec<Operation> {
-        let rlock: &TerminatedList = &*self.terminated_list.read().unwrap(); // get read lock
+        let rlock: &TerminatedList = &*self.terminated_list.read(); // get read lock
         let index = rlock.get_index(seq_num); // calculate offset in list
         let entry = &*rlock.list[index]; // get entry
 
@@ -137,7 +138,7 @@ impl ThreadState {
     /// Remove transaction with `id`.
     pub fn remove_transactions(&self, transactions: Vec<usize>) {
         if !transactions.is_empty() {
-            let mut wlock = self.terminated_list.write().unwrap(); // take write lock on terminated list
+            let mut wlock = self.terminated_list.write(); // take write lock on terminated list
 
             let num_to_remove = transactions.len();
             let max_id = *transactions.iter().max().unwrap();
@@ -163,8 +164,8 @@ impl ThreadState {
 
 impl fmt::Display for ThreadState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let ep = self.epoch_tracker.lock().unwrap();
-        let tl = self.terminated_list.read().unwrap().list.len();
+        let ep = self.epoch_tracker.lock();
+        let tl = self.terminated_list.read().list.len();
 
         write!(
             f,

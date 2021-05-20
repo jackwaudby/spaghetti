@@ -9,7 +9,7 @@ pub enum OptimisedWaitHitError {
     Hit(String),
 
     /// Transaction aborted in wait-phase due to predecessor already having aborted.
-    PredecessorAborted(String),
+    PredecessorAborted(String, String),
 
     /// Transaction aborted in wait-phase due to predecessor been active.
     PredecessorActive(String),
@@ -22,8 +22,8 @@ impl fmt::Display for OptimisedWaitHitError {
         use OptimisedWaitHitError::*;
         match *self {
             Hit(ref tid) => write!(f, "transaction {} was hit", tid),
-            PredecessorAborted(ref tid) => {
-                write!(f, "transaction {} aborted due to predecessor aborting", tid)
+            PredecessorAborted(ref tid, ref pred) => {
+                write!(f, "{} aborted due to {} aborting", tid, pred)
             }
             PredecessorActive(ref tid) => write!(
                 f,

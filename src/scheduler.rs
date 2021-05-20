@@ -178,7 +178,7 @@ impl fmt::Display for TransactionInfo {
 
         match &self {
             SerializationGraph(node) => write!(f, "{}", node.as_ptr() as usize),
-            OptimisticWaitHit(_, _) => write!(f, "TODO"),
+            OptimisticWaitHit(thread_id, seq_num) => write!(f, "({}-{})", thread_id, seq_num),
         }
     }
 }

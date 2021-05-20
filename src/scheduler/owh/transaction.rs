@@ -2,8 +2,8 @@ use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::NonFatalError;
 use crate::workloads::PrimaryKey;
 
+use parking_lot::Mutex;
 use std::cell::UnsafeCell;
-use std::sync::Mutex;
 
 unsafe impl Sync for Transaction {}
 
@@ -69,15 +69,15 @@ impl Transaction {
     }
 
     pub fn get_state(&self) -> TransactionState {
-        self.state.lock().unwrap().clone()
+        self.state.lock().clone()
     }
 
     pub fn set_state(&self, new: TransactionState) {
-        *self.state.lock().unwrap() = new;
+        *self.state.lock() = new;
     }
 
     pub fn try_commit(&self) -> Result<(), NonFatalError> {
-        let mut guard = self.state.lock().unwrap();
+        let mut guard = self.state.lock();
         let state = guard.clone();
         if state == TransactionState::Aborted {
             return Err(OptimisedWaitHitError::Hit(self.id.to_string()).into());

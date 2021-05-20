@@ -36,6 +36,7 @@ impl GarbageCollector {
                     }
 
                     thread::sleep(Duration::from_millis(sleep * 1000)); // sleep garbage collector
+                    debug!("start gc");
 
                     for (i, thread) in shared.iter().enumerate() {
                         thread.get_epoch_tracker().new_epoch(); // increment epoch per thread

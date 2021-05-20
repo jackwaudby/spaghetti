@@ -312,7 +312,7 @@ impl LocalStatistics {
                 OptimisticWaitHit(ref mut metric) => match reason {
                     NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
                         OptimisedWaitHitError::Hit(_) => metric.inc_hit(),
-                        OptimisedWaitHitError::PredecessorAborted(_) => metric.inc_pur_aborted(),
+                        OptimisedWaitHitError::PredecessorAborted(_, _) => metric.inc_pur_aborted(),
                         OptimisedWaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
                     },
                     NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),

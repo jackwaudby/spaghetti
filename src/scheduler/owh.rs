@@ -92,6 +92,7 @@ impl Scheduler for OptimisedWaitHit {
             .to_string()
             .parse::<usize>()
             .unwrap();
+        debug!("tid: {}; begin", thread_id);
 
         let seq_num = self.thread_states[thread_id].new_transaction();
 
@@ -106,6 +107,7 @@ impl Scheduler for OptimisedWaitHit {
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::OptimisticWaitHit(thread_id, seq_num) = meta {
+            debug!("tid: {}; read", thread_id);
             let offset = storage::calculate_offset(key.into(), index_id, self.accounts);
             let record = self.data.get_db().get_record(offset); // get record
 
@@ -180,6 +182,7 @@ impl Scheduler for OptimisedWaitHit {
         meta: &TransactionInfo,
     ) -> Result<Option<Vec<Data>>, NonFatalError> {
         if let TransactionInfo::OptimisticWaitHit(thread_id, seq_num) = meta {
+            debug!("tid: {}; write", thread_id);
             let offset = storage::calculate_offset(key.into(), index, self.accounts);
             let record = self.data.get_db().get_record(offset); // get record
 
@@ -201,7 +204,15 @@ impl Scheduler for OptimisedWaitHit {
 
             if dirty {
                 drop(row);
-                return Err(self.abort(meta));
+                let mut guard = record.get_rw_table().get_lock();
+                guard.erase((prv, Access::Write(meta.clone())));
+                drop(guard);
+                lsn.replace(prv + 1);
+                self.abort(meta);
+                return Err(NonFatalError::RowDirty(
+                    "todo".to_string(),
+                    "todo".to_string(),
+                ));
             } else {
                 let guard = record.get_rw_table().get_lock();
                 let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
@@ -293,6 +304,7 @@ impl Scheduler for OptimisedWaitHit {
 
     fn abort(&self, meta: &TransactionInfo) -> NonFatalError {
         if let TransactionInfo::OptimisticWaitHit(thread_id, seq_num) = meta {
+            debug!("tid: {}; abort", thread_id);
             self.thread_states[*thread_id].set_state(*seq_num, TransactionState::Aborted); // set state.
 
             let rg = &self.thread_states[*thread_id];
@@ -344,6 +356,7 @@ impl Scheduler for OptimisedWaitHit {
     /// Commit a transaction.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
         if let TransactionInfo::OptimisticWaitHit(thread_id, seq_num) = meta {
+            debug!("tid: {}; commit", thread_id);
             // CHECK //
             if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(*seq_num) {
                 self.abort(&meta);
@@ -368,7 +381,10 @@ impl Scheduler for OptimisedWaitHit {
             // CHECK //
             if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(*seq_num) {
                 self.abort(&meta);
-                return Err(OptimisedWaitHitError::Hit(meta.to_string()).into());
+
+                let e = OptimisedWaitHitError::Hit(meta.to_string());
+                debug!("tid: {}; abort: {}", thread_id, e);
+                return Err(e.into());
             }
 
             // WAIT PHASE //
@@ -381,17 +397,18 @@ impl Scheduler for OptimisedWaitHit {
                 match self.thread_states[p_thread_id].get_state(p_seq_num) {
                     TransactionState::Active => {
                         self.abort(&meta); // abort txn
-
-                        return Err(
-                            OptimisedWaitHitError::PredecessorActive(meta.to_string()).into()
-                        );
+                        let e = OptimisedWaitHitError::PredecessorActive(meta.to_string());
+                        debug!("tid: {}; abort: {}", thread_id, e);
+                        return Err(e.into());
                     }
                     TransactionState::Aborted => {
                         self.abort(&meta); // abort txn
-
-                        return Err(
-                            OptimisedWaitHitError::PredecessorAborted(meta.to_string()).into()
+                        let e = OptimisedWaitHitError::PredecessorAborted(
+                            meta.to_string(),
+                            format!("({}-{})", p_thread_id, p_seq_num),
                         );
+                        debug!("tid: {}; abort: {}", thread_id, e);
+                        return Err(e.into());
                     }
                     TransactionState::Committed => {}
                 }
@@ -400,7 +417,9 @@ impl Scheduler for OptimisedWaitHit {
             // CHECK //
             if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(*seq_num) {
                 self.abort(&meta); // abort txn
-                return Err(OptimisedWaitHitError::Hit(meta.to_string()).into());
+                let e = OptimisedWaitHitError::Hit(meta.to_string());
+                debug!("tid: {}; abort: {}", thread_id, e);
+                return Err(e.into());
             }
 
             // TRY COMMIT //
