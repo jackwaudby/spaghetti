@@ -117,7 +117,6 @@ impl Tuple {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
                 "TODO".to_string(),
-                self.primary_key.to_string(),
                 self.table.get_table_name(),
             )),
             State::Clean => {
@@ -195,21 +194,22 @@ impl fmt::Display for State {
 
 impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // fields
-        let fc = self.current_fields.len();
-        let mut fields = String::new();
-        for field in &self.current_fields[0..fc - 1] {
-            fields.push_str(format!("{}, ", field).as_str());
-        }
-        let last = &self.current_fields[fc - 1];
-        fields.push_str(format!("{}", last).as_str());
+        // // fields
+        // let fc = self.current_fields.len();
+        // let mut fields = String::new();
+        // for field in &self.current_fields[0..fc - 1] {
+        //     fields.push_str(format!("{}, ", field).as_str());
+        // }
+        // let last = &self.current_fields[fc - 1];
+        // fields.push_str(format!("{}", last).as_str());
 
-        write!(
-            f,
-            "[table: {}, state: {}, fields: [{}]",
-            self.table.get_table_name(),
-            self.state,
-            fields,
-        )
+        // write!(
+        //     f,
+        //     "[table: {}, state: {}, fields: [{}]",
+        //     self.table.get_table_name(),
+        //     self.state,
+        //     fields,
+        // )
+        write!(f, "TODO")
     }
 }

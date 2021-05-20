@@ -101,7 +101,6 @@ impl EpochGuard {
     }
 
     pub fn pin(&mut self) -> bool {
-        debug!("pin");
         let mut res = false;
         if self.active_ctr > 0 {
             self.active_ctr += 1;
@@ -128,12 +127,10 @@ impl EpochGuard {
     }
 
     pub fn unpin(&mut self) {
-        debug!("unpin");
         self.active_ctr -= 1;
     }
 
     pub fn add(&mut self, node: ArcNode) {
-        debug!("drop: {}", Arc::as_ptr(&node) as usize);
         self.txn_info[(self.local_ctr % 6) as usize]
             .as_mut()
             .unwrap()

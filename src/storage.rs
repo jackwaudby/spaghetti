@@ -46,19 +46,11 @@ impl Database {
     }
 
     pub fn get_row(&self, offset: usize) -> &Row {
-        &self.0[offset].row.unwrap()
+        &self.0[offset].row.as_ref().unwrap()
     }
 
     pub fn set_row(&mut self, offset: usize, table: Arc<Table>) {
         self.0[offset].row = Some(Row::new(table));
-    }
-
-    pub fn get_lsn(&self, offset: usize) -> &LogSequenceNumber {
-        &self.0[offset].lsn
-    }
-
-    pub fn get_rw_table(&self, offset: usize) -> &RwTable {
-        &self.0[offset].rw_table
     }
 }
 
@@ -73,5 +65,17 @@ impl Record {
             rw_table: RwTable::new(),
             row: None,
         }
+    }
+
+    pub fn get_row(&self, offset: usize) -> &Row {
+        &self.row.as_ref().unwrap()
+    }
+
+    pub fn get_lsn(&self, offset: usize) -> &LogSequenceNumber {
+        &self.lsn
+    }
+
+    pub fn get_rw_table(&self, offset: usize) -> &RwTable {
+        &self.rw_table
     }
 }

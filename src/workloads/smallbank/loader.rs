@@ -40,13 +40,14 @@ pub fn populate_account(
     let n_accounts = *SB_SF_MAP.get(&sf).unwrap() as usize;
 
     for a_id in 0..n_accounts {
-        database.set_row(Arc::clone(&accounts));
+        database.set_row(a_id, Arc::clone(&accounts));
         database
             .get_row(a_id)
             .get_lock()
             .init_value("customer_id", Data::from(a_id as u64))
             .unwrap();
     }
+
     info!("Loaded {} rows into account", n_accounts);
 
     Ok(())
@@ -67,7 +68,9 @@ pub fn populate_savings(
 
     for customer_id in 0..accounts {
         let key = storage::calculate_offset(customer_id, 1, accounts);
-        let row = database.get_row(key).get_lock();
+        database.set_row(key, Arc::clone(&savings));
+
+        let mut row = database.get_row(key).get_lock();
         row.init_value("customer_id", Data::from(customer_id as u64))
             .unwrap();
         let balance = rng.gen_range(min_bal..=max_bal) as f64;
@@ -92,7 +95,9 @@ pub fn populate_checking(
 
     for customer_id in 0..accounts {
         let key = storage::calculate_offset(customer_id, 2, accounts);
-        let row = database.get_row(key).get_lock();
+        database.set_row(key, Arc::clone(&checking));
+
+        let mut row = database.get_row(key).get_lock();
         row.init_value("customer_id", Data::from(customer_id as u64))
             .unwrap();
         let balance = rng.gen_range(min_bal..=max_bal) as f64;
