@@ -191,7 +191,7 @@ impl Attributes {
     }
 }
 
-impl Default for xAttributes {
+impl Default for Attributes {
     fn default() -> Self {
         Self::new()
     }
