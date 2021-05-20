@@ -23,6 +23,12 @@ pub enum Data {
     Null,
 }
 
+impl Default for Field {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Field {
     /// Create a new instance of `Field`.
     pub fn new() -> Self {
@@ -159,10 +165,10 @@ pub fn to_result(
     values: Option<&Vec<Data>>,
 ) -> crate::Result<String> {
     let mut vals;
-    if columns.is_some() {
+    if let Some(cols) = columns {
         vals = Some(BTreeMap::new());
 
-        for (i, column) in columns.unwrap().iter().enumerate() {
+        for (i, column) in cols.iter().enumerate() {
             let key = column.to_string();
             let val = format!("{}", values.unwrap()[i]);
             vals.as_mut().unwrap().insert(key, val);

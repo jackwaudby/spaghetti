@@ -37,6 +37,12 @@ impl TransactionInformation {
     }
 }
 
+impl Default for TransactionInformation {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Operation {
     pub fn new(op_type: OperationType, key: PrimaryKey, index: usize) -> Self {
         Operation {

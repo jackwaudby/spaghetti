@@ -85,8 +85,8 @@ impl GlobalStatistics {
         let path;
         let file;
         if self.workload.as_str() == "acid" {
-            path = format!("./results/todo");
-            file = format!("./results/todo/todo.json");
+            path = "./results/todo".to_string();
+            file = "./results/todo/todo.json".to_string();
             // path = format!(
             //     "./results/{}/{}/",
             //     self.workload,

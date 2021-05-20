@@ -1,11 +1,11 @@
+use crate::common::error::NonFatalError;
 use crate::scheduler::sgt::epoch_manager::{EpochGuard, EpochManager};
 use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::sgt::node::{ArcNode, Node, WeakNode};
 use crate::scheduler::sgt::transaction_information::{
     Operation, OperationType, TransactionInformation,
 };
-use crate::scheduler::NonFatalError;
-use crate::scheduler::{Scheduler, TransactionInfo};
+use crate::scheduler::{CurrentValues, NewValues, Scheduler, TransactionInfo};
 use crate::storage;
 use crate::storage::datatype::Data;
 use crate::storage::utils::Access;
@@ -29,13 +29,15 @@ pub mod epoch_manager;
 
 pub mod error;
 
+type EdgeSets = Vec<(WeakNode, bool)>;
+
 #[derive(Debug)]
 pub struct SerializationGraph {
     thread_id: ThreadLocal<String>,
     this_node: ThreadLocal<RefCell<Option<ArcNode>>>,
     txn_ctr: ThreadLocal<RefCell<u64>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
-    recycled_edge_sets: ThreadLocal<RefCell<Vec<Option<Mutex<Vec<(WeakNode, bool)>>>>>>,
+    recycled_edge_sets: ThreadLocal<RefCell<Vec<Option<Mutex<EdgeSets>>>>>,
     eg: ThreadLocal<RefCell<EpochGuard>>,
     visited: ThreadLocal<RefCell<HashSet<usize>>>,
     stack: ThreadLocal<RefCell<Vec<WeakNode>>>,
@@ -114,11 +116,10 @@ impl SerializationGraph {
 
             if this_rlock.is_aborted() && !rw_edge {
                 that_rlock.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
-            } else {
-                if !that_rlock.is_cleaned() {
-                    that_rlock.remove_incoming(Arc::downgrade(&this));
-                }
+            } else if !that_rlock.is_cleaned() {
+                that_rlock.remove_incoming(Arc::downgrade(&this));
             }
+
             drop(that_rlock);
         }
         outgoing.lock().clear();
@@ -289,7 +290,7 @@ impl SerializationGraph {
             self.cleanup();
         }
 
-        return success;
+        success
     }
 
     /// Cycle check then commit.
@@ -482,7 +483,7 @@ impl Scheduler for SerializationGraph {
         columns: &[&str],
         read: Option<&[&str]>,
         params: Option<&[Data]>,
-        f: &dyn Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
+        f: &dyn Fn(CurrentValues, Option<&[Data]>) -> Result<NewValues, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<Option<Vec<Data>>, NonFatalError> {
         if let TransactionInfo::SerializationGraph(_) = meta {
@@ -724,7 +725,7 @@ impl Scheduler for SerializationGraph {
 
 impl fmt::Display for SerializationGraph {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "").unwrap();
+        writeln!(f).unwrap();
         writeln!(
             f,
             "this_node: {}",

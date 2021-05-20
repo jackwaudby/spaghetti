@@ -2,6 +2,7 @@ use crate::scheduler::sgt::node::ArcNode;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct EpochManager {
@@ -59,12 +60,12 @@ impl EpochManager {
         let old = self.global_ctr.load(Ordering::SeqCst);
         let this_epoch_ctr = self.same_epoch_ctr[(old % 6) as usize].load(Ordering::SeqCst);
         if this_epoch_ctr >= self.guard_ctr.load(Ordering::SeqCst) {
-            match self
+            if self
                 .global_ctr
                 .compare_exchange(old, old + 1, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
             {
-                Ok(_) => {}
-                Err(_) => {}
+                debug!("err");
             }
 
             let global_ctr = self.global_ctr.load(Ordering::SeqCst);

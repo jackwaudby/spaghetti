@@ -163,6 +163,12 @@ pub struct LogSequenceNumber(AtomicU64);
 //     }
 // }
 
+impl Default for LogSequenceNumber {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LogSequenceNumber {
     pub fn new() -> Self {
         LogSequenceNumber(AtomicU64::new(0))
@@ -178,6 +184,12 @@ impl LogSequenceNumber {
 
     pub fn inc(&self) {
         self.0.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+impl Default for RwTable {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -255,11 +267,10 @@ impl fmt::Display for RwTable {
 
 /// Returns true if the access types are the same.
 pub fn access_eq(a: &Access, b: &Access) -> bool {
-    match (a, b) {
-        (&Access::Read(..), &Access::Read(..)) => true,
-        (&Access::Write(..), &Access::Write(..)) => true,
-        _ => false,
-    }
+    matches!(
+        (a, b),
+        (&Access::Read(..), &Access::Read(..)) | (&Access::Write(..), &Access::Write(..))
+    )
 }
 
 impl fmt::Display for Access {

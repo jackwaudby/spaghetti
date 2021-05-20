@@ -6,6 +6,9 @@ use crate::workloads::{PrimaryKey, Workload};
 
 use std::fmt;
 
+pub type CurrentValues = Option<Vec<Data>>;
+pub type NewValues = Vec<Data>;
+
 pub mod sgt;
 
 #[derive(Debug)]
@@ -59,7 +62,7 @@ impl Protocol {
         columns: &[&str],
         read: Option<&[&str]>,
         params: Option<&[Data]>,
-        f: &dyn Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
+        f: &dyn Fn(CurrentValues, Option<&[Data]>) -> Result<NewValues, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<Option<Vec<Data>>, NonFatalError> {
         use Protocol::*;
@@ -117,7 +120,7 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
         columns: &[&str],
         read: Option<&[&str]>,
         params: Option<&[Data]>,
-        f: &dyn Fn(Option<Vec<Data>>, Option<&[Data]>) -> Result<Vec<Data>, NonFatalError>,
+        f: &dyn Fn(CurrentValues, Option<&[Data]>) -> Result<NewValues, NonFatalError>,
         meta: &TransactionInfo,
     ) -> Result<Option<Vec<Data>>, NonFatalError>;
 
