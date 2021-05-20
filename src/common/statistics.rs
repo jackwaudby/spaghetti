@@ -133,15 +133,16 @@ impl GlobalStatistics {
         // Compute totals.
         let mut completed = 0;
         let mut committed = 0;
-        let mut aborts = 0;
-        let protocol_aborts;
-        let applicaton_aborts;
+        let mut restarted = 0;
+        let mut aborted = 0;
 
         //  let mut raw_latency = vec![];
         for transaction in &mut self.transaction_breakdown.transactions {
             completed += transaction.completed;
             committed += transaction.committed;
-            aborts += transaction.aborted;
+            restarted += transaction.restarted;
+            aborted += transaction.aborted;
+
             //   latency += transaction.latency;
             //   transaction.calculate_latency_summary();
             //            let mut temp = transaction.raw_latency.clone();
@@ -152,20 +153,18 @@ impl GlobalStatistics {
         let throughput;
 
         match self.abort_breakdown.workload_specific {
-            WorkloadAbortBreakdown::Tatp(ref reason) => {
-                applicaton_aborts = aborts - reason.row_not_found;
-                protocol_aborts = aborts - applicaton_aborts;
-                // missing data counts as committed
-                let tatp_success = committed + applicaton_aborts;
-                abort_rate = (protocol_aborts as f64 / completed as f64) * 100.0;
-                throughput = tatp_success as f64 / ((self.total_time as f64 / 1000000.0) / 1000.0)
+            WorkloadAbortBreakdown::Tatp(ref _reason) => {
+                // applicaton_aborts = aborts - reason.row_not_found;
+                // protocol_aborts = aborts - applicaton_aborts;
+                // // missing data counts as committed
+                // let tatp_success = committed + applicaton_aborts;
+                abort_rate = 0.0; //(protocol_aborts as f64 / completed as f64) * 100.0;
+                throughput = 0.0; //tatp_success as f64 / ((self.total_time as f64 / 1000000.0) / 1000.0)
             }
 
-            WorkloadAbortBreakdown::SmallBank(ref reason) => {
-                applicaton_aborts = reason.insufficient_funds;
-                protocol_aborts = aborts - applicaton_aborts;
-
-                abort_rate = (protocol_aborts as f64 / completed as f64) * 100.0;
+            WorkloadAbortBreakdown::SmallBank(ref _reason) => {
+                let total = (committed + restarted) as f64;
+                abort_rate = restarted as f64 / total * 100.0;
                 throughput = committed as f64
                     / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64)
             } // _ => {
@@ -194,9 +193,8 @@ impl GlobalStatistics {
             "warmup": self.warmup,
             "completed": completed,
             "committed": committed,
-            "protocol_aborts": protocol_aborts,
-            "application_aborts": applicaton_aborts,
-            "total_aborted": aborts,
+            "restarted": restarted,
+            "aborted": aborted,
             "abort_rate": format!("{:.3}", abort_rate),
             "throughput": format!("{:.3}", throughput),
             "latency": mean,
@@ -222,9 +220,8 @@ impl GlobalStatistics {
             "total_time(ms)":  format!("{:.0}", (self.total_time as f64 / 1000000.0)),
             "completed": completed,
             "committed": committed,
-            "aborted": aborts,
-            "protocol_aborts": protocol_aborts,
-            "application_aborts": applicaton_aborts,
+            "restarted": restarted,
+            "aborted": aborted,
             "throughput": format!("{:.3}", throughput),
             "abort_rate": format!("{:.3}", abort_rate),
             "latency(ms)": format!("{:.0}", (self.latency as f64 / 1000000.0)),
@@ -275,9 +272,9 @@ impl LocalStatistics {
         self.wait_manager += start.elapsed().as_nanos();
     }
 
-    pub fn record(&mut self, transaction: Transaction, outcome: Outcome) {
+    pub fn record(&mut self, transaction: Transaction, outcome: Outcome, restart: bool) {
         self.transaction_breakdown
-            .record(transaction, outcome.clone());
+            .record(transaction, outcome.clone(), restart);
 
         if let Outcome::Aborted { reason } = outcome {
             use WorkloadAbortBreakdown::*;
@@ -341,16 +338,20 @@ impl TransactionBreakdown {
         }
     }
 
-    fn record(&mut self, transaction: Transaction, outcome: Outcome) {
+    fn record(&mut self, transaction: Transaction, outcome: Outcome, restarted: bool) {
         let ind = self
             .transactions
             .iter()
             .position(|x| x.transaction == transaction)
             .unwrap();
 
-        match outcome {
-            Outcome::Committed { .. } => self.transactions[ind].inc_committed(),
-            Outcome::Aborted { .. } => self.transactions[ind].inc_aborted(),
+        if restarted {
+            self.transactions[ind].inc_restarted()
+        } else {
+            match outcome {
+                Outcome::Committed { .. } => self.transactions[ind].inc_committed(),
+                Outcome::Aborted { .. } => self.transactions[ind].inc_aborted(),
+            }
         }
 
         //  self.transactions[ind].add_latency(latency.unwrap().as_secs_f64());
@@ -376,6 +377,7 @@ struct TransactionMetrics {
     transaction: Transaction,
     completed: u32,
     committed: u32,
+    restarted: u32,
     aborted: u32,
     // latency: f64,
     // #[serde(skip_serializing)]
@@ -395,6 +397,7 @@ impl TransactionMetrics {
             transaction,
             completed: 0,
             committed: 0,
+            restarted: 0,
             aborted: 0,
             //       latency: 0.0,
             // raw_latency: vec![],
@@ -416,6 +419,10 @@ impl TransactionMetrics {
     fn inc_aborted(&mut self) {
         self.completed += 1;
         self.aborted += 1;
+    }
+
+    fn inc_restarted(&mut self) {
+        self.restarted += 1;
     }
 
     // fn add_latency(&mut self, latency: f64) {
@@ -441,6 +448,7 @@ impl TransactionMetrics {
         self.completed += other.completed;
         self.committed += other.committed;
         self.aborted += other.aborted;
+        self.restarted += other.restarted;
         //    self.latency += other.latency;
         //      self.raw_latency.append(&mut other.raw_latency);
     }

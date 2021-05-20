@@ -124,22 +124,23 @@ impl Worker {
 
                             match outcome {
                                 Outcome::Committed { .. } => {
-                                    stats.record(transaction, outcome.clone());
                                     restart = false;
+                                    stats.record(transaction, outcome.clone(), restart);
+
                                     if log_results {
                                         log_result(&mut fh, outcome.clone());
                                     }
                                 }
                                 Outcome::Aborted { ref reason } => {
-                                    // application abort
                                     if let NonFatalError::SmallBankError(_) = reason {
-                                        stats.record(transaction, outcome.clone());
                                         restart = false;
+                                        stats.record(transaction, outcome.clone(), restart);
                                         if log_results {
                                             log_result(&mut fh, outcome.clone());
                                         }
                                     } else {
                                         restart = true; // protocol abort
+                                        stats.record(transaction, outcome.clone(), restart);
                                     }
                                 }
                             }
