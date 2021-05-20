@@ -24,7 +24,9 @@ pub struct GlobalStatistics {
     start: Option<Instant>,
     end: Option<Duration>,
     cores: u32,
-    cum_time: u128,
+    total_time: u128,
+    wait_manager: u128,
+    latency: u128,
     protocol: String,
     workload: String,
     transaction_breakdown: TransactionBreakdown,
@@ -32,7 +34,6 @@ pub struct GlobalStatistics {
 }
 
 impl GlobalStatistics {
-    /// Create global metrics container.
     pub fn new(config: &Config) -> GlobalStatistics {
         let scale_factor = config.get_int("scale_factor").unwrap() as u64;
         let protocol = config.get_str("protocol").unwrap();
@@ -51,7 +52,9 @@ impl GlobalStatistics {
             end: None,
             protocol,
             workload,
-            cum_time: 0,
+            total_time: 0,
+            wait_manager: 0,
+            latency: 0,
             cores,
             transaction_breakdown,
             abort_breakdown,
@@ -75,7 +78,10 @@ impl GlobalStatistics {
     }
 
     pub fn merge_into(&mut self, local: LocalStatistics) {
-        self.cum_time += local.end.unwrap().as_millis();
+        self.total_time += local.total_time;
+        self.wait_manager += local.wait_manager;
+        self.latency += local.latency;
+
         self.transaction_breakdown
             .merge(local.transaction_breakdown);
         self.abort_breakdown.merge(local.abort_breakdown);
@@ -127,14 +133,16 @@ impl GlobalStatistics {
         // Compute totals.
         let mut completed = 0;
         let mut committed = 0;
-        let mut aborted = 0;
-        let mut latency = 0.0;
+        let mut aborts = 0;
+        let protocol_aborts;
+        let applicaton_aborts;
+
         //  let mut raw_latency = vec![];
         for transaction in &mut self.transaction_breakdown.transactions {
             completed += transaction.completed;
             committed += transaction.committed;
-            aborted += transaction.aborted;
-            latency += transaction.latency;
+            aborts += transaction.aborted;
+            //   latency += transaction.latency;
             //   transaction.calculate_latency_summary();
             //            let mut temp = transaction.raw_latency.clone();
             //          raw_latency.append(&mut temp);
@@ -145,26 +153,28 @@ impl GlobalStatistics {
 
         match self.abort_breakdown.workload_specific {
             WorkloadAbortBreakdown::Tatp(ref reason) => {
-                // missing data does not contributed to the abort rate.
-                let tatp_aborted = aborted - reason.row_not_found;
-                let tatp_success = committed + reason.row_not_found;
-
-                abort_rate = (tatp_aborted as f64 / completed as f64) * 100.0;
-                throughput = tatp_success as f64 / self.end.unwrap().as_secs() as f64;
+                applicaton_aborts = aborts - reason.row_not_found;
+                protocol_aborts = aborts - applicaton_aborts;
+                // missing data counts as committed
+                let tatp_success = committed + applicaton_aborts;
+                abort_rate = (protocol_aborts as f64 / completed as f64) * 100.0;
+                throughput = tatp_success as f64 / ((self.total_time as f64 / 1000000.0) / 1000.0)
             }
 
             WorkloadAbortBreakdown::SmallBank(ref reason) => {
-                abort_rate =
-                    ((aborted - reason.insufficient_funds) as f64 / completed as f64) * 100.0;
-                let x = (self.cum_time as f64 / self.cores as f64) / 1000.0;
-                throughput = committed as f64 / x;
+                applicaton_aborts = reason.insufficient_funds;
+                protocol_aborts = aborts - applicaton_aborts;
+
+                abort_rate = (protocol_aborts as f64 / completed as f64) * 100.0;
+                throughput = committed as f64
+                    / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64)
             } // _ => {
               //     abort_rate = (aborted as f64 / completed as f64) * 100.0;
               //     throughput = committed as f64 / self.end.unwrap().as_secs() as f64
               // }
         }
 
-        let mean = latency / (completed as f64);
+        let mean = self.latency as f64 / (completed as f64) / 1000000.0;
 
         // let min = raw_latency.min() * 1000.0;
         // let max = raw_latency.max() * 1000.0;
@@ -184,7 +194,9 @@ impl GlobalStatistics {
             "warmup": self.warmup,
             "completed": completed,
             "committed": committed,
-            "aborted": aborted,
+            "protocol_aborts": protocol_aborts,
+            "application_aborts": applicaton_aborts,
+            "total_aborted": aborts,
             "abort_rate": format!("{:.3}", abort_rate),
             "throughput": format!("{:.3}", throughput),
             "latency": mean,
@@ -206,11 +218,17 @@ impl GlobalStatistics {
             "cores": self.cores,
             "protocol": self.protocol,
             "workload": self.workload,
-            "total_duration": self.end.unwrap().as_secs(),
+            "duration(ms)":  format!("{:.0}",self.end.unwrap().as_nanos() as f64 / 1000000.0),
+            "total_time(ms)":  format!("{:.0}", (self.total_time as f64 / 1000000.0)),
             "completed": completed,
+            "committed": committed,
+            "aborted": aborts,
+            "protocol_aborts": protocol_aborts,
+            "application_aborts": applicaton_aborts,
             "throughput": format!("{:.3}", throughput),
             "abort_rate": format!("{:.3}", abort_rate),
-            "latency": format!("{:.3}", mean),
+            "latency(ms)": format!("{:.0}", (self.latency as f64 / 1000000.0)),
+            "av_latency(ms)":format!("{:.3}", mean),
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
     }
@@ -219,8 +237,9 @@ impl GlobalStatistics {
 #[derive(Debug, Clone)]
 pub struct LocalStatistics {
     core_id: u32,
-    start: Option<Instant>,
-    end: Option<Duration>,
+    total_time: u128,
+    wait_manager: u128,
+    latency: u128,
     transaction_breakdown: TransactionBreakdown,
     abort_breakdown: AbortBreakdown,
 }
@@ -232,8 +251,9 @@ impl LocalStatistics {
 
         LocalStatistics {
             core_id,
-            start: None,
-            end: None,
+            total_time: 0,
+            wait_manager: 0,
+            latency: 0,
             transaction_breakdown,
             abort_breakdown,
         }
@@ -243,22 +263,21 @@ impl LocalStatistics {
         self.core_id
     }
 
-    pub fn start(&mut self) {
-        self.start = Some(Instant::now());
+    pub fn stop_worker(&mut self, start: Instant) {
+        self.total_time = start.elapsed().as_nanos();
     }
 
-    pub fn end(&mut self) {
-        self.end = Some(self.start.unwrap().elapsed());
+    pub fn stop_latency(&mut self, start: Instant) {
+        self.latency += start.elapsed().as_nanos();
     }
 
-    pub fn record(
-        &mut self,
-        transaction: Transaction,
-        outcome: Outcome,
-        latency: Option<Duration>,
-    ) {
+    pub fn stop_wait_manager(&mut self, start: Instant) {
+        self.wait_manager += start.elapsed().as_nanos();
+    }
+
+    pub fn record(&mut self, transaction: Transaction, outcome: Outcome) {
         self.transaction_breakdown
-            .record(transaction, outcome.clone(), latency);
+            .record(transaction, outcome.clone());
 
         if let Outcome::Aborted { reason } = outcome {
             use WorkloadAbortBreakdown::*;
@@ -322,7 +341,7 @@ impl TransactionBreakdown {
         }
     }
 
-    fn record(&mut self, transaction: Transaction, outcome: Outcome, latency: Option<Duration>) {
+    fn record(&mut self, transaction: Transaction, outcome: Outcome) {
         let ind = self
             .transactions
             .iter()
@@ -334,7 +353,7 @@ impl TransactionBreakdown {
             Outcome::Aborted { .. } => self.transactions[ind].inc_aborted(),
         }
 
-        self.transactions[ind].add_latency(latency.unwrap().as_secs_f64());
+        //  self.transactions[ind].add_latency(latency.unwrap().as_secs_f64());
     }
 
     fn merge(&mut self, other: TransactionBreakdown) {
@@ -358,7 +377,7 @@ struct TransactionMetrics {
     completed: u32,
     committed: u32,
     aborted: u32,
-    latency: f64,
+    // latency: f64,
     // #[serde(skip_serializing)]
     // raw_latency: Vec<f64>,
     // min: Option<f64>,
@@ -377,7 +396,7 @@ impl TransactionMetrics {
             completed: 0,
             committed: 0,
             aborted: 0,
-            latency: 0.0,
+            //       latency: 0.0,
             // raw_latency: vec![],
             // min: None,
             // max: None,
@@ -399,10 +418,10 @@ impl TransactionMetrics {
         self.aborted += 1;
     }
 
-    fn add_latency(&mut self, latency: f64) {
-        self.latency += latency;
-        //  self.raw_latency.push(latency);
-    }
+    // fn add_latency(&mut self, latency: f64) {
+    //     self.latency += latency;
+    //     //  self.raw_latency.push(latency);
+    // }
 
     //    fn calculate_latency_summary(&mut self) {
     // if !self.raw_latency.is_empty() {
@@ -422,7 +441,7 @@ impl TransactionMetrics {
         self.completed += other.completed;
         self.committed += other.committed;
         self.aborted += other.aborted;
-        self.latency += other.latency;
+        //    self.latency += other.latency;
         //      self.raw_latency.append(&mut other.raw_latency);
     }
 }

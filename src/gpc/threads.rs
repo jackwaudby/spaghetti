@@ -87,64 +87,78 @@ impl Worker {
                     fh = None;
                 }
 
-                let mut sent = 0;
+                let mut completed = 0;
 
-                let st = Instant::now();
+                let timeout_start = Instant::now(); // timeout
                 let runtime = Duration::new(timeout * 60, 0);
-                let et = st + runtime; // timeout
-                stats.start();
+                let timeout_end = timeout_start + runtime;
+
+                let start_worker = Instant::now();
+
                 loop {
-                    if sent == max_transactions {
-                        tracing::debug!("All transactions sent: {} = {}", sent, max_transactions);
+                    if completed == max_transactions {
+                        tracing::debug!(
+                            "All transactions sent: {} = {}",
+                            completed,
+                            max_transactions
+                        );
                         break;
-                    } else if Instant::now() > et {
+                    } else if Instant::now() > timeout_end {
                         tracing::info!("Timeout reached: {} minute(s)", timeout);
                         break;
                     } else {
-                        let txn = generator.get_next(); // 1. get txn
+                        let txn = generator.get_next(); // generate txn
 
                         let mut restart = true;
 
+                        let start_latency = Instant::now();
+
                         while restart {
-                            let ir = helper::execute(txn.clone(), Arc::clone(&scheduler)); // 2. execute txn
+                            let ir = helper::execute(txn.clone(), Arc::clone(&scheduler)); // execute txn
 
                             let InternalResponse {
                                 transaction,
                                 outcome,
-                                latency,
                                 ..
                             } = ir;
 
                             match outcome {
                                 Outcome::Committed { .. } => {
-                                    stats.record(transaction, outcome.clone(), latency);
+                                    stats.record(transaction, outcome.clone());
                                     restart = false;
+                                    if log_results {
+                                        log_result(&mut fh, outcome.clone());
+                                    }
                                 }
                                 Outcome::Aborted { ref reason } => {
+                                    // application abort
                                     if let NonFatalError::SmallBankError(_) = reason {
-                                        stats.record(transaction, outcome.clone(), latency);
+                                        stats.record(transaction, outcome.clone());
                                         restart = false;
+                                        if log_results {
+                                            log_result(&mut fh, outcome.clone());
+                                        }
                                     } else {
-                                        stats.record(transaction, outcome.clone(), latency);
-
-                                        restart = true;
+                                        restart = true; // protocol abort
                                     }
                                 }
                             }
 
-                            if log_results {
-                                log_result(&mut fh, outcome.clone()); // 3. log
-                            }
+                            let start_wm = Instant::now();
+                            // TODO: add wait manager
+                            stats.stop_wait_manager(start_wm);
                         }
 
-                        sent += 1;
+                        stats.stop_latency(start_latency);
+                        completed += 1;
                     }
                 }
-                stats.end();
+
+                stats.stop_worker(start_worker);
+
                 if record {
                     tx.send(stats).unwrap();
                 }
-                tracing::debug!("Worker {} finished", id);
             })
             .unwrap();
 

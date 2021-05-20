@@ -8,7 +8,6 @@ use crate::workloads::smallbank::SmallBankTransaction;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use std::time::Duration;
 
 ///////////////////////////////////////
 //// External messages ////
@@ -71,17 +70,9 @@ pub enum Parameters {
 /// Sent from the transaction manager to a write handler.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct InternalResponse {
-    /// Request number from this client.
     pub request_no: u32,
-
-    /// Transaction outcome.
     pub transaction: Transaction,
-
-    /// Transaction outcome.
     pub outcome: Outcome,
-
-    /// Latency of the request.
-    pub latency: Option<Duration>,
 }
 
 /// Outcome of a transaction with associated value or abort reason.

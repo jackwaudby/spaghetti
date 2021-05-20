@@ -16,7 +16,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::time::Instant;
+
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -124,7 +124,6 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
         parameters,
     } = txn
     {
-        let start = Instant::now(); // start timer
         let res = match transaction {
             Transaction::Tatp => unimplemented!(),
             // Transaction::Tatp(_) => {
@@ -223,7 +222,7 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
               //     }
               //}
         };
-        let latency = Some(start.elapsed()); // stop timer
+
         let outcome = match res {
             Ok(value) => Outcome::Committed { value: Some(value) },
             Err(reason) => Outcome::Aborted { reason },
@@ -233,7 +232,6 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
             request_no,
             transaction,
             outcome,
-            latency,
         }
     } else {
         panic!("expected message request");
