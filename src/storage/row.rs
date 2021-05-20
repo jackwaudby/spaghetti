@@ -60,6 +60,10 @@ impl Tuple {
         Arc::clone(&self.table)
     }
 
+    pub fn is_dirty(&self) -> bool {
+        self.state == State::Modified
+    }
+
     pub fn init_value(&mut self, column: &str, value: Data) -> Result<(), NonFatalError> {
         let schema = self.table.get_schema();
         let field_index = schema.column_position_by_name(column)?;

@@ -1,6 +1,8 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::sgt::node::WeakNode;
 use crate::scheduler::sgt::SerializationGraph;
+
+use crate::scheduler::owh::OptimisedWaitHit;
 use crate::storage::datatype::Data;
 use crate::workloads::{PrimaryKey, Workload};
 
@@ -11,23 +13,25 @@ pub type NewValues = Vec<Data>;
 
 pub mod sgt;
 
+pub mod owh;
+
 #[derive(Debug)]
 pub enum Protocol {
     SerializationGraph(SerializationGraph),
-    OptimisticWaitHit,
+    OptimisticWaitHit(OptimisedWaitHit),
 }
 
 #[derive(Debug, Clone)]
 pub enum TransactionInfo {
     SerializationGraph(WeakNode),
-    OptimisticWaitHit,
+    OptimisticWaitHit(usize, usize),
 }
 
 impl Protocol {
     pub fn new(workload: Workload, cores: usize) -> crate::Result<Protocol> {
         let protocol = match workload.get_config().get_str("protocol")?.as_str() {
             "sgt" => Protocol::SerializationGraph(SerializationGraph::new(cores as u32, workload)),
-
+            "owh" => Protocol::OptimisticWaitHit(OptimisedWaitHit::new(cores, workload)),
             _ => panic!("Incorrect concurrency control protocol"),
         };
         Ok(protocol)
@@ -37,7 +41,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.begin(),
-            OptimisticWaitHit => unimplemented!(),
+            OptimisticWaitHit(owh) => owh.begin(),
         }
     }
 
@@ -51,7 +55,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.read(index, key, columns, meta),
-            OptimisticWaitHit => unimplemented!(),
+            OptimisticWaitHit(owh) => owh.read(index, key, columns, meta),
         }
     }
 
@@ -68,7 +72,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.write(index, key, columns, read, params, f, meta),
-            OptimisticWaitHit => unimplemented!(),
+            OptimisticWaitHit(owh) => owh.write(index, key, columns, read, params, f, meta),
         }
     }
 
@@ -76,7 +80,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.commit(meta),
-            OptimisticWaitHit => unimplemented!(),
+            OptimisticWaitHit(owh) => owh.commit(meta),
         }
     }
 
@@ -84,7 +88,7 @@ impl Protocol {
         use Protocol::*;
         match self {
             SerializationGraph(sg) => sg.abort(meta),
-            OptimisticWaitHit => unimplemented!(),
+            OptimisticWaitHit(owh) => owh.abort(meta),
         }
     }
 }
@@ -148,10 +152,15 @@ pub trait Scheduler: fmt::Display + fmt::Debug {
 
 impl PartialEq for TransactionInfo {
     fn eq(&self, other: &Self) -> bool {
-        use TransactionInfo::*;
         match (self, other) {
-            (&SerializationGraph(ref wn1), &SerializationGraph(ref wn2)) => wn1.ptr_eq(&wn2),
-
+            (
+                &TransactionInfo::SerializationGraph(ref wn1),
+                &TransactionInfo::SerializationGraph(ref wn2),
+            ) => wn1.ptr_eq(&wn2),
+            (
+                &TransactionInfo::OptimisticWaitHit(a, b),
+                &TransactionInfo::OptimisticWaitHit(c, d),
+            ) => (a == c) && (b == d),
             _ => false,
         }
     }
@@ -169,7 +178,7 @@ impl fmt::Display for TransactionInfo {
 
         match &self {
             SerializationGraph(node) => write!(f, "{}", node.as_ptr() as usize),
-            OptimisticWaitHit => unimplemented!(),
+            OptimisticWaitHit(_, _) => write!(f, "TODO"),
         }
     }
 }

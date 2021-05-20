@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
+use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::workloads::smallbank::SmallBankTransaction;
 
@@ -302,16 +303,21 @@ impl LocalStatistics {
                 SerializationGraph(ref mut metric) => {
                     if let NonFatalError::SerializationGraph(sge) = reason {
                         match sge {
-                            SerializationGraphError::CascadingAbort => {
-                                metric.inc_cascading_abort();
-                            }
-                            SerializationGraphError::CycleFound => {
-                                metric.inc_cycle_found();
-                            }
+                            SerializationGraphError::CascadingAbort => metric.inc_cascading_abort(),
+                            SerializationGraphError::CycleFound => metric.inc_cycle_found(),
                         }
                     }
                 }
-                OptimisticWaitHit => unimplemented!(),
+
+                OptimisticWaitHit(ref mut metric) => match reason {
+                    NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
+                        OptimisedWaitHitError::Hit(_) => metric.inc_hit(),
+                        OptimisedWaitHitError::PredecessorAborted(_) => metric.inc_pur_aborted(),
+                        OptimisedWaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
+                    },
+                    NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
+                    _ => {}
+                },
             }
         }
     }
@@ -465,6 +471,7 @@ impl AbortBreakdown {
     fn new(protocol: &str, workload: &str) -> AbortBreakdown {
         let protocol_specific = match protocol {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
+            "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
             _ => unimplemented!(),
         };
 
@@ -491,7 +498,13 @@ impl AbortBreakdown {
                     panic!("protocol abort breakdowns do not match");
                 }
             }
-            OptimisticWaitHit => unimplemented!(),
+            OptimisticWaitHit(ref mut reasons) => {
+                if let OptimisticWaitHit(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
         }
 
         match self.workload_specific {
@@ -570,13 +583,21 @@ impl SmallBankReasons {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 enum ProtocolAbortBreakdown {
     SerializationGraph(SerializationGraphReasons),
-    OptimisticWaitHit,
+    OptimisticWaitHit(HitListReasons),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SerializationGraphReasons {
     cascading_abort: u32,
     cycle_found: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct HitListReasons {
+    row_dirty: u32,
+    hit: u32,
+    pur_active: u32,
+    pur_aborted: u32,
 }
 
 impl SerializationGraphReasons {
@@ -598,5 +619,38 @@ impl SerializationGraphReasons {
     fn merge(&mut self, other: SerializationGraphReasons) {
         self.cascading_abort += other.cascading_abort;
         self.cycle_found += other.cycle_found;
+    }
+}
+impl HitListReasons {
+    fn new() -> HitListReasons {
+        HitListReasons {
+            row_dirty: 0,
+            hit: 0,
+            pur_aborted: 0,
+            pur_active: 0,
+        }
+    }
+
+    fn inc_row_dirty(&mut self) {
+        self.row_dirty += 1;
+    }
+
+    fn inc_hit(&mut self) {
+        self.hit += 1;
+    }
+
+    fn inc_pur_active(&mut self) {
+        self.pur_active += 1;
+    }
+
+    fn inc_pur_aborted(&mut self) {
+        self.pur_aborted += 1;
+    }
+
+    fn merge(&mut self, other: HitListReasons) {
+        self.row_dirty += other.row_dirty;
+        self.hit += other.hit;
+        self.pur_aborted += other.pur_aborted;
+        self.pur_active += other.pur_active;
     }
 }

@@ -223,7 +223,10 @@ impl AccessHistory {
     }
 
     pub fn erase(&mut self, entry: (u64, Access)) {
-        let index = self.entries.iter().position(|r| r == &entry).unwrap();
+        let index = match self.entries.iter().position(|r| r == &entry) {
+            Some(index) => index,
+            None => panic!("entry: {:?} not found in {:?}", entry, self.entries),
+        };
         self.entries.remove(index);
     }
 
