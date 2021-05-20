@@ -2,6 +2,7 @@ use crate::common::error::NonFatalError;
 use crate::common::message::InternalResponse;
 use crate::common::message::Outcome;
 use crate::common::statistics::LocalStatistics;
+use crate::common::wait_manager::WaitManager;
 use crate::gpc::helper;
 use crate::scheduler::Protocol;
 
@@ -42,6 +43,8 @@ impl Worker {
         let mut stats = LocalStatistics::new(id as u32, &w, &p);
 
         let builder = thread::Builder::new().name(id.to_string());
+
+        let mut wm = WaitManager::new();
 
         let thread = builder
             .spawn(move || {
@@ -126,7 +129,7 @@ impl Worker {
                                 Outcome::Committed { .. } => {
                                     restart = false;
                                     stats.record(transaction, outcome.clone(), restart);
-
+                                    wm.reset();
                                     if log_results {
                                         log_result(&mut fh, outcome.clone());
                                     }
@@ -134,6 +137,7 @@ impl Worker {
                                 Outcome::Aborted { ref reason } => {
                                     if let NonFatalError::SmallBankError(_) = reason {
                                         restart = false;
+                                        wm.reset();
                                         stats.record(transaction, outcome.clone(), restart);
                                         if log_results {
                                             log_result(&mut fh, outcome.clone());
@@ -141,13 +145,12 @@ impl Worker {
                                     } else {
                                         restart = true; // protocol abort
                                         stats.record(transaction, outcome.clone(), restart);
+                                        let start_wm = Instant::now();
+                                        wm.wait();
+                                        stats.stop_wait_manager(start_wm);
                                     }
                                 }
                             }
-
-                            let start_wm = Instant::now();
-                            // TODO: add wait manager
-                            stats.stop_wait_manager(start_wm);
                         }
 
                         stats.stop_latency(start_latency);

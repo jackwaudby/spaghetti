@@ -226,6 +226,7 @@ impl GlobalStatistics {
             "abort_rate": format!("{:.3}", abort_rate),
             "latency(ms)": format!("{:.0}", (self.latency as f64 / 1000000.0)),
             "av_latency(ms)":format!("{:.3}", mean),
+            "wait_manager(ms)": format!("{:.0}", (self.wait_manager as f64 / 1000000.0)),
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
     }
