@@ -502,9 +502,9 @@ impl Scheduler for SerializationGraph {
 
                 lsn = record.get_lsn();
 
-                let mut guard = record.get_rw_table().get_lock();
-                prv = guard.push_front(Access::Write(meta.clone()));
-                drop(guard);
+                prv = record
+                    .get_rw_table()
+                    .push_front(Access::Write(meta.clone()));
 
                 loop {
                     let i = lsn.get(); // current operation number
@@ -514,9 +514,7 @@ impl Scheduler for SerializationGraph {
                     }
                 }
 
-                let guard = record.get_rw_table().get_lock();
-                let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
-                drop(guard);
+                let snapshot: VecDeque<(u64, Access)> = record.get_rw_table().snapshot();
 
                 let mut wait = false;
                 let mut cyclic = false;
@@ -553,27 +551,27 @@ impl Scheduler for SerializationGraph {
                 }
 
                 if cyclic {
-                    let mut guard = record.get_rw_table().get_lock();
-                    guard.erase((prv, Access::Write(meta.clone()))); // remove from rw_table
-                    drop(guard);
+                    record
+                        .get_rw_table()
+                        .erase((prv, Access::Write(meta.clone()))); // remove from rw_table
+
                     lsn.replace(prv + 1); // increment to next operation
                     self.abort(meta);
                     return Err(SerializationGraphError::CycleFound.into());
                 }
 
                 if wait {
-                    let mut guard = record.get_rw_table().get_lock();
-                    guard.erase((prv, Access::Write(meta.clone()))); // remove from rw_table
-                    drop(guard);
+                    record
+                        .get_rw_table()
+                        .erase((prv, Access::Write(meta.clone()))); // remove from rw_table
+
                     lsn.replace(prv + 1); // increment to next operation
                     continue;
                 }
                 break;
             }
 
-            let guard = record.get_rw_table().get_lock();
-            let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
-            drop(guard);
+            let snapshot: VecDeque<(u64, Access)> = record.get_rw_table().snapshot();
 
             let mut cyclic = false;
             for (id, access) in snapshot {
@@ -593,9 +591,10 @@ impl Scheduler for SerializationGraph {
             }
 
             if cyclic {
-                let mut guard = record.get_rw_table().get_lock();
-                guard.erase((prv, Access::Write(meta.clone()))); // remove from rw_table
-                drop(guard);
+                record
+                    .get_rw_table()
+                    .erase((prv, Access::Write(meta.clone()))); // remove from rw_table
+
                 lsn.replace(prv + 1); // increment to next operation
                 self.abort(meta);
                 return Err(SerializationGraphError::CycleFound.into());
@@ -617,9 +616,9 @@ impl Scheduler for SerializationGraph {
                 Err(e) => {
                     drop(guard);
 
-                    let mut guard = record.get_rw_table().get_lock();
-                    guard.erase((prv, Access::Write(meta.clone())));
-                    drop(guard);
+                    record
+                        .get_rw_table()
+                        .erase((prv, Access::Write(meta.clone()))); // remove from rw_table
 
                     lsn.replace(prv + 1);
 
