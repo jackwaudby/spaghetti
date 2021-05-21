@@ -1,13 +1,13 @@
 use crate::scheduler::TransactionInfo;
 
-//use crossbeam_utils::CachePadded;
+use crossbeam_utils::CachePadded;
 use parking_lot::{Mutex, MutexGuard};
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 #[derive(Debug)]
-pub struct RwTable(Mutex<AccessHistory>);
+pub struct RwTable(CachePadded<Mutex<AccessHistory>>);
 
 #[derive(Debug, Clone)]
 pub struct AccessHistory {
@@ -195,7 +195,7 @@ impl Default for RwTable {
 
 impl RwTable {
     pub fn new() -> Self {
-        RwTable(Mutex::new(AccessHistory::new()))
+        RwTable(CachePadded::new(Mutex::new(AccessHistory::new())))
     }
 
     pub fn get_lock(&self) -> MutexGuard<AccessHistory> {
