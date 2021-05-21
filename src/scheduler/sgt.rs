@@ -398,7 +398,7 @@ impl Scheduler for SerializationGraph {
             let lsn = record.get_lsn();
 
             let mut guard = record.get_rw_table().get_lock();
-            let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
+
             let prv = guard.push_front(Access::Read(meta.clone()));
             drop(guard);
 
@@ -410,8 +410,9 @@ impl Scheduler for SerializationGraph {
                 }
             }
 
-            //            let guard = record.get_rw_table().get_lock();
-            //            drop(guard);
+            let guard = record.get_rw_table().get_lock();
+            let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
+            drop(guard);
 
             let mut cyclic = false; // insert and check each access
             for (id, access) in snapshot {
@@ -499,7 +500,7 @@ impl Scheduler for SerializationGraph {
 
             let mut prv;
             let mut lsn;
-            let mut snapshot;
+
             loop {
                 if self.needs_abort(&this) {
                     return Err(self.abort(meta));
@@ -508,10 +509,7 @@ impl Scheduler for SerializationGraph {
                 lsn = record.get_lsn();
 
                 let mut guard = record.get_rw_table().get_lock();
-                // let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
-                snapshot = guard.snapshot();
                 prv = guard.push_front(Access::Write(meta.clone()));
-
                 drop(guard);
 
                 loop {
@@ -522,9 +520,9 @@ impl Scheduler for SerializationGraph {
                     }
                 }
 
-                // let guard = record.get_rw_table().get_lock();
-                //    let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
-                // drop(guard);
+                let guard = record.get_rw_table().get_lock();
+                let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
+                drop(guard);
 
                 let mut wait = false;
                 let mut cyclic = false;
@@ -579,12 +577,12 @@ impl Scheduler for SerializationGraph {
                 break;
             }
 
-            // let guard = record.get_rw_table().get_lock();
-            // let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
-            // drop(guard);
+            let guard = record.get_rw_table().get_lock();
+            let snapshot: VecDeque<(u64, Access)> = guard.snapshot();
+            drop(guard);
 
             let mut cyclic = false;
-            for (id, access) in snapshot.clone() {
+            for (id, access) in snapshot {
                 if id < prv {
                     match access {
                         Access::Read(from) => {
