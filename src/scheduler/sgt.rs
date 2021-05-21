@@ -390,6 +390,7 @@ impl Scheduler for SerializationGraph {
             }
 
             let record = self.data.get_db().get_record(offset);
+            let rw_table = record.get_rw_table();
 
             // if let Err(_) = index.get_row(&key) {
             //     return Err(self.abort(meta)); // abort -- row not found (TATP only)
@@ -397,10 +398,7 @@ impl Scheduler for SerializationGraph {
 
             let lsn = record.get_lsn();
 
-            let mut guard = record.get_rw_table().get_lock();
-
-            let prv = guard.push_front(Access::Read(meta.clone()));
-            drop(guard);
+            let prv = rw_table.push_front(Access::Read(meta.clone()));
 
             loop {
                 let i = lsn.get(); // current lsn
@@ -410,9 +408,7 @@ impl Scheduler for SerializationGraph {
                 }
             }
 
-            let guard = record.get_rw_table().get_lock();
-            let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
-            drop(guard);
+            let snapshot = rw_table.snapshot(); // get accesses
 
             let mut cyclic = false; // insert and check each access
             for (id, access) in snapshot {
@@ -433,9 +429,7 @@ impl Scheduler for SerializationGraph {
             }
 
             if cyclic {
-                let mut guard = record.get_rw_table().get_lock();
-                guard.erase((prv, Access::Read(meta.clone()))); // remove from rw table
-                drop(guard);
+                rw_table.erase((prv, Access::Read(meta.clone()))); // remove from rw table
                 lsn.replace(prv + 1); // increment to next operation
                 self.abort(meta);
                 return Err(SerializationGraphError::CycleFound.into());

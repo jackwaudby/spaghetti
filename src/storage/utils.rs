@@ -200,6 +200,34 @@ impl RwTable {
     pub fn get_lock(&self) -> MutexGuard<AccessHistory> {
         self.0.lock()
     }
+
+    pub fn push_front(&self, access: Access) -> u64 {
+        let mut guard = self.get_lock();
+        let prv = guard.push_front(access);
+        drop(guard);
+
+        prv
+    }
+
+    pub fn snapshot(&self) -> VecDeque<(u64, Access)> {
+        let guard = self.get_lock();
+        let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
+        drop(guard);
+
+        snapshot
+    }
+
+    pub fn erase(&self, entry: (u64, Access)) {
+        let mut guard = self.get_lock();
+        guard.erase(entry);
+        drop(guard);
+    }
+
+    pub fn erase_all(&self, entry: Access) {
+        let mut guard = self.get_lock();
+        guard.erase_all(entry);
+        drop(guard);
+    }
 }
 
 impl AccessHistory {
