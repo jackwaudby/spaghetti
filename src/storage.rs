@@ -2,6 +2,7 @@ use crate::storage::row::Row;
 use crate::storage::table::Table;
 use crate::storage::utils::{LogSequenceNumber, RwTable};
 
+use crossbeam_utils::CachePadded;
 use std::sync::Arc;
 
 pub mod datatype;
@@ -19,9 +20,9 @@ pub struct Database(Vec<Record>);
 
 #[derive(Debug)]
 pub struct Record {
-    lsn: LogSequenceNumber,
-    rw_table: RwTable,
-    row: Option<Row>,
+    lsn: CachePadded<LogSequenceNumber>,
+    rw_table: CachePadded<RwTable>,
+    row: CachePadded<Option<Row>>,
 }
 
 impl Database {
@@ -44,7 +45,7 @@ impl Database {
     }
 
     pub fn set_row(&mut self, offset: usize, table: Arc<Table>) {
-        self.0[offset].row = Some(Row::new(table));
+        self.0[offset].row = CachePadded::new(Some(Row::new(table)));
     }
 }
 
@@ -55,9 +56,9 @@ pub fn calculate_offset(key: usize, index_id: usize, population: usize) -> usize
 impl Record {
     fn new() -> Self {
         Record {
-            lsn: LogSequenceNumber::new(),
-            rw_table: RwTable::new(),
-            row: None,
+            lsn: CachePadded::new(LogSequenceNumber::new()),
+            rw_table: CachePadded::new(RwTable::new()),
+            row: CachePadded::new(None),
         }
     }
 
