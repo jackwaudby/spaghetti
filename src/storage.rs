@@ -1,75 +1,107 @@
+use crate::common::ds::atomic_extent_vector::AtomicExtentVec;
+use crate::common::ds::atomic_linked_list::AtomicLinkedList;
+use crate::scheduler::TransactionInfo;
+use crate::storage::catalog::Catalog;
 use crate::storage::row::Row;
-use crate::storage::table::Table;
-use crate::storage::utils::{LogSequenceNumber, RwTable};
 
-use std::sync::Arc;
+use std::fmt;
 
 pub mod datatype;
 
 pub mod catalog;
 
-pub mod utils;
-
-pub mod table;
-
 pub mod row;
 
 #[derive(Debug)]
-pub struct Database(Vec<Record>);
+pub struct Database(Vec<Table>);
 
 #[derive(Debug)]
-pub struct Record {
-    lsn: LogSequenceNumber,
-    rw_table: RwTable,
-    row: Option<Row>,
+pub struct Table {
+    schema: Catalog,
+    rows: AtomicExtentVec<Row>,
+    lsns: AtomicExtentVec<u64>,
+    rw_tables: AtomicExtentVec<AtomicLinkedList<Access>>,
+    // TODO: hashmap
 }
 
 impl Database {
-    pub fn new(population: usize, index_cnt: usize) -> Self {
-        let mut v = Vec::with_capacity(population * index_cnt);
-
-        for _ in 0..(population * index_cnt) {
-            v.push(Record::new());
-        }
-
-        Database(v)
+    pub fn new(tables: usize) -> Self {
+        Database(Vec::with_capacity(tables))
     }
 
-    pub fn get_record(&self, offset: usize) -> &Record {
-        &self.0[offset]
+    pub fn add(&mut self, table: Table) {
+        self.0.push(table);
     }
 
-    pub fn get_row(&self, offset: usize) -> &Row {
-        &self.0[offset].row.as_ref().unwrap()
+    pub fn get_table(&self, n: usize) -> &Table {
+        &self.0[n]
     }
 
-    pub fn set_row(&mut self, offset: usize, table: Arc<Table>) {
-        self.0[offset].row = Some(Row::new(table));
+    pub fn get_mut_table(&mut self, n: usize) -> &mut Table {
+        &mut self.0[n]
     }
 }
 
-pub fn calculate_offset(key: usize, index_id: usize, population: usize) -> usize {
-    (index_id * population) + key
-}
+impl Table {
+    pub fn new(population: usize, schema: Catalog) -> Self {
+        let rows = AtomicExtentVec::reserve(population);
+        let mut lsns = AtomicExtentVec::reserve(population);
+        let mut rw_tables = AtomicExtentVec::reserve(population);
 
-impl Record {
-    fn new() -> Self {
-        Record {
-            lsn: LogSequenceNumber::new(),
-            rw_table: RwTable::new(),
-            row: None,
+        for _ in 0..population {
+            lsns.push(0);
+            rw_tables.push(AtomicLinkedList::new())
+        }
+
+        Table {
+            schema,
+            rows,
+            lsns,
+            rw_tables,
         }
     }
 
-    pub fn get_row(&self) -> &Row {
-        &self.row.as_ref().unwrap()
+    pub fn get_schema(&self) -> &Catalog {
+        &self.schema
     }
 
-    pub fn get_lsn(&self) -> &LogSequenceNumber {
-        &self.lsn
+    pub fn get_rows(&self) -> &AtomicExtentVec<Row> {
+        &self.rows
     }
 
-    pub fn get_rw_table(&self) -> &RwTable {
-        &self.rw_table
+    pub fn get_mut_rows(&mut self) -> &mut AtomicExtentVec<Row> {
+        &mut self.rows
+    }
+
+    pub fn get_lsn(&self) -> &AtomicExtentVec<u64> {
+        &self.lsns
+    }
+
+    pub fn get_rw_tables(&self) -> &AtomicExtentVec<AtomicLinkedList<Access>> {
+        &self.rw_tables
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Access {
+    Read(TransactionInfo),
+    Write(TransactionInfo),
+}
+
+/// Returns true if the access types are the same.
+pub fn access_eq(a: &Access, b: &Access) -> bool {
+    matches!(
+        (a, b),
+        (&Access::Read(..), &Access::Read(..)) | (&Access::Write(..), &Access::Write(..))
+    )
+}
+
+impl fmt::Display for Access {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use Access::*;
+        match &self {
+            Read(id) => write!(f, "r-{}", id),
+            Write(id) => write!(f, "w-{}", id),
+        }
     }
 }

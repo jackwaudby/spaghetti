@@ -5,6 +5,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, SeqCst};
 use std::sync::Mutex;
 
+#[derive(Debug)]
 pub struct AtomicLinkedList<T> {
     id: AtomicU64,
     head: Atomic<Node<T>>,
@@ -12,6 +13,7 @@ pub struct AtomicLinkedList<T> {
     lock: Mutex<u64>,
 }
 
+#[derive(Debug)]
 struct Node<T> {
     id: ManuallyDrop<u64>,
     data: ManuallyDrop<T>,
@@ -215,14 +217,14 @@ impl<T> Iterator for IntoIter<T> {
 }
 
 impl<'g, T> Iterator for Iter<'g, T> {
-    type Item = &'g T;
+    type Item = (&'g u64, &'g T);
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.next {
             Some(node) => {
                 self.next = unsafe { node.next.load(Acquire, self.guard).as_ref() };
 
-                Some(&node.data)
+                Some((&*node.id, &*node.data))
             }
             None => None,
         }

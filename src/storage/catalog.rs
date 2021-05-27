@@ -2,30 +2,19 @@ use crate::common::error::{FatalError, NonFatalError};
 
 use std::fmt;
 
-// A catalog contains the schema of a table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Catalog {
-    /// Table name.
     table_name: String,
-
-    /// Table identifier.
-    table_id: u64,
-
-    /// Number of columns in table.
     column_cnt: usize,
-
-    /// List of columns.
     columns: Vec<Column>,
 }
 
-/// An entry in a catalog's list of columns.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Column {
     name: String,
     kind: ColumnKind,
 }
 
-/// Column datatypes.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ColumnKind {
     Int,
@@ -36,24 +25,16 @@ pub enum ColumnKind {
 }
 
 impl Catalog {
-    /// Initiate a new schema for table.
-    pub fn init(table_name: &str, table_id: u64) -> Self {
+    pub fn new(table_name: &str) -> Self {
         Catalog {
             table_name: String::from(table_name),
-            table_id,
             column_cnt: 0,
             columns: Vec::new(),
         }
     }
 
-    /// Returns a shared reference to the table's name.
     pub fn table_name(&self) -> &String {
         &self.table_name
-    }
-
-    /// Returns the table's id.
-    pub fn table_id(&self) -> u64 {
-        self.table_id
     }
 
     /// Adds a column (name, type) to the schema.
@@ -127,7 +108,7 @@ impl fmt::Display for Catalog {
         let last = &self.columns[ind - 1];
         printable.push_str(format!("{}", last).as_str());
 
-        write!(f, "[{},{},{}]", self.table_name, self.table_id, printable)
+        write!(f, "[{},{}]", self.table_name, printable)
     }
 }
 

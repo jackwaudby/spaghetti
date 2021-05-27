@@ -8,7 +8,7 @@ use crate::scheduler::owh::transaction::{
 use crate::scheduler::{CurrentValues, NewValues, Scheduler, TransactionInfo};
 use crate::storage;
 use crate::storage::datatype::Data;
-use crate::storage::utils::Access;
+use crate::storage::Access;
 use crate::workloads::smallbank::SB_SF_MAP;
 use crate::workloads::PrimaryKey;
 use crate::workloads::Workload;

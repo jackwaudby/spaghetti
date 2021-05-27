@@ -1,6 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
-use crate::scheduler::owh::error::OptimisedWaitHitError;
+//use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::workloads::smallbank::SmallBankTransaction;
 
@@ -310,12 +310,12 @@ impl LocalStatistics {
                 }
 
                 OptimisticWaitHit(ref mut metric) => match reason {
-                    NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
-                        OptimisedWaitHitError::Hit(_) => metric.inc_hit(),
-                        OptimisedWaitHitError::PredecessorAborted(_, _) => metric.inc_pur_aborted(),
-                        OptimisedWaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
-                    },
-                    NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
+                    // NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
+                    //     OptimisedWaitHitError::Hit(_) => metric.inc_hit(),
+                    //     OptimisedWaitHitError::PredecessorAborted(_, _) => metric.inc_pur_aborted(),
+                    //     OptimisedWaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
+                    // },
+                    // NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
                     _ => {}
                 },
             }

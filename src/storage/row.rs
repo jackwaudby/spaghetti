@@ -1,24 +1,16 @@
 use crate::common::error::NonFatalError;
-use crate::storage::catalog::ColumnKind;
+use crate::storage::catalog::{Catalog, ColumnKind};
 use crate::storage::datatype::{Data, Field};
-use crate::storage::table::Table;
 
-use parking_lot::{Mutex, MutexGuard};
 use std::fmt;
-use std::sync::Arc;
 
 #[derive(Debug)]
-pub struct Row(Mutex<Tuple>);
-
-#[derive(Debug)]
-pub struct Tuple {
-    table: Arc<Table>,
+pub struct Row {
     current_fields: Vec<Field>,
     prev_fields: Option<Vec<Field>>,
     state: State,
 }
 
-/// Represents the state of a row.
 #[derive(Debug, Clone, PartialEq)]
 pub enum State {
     Clean,
@@ -31,41 +23,29 @@ pub struct OperationResult {
 }
 
 impl Row {
-    pub fn new(table: Arc<Table>) -> Self {
-        Row(Mutex::new(Tuple::new(table)))
-    }
-
-    pub fn get_lock(&self) -> MutexGuard<Tuple> {
-        self.0.lock()
-    }
-}
-
-impl Tuple {
-    pub fn new(table: Arc<Table>) -> Self {
-        let fields = table.get_schema().column_cnt();
+    pub fn new(schema: &Catalog) -> Self {
+        let fields = schema.column_cnt();
         let mut current_fields = Vec::with_capacity(fields);
         for _ in 0..fields {
             current_fields.push(Field::new());
         }
-
-        Tuple {
-            table,
+        Row {
             current_fields,
             prev_fields: None,
             state: State::Clean,
         }
     }
 
-    pub fn get_table(&self) -> Arc<Table> {
-        Arc::clone(&self.table)
-    }
-
     pub fn is_dirty(&self) -> bool {
         self.state == State::Modified
     }
 
-    pub fn init_value(&mut self, column: &str, value: Data) -> Result<(), NonFatalError> {
-        let schema = self.table.get_schema();
+    pub fn init_value(
+        &mut self,
+        schema: &Catalog,
+        column: &str,
+        value: Data,
+    ) -> Result<(), NonFatalError> {
         let field_index = schema.column_position_by_name(column)?;
         let field_type = schema.column_type_by_index(field_index);
         data_eq_column(field_type, &value)?;
@@ -74,9 +54,13 @@ impl Tuple {
         Ok(())
     }
 
-    pub fn get_values(&mut self, columns: &[&str]) -> Result<OperationResult, NonFatalError> {
+    pub fn get_values(
+        &self,
+        schema: &Catalog,
+        columns: &[&str],
+    ) -> Result<OperationResult, NonFatalError> {
         let mut values = Vec::with_capacity(columns.len());
-        let schema = self.table.get_schema();
+
         for column in columns {
             let field_index = schema.column_position_by_name(column)?;
             let field = &self.current_fields[field_index];
@@ -88,16 +72,16 @@ impl Tuple {
 
     pub fn append_value(
         &mut self,
+        schema: &Catalog,
         column: &str,
         value: Data,
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
                 "TODO".to_string(),
-                self.table.get_table_name(),
+                schema.table_name().to_string(),
             )),
             State::Clean => {
-                let schema = self.table.get_schema(); // get schema
                 let field_index = schema.column_position_by_name(column)?; // get field index
                 let field_type = schema.column_type_by_index(field_index); // get field type
                 data_eq_column(field_type, &Data::List(vec![]))?; // check field is list type
@@ -113,20 +97,19 @@ impl Tuple {
 
     pub fn set_values(
         &mut self,
+        schema: &Catalog,
         columns: &[&str],
         values: &[Data],
     ) -> Result<OperationResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
                 "TODO".to_string(),
-                self.table.get_table_name(),
+                schema.table_name().to_string(),
             )),
             State::Clean => {
                 let prev_fields = self.current_fields.clone(); // set prev fields
                 self.prev_fields = Some(prev_fields);
                 self.state = State::Modified; // set state
-
-                let schema = self.table.get_schema();
 
                 // update each field;
                 for (i, col_name) in columns.iter().enumerate() {

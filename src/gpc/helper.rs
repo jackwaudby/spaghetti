@@ -3,13 +3,9 @@ use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
 use crate::gpc::threads::{Recon, Worker};
 use crate::scheduler::Protocol;
-
-// use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
-use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
-// use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
-use crate::workloads::Workload;
-// use crate::workloads::{acid, smallbank, tatp};
 use crate::workloads::smallbank;
+use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
+use crate::workloads::Workload;
 
 use config::Config;
 use std::fs;
@@ -67,7 +63,7 @@ pub fn set_log_level(config: &Config) {
 
 /// Initialise database.
 pub fn init_database(config: Config) -> Workload {
-    let workload = Workload::init(config).unwrap();
+    let workload = Workload::new(config).unwrap();
     workload
 }
 

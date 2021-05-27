@@ -6,16 +6,15 @@ use crate::scheduler::sgt::transaction_information::{
     Operation, OperationType, TransactionInformation,
 };
 use crate::scheduler::{CurrentValues, NewValues, Scheduler, TransactionInfo};
-use crate::storage;
 use crate::storage::datatype::Data;
-use crate::storage::utils::Access;
+use crate::storage::Access;
 use crate::workloads::smallbank::SB_SF_MAP;
 use crate::workloads::{PrimaryKey, Workload};
 
-//use crossbeam_utils::CachePadded;
+use crossbeam_epoch as epoch;
 use parking_lot::Mutex;
 use std::cell::RefCell;
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 use thread_local::ThreadLocal;
@@ -295,6 +294,7 @@ impl SerializationGraph {
 
     /// Cycle check then commit.
     pub fn erase_graph_constraints(&self, this: &ArcNode, meta: &TransactionInfo) -> bool {
+        let guard = &epoch::pin();
         let is_cycle = self.cycle_check(&this);
 
         let this_rlock = this.read();
@@ -318,28 +318,21 @@ impl SerializationGraph {
             let Operation {
                 op_type,
                 ref key,
-                index,
+                table_id,
+                prv,
             } = op;
-            let offset = storage::calculate_offset(key.into(), index, self.accounts);
 
-            let record = self.data.get_db().get_record(offset);
-            let rw_table = record.get_rw_table();
-            let mut guard = rw_table.get_lock();
+            let table = self.data.get_db().get_table(table_id);
+            let rw_table = table.get_rw_tables().get(key.into(), guard).unwrap(); // linked list
 
             match op_type {
                 OperationType::Read => {
-                    guard.erase_all(Access::Read(meta.clone())); // remove access
-                    drop(guard);
+                    rw_table.erase(prv); // remove access
                 }
                 OperationType::Write => {
-                    let row = record.get_row();
-                    let mut rguard = row.get_lock();
-                    rguard.commit(); // commit write
-                    drop(rguard);
-
-                    guard.erase_all(Access::Write(meta.clone())); // remove access
-
-                    drop(guard);
+                    let row = table.get_rows().get_mut(key.into(), guard);
+                    row.commit(); // revert write
+                    rw_table.erase(prv);
                 }
             }
         }
@@ -374,13 +367,13 @@ impl Scheduler for SerializationGraph {
 
     fn read(
         &self,
-        index_id: usize,
+        table_id: usize,
         key: &PrimaryKey,
         columns: &[&str],
         meta: &TransactionInfo,
     ) -> Result<Vec<Data>, NonFatalError> {
         if let TransactionInfo::SerializationGraph(_) = meta {
-            let offset = storage::calculate_offset(key.into(), index_id, self.accounts);
+            let guard = &epoch::pin();
 
             let this: ArcNode =
                 Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
@@ -389,34 +382,33 @@ impl Scheduler for SerializationGraph {
                 return Err(self.abort(meta));
             }
 
-            let record = self.data.get_db().get_record(offset);
-            let rw_table = record.get_rw_table();
+            let table = self.data.get_db().get_table(table_id);
+
+            let rw_table = table.get_rw_tables().get(key.into(), guard).unwrap(); // linked list
 
             // if let Err(_) = index.get_row(&key) {
             //     return Err(self.abort(meta)); // abort -- row not found (TATP only)
             // };
 
-            let lsn = record.get_lsn();
-
             let prv = rw_table.push_front(Access::Read(meta.clone()));
 
             loop {
-                let i = lsn.get(); // current lsn
+                let i = table.get_lsn().get(key.into(), guard).unwrap(); // current lsn
 
-                if i == prv {
+                if *i == prv {
                     break; // break when my prv == lsn
                 }
             }
 
-            let snapshot = rw_table.snapshot(); // get accesses
+            let snapshot = rw_table.iter(guard);
 
             let mut cyclic = false; // insert and check each access
             for (id, access) in snapshot {
-                if id < prv {
+                if id < &prv {
                     match access {
                         Access::Write(txn_info) => match txn_info {
                             TransactionInfo::SerializationGraph(from_node) => {
-                                if !self.insert_and_check(&this, from_node, false) {
+                                if !self.insert_and_check(&this, from_node.clone(), false) {
                                     cyclic = true;
                                     break;
                                 }
@@ -429,8 +421,8 @@ impl Scheduler for SerializationGraph {
             }
 
             if cyclic {
-                rw_table.erase((prv, Access::Read(meta.clone()))); // remove from rw table
-                lsn.replace(prv + 1); // increment to next operation
+                rw_table.erase(prv); // remove from rw table
+                table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
                 self.abort(meta);
                 return Err(SerializationGraphError::CycleFound.into());
             }
@@ -446,12 +438,8 @@ impl Scheduler for SerializationGraph {
             //         return Err(self.abort(meta));
             //     }
             // };
-            let row = record.get_row();
-
-            let mut guard = row.get_lock();
-            let mut res = guard.get_values(columns).unwrap(); // do read
-            drop(guard);
-
+            let row = table.get_rows().get(key.into(), guard).unwrap();
+            let mut res = row.get_values(table.get_schema(), columns).unwrap(); // do read
             let vals = res.get_values();
 
             self.txn_info
@@ -460,9 +448,9 @@ impl Scheduler for SerializationGraph {
                 .borrow_mut()
                 .as_mut()
                 .unwrap()
-                .add(OperationType::Read, key.clone(), index_id); // record operation
+                .add(OperationType::Read, key.clone(), table_id, prv); // record operation
 
-            lsn.replace(prv + 1); // increment to next operation
+            table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
 
             Ok(vals)
         } else {
@@ -473,7 +461,7 @@ impl Scheduler for SerializationGraph {
     /// Write operation.
     fn write(
         &self,
-        index_id: usize,
+        table_id: usize,
         key: &PrimaryKey,
         columns: &[&str],
         read: Option<&[&str]>,
@@ -482,8 +470,10 @@ impl Scheduler for SerializationGraph {
         meta: &TransactionInfo,
     ) -> Result<Option<Vec<Data>>, NonFatalError> {
         if let TransactionInfo::SerializationGraph(_) = meta {
-            let offset = storage::calculate_offset(key.into(), index_id, self.accounts);
-            let record = self.data.get_db().get_record(offset);
+            let guard = &epoch::pin();
+
+            let table = self.data.get_db().get_table(table_id);
+            let rw_table = table.get_rw_tables().get(key.into(), guard).unwrap(); // linked list
 
             let this: ArcNode =
                 Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
@@ -493,33 +483,28 @@ impl Scheduler for SerializationGraph {
             // };
 
             let mut prv;
-            let mut lsn;
 
             loop {
                 if self.needs_abort(&this) {
                     return Err(self.abort(meta));
                 }
 
-                lsn = record.get_lsn();
-
-                prv = record
-                    .get_rw_table()
-                    .push_front(Access::Write(meta.clone()));
+                prv = rw_table.push_front(Access::Write(meta.clone()));
 
                 loop {
-                    let i = lsn.get(); // current operation number
+                    let i = table.get_lsn().get(key.into(), guard).unwrap(); // current lsn
 
-                    if i == prv {
+                    if *i == prv {
                         break; // if current = previous then this transaction can execute
                     }
                 }
 
-                let snapshot: VecDeque<(u64, Access)> = record.get_rw_table().snapshot();
+                let snapshot = rw_table.iter(guard);
 
                 let mut wait = false;
                 let mut cyclic = false;
-                for (id, access) in &snapshot {
-                    if *id < prv {
+                for (id, access) in snapshot {
+                    if id < &prv {
                         match access {
                             Access::Write(from) => {
                                 if let TransactionInfo::SerializationGraph(from_node) = from {
@@ -551,35 +536,32 @@ impl Scheduler for SerializationGraph {
                 }
 
                 if cyclic {
-                    record
-                        .get_rw_table()
-                        .erase((prv, Access::Write(meta.clone()))); // remove from rw_table
+                    rw_table.erase(prv); // remove from rw table
 
-                    lsn.replace(prv + 1); // increment to next operation
+                    table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
+
                     self.abort(meta);
                     return Err(SerializationGraphError::CycleFound.into());
                 }
 
                 if wait {
-                    record
-                        .get_rw_table()
-                        .erase((prv, Access::Write(meta.clone()))); // remove from rw_table
+                    rw_table.erase(prv); // remove from rw table
+                    table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
 
-                    lsn.replace(prv + 1); // increment to next operation
                     continue;
                 }
                 break;
             }
 
-            let snapshot: VecDeque<(u64, Access)> = record.get_rw_table().snapshot();
+            let snapshot = rw_table.iter(guard);
 
             let mut cyclic = false;
             for (id, access) in snapshot {
-                if id < prv {
+                if id < &prv {
                     match access {
                         Access::Read(from) => {
                             if let TransactionInfo::SerializationGraph(from_node) = from {
-                                if !self.insert_and_check(&this, from_node, true) {
+                                if !self.insert_and_check(&this, from_node.clone(), true) {
                                     cyclic = true;
                                     break;
                                 }
@@ -591,21 +573,18 @@ impl Scheduler for SerializationGraph {
             }
 
             if cyclic {
-                record
-                    .get_rw_table()
-                    .erase((prv, Access::Write(meta.clone()))); // remove from rw_table
+                rw_table.erase(prv); // remove from rw table
+                table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
 
-                lsn.replace(prv + 1); // increment to next operation
                 self.abort(meta);
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            let row = record.get_row();
-            let mut guard = row.get_lock();
+            let row = table.get_rows().get_mut(key.into(), guard);
 
             let current_values;
             if let Some(columns) = read {
-                let mut res = guard.get_values(columns).unwrap();
+                let mut res = row.get_values(table.get_schema(), columns).unwrap();
                 current_values = Some(res.get_values());
             } else {
                 current_values = None;
@@ -614,20 +593,15 @@ impl Scheduler for SerializationGraph {
             let new_values = match f(current_values.clone(), params) {
                 Ok(res) => res,
                 Err(e) => {
-                    drop(guard);
-
-                    record
-                        .get_rw_table()
-                        .erase((prv, Access::Write(meta.clone()))); // remove from rw_table
-
-                    lsn.replace(prv + 1);
+                    rw_table.erase(prv); // remove from rw table
+                    table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
 
                     self.abort(meta);
                     return Err(e);
                 }
             };
 
-            if let Err(e) = guard.set_values(columns, &new_values) {
+            if let Err(e) = row.set_values(table.get_schema(), columns, &new_values) {
                 panic!("{}", e);
             }
 
@@ -638,9 +612,9 @@ impl Scheduler for SerializationGraph {
                 .borrow_mut()
                 .as_mut()
                 .unwrap()
-                .add(OperationType::Write, key.clone(), index_id);
+                .add(OperationType::Write, key.clone(), table_id, prv);
 
-            lsn.replace(prv + 1);
+            table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
 
             Ok(current_values)
         } else {
@@ -672,6 +646,7 @@ impl Scheduler for SerializationGraph {
     /// Call sg abort procedure then remove accesses and revert writes.
     fn abort(&self, meta: &TransactionInfo) -> NonFatalError {
         let this: ArcNode = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
+        let guard = &epoch::pin();
 
         let ops = self
             .txn_info
@@ -688,26 +663,21 @@ impl Scheduler for SerializationGraph {
             let Operation {
                 op_type,
                 ref key,
-                index,
+                table_id,
+                prv,
             } = op;
-            let offset = storage::calculate_offset(key.into(), index, self.accounts);
 
-            let record = self.data.get_db().get_record(offset);
-            let mut guard = record.get_rw_table().get_lock();
+            let table = self.data.get_db().get_table(table_id);
+            let rw_table = table.get_rw_tables().get(key.into(), guard).unwrap(); // linked list
 
             match op_type {
                 OperationType::Read => {
-                    guard.erase_all(Access::Read(meta.clone())); // remove access
-                    drop(guard);
+                    rw_table.erase(prv); // remove access
                 }
                 OperationType::Write => {
-                    let row = record.get_row(); // get handle to row
-                    let mut rguard = row.get_lock();
-                    rguard.revert(); // revert write
-                    drop(rguard);
-
-                    guard.erase_all(Access::Write(meta.clone())); // remove access
-                    drop(guard);
+                    let row = table.get_rows().get_mut(key.into(), guard);
+                    row.revert(); // revert write
+                    rw_table.erase(prv);
                 }
             }
         }

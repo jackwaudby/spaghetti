@@ -1,30 +1,24 @@
-use crate::common::error::{FatalError, NonFatalError};
+use crate::common::error::FatalError;
 use crate::storage::catalog::Catalog;
-use crate::storage::table::Table;
-use crate::storage::Database;
+use crate::storage::{Database, Table};
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey;
 use crate::workloads::smallbank::*;
 
 use config::Config;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
-use std::collections::HashMap;
 use std::convert::From;
 use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
-use std::sync::Arc;
 use tracing::info;
 
 pub mod smallbank;
 
 #[derive(Debug)]
 pub struct Workload {
-    tables: HashMap<String, Arc<Table>>,
-
     database: Database,
-
     config: Config,
 }
 
@@ -34,8 +28,8 @@ pub enum PrimaryKey {
 }
 
 impl Workload {
-    pub fn init(config: Config) -> crate::Result<Self> {
-        let workload = config.get_str("workload")?;
+    pub fn new(config: Config) -> crate::Result<Self> {
+        let workload = config.get_str("workload")?; // determine workload
         let filename = match workload.as_str() {
             "acid" => "./schema/acid_schema.txt",
             "tatp" => "./schema/tatp_schema.txt",
@@ -49,11 +43,10 @@ impl Workload {
         file.read_to_string(&mut contents)?;
         let mut lines = contents.lines();
 
-        let mut tables = HashMap::new(); // initialise tables and indexes
+        let sf = config.get_int("scale_factor")? as u64; // TODO: determine scale factor
+        let population = *SB_SF_MAP.get(&sf).unwrap() as usize;
 
-        let mut index_cnt = 0;
-
-        let mut next_table_id = 0;
+        let mut database = Database::new(3); // TODO: determine table count
 
         while let Some(line) = lines.next() {
             if line.starts_with("TABLE") {
@@ -62,8 +55,8 @@ impl Workload {
                     None => panic!("invalid table assignment"),
                 };
 
-                let mut catalog = Catalog::init(&table_name, next_table_id);
-                next_table_id += 1;
+                let mut catalog = Catalog::new(&table_name); // create schema
+
                 while let Some(line) = lines.next() {
                     if line.is_empty() {
                         break;
@@ -74,18 +67,11 @@ impl Workload {
 
                     catalog.add_column((&c_name, c_type))?;
                 }
-                let table = Table::init(catalog);
 
-                tables.insert(table_name, Arc::new(table));
-            } else if line.starts_with("INDEX") {
-                index_cnt += 1;
+                let table = Table::new(population, catalog); // create table
+                database.add(table); // add to database
             }
         }
-
-        let sf = config.get_int("scale_factor")? as u64;
-        let accounts = *SB_SF_MAP.get(&sf).unwrap() as usize;
-
-        let mut database = Database::new(accounts, index_cnt);
 
         let set_seed = config.get_bool("set_seed")?;
         let mut rng: StdRng = SeedableRng::from_entropy();
@@ -103,7 +89,7 @@ impl Workload {
                 };
 
                 info!("Generate SmallBank SF-{}", sf);
-                smallbank::loader::populate_tables(&config, &tables, &mut database, &mut rng)?;
+                smallbank::loader::populate_tables(&config, &mut database, &mut rng)?; // generate data
                 info!("Parameter generator set seed: {}", set_seed);
                 info!("Balance mix: {}", use_balance_mix);
                 info!("Contention: {}", contention);
@@ -111,26 +97,15 @@ impl Workload {
             _ => unimplemented!(),
         }
 
-        Ok(Workload {
-            tables,
-            database,
-            config,
-        })
-    }
-
-    pub fn get_table(&self, name: &str) -> Result<&Table, NonFatalError> {
-        match self.tables.get(name) {
-            Some(table) => Ok(&table),
-            None => Err(NonFatalError::TableNotFound(name.to_string())),
-        }
-    }
-
-    pub fn get_config(&self) -> &Config {
-        &self.config
+        Ok(Workload { database, config })
     }
 
     pub fn get_db(&self) -> &Database {
         &self.database
+    }
+
+    pub fn get_config(&self) -> &Config {
+        &self.config
     }
 }
 

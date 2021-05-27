@@ -1,4 +1,4 @@
-use crate::scheduler::owh::error::OptimisedWaitHitError;
+//use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
 
 use crate::workloads::smallbank::error::SmallBankError;
@@ -96,8 +96,7 @@ pub enum NonFatalError {
     SmallBankError(SmallBankError),
 
     SerializationGraph(SerializationGraphError),
-
-    OptimisedWaitHitError(OptimisedWaitHitError),
+    //    OptimisedWaitHitError(OptimisedWaitHitError),
 }
 
 impl fmt::Display for FatalError {
@@ -162,7 +161,7 @@ impl fmt::Display for NonFatalError {
             NonSerializable => write!(f, "non-serializable behaviour"),
             SmallBankError(ref e) => write!(f, "{}", e),
             SerializationGraph(ref e) => write!(f, "{}", e),
-            OptimisedWaitHitError(ref e) => write!(f, "{}", e),
+            //            OptimisedWaitHitError(ref e) => write!(f, "{}", e),
         }
     }
 }
@@ -191,8 +190,8 @@ impl From<SmallBankError> for NonFatalError {
     }
 }
 
-impl From<OptimisedWaitHitError> for NonFatalError {
-    fn from(error: OptimisedWaitHitError) -> Self {
-        NonFatalError::OptimisedWaitHitError(error)
-    }
-}
+// impl From<OptimisedWaitHitError> for NonFatalError {
+//     fn from(error: OptimisedWaitHitError) -> Self {
+//         NonFatalError::OptimisedWaitHitError(error)
+//     }
+// }

@@ -9,7 +9,8 @@ pub struct TransactionInformation {
 pub struct Operation {
     pub op_type: OperationType,
     pub key: PrimaryKey,
-    pub index: usize,
+    pub table_id: usize,
+    pub prv: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -25,11 +26,11 @@ impl TransactionInformation {
         }
     }
 
-    pub fn add(&mut self, op_type: OperationType, key: PrimaryKey, index: usize) {
+    pub fn add(&mut self, op_type: OperationType, key: PrimaryKey, table_id: usize, prv: u64) {
         self.operations
             .as_mut()
             .unwrap()
-            .push(Operation::new(op_type, key, index));
+            .push(Operation::new(op_type, key, table_id, prv));
     }
 
     pub fn get(&mut self) -> Vec<Operation> {
@@ -44,11 +45,12 @@ impl Default for TransactionInformation {
 }
 
 impl Operation {
-    pub fn new(op_type: OperationType, key: PrimaryKey, index: usize) -> Self {
+    pub fn new(op_type: OperationType, key: PrimaryKey, table_id: usize, prv: u64) -> Self {
         Operation {
             op_type,
             key,
-            index,
+            table_id,
+            prv,
         }
     }
 }
