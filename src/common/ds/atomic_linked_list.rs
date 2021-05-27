@@ -1,9 +1,9 @@
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
+use parking_lot::Mutex;
 use std::mem::ManuallyDrop;
 use std::ptr;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, SeqCst};
-use std::sync::Mutex;
 
 #[derive(Debug)]
 pub struct AtomicLinkedList<T> {
@@ -55,6 +55,7 @@ impl<T> AtomicLinkedList<T> {
             {
                 Ok(_) => {
                     self.size.fetch_add(1, SeqCst); // increment list size
+                    drop(guard);
                     return id;
                 }
                 Err(cse) => {
@@ -86,6 +87,7 @@ impl<T> AtomicLinkedList<T> {
                                 self.size.fetch_sub(1, SeqCst); // increment list size
 
                                 guard.defer_destroy(head_snapshot);
+                                drop(guard);
                                 return Some(ptr::read(&*(*head).data));
                             }
                             Err(_) => continue,
@@ -102,7 +104,7 @@ impl<T> AtomicLinkedList<T> {
     }
 
     pub fn erase(&self, id: u64) -> Option<T> {
-        let lg = self.lock.lock().unwrap(); // 1 erase at a time
+        let lg = self.lock.lock(); // 1 erase at a time
         let guard = &epoch::pin();
 
         let mut left = Shared::null(); // Shared
@@ -123,6 +125,7 @@ impl<T> AtomicLinkedList<T> {
                 Some(node) => node.next.load(Acquire, &guard),
                 None => {
                     drop(lg);
+                    drop(guard);
                     return None;
                 }
             };
@@ -164,7 +167,9 @@ impl<T> AtomicLinkedList<T> {
 
         self.size.fetch_sub(1, SeqCst); // decrement list size
         unsafe { guard.defer_destroy(current) }; // deallocate
+
         drop(lg);
+        drop(guard);
         return Some(unsafe { ptr::read(&*(current.as_ref().unwrap()).data) }); // return value
     }
 }

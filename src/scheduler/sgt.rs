@@ -339,6 +339,7 @@ impl SerializationGraph {
 
         this_rlock.set_committed();
         drop(this_rlock);
+        drop(guard);
         true
     }
 }
@@ -379,6 +380,7 @@ impl Scheduler for SerializationGraph {
                 Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
 
             if self.needs_abort(&this) {
+                drop(guard);
                 return Err(self.abort(meta));
             }
 
@@ -423,6 +425,7 @@ impl Scheduler for SerializationGraph {
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
                 table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
+                drop(guard);
                 self.abort(meta);
                 return Err(SerializationGraphError::CycleFound.into());
             }
@@ -451,7 +454,7 @@ impl Scheduler for SerializationGraph {
                 .add(OperationType::Read, key.clone(), table_id, prv); // record operation
 
             table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
-
+            drop(guard);
             Ok(vals)
         } else {
             panic!("unexpected transaction info");
@@ -486,6 +489,7 @@ impl Scheduler for SerializationGraph {
 
             loop {
                 if self.needs_abort(&this) {
+                    drop(guard);
                     return Err(self.abort(meta));
                 }
 
@@ -537,9 +541,8 @@ impl Scheduler for SerializationGraph {
 
                 if cyclic {
                     rw_table.erase(prv); // remove from rw table
-
                     table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
-
+                    drop(guard);
                     self.abort(meta);
                     return Err(SerializationGraphError::CycleFound.into());
                 }
@@ -547,7 +550,6 @@ impl Scheduler for SerializationGraph {
                 if wait {
                     rw_table.erase(prv); // remove from rw table
                     table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
-
                     continue;
                 }
                 break;
@@ -575,7 +577,7 @@ impl Scheduler for SerializationGraph {
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
                 table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
-
+                drop(guard);
                 self.abort(meta);
                 return Err(SerializationGraphError::CycleFound.into());
             }
@@ -595,7 +597,7 @@ impl Scheduler for SerializationGraph {
                 Err(e) => {
                     rw_table.erase(prv); // remove from rw table
                     table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
-
+                    drop(guard);
                     self.abort(meta);
                     return Err(e);
                 }
@@ -605,7 +607,6 @@ impl Scheduler for SerializationGraph {
                 panic!("{}", e);
             }
 
-            drop(guard);
             self.txn_info
                 .get()
                 .unwrap()
@@ -615,7 +616,7 @@ impl Scheduler for SerializationGraph {
                 .add(OperationType::Write, key.clone(), table_id, prv);
 
             table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
-
+            drop(guard);
             Ok(current_values)
         } else {
             panic!("unexpected transaction info");
@@ -681,7 +682,7 @@ impl Scheduler for SerializationGraph {
                 }
             }
         }
-
+        drop(guard); // unpin
         self.eg.get().unwrap().borrow_mut().unpin(); // unpin txn
 
         NonFatalError::NonSerializable // TODO: return the why
