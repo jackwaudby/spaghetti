@@ -21,7 +21,7 @@ lazy_static! {
         m.insert(2, 1000);
         m.insert(3, 10000);
         m.insert(4, 100000);
-
+        m.insert(5, 1000000);
         m
     };
 }
