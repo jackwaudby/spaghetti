@@ -85,6 +85,7 @@ impl Workload {
                     2 => "mid",
                     3 => "low",
                     4 => "very low",
+                    4 => "very very low",
                     _ => panic!("invalid scale factor"),
                 };
 
