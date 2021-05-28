@@ -16,11 +16,11 @@ impl<T> AtomicExtentVec<T> {
     }
 
     pub fn get<'g>(&self, offset: usize, guard: &'g Guard) -> &'g T {
-        unsafe { self.0[offset].load(Acquire, guard).deref() }
+        unsafe { self.0[offset].load(Relaxed, guard).deref() }
     }
 
     pub fn get_mut<'g>(&self, offset: usize, guard: &'g Guard) -> &'g mut T {
-        unsafe { self.0[offset].load(Acquire, guard).deref_mut() }
+        unsafe { self.0[offset].load(Relaxed, guard).deref_mut() }
     }
 
     pub fn replace<'g>(&self, offset: usize, val: T, guard: &'g Guard) {
