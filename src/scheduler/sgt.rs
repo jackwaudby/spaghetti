@@ -397,9 +397,9 @@ impl Scheduler for SerializationGraph {
 
             loop {
                 // let i = table.get_lsn().get(key.into(), guard); // current lsn
-                let i = table.get_lsn_get(key.into(), guard); // current lsn
+                let i = table.get_lsn(key.into()); // current lsn
 
-                if *i == prv {
+                if i == prv {
                     break; // break when my prv == lsn
                 }
             }
@@ -426,7 +426,7 @@ impl Scheduler for SerializationGraph {
 
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
-                table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
+                table.replace_lsn(key.into(), prv + 1); // increment to next operation
                 drop(guard);
                 self.abort(meta);
                 return Err(SerializationGraphError::CycleFound.into());
@@ -455,7 +455,7 @@ impl Scheduler for SerializationGraph {
                 .unwrap()
                 .add(OperationType::Read, key.clone(), table_id, prv); // record operation
 
-            table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
+            table.replace_lsn(key.into(), prv + 1); // increment to next operation
             drop(guard);
             Ok(vals)
         } else {
@@ -498,9 +498,9 @@ impl Scheduler for SerializationGraph {
                 prv = rw_table.push_front(Access::Write(meta.clone()));
 
                 loop {
-                    let i = table.get_lsn().get(key.into(), guard); // current lsn
+                    let i = table.get_lsn(key.into()); // current lsn
 
-                    if *i == prv {
+                    if i == prv {
                         break; // if current = previous then this transaction can execute
                     }
                 }
@@ -543,7 +543,7 @@ impl Scheduler for SerializationGraph {
 
                 if cyclic {
                     rw_table.erase(prv); // remove from rw table
-                    table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
+                    table.replace_lsn(key.into(), prv + 1); // increment to next operation
                     drop(guard);
                     self.abort(meta);
                     return Err(SerializationGraphError::CycleFound.into());
@@ -551,7 +551,7 @@ impl Scheduler for SerializationGraph {
 
                 if wait {
                     rw_table.erase(prv); // remove from rw table
-                    table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
+                    table.replace_lsn(key.into(), prv + 1); // increment to next operation
                     continue;
                 }
                 break;
@@ -578,7 +578,7 @@ impl Scheduler for SerializationGraph {
 
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
-                table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
+                table.replace_lsn(key.into(), prv + 1); // increment to next operation
                 drop(guard);
                 self.abort(meta);
                 return Err(SerializationGraphError::CycleFound.into());
@@ -598,7 +598,7 @@ impl Scheduler for SerializationGraph {
                 Ok(res) => res,
                 Err(e) => {
                     rw_table.erase(prv); // remove from rw table
-                    table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
+                    table.replace_lsn(key.into(), prv + 1); // increment to next operation
                     drop(guard);
                     self.abort(meta);
                     return Err(e);
@@ -617,7 +617,7 @@ impl Scheduler for SerializationGraph {
                 .unwrap()
                 .add(OperationType::Write, key.clone(), table_id, prv);
 
-            table.get_lsn().replace(key.into(), prv + 1, guard); // increment to next operation
+            table.replace_lsn(key.into(), prv + 1); // increment to next operation
             drop(guard);
             Ok(current_values)
         } else {

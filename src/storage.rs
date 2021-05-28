@@ -6,6 +6,7 @@ use crate::storage::row::Row;
 
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use std::fmt;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 pub mod datatype;
 
@@ -20,7 +21,8 @@ pub struct Database(Vec<Table>);
 pub struct Table {
     schema: Catalog,
     rows: AtomicExtentVec<Row>,
-    lsns: AtomicExtentVec<u64>,
+    //  lsns: AtomicExtentVec<u64>,
+    lsns: Vec<AtomicU64>,
     rw_tables: AtomicExtentVec<AtomicLinkedList<Access>>,
     // TODO: hashmap
 }
@@ -46,11 +48,12 @@ impl Database {
 impl Table {
     pub fn new(population: usize, schema: Catalog) -> Self {
         let rows = AtomicExtentVec::reserve(population);
-        let mut lsns = AtomicExtentVec::reserve(population);
+        //    let mut lsns = AtomicExtentVec::reserve(population);
+        let mut lsns = Vec::with_capacity(population);
         let mut rw_tables = AtomicExtentVec::reserve(population);
 
         for _ in 0..population {
-            lsns.push(0);
+            lsns.push(AtomicU64::new(0));
             rw_tables.push(AtomicLinkedList::new())
         }
 
@@ -74,12 +77,20 @@ impl Table {
         &mut self.rows
     }
 
-    pub fn get_lsn(&self) -> &AtomicExtentVec<u64> {
-        &self.lsns
+    // pub fn get_lsn(&self) -> &AtomicExtentVec<u64> {
+    //     &self.lsns
+    // }
+
+    // pub fn get_lsn_get<'g>(&self, offset: usize, guard: &'g Guard) -> &'g u64 {
+    //     self.lsns.get(offset, guard)
+    // }
+
+    pub fn get_lsn(&self, offset: usize) -> u64 {
+        self.lsns[offset].load(Ordering::Relaxed)
     }
 
-    pub fn get_lsn_get<'g>(&self, offset: usize, guard: &'g Guard) -> &'g u64 {
-        self.lsns.get(offset, guard)
+    pub fn replace_lsn(&self, offset: usize, val: u64) {
+        self.lsns[offset].store(val, Ordering::Relaxed);
     }
 
     pub fn get_rw_tables(&self) -> &AtomicExtentVec<AtomicLinkedList<Access>> {
