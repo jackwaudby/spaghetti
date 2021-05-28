@@ -1,8 +1,9 @@
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
+use crossbeam_utils::CachePadded;
 use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
 
 #[derive(Debug)]
-pub struct AtomicExtentVec<T>(Vec<Atomic<T>>);
+pub struct AtomicExtentVec<T>(Vec<CachePadded<Atomic<T>>>);
 
 impl<T> AtomicExtentVec<T> {
     pub fn reserve(population: usize) -> Self {
@@ -11,7 +12,7 @@ impl<T> AtomicExtentVec<T> {
     }
 
     pub fn push(&mut self, val: T) {
-        let a = Atomic::new(val);
+        let a = CachePadded::new(Atomic::new(val));
         self.0.push(a);
     }
 
