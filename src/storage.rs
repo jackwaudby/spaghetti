@@ -23,7 +23,7 @@ pub struct Table {
     rows: AtomicExtentVec<Row>,
     //  lsns: AtomicExtentVec<u64>,
     lsns: Vec<AtomicU64>,
-    rw_tables: AtomicExtentVec<AtomicLinkedList<Access>>,
+    rw_tables: Vec<AtomicLinkedList<Access>>,
     // TODO: hashmap
 }
 
@@ -50,7 +50,7 @@ impl Table {
         let rows = AtomicExtentVec::reserve(population);
         //    let mut lsns = AtomicExtentVec::reserve(population);
         let mut lsns = Vec::with_capacity(population);
-        let mut rw_tables = AtomicExtentVec::reserve(population);
+        let mut rw_tables = Vec::with_capacity(population);
 
         for _ in 0..population {
             lsns.push(AtomicU64::new(0));
@@ -93,16 +93,12 @@ impl Table {
         self.lsns[offset].store(val, Ordering::Relaxed);
     }
 
-    pub fn get_rw_tables(&self) -> &AtomicExtentVec<AtomicLinkedList<Access>> {
+    pub fn get_rw_tables(&self) -> &Vec<AtomicLinkedList<Access>> {
         &self.rw_tables
     }
 
-    pub fn get_rw_tables_get<'g>(
-        &self,
-        offset: usize,
-        guard: &'g Guard,
-    ) -> &'g AtomicLinkedList<Access> {
-        self.get_rw_tables().get(offset, guard)
+    pub fn get_rw_tables_get(&self, offset: usize) -> &AtomicLinkedList<Access> {
+        &self.rw_tables[offset]
     }
 }
 

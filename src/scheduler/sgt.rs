@@ -323,7 +323,7 @@ impl SerializationGraph {
             } = op;
 
             let table = self.data.get_db().get_table(table_id);
-            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
+            let rw_table = table.get_rw_tables_get(key.into()); // linked list
 
             match op_type {
                 OperationType::Read => {
@@ -387,7 +387,7 @@ impl Scheduler for SerializationGraph {
             let table = self.data.get_db().get_table(table_id);
 
             //            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
-            let rw_table = table.get_rw_tables_get(key.into(), guard); // linked list
+            let rw_table = table.get_rw_tables_get(key.into()); // linked list
 
             // if let Err(_) = index.get_row(&key) {
             //     return Err(self.abort(meta)); // abort -- row not found (TATP only)
@@ -478,7 +478,7 @@ impl Scheduler for SerializationGraph {
             let guard = &epoch::pin();
 
             let table = self.data.get_db().get_table(table_id);
-            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
+            let rw_table = table.get_rw_tables_get(key.into()); // linked list
 
             let this: ArcNode =
                 Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
@@ -671,7 +671,7 @@ impl Scheduler for SerializationGraph {
             } = op;
 
             let table = self.data.get_db().get_table(table_id);
-            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
+            let rw_table = table.get_rw_tables_get(key.into());
 
             match op_type {
                 OperationType::Read => {
