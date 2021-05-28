@@ -323,7 +323,7 @@ impl SerializationGraph {
             } = op;
 
             let table = self.data.get_db().get_table(table_id);
-            let rw_table = table.get_rw_tables().get(key.into(), guard).unwrap(); // linked list
+            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
 
             match op_type {
                 OperationType::Read => {
@@ -386,7 +386,7 @@ impl Scheduler for SerializationGraph {
 
             let table = self.data.get_db().get_table(table_id);
 
-            let rw_table = table.get_rw_tables().get(key.into(), guard).unwrap(); // linked list
+            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
 
             // if let Err(_) = index.get_row(&key) {
             //     return Err(self.abort(meta)); // abort -- row not found (TATP only)
@@ -395,7 +395,7 @@ impl Scheduler for SerializationGraph {
             let prv = rw_table.push_front(Access::Read(meta.clone()));
 
             loop {
-                let i = table.get_lsn().get(key.into(), guard).unwrap(); // current lsn
+                let i = table.get_lsn().get(key.into(), guard); // current lsn
 
                 if *i == prv {
                     break; // break when my prv == lsn
@@ -441,7 +441,7 @@ impl Scheduler for SerializationGraph {
             //         return Err(self.abort(meta));
             //     }
             // };
-            let row = table.get_rows().get(key.into(), guard).unwrap();
+            let row = table.get_rows().get(key.into(), guard);
             let mut res = row.get_values(table.get_schema(), columns).unwrap(); // do read
             let vals = res.get_values();
 
@@ -476,7 +476,7 @@ impl Scheduler for SerializationGraph {
             let guard = &epoch::pin();
 
             let table = self.data.get_db().get_table(table_id);
-            let rw_table = table.get_rw_tables().get(key.into(), guard).unwrap(); // linked list
+            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
 
             let this: ArcNode =
                 Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
@@ -496,7 +496,7 @@ impl Scheduler for SerializationGraph {
                 prv = rw_table.push_front(Access::Write(meta.clone()));
 
                 loop {
-                    let i = table.get_lsn().get(key.into(), guard).unwrap(); // current lsn
+                    let i = table.get_lsn().get(key.into(), guard); // current lsn
 
                     if *i == prv {
                         break; // if current = previous then this transaction can execute
@@ -669,7 +669,7 @@ impl Scheduler for SerializationGraph {
             } = op;
 
             let table = self.data.get_db().get_table(table_id);
-            let rw_table = table.get_rw_tables().get(key.into(), guard).unwrap(); // linked list
+            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
 
             match op_type {
                 OperationType::Read => {

@@ -15,8 +15,8 @@ impl<T> AtomicExtentVec<T> {
         self.0.push(a);
     }
 
-    pub fn get<'g>(&self, offset: usize, guard: &'g Guard) -> Option<&'g T> {
-        unsafe { self.0[offset].load(Acquire, guard).as_ref() }
+    pub fn get<'g>(&self, offset: usize, guard: &'g Guard) -> &'g T {
+        unsafe { self.0[offset].load(Acquire, guard).deref() }
     }
 
     pub fn get_mut<'g>(&self, offset: usize, guard: &'g Guard) -> &'g mut T {
