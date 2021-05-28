@@ -445,7 +445,10 @@ impl Scheduler for SerializationGraph {
             // };
             let row = table.get_rows().get(key.into(), guard);
             let mut res = row.get_values(table.get_schema(), columns).unwrap(); // do read
-            let vals = res.get_values();
+                                                                                //            let vals = res.get_values();
+
+            let mut vals = Vec::new();
+            vals.push(Data::Int(1));
 
             self.txn_info
                 .get()
