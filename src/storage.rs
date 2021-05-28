@@ -4,6 +4,7 @@ use crate::scheduler::TransactionInfo;
 use crate::storage::catalog::Catalog;
 use crate::storage::row::Row;
 
+use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use std::fmt;
 
 pub mod datatype;
@@ -77,8 +78,20 @@ impl Table {
         &self.lsns
     }
 
+    pub fn get_lsn_get<'g>(&self, offset: usize, guard: &'g Guard) -> &'g u64 {
+        self.lsns.get(offset, guard)
+    }
+
     pub fn get_rw_tables(&self) -> &AtomicExtentVec<AtomicLinkedList<Access>> {
         &self.rw_tables
+    }
+
+    pub fn get_rw_tables_get<'g>(
+        &self,
+        offset: usize,
+        guard: &'g Guard,
+    ) -> &'g AtomicLinkedList<Access> {
+        self.get_rw_tables().get(offset, guard)
     }
 }
 

@@ -386,7 +386,8 @@ impl Scheduler for SerializationGraph {
 
             let table = self.data.get_db().get_table(table_id);
 
-            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
+            //            let rw_table = table.get_rw_tables().get(key.into(), guard); // linked list
+            let rw_table = table.get_rw_tables_get(key.into(), guard); // linked list
 
             // if let Err(_) = index.get_row(&key) {
             //     return Err(self.abort(meta)); // abort -- row not found (TATP only)
@@ -395,7 +396,8 @@ impl Scheduler for SerializationGraph {
             let prv = rw_table.push_front(Access::Read(meta.clone()));
 
             loop {
-                let i = table.get_lsn().get(key.into(), guard); // current lsn
+                // let i = table.get_lsn().get(key.into(), guard); // current lsn
+                let i = table.get_lsn_get(key.into(), guard); // current lsn
 
                 if *i == prv {
                     break; // break when my prv == lsn
