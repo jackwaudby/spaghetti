@@ -62,10 +62,10 @@ impl fmt::Display for Field {
 impl fmt::Display for Data {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
-            Data::Uint(val) => write!(f, "{}", val.to_string()),
-            Data::Int(val) => write!(f, "{}", val.to_string()),
-            Data::VarChar(ref val) => write!(f, "{}", val),
-            Data::Double(val) => write!(f, "{}", val.to_string()),
+            Data::Uint(val) => write!(f, "uint: {}", val.to_string()),
+            Data::Int(val) => write!(f, "int: {}", val.to_string()),
+            Data::VarChar(ref val) => write!(f, "varchar: {}", val),
+            Data::Double(val) => write!(f, "double: {}", val.to_string()),
             Data::List(val) => write!(f, "{:?}", val),
             Data::Null => write!(f, "null"),
         }

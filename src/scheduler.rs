@@ -1,24 +1,21 @@
+use crate::common::ds::atomic_linked_list::AtomicLinkedList;
 use crate::common::error::NonFatalError;
 use crate::scheduler::sgt::node::WeakNode;
 use crate::scheduler::sgt::SerializationGraph;
-
-//use crate::scheduler::owh::OptimisedWaitHit;
 use crate::storage::datatype::Data;
-use crate::workloads::{PrimaryKey, Workload};
+use crate::storage::row::Tuple;
+use crate::storage::Access;
 
+use config::Config;
 use std::fmt;
-
-pub type CurrentValues = Option<Vec<Data>>;
-pub type NewValues = Vec<Data>;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 
 pub mod sgt;
 
-//pub mod owh;
-
 #[derive(Debug)]
-pub enum Protocol {
+pub enum Scheduler {
     SerializationGraph(SerializationGraph),
-    //   OptimisticWaitHit(OptimisedWaitHit),
 }
 
 #[derive(Debug, Clone)]
@@ -27,57 +24,58 @@ pub enum TransactionInfo {
     OptimisticWaitHit(usize, usize),
 }
 
-impl Protocol {
-    pub fn new(workload: Workload, cores: usize) -> crate::Result<Protocol> {
-        let protocol = match workload.get_config().get_str("protocol")?.as_str() {
-            "sgt" => Protocol::SerializationGraph(SerializationGraph::new(cores as u32, workload)),
-            //    "owh" => Protocol::OptimisticWaitHit(OptimisedWaitHit::new(cores, workload)),
+impl Scheduler {
+    pub fn new(config: &Config) -> crate::Result<Scheduler> {
+        let cores = config.get_int("cores")? as usize;
+
+        let protocol = match config.get_str("protocol")?.as_str() {
+            "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
             _ => panic!("Incorrect concurrency control protocol"),
         };
         Ok(protocol)
     }
 
     pub fn begin(&self) -> TransactionInfo {
-        use Protocol::*;
+        use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.begin(),
             //  OptimisticWaitHit(owh) => owh.begin(),
         }
     }
 
-    pub fn read(
+    pub fn read_value(
         &self,
-        index: usize,
-        key: &PrimaryKey,
-        columns: &[&str],
+        column: Arc<Vec<Tuple>>,
+        lsns: Arc<Vec<AtomicU64>>,
+        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        offset: usize,
         meta: &TransactionInfo,
-    ) -> Result<Vec<Data>, NonFatalError> {
-        use Protocol::*;
+    ) -> Result<Data, NonFatalError> {
+        use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.read(index, key, columns, meta),
+            SerializationGraph(sg) => sg.read_value(column, lsns, rw_tables, offset, meta),
             //  OptimisticWaitHit(owh) => owh.read(index, key, columns, meta),
         }
     }
 
-    pub fn write(
+    pub fn write_value(
         &self,
-        index: usize,
-        key: &PrimaryKey,
-        columns: &[&str],
-        read: Option<&[&str]>,
-        params: Option<&[Data]>,
-        f: &dyn Fn(CurrentValues, Option<&[Data]>) -> Result<NewValues, NonFatalError>,
+        value: &Data,
+        column: Arc<Vec<Tuple>>,
+        lsns: Arc<Vec<AtomicU64>>,
+        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        offset: usize,
         meta: &TransactionInfo,
-    ) -> Result<Option<Vec<Data>>, NonFatalError> {
-        use Protocol::*;
+    ) -> Result<(), NonFatalError> {
+        use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.write(index, key, columns, read, params, f, meta),
+            SerializationGraph(sg) => sg.write_value(value, column, lsns, rw_tables, offset, meta),
             //  OptimisticWaitHit(owh) => owh.write(index, key, columns, read, params, f, meta),
         }
     }
 
     pub fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
-        use Protocol::*;
+        use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.commit(meta),
             //    OptimisticWaitHit(owh) => owh.commit(meta),
@@ -85,7 +83,7 @@ impl Protocol {
     }
 
     pub fn abort(&self, meta: &TransactionInfo) -> NonFatalError {
-        use Protocol::*;
+        use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.abort(meta),
             //   OptimisticWaitHit(owh) => owh.abort(meta),
@@ -93,61 +91,31 @@ impl Protocol {
     }
 }
 
-pub trait Scheduler: fmt::Display + fmt::Debug {
-    /// Begin operation.
+pub trait Protocol: fmt::Display + fmt::Debug {
     fn begin(&self) -> TransactionInfo;
 
-    /// Read operation.
-    fn read(
+    fn read_value(
         &self,
-        index_id: usize,
-        key: &PrimaryKey,
-        columns: &[&str],
+        column: Arc<Vec<Tuple>>,
+        lsns: Arc<Vec<AtomicU64>>,
+        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        offset: usize,
         meta: &TransactionInfo,
-    ) -> Result<Vec<Data>, NonFatalError>;
+    ) -> Result<Data, NonFatalError>;
 
-    /// Write operation.
-    ///
-    /// From the output of `read` and `params` new values for `columns` are calculated and set.
-    ///
-    /// * `index_id` - The name of the index the row resides in.
-    /// * `key` - The primary key of the row to be written.
-    /// * `columns` - The set of columns to be written.
-    /// * `read` - The set of columns to be read; used as an input into `f` to calculate new values for `columns`.
-    /// * `params` - Transaction parameters; used as an input into `f` to calculate new values for `columns`.
-    /// * `f` - A closure that takes current values and transaction parameters to calculate new values for `columns`.
-    /// * `meta` - Transaction information.
-    fn write(
+    fn write_value(
         &self,
-        index_id: usize,
-        key: &PrimaryKey,
-        columns: &[&str],
-        read: Option<&[&str]>,
-        params: Option<&[Data]>,
-        f: &dyn Fn(CurrentValues, Option<&[Data]>) -> Result<NewValues, NonFatalError>,
+        value: &Data,
+        column: Arc<Vec<Tuple>>,
+        lsns: Arc<Vec<AtomicU64>>,
+        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        offset: usize,
         meta: &TransactionInfo,
-    ) -> Result<Option<Vec<Data>>, NonFatalError>;
+    ) -> Result<(), NonFatalError>;
 
-    /// Commit operation.
     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError>;
 
-    /// Abort operation.
-    ///
-    /// Typically called from within the other methods, it returns the reason for the abort.
     fn abort(&self, meta: &TransactionInfo) -> NonFatalError;
-
-    // /// List data type only.
-    // ///
-    // /// Append `value` to `column`.
-    // fn append(
-    //     &self,
-    //     table: &str,
-    //     index: Option<&str>,
-    //     key: &PrimaryKey,
-    //     column: &str,
-    //     value: Data,
-    //     meta: &TransactionInfo,
-    // ) -> Result<(), NonFatalError>;
 }
 
 impl PartialEq for TransactionInfo {
@@ -166,7 +134,7 @@ impl PartialEq for TransactionInfo {
     }
 }
 
-impl fmt::Display for Protocol {
+impl fmt::Display for Scheduler {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TODO")
     }

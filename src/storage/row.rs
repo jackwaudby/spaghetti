@@ -1,13 +1,29 @@
 use crate::common::error::NonFatalError;
-use crate::storage::catalog::{Catalog, ColumnKind};
 use crate::storage::datatype::{Data, Field};
 
 use std::fmt;
 
+use std::cell::UnsafeCell;
+
+unsafe impl Sync for Tuple {}
+
 #[derive(Debug)]
-pub struct Row {
-    current_fields: Vec<Field>,
-    prev_fields: Option<Vec<Field>>,
+pub struct Tuple(UnsafeCell<Internal>);
+
+impl Tuple {
+    pub fn new() -> Self {
+        Tuple(UnsafeCell::new(Internal::new()))
+    }
+
+    pub fn get(&self) -> &mut Internal {
+        unsafe { &mut *self.0.get() }
+    }
+}
+
+#[derive(Debug)]
+pub struct Internal {
+    current: Field,
+    prev: Option<Field>,
     state: State,
 }
 
@@ -18,20 +34,15 @@ pub enum State {
 }
 
 #[derive(Debug)]
-pub struct OperationResult {
-    values: Option<Vec<Data>>,
+pub struct OpResult {
+    value: Option<Data>,
 }
 
-impl Row {
-    pub fn new(schema: &Catalog) -> Self {
-        let fields = schema.column_cnt();
-        let mut current_fields = Vec::with_capacity(fields);
-        for _ in 0..fields {
-            current_fields.push(Field::new());
-        }
-        Row {
-            current_fields,
-            prev_fields: None,
+impl Internal {
+    pub fn new() -> Self {
+        Internal {
+            current: Field::new(),
+            prev: None,
             state: State::Clean,
         }
     }
@@ -40,101 +51,58 @@ impl Row {
         self.state == State::Modified
     }
 
-    pub fn init_value(
-        &mut self,
-        schema: &Catalog,
-        column: &str,
-        value: Data,
-    ) -> Result<(), NonFatalError> {
-        let field_index = schema.column_position_by_name(column)?;
-        let field_type = schema.column_type_by_index(field_index);
-        data_eq_column(field_type, &value)?;
-        self.current_fields[field_index].set(value);
-
+    pub fn init_value(&mut self, value: Data) -> Result<(), NonFatalError> {
+        self.current.set(value);
         Ok(())
     }
 
-    pub fn get_values(
-        &self,
-        schema: &Catalog,
-        columns: &[&str],
-    ) -> Result<OperationResult, NonFatalError> {
-        let mut values = Vec::with_capacity(columns.len());
-
-        for column in columns {
-            let field_index = schema.column_position_by_name(column)?;
-            let field = &self.current_fields[field_index];
-            let value = field.get();
-            values.push(value);
-        }
-        Ok(OperationResult::new(Some(values)))
+    pub fn get_value(&self) -> Result<OpResult, NonFatalError> {
+        Ok(OpResult::new(Some(self.current.get())))
     }
 
-    pub fn append_value(
-        &mut self,
-        schema: &Catalog,
-        column: &str,
-        value: Data,
-    ) -> Result<OperationResult, NonFatalError> {
+    pub fn append_value(&mut self, value: &Data) -> Result<OpResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
                 "TODO".to_string(),
-                schema.table_name().to_string(),
+                "TODO".to_string(),
             )),
             State::Clean => {
-                let field_index = schema.column_position_by_name(column)?; // get field index
-                let field_type = schema.column_type_by_index(field_index); // get field type
-                data_eq_column(field_type, &Data::List(vec![]))?; // check field is list type
-                let prev_fields = self.current_fields.clone(); // set prev fields
-                self.prev_fields = Some(prev_fields);
-                self.current_fields[field_index].append(value); // append value to list
+                let prev = self.current.clone(); // set prev fields
+                self.prev = Some(prev);
+                self.current.append(value.clone()); // append value to list
                 self.state = State::Modified; // set state
-                let res = OperationResult::new(None); // create return result
-                Ok(res)
+
+                Ok(OpResult::new(None))
             }
         }
     }
 
-    pub fn set_values(
-        &mut self,
-        schema: &Catalog,
-        columns: &[&str],
-        values: &[Data],
-    ) -> Result<OperationResult, NonFatalError> {
+    pub fn set_value(&mut self, value: &Data) -> Result<OpResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty(
                 "TODO".to_string(),
-                schema.table_name().to_string(),
+                "TODO".to_string(),
             )),
             State::Clean => {
-                let prev_fields = self.current_fields.clone(); // set prev fields
-                self.prev_fields = Some(prev_fields);
+                let prev = self.current.clone(); // set prev fields
+                self.prev = Some(prev);
+                self.current.set(value.clone());
                 self.state = State::Modified; // set state
 
-                // update each field;
-                for (i, col_name) in columns.iter().enumerate() {
-                    let field_index = schema.column_position_by_name(col_name)?; // get index of field in row
-                    let field_type = schema.column_type_by_index(field_index); // get type of field
-                    data_eq_column(field_type, &values[i])?; // check field is list type
-                    self.current_fields[field_index].set(values[i].clone());
-                }
-
-                let res = OperationResult::new(None); // create return result
-
-                Ok(res)
+                Ok(OpResult::new(None))
             }
         }
     }
 
     pub fn commit(&mut self) {
         self.state = State::Clean;
-        self.prev_fields = None;
+        self.prev = None;
     }
 
     pub fn revert(&mut self) {
         match self.state {
             State::Modified => {
-                self.current_fields = self.prev_fields.take().unwrap(); // revert to old values
+                self.current = self.prev.take().unwrap(); // revert to old values
                 self.state = State::Clean;
             }
             State::Clean => {}
@@ -146,25 +114,13 @@ impl Row {
     }
 }
 
-impl OperationResult {
-    pub fn new(values: Option<Vec<Data>>) -> Self {
-        OperationResult { values }
+impl OpResult {
+    pub fn new(value: Option<Data>) -> Self {
+        OpResult { value }
     }
 
-    pub fn get_values(&mut self) -> Vec<Data> {
-        self.values.take().unwrap()
-    }
-}
-
-/// Returns true if the value type matches the column type.
-fn data_eq_column(a: &ColumnKind, b: &Data) -> Result<(), NonFatalError> {
-    match (a, b) {
-        (&ColumnKind::Double, &Data::Double(..)) => Ok(()),
-        (&ColumnKind::Int, &Data::Int(..)) => Ok(()),
-        (&ColumnKind::Uint, &Data::Uint(..)) => Ok(()),
-        (&ColumnKind::List, &Data::List(..)) => Ok(()),
-        (&ColumnKind::VarChar, &Data::VarChar(..)) => Ok(()),
-        _ => Err(NonFatalError::InvalidColumnType(a.to_string())), // TODO: need better error
+    pub fn get_value(&mut self) -> Data {
+        self.value.take().unwrap()
     }
 }
 
@@ -177,7 +133,7 @@ impl fmt::Display for State {
     }
 }
 
-impl fmt::Display for Row {
+impl fmt::Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // // fields
         // let fc = self.current_fields.len();

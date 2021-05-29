@@ -40,7 +40,7 @@ impl GlobalStatistics {
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
         let warmup = config.get_int("warmup").unwrap() as u32;
-        let cores = config.get_int("workers").unwrap() as u32;
+        let cores = config.get_int("cores").unwrap() as u32;
         let transaction_breakdown = TransactionBreakdown::new(&workload);
         let abort_breakdown = AbortBreakdown::new(&protocol, &workload);
 

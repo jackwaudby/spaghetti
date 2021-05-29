@@ -114,6 +114,7 @@ impl SmallBankGenerator {
                     SmallBankTransactionProfile::Balance(payload),
                 )
             }
+
             // DEPOSIT_CHECKING
             x if x < 0.30 => {
                 let name = self.get_name();

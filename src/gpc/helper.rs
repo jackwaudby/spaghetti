@@ -2,10 +2,10 @@ use crate::common::message::{InternalResponse, Message, Outcome, Parameters, Tra
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
 use crate::gpc::threads::{Recon, Worker};
-use crate::scheduler::Protocol;
+use crate::scheduler::Scheduler;
 use crate::workloads::smallbank;
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
-use crate::workloads::Workload;
+use crate::workloads::Database;
 
 use config::Config;
 use std::fs;
@@ -62,21 +62,21 @@ pub fn set_log_level(config: &Config) {
 }
 
 /// Initialise database.
-pub fn init_database(config: Config) -> Workload {
-    let workload = Workload::new(config).unwrap();
-    workload
+pub fn init_database(config: &Config) -> Arc<Database> {
+    Arc::new(Database::new(config).unwrap())
 }
 
-/// Initialise the scheduler with a desired number of cores.
-pub fn init_scheduler(workload: Workload, cores: usize) -> Arc<Protocol> {
-    Arc::new(Protocol::new(workload, cores).unwrap())
+/// Initialise the scheduler.
+pub fn init_scheduler(config: &Config) -> Arc<Scheduler> {
+    Arc::new(Scheduler::new(config).unwrap())
 }
 
 /// Start execution with `cores` workers.
 pub fn run(
     cores: usize,
-    scheduler: Arc<Protocol>,
+    scheduler: Arc<Scheduler>,
     config: Arc<Config>,
+    workload: Arc<Database>,
     tx: mpsc::Sender<LocalStatistics>,
 ) {
     let mut workers = Vec::with_capacity(cores); // worker per core
@@ -88,6 +88,7 @@ pub fn run(
             Some(*core_id),
             Arc::clone(&config),
             Arc::clone(&scheduler),
+            Arc::clone(&workload),
             tx.clone(),
         ));
     }
@@ -102,7 +103,11 @@ pub fn run(
 }
 
 /// Run recon queries.
-pub fn recon_run(scheduler: Arc<Protocol>, config: Arc<Config>, tx: mpsc::Sender<LocalStatistics>) {
+pub fn recon_run(
+    scheduler: Arc<Scheduler>,
+    config: Arc<Config>,
+    tx: mpsc::Sender<LocalStatistics>,
+) {
     let mut recon = Recon::new(config, scheduler, tx.clone());
 
     if let Some(thread) = recon.thread.take() {
@@ -113,7 +118,11 @@ pub fn recon_run(scheduler: Arc<Protocol>, config: Arc<Config>, tx: mpsc::Sender
 }
 
 /// Execute a transaction.
-pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
+pub fn execute(
+    txn: Message,
+    scheduler: Arc<Scheduler>,
+    workload: Arc<Database>,
+) -> InternalResponse {
     if let Message::Request {
         request_no,
         transaction,
@@ -149,22 +158,22 @@ pub fn execute(txn: Message, scheduler: Arc<Protocol>) -> InternalResponse {
                 if let Parameters::SmallBank(params) = parameters {
                     match params {
                         SmallBankTransactionProfile::Amalgamate(params) => {
-                            smallbank::procedures::amalgmate(params, scheduler)
+                            smallbank::procedures::amalgmate(params, scheduler, workload)
                         }
                         SmallBankTransactionProfile::Balance(params) => {
-                            smallbank::procedures::balance(params, scheduler)
+                            smallbank::procedures::balance(params, scheduler, workload)
                         }
                         SmallBankTransactionProfile::DepositChecking(params) => {
-                            smallbank::procedures::deposit_checking(params, scheduler)
+                            smallbank::procedures::deposit_checking(params, scheduler, workload)
                         }
                         SmallBankTransactionProfile::SendPayment(params) => {
-                            smallbank::procedures::send_payment(params, scheduler)
+                            smallbank::procedures::send_payment(params, scheduler, workload)
                         }
                         SmallBankTransactionProfile::TransactSaving(params) => {
-                            smallbank::procedures::transact_savings(params, scheduler)
+                            smallbank::procedures::transact_savings(params, scheduler, workload)
                         }
                         SmallBankTransactionProfile::WriteCheck(params) => {
-                            smallbank::procedures::write_check(params, scheduler)
+                            smallbank::procedures::write_check(params, scheduler, workload)
                         }
                     }
                 } else {

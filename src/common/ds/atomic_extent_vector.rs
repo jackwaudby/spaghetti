@@ -1,6 +1,6 @@
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use crossbeam_utils::CachePadded;
-use std::sync::atomic::Ordering::{AcqRel, Acquire, Relaxed};
+use std::sync::atomic::Ordering::{AcqRel, Relaxed};
 
 #[derive(Debug)]
 pub struct AtomicExtentVec<T>(Vec<CachePadded<Atomic<T>>>);

@@ -1,11 +1,12 @@
 use crate::common::error::NonFatalError;
-use crate::scheduler::Protocol;
+use crate::scheduler::Scheduler;
 use crate::storage::datatype::Data;
 use crate::workloads::smallbank::error::SmallBankError;
 use crate::workloads::smallbank::keys::SmallBankPrimaryKey::*;
 use crate::workloads::smallbank::paramgen::{
     Amalgamate, Balance, DepositChecking, SendPayment, TransactSaving, WriteCheck,
 };
+use crate::workloads::Database;
 use crate::workloads::PrimaryKey::*;
 
 use std::convert::TryFrom;
@@ -15,304 +16,406 @@ use tracing::debug;
 /// Balance transaction.
 ///
 /// Sum the balances of a customer's checking and savings accounts.
-pub fn balance(params: Balance, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    debug!("balance txn");
-    let accounts_cols = ["customer_id"]; // columns
-    let other_cols = ["balance"];
+pub fn balance(
+    params: Balance,
+    scheduler: Arc<Scheduler>,
+    database: Arc<Database>,
+) -> Result<String, NonFatalError> {
+    match &*database {
+        Database::SmallBank(db) => {
+            debug!("balance txn");
 
-    let accounts_pk = SmallBank(Account(params.name));
-    let savings_pk = SmallBank(Savings(params.name));
-    let checking_pk = SmallBank(Checking(params.name));
+            let accounts_pk = SmallBank(Account(params.name));
+            let savings_pk = SmallBank(Savings(params.name));
+            let checking_pk = SmallBank(Checking(params.name));
 
-    let meta = protocol.begin(); // register
+            let meta = scheduler.begin(); // register
 
-    protocol.read(0, &accounts_pk, &accounts_cols, &meta)?; // read 1 -- get customer id
+            scheduler.read_value(
+                Arc::clone(&db.accounts.customer_id),
+                Arc::clone(&db.accounts.lsns),
+                Arc::clone(&db.accounts.rw_tables),
+                accounts_pk.into(),
+                &meta,
+            )?; // read 1 -- get customer id
 
-    protocol.read(1, &savings_pk, &other_cols, &meta)?; // read 2 -- get savings
+            scheduler.read_value(
+                Arc::clone(&db.saving.balance),
+                Arc::clone(&db.saving.lsns),
+                Arc::clone(&db.saving.rw_tables),
+                savings_pk.into(),
+                &meta,
+            )?; // read 2 -- get savings
 
-    protocol.read(2, &checking_pk, &other_cols, &meta)?; // read 3 -- get checking
+            scheduler.read_value(
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                checking_pk.into(),
+                &meta,
+            )?; // read 3 -- get checking
 
-    protocol.commit(&meta)?; // commit
+            scheduler.commit(&meta)?; // commit
 
-    Ok("ok".to_string())
+            Ok("ok".to_string())
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
-/// Deposit checking transaction.
+/// Deposit checking transaction
+///
+/// Increase checking balance by X amount.
 pub fn deposit_checking(
     params: DepositChecking,
-    protocol: Arc<Protocol>,
+    scheduler: Arc<Scheduler>,
+    database: Arc<Database>,
 ) -> Result<String, NonFatalError> {
-    debug!("deposit checking txn");
-    let accounts_cols = ["customer_id"];
-    let checking_cols = ["balance"];
+    match &*database {
+        Database::SmallBank(db) => {
+            debug!("deposit checking txn");
+            let offset = params.name as usize;
 
-    let accounts_pk = SmallBank(Account(params.name));
-    let checking_pk = SmallBank(Checking(params.name));
+            let meta = scheduler.begin();
 
-    let update_checking =
-        |current: Option<Vec<Data>>, params: Option<&[Data]>| -> Result<Vec<Data>, NonFatalError> {
-            let balance = f64::try_from(current.unwrap()[0].clone())?; // get current balance
-            let value = f64::try_from(params.unwrap()[0].clone())?; // get deposit amount
-            let new_balance = vec![Data::from(balance + value)]; // create new balance
-            Ok(new_balance)
-        };
+            scheduler.read_value(
+                Arc::clone(&db.accounts.customer_id),
+                Arc::clone(&db.accounts.lsns),
+                Arc::clone(&db.accounts.rw_tables),
+                offset,
+                &meta,
+            )?; // read 1 -- get customer id
 
-    let params = vec![Data::Double(params.value)];
+            let res = scheduler.read_value(
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset,
+                &meta,
+            )?; // read 2 -- current balance
 
-    let meta = protocol.begin();
+            let balance = Data::from(f64::try_from(res)? + params.value); // new balance
 
-    protocol.read(0, &accounts_pk, &accounts_cols, &meta)?;
+            scheduler.write_value(
+                &balance,
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset,
+                &meta,
+            )?; // write 1 -- update balance
 
-    protocol.write(
-        2,
-        &checking_pk,
-        &checking_cols,
-        Some(&checking_cols),
-        Some(&params),
-        &update_checking,
-        &meta,
-    )?; // update -- set balance
+            scheduler.commit(&meta)?;
 
-    protocol.commit(&meta)?;
-
-    Ok("ok".to_string())
+            Ok("ok".to_string())
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// TransactSavings transaction.
 ///
-/// Makes a withdrawal on the savings account.
+/// TODO: logic as per Durner, but does not make sense.
 pub fn transact_savings(
     params: TransactSaving,
-    protocol: Arc<Protocol>,
+    scheduler: Arc<Scheduler>,
+    database: Arc<Database>,
 ) -> Result<String, NonFatalError> {
-    debug!("transact savings txn");
-    let accounts_cols = ["customer_id"];
-    let savings_cols = ["balance"];
+    match &*database {
+        Database::SmallBank(db) => {
+            debug!("transact savings txn");
+            let offset = params.name as usize;
 
-    let accounts_pk = SmallBank(Account(params.name));
-    let savings_pk = SmallBank(Savings(params.name));
+            let meta = scheduler.begin(); // register
 
-    let params = vec![Data::Double(params.value)];
+            debug!("read cust id");
+            scheduler.read_value(
+                Arc::clone(&db.accounts.customer_id),
+                Arc::clone(&db.accounts.lsns),
+                Arc::clone(&db.accounts.rw_tables),
+                offset,
+                &meta,
+            )?; // read 1 -- get customer id
 
-    let savings_withdrawal =
-        |current: Option<Vec<Data>>, params: Option<&[Data]>| -> Result<Vec<Data>, NonFatalError> {
-            let balance = f64::try_from(current.unwrap()[0].clone()).unwrap(); // get current balance
-            let value = f64::try_from(params.unwrap()[0].clone()).unwrap(); // get value
-            if balance + value > 0.0 {
-                Ok(vec![Data::Double(balance + value)])
-            } else {
-                Err(SmallBankError::InsufficientFunds.into())
+            debug!("read saving");
+            let res = scheduler.read_value(
+                Arc::clone(&db.saving.balance),
+                Arc::clone(&db.saving.lsns),
+                Arc::clone(&db.saving.rw_tables),
+                offset,
+                &meta,
+            )?; // read 2 -- current savings balance
+
+            let balance = f64::try_from(res)? + params.value; // new balance
+
+            if balance < 0.0 {
+                scheduler.abort(&meta);
+                debug!("no money: {}", balance);
+                return Err(SmallBankError::InsufficientFunds.into());
             }
-        };
 
-    let meta = protocol.begin(); // register
+            scheduler.write_value(
+                &Data::from(balance),
+                Arc::clone(&db.saving.balance),
+                Arc::clone(&db.saving.lsns),
+                Arc::clone(&db.saving.rw_tables),
+                offset,
+                &meta,
+            )?; // write 1 -- update saving balance
 
-    protocol.read(0, &accounts_pk, &accounts_cols, &meta)?; // read -- get customer ID
+            scheduler.commit(&meta)?;
 
-    protocol.write(
-        1,
-        &savings_pk,
-        &savings_cols,
-        Some(&savings_cols),
-        Some(&params),
-        &savings_withdrawal,
-        &meta,
-    )?; // update -- set savings balance
-
-    protocol.commit(&meta)?;
-
-    Ok("ok".to_string())
+            Ok("ok".to_string())
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Amalgamate transaction.
 ///
 /// Move all the funds from one customer to another.
-pub fn amalgmate(params: Amalgamate, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    debug!("amalgmate");
-    let accounts_cols = ["customer_id"]; // columns
-    let other_cols = ["balance"];
+pub fn amalgmate(
+    params: Amalgamate,
+    scheduler: Arc<Scheduler>,
+    database: Arc<Database>,
+) -> Result<String, NonFatalError> {
+    match &*database {
+        Database::SmallBank(db) => {
+            debug!("amalgmate");
+            let offset1 = params.name1 as usize;
+            let offset2 = params.name2 as usize;
 
-    let accounts_pk1 = SmallBank(Account(params.name1));
-    let savings_pk1 = SmallBank(Savings(params.name1));
-    let checking_pk1 = SmallBank(Checking(params.name1));
+            let meta = scheduler.begin(); // register
 
-    let accounts_pk2 = SmallBank(Account(params.name2));
-    let checking_pk2 = SmallBank(Checking(params.name2));
+            scheduler.read_value(
+                Arc::clone(&db.accounts.customer_id),
+                Arc::clone(&db.accounts.lsns),
+                Arc::clone(&db.accounts.rw_tables),
+                offset1,
+                &meta,
+            )?; // read 1 -- get customer1 id
 
-    let values = vec![Data::Double(0.0)];
+            let res1 = scheduler.read_value(
+                Arc::clone(&db.saving.balance),
+                Arc::clone(&db.saving.lsns),
+                Arc::clone(&db.saving.rw_tables),
+                offset1,
+                &meta,
+            )?; // read 2 -- current savings balance (customer1)
 
-    let update_cust2 =
-        |current: Option<Vec<Data>>, params: Option<&[Data]>| -> Result<Vec<Data>, NonFatalError> {
-            let balance = f64::try_from(current.unwrap()[0].clone())?; // current balance
-            let value = f64::try_from(params.unwrap()[0].clone())?; // increment
-            Ok(vec![Data::from(balance + value)])
-        };
+            let res2 = scheduler.read_value(
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset1,
+                &meta,
+            )?; // read 3 -- current checking balance (customer1)
 
-    let set = |_current: Option<Vec<Data>>,
-               params: Option<&[Data]>|
-     -> Result<Vec<Data>, NonFatalError> {
-        let value = f64::try_from(params.unwrap()[0].clone())?; // set from params
-        Ok(vec![Data::from(value)])
-    };
+            scheduler.write_value(
+                &Data::Double(0.0),
+                Arc::clone(&db.saving.balance),
+                Arc::clone(&db.saving.lsns),
+                Arc::clone(&db.saving.rw_tables),
+                offset1,
+                &meta,
+            )?; // write 1 -- update saving balance (customer1)
 
-    let meta = protocol.begin(); // register
+            scheduler.write_value(
+                &Data::Double(0.0),
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset1,
+                &meta,
+            )?; // write 2 -- update checking balance (customer1)
 
-    protocol.read(0, &accounts_pk1, &accounts_cols, &meta)?; // read -- cust1
+            let sum = f64::try_from(res1)? + f64::try_from(res2)?; // amount to send
 
-    let res2 = protocol.write(
-        1,
-        &savings_pk1,
-        &other_cols,
-        Some(&other_cols),
-        Some(&values),
-        &set,
-        &meta,
-    )?; // get and set savings -- cust1
+            scheduler.read_value(
+                Arc::clone(&db.accounts.customer_id),
+                Arc::clone(&db.accounts.lsns),
+                Arc::clone(&db.accounts.rw_tables),
+                offset2,
+                &meta,
+            )?; // read 4 -- get customer2 id
 
-    let res3 = protocol.write(
-        2,
-        &checking_pk1,
-        &other_cols,
-        Some(&other_cols),
-        Some(&values),
-        &set,
-        &meta,
-    )?; // get and set checking -- cust1
+            let res3 = scheduler.read_value(
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset2,
+                &meta,
+            )?; // read 5 -- current checking balance (customer2)
 
-    let a = f64::try_from(res2.unwrap()[0].clone()).unwrap();
-    let b = f64::try_from(res3.unwrap()[0].clone()).unwrap();
-    let params: Vec<Data> = vec![Data::Double(a + b)]; // amount to send to cust2
+            let bal = sum + f64::try_from(res3)?;
 
-    protocol.read(0, &accounts_pk2, &accounts_cols, &meta)?; // read -- cust2
+            scheduler.write_value(
+                &Data::Double(bal),
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset2,
+                &meta,
+            )?;
 
-    protocol.write(
-        2,
-        &checking_pk2,
-        &other_cols,
-        Some(&other_cols),
-        Some(&params),
-        &update_cust2,
-        &meta,
-    )?; // update -- cust2
+            scheduler.commit(&meta)?;
 
-    protocol.commit(&meta)?;
-
-    Ok("ok".to_string())
+            Ok("ok".to_string())
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Write check transaction.
 ///
 /// Write a check against an account taking funds from checking; applying overdraft charge if needed.
-pub fn write_check(params: WriteCheck, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    debug!("write check txn");
-    let accounts_cols = ["customer_id"];
-    let other_cols = ["balance"];
+pub fn write_check(
+    params: WriteCheck,
+    scheduler: Arc<Scheduler>,
+    database: Arc<Database>,
+) -> Result<String, NonFatalError> {
+    match &*database {
+        Database::SmallBank(db) => {
+            debug!("write check txn");
+            let offset = params.name as usize;
 
-    let accounts_pk = SmallBank(Account(params.name));
-    let savings_pk = SmallBank(Savings(params.name));
-    let checking_pk = SmallBank(Checking(params.name));
+            let meta = scheduler.begin();
 
-    let update_checking =
-        |current: Option<Vec<Data>>, params: Option<&[Data]>| -> Result<Vec<Data>, NonFatalError> {
-            let savings = f64::try_from(params.unwrap()[1].clone())?; // savings balance
-            let checking = f64::try_from(current.unwrap()[0].clone())?; // checking balance
-            let value = f64::try_from(params.unwrap()[0].clone())?; // amount
+            debug!("read cust id");
+            scheduler.read_value(
+                Arc::clone(&db.accounts.customer_id),
+                Arc::clone(&db.accounts.lsns),
+                Arc::clone(&db.accounts.rw_tables),
+                offset,
+                &meta,
+            )?; // get customer id
 
-            let new_balance;
-            if savings + checking < value {
-                new_balance = vec![Data::Double(checking - (value + 1.0))]; // overdraft charge
-            } else {
-                new_balance = vec![Data::Double(checking - value)]; // have funds
+            debug!("read savings");
+
+            let savings = f64::try_from(scheduler.read_value(
+                Arc::clone(&db.saving.balance),
+                Arc::clone(&db.saving.lsns),
+                Arc::clone(&db.saving.rw_tables),
+                offset,
+                &meta,
+            )?)?; // get savings balance
+
+            debug!("read checking");
+            let checking = f64::try_from(scheduler.read_value(
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset,
+                &meta,
+            )?)?; // get checking balance
+
+            let total = savings + checking; // total balance
+            let mut amount = params.value;
+
+            if total < amount {
+                amount += 1.0; // apply overdraft charge
             }
 
-            Ok(new_balance)
-        };
+            let new_check = total - amount;
 
-    let meta = protocol.begin();
+            debug!("write checking");
+            scheduler.write_value(
+                &Data::Double(new_check),
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset,
+                &meta,
+            )?; // update checking balance
 
-    protocol.read(0, &accounts_pk, &accounts_cols, &meta)?;
+            scheduler.commit(&meta)?;
 
-    let res2 = protocol.read(1, &savings_pk, &other_cols, &meta)?; // get savings balance
-
-    let params = vec![Data::Double(params.value), res2[0].clone()];
-
-    protocol.write(
-        2,
-        &checking_pk,
-        &other_cols,
-        Some(&other_cols),
-        Some(&params),
-        &update_checking,
-        &meta,
-    )?; // update checking balance
-
-    protocol.commit(&meta)?;
-
-    Ok("ok".to_string())
+            Ok("ok".to_string())
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Send payment transaction.
 ///
 /// Transfer money between accounts; if there is sufficient funds in the checking account.
-pub fn send_payment(params: SendPayment, protocol: Arc<Protocol>) -> Result<String, NonFatalError> {
-    debug!("send payment");
-    let accounts_cols = ["customer_id"];
-    let checking_cols = ["balance"];
+pub fn send_payment(
+    params: SendPayment,
+    scheduler: Arc<Scheduler>,
+    database: Arc<Database>,
+) -> Result<String, NonFatalError> {
+    match &*database {
+        Database::SmallBank(db) => {
+            debug!("send payment");
+            let offset1 = params.name1 as usize;
+            let offset2 = params.name2 as usize;
 
-    let accounts_pk1 = SmallBank(Account(params.name1));
-    let accounts_pk2 = SmallBank(Account(params.name2));
-    let checking_pk1 = SmallBank(Checking(params.name1));
-    let checking_pk2 = SmallBank(Checking(params.name2));
+            let meta = scheduler.begin(); // register
 
-    let params = vec![Data::Double(params.value)];
+            scheduler.read_value(
+                Arc::clone(&db.accounts.customer_id),
+                Arc::clone(&db.accounts.lsns),
+                Arc::clone(&db.accounts.rw_tables),
+                offset1,
+                &meta,
+            )?; // get cust1 id
 
-    let check_funds =
-        |current: Option<Vec<Data>>, params: Option<&[Data]>| -> Result<Vec<Data>, NonFatalError> {
-            let current_balance = f64::try_from(current.unwrap()[0].clone())?; // checking balance of cust1
-            let value = f64::try_from(params.unwrap()[0].clone())?; // proposed payment amount
+            let mut checking = f64::try_from(scheduler.read_value(
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset1,
+                &meta,
+            )?)?; // get cust1 checking
 
-            if current_balance - value > 0.0 {
-                Ok(vec![Data::Double(current_balance - value)])
-            } else {
-                Err(SmallBankError::InsufficientFunds.into())
+            checking -= params.value;
+
+            if checking < 0.0 {
+                scheduler.abort(&meta);
+                debug!("no money: {}", checking);
+                return Err(SmallBankError::InsufficientFunds.into());
             }
-        };
 
-    let increase_balance =
-        |current: Option<Vec<Data>>, params: Option<&[Data]>| -> Result<Vec<Data>, NonFatalError> {
-            let current_balance = f64::try_from(current.unwrap()[0].clone())?;
-            let value = f64::try_from(params.unwrap()[0].clone())?;
+            scheduler.write_value(
+                &Data::Double(checking),
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset1,
+                &meta,
+            )?; // update cust1 checking balance
 
-            Ok(vec![Data::Double(current_balance + value)])
-        };
+            scheduler.read_value(
+                Arc::clone(&db.accounts.customer_id),
+                Arc::clone(&db.accounts.lsns),
+                Arc::clone(&db.accounts.rw_tables),
+                offset2,
+                &meta,
+            )?; // get cust2 id
 
-    let meta = protocol.begin(); // register
+            let mut checking = f64::try_from(scheduler.read_value(
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset2,
+                &meta,
+            )?)?; // get cust2 checking
 
-    protocol.read(0, &accounts_pk1, &accounts_cols, &meta)?; // read -- get customer ID 1
+            checking += params.value;
 
-    protocol.read(0, &accounts_pk2, &accounts_cols, &meta)?; // read -- get customer ID 2
+            scheduler.write_value(
+                &Data::Double(checking),
+                Arc::clone(&db.checking.balance),
+                Arc::clone(&db.checking.lsns),
+                Arc::clone(&db.checking.rw_tables),
+                offset2,
+                &meta,
+            )?; // update cust2 checking
 
-    protocol.write(
-        2,
-        &checking_pk1,
-        &checking_cols,
-        Some(&checking_cols),
-        Some(&params),
-        &check_funds,
-        &meta,
-    )?;
+            scheduler.commit(&meta)?;
 
-    protocol.write(
-        2,
-        &checking_pk2,
-        &checking_cols,
-        Some(&checking_cols),
-        Some(&params),
-        &increase_balance,
-        &meta,
-    )?;
-
-    protocol.commit(&meta)?;
-
-    Ok("ok".to_string())
+            Ok("ok".to_string())
+        }
+        _ => panic!("unexpected database"),
+    }
 }

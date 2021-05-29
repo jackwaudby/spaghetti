@@ -40,7 +40,7 @@ fn main() {
     }
 
     if let Some(c) = matches.value_of("CORES") {
-        settings.set("workers", c).unwrap();
+        settings.set("cores", c).unwrap();
     }
 
     if let Some(l) = matches.value_of("LOG") {
@@ -63,17 +63,17 @@ fn main() {
     }
 
     let dg_start = Instant::now(); // init database
-    let workload = helper::init_database(config.clone());
+    let workload = helper::init_database(&config);
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
-    let workers = config.get_int("workers").unwrap() as usize;
-    let scheduler = helper::init_scheduler(workload, workers); // init scheduler
+    let workers = config.get_int("cores").unwrap() as usize;
+    let scheduler = helper::init_scheduler(&config); // init scheduler
     let (tx, rx) = mpsc::channel(); // channel to send statistics
 
     tracing::info!("Starting execution");
     global_stats.start();
-    helper::run(workers, scheduler, Arc::new(config.clone()), tx);
+    helper::run(workers, scheduler, Arc::new(config.clone()), workload, tx);
     global_stats.end();
     tracing::info!("Execution finished");
 

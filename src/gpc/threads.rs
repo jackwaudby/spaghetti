@@ -4,8 +4,9 @@ use crate::common::message::Outcome;
 use crate::common::statistics::LocalStatistics;
 use crate::common::wait_manager::WaitManager;
 use crate::gpc::helper;
-use crate::scheduler::Protocol;
+use crate::scheduler::Scheduler;
 
+use crate::workloads::Database;
 use config::Config;
 use std::fs::{self, OpenOptions};
 use std::io::prelude::*;
@@ -13,6 +14,7 @@ use std::path::Path;
 use std::sync::{mpsc, Arc};
 use std::thread;
 use std::time::{Duration, Instant};
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct Worker {
@@ -30,7 +32,8 @@ impl Worker {
         id: usize,
         core_id: Option<core_affinity::CoreId>,
         config: Arc<Config>,
-        scheduler: Arc<Protocol>,
+        scheduler: Arc<Scheduler>,
+        workload: Arc<Database>,
         tx: mpsc::Sender<LocalStatistics>,
     ) -> Worker {
         let timeout = config.get_int("timeout").unwrap() as u64;
@@ -117,7 +120,11 @@ impl Worker {
                         let start_latency = Instant::now();
 
                         while restart {
-                            let ir = helper::execute(txn.clone(), Arc::clone(&scheduler)); // execute txn
+                            let ir = helper::execute(
+                                txn.clone(),
+                                Arc::clone(&scheduler),
+                                Arc::clone(&workload),
+                            ); // execute txn
 
                             let InternalResponse {
                                 transaction,
@@ -133,6 +140,7 @@ impl Worker {
                                     if log_results {
                                         log_result(&mut fh, outcome.clone());
                                     }
+                                    debug!("complete: committed");
                                 }
                                 Outcome::Aborted { ref reason } => {
                                     if let NonFatalError::SmallBankError(_) = reason {
@@ -142,8 +150,10 @@ impl Worker {
                                         if log_results {
                                             log_result(&mut fh, outcome.clone());
                                         }
+                                        debug!("complete: aborted");
                                     } else {
                                         restart = true; // protocol abort
+                                        debug!("restart: {}", reason);
                                         stats.record(transaction, outcome.clone(), restart);
                                         let start_wm = Instant::now();
                                         wm.wait();
@@ -177,7 +187,7 @@ impl Recon {
     /// Create a new thread for ACID post-execution recon queries.
     pub fn new(
         config: Arc<Config>,
-        _scheduler: Arc<Protocol>,
+        _scheduler: Arc<Scheduler>,
         tx: mpsc::Sender<LocalStatistics>,
     ) -> Recon {
         let protocol = config.get_str("protocol").unwrap();
