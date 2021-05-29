@@ -359,9 +359,9 @@ impl Protocol for SerializationGraph {
 
     fn read_value(
         &self,
-        column: Arc<Vec<Tuple>>,
-        lsns: Arc<Vec<AtomicU64>>,
-        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        column: &Arc<Vec<Tuple>>,
+        lsns: &Arc<Vec<AtomicU64>>,
+        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
         offset: usize,
         meta: &TransactionInfo,
     ) -> Result<Data, NonFatalError> {
@@ -427,7 +427,13 @@ impl Protocol for SerializationGraph {
                 .borrow_mut()
                 .as_mut()
                 .unwrap()
-                .add(OperationType::Read, column, rw_tables, offset, prv); // record operation
+                .add(
+                    OperationType::Read,
+                    Arc::clone(column),
+                    Arc::clone(rw_tables),
+                    offset,
+                    prv,
+                ); // record operation
             debug!("registered");
             lsns[offset].store(prv + 1, Ordering::Release); // update lsn
             drop(guard); // unpin
@@ -441,9 +447,9 @@ impl Protocol for SerializationGraph {
     fn write_value(
         &self,
         value: &Data,
-        column: Arc<Vec<Tuple>>,
-        lsns: Arc<Vec<AtomicU64>>,
-        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        column: &Arc<Vec<Tuple>>,
+        lsns: &Arc<Vec<AtomicU64>>,
+        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
         offset: usize,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
@@ -560,7 +566,13 @@ impl Protocol for SerializationGraph {
                 .borrow_mut()
                 .as_mut()
                 .unwrap()
-                .add(OperationType::Write, column, rw_tables, offset, prv); // record operation
+                .add(
+                    OperationType::Write,
+                    Arc::clone(column),
+                    Arc::clone(rw_tables),
+                    offset,
+                    prv,
+                ); // record operation
 
             lsns[offset].store(prv + 1, Ordering::Release); // update lsn
             drop(guard);

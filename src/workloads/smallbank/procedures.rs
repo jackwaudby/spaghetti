@@ -32,25 +32,25 @@ pub fn balance(
             let meta = scheduler.begin(); // register
 
             scheduler.read_value(
-                Arc::clone(&db.accounts.customer_id),
-                Arc::clone(&db.accounts.lsns),
-                Arc::clone(&db.accounts.rw_tables),
+                &db.accounts.customer_id,
+                &db.accounts.lsns,
+                &db.accounts.rw_tables,
                 accounts_pk.into(),
                 &meta,
             )?; // read 1 -- get customer id
 
             scheduler.read_value(
-                Arc::clone(&db.saving.balance),
-                Arc::clone(&db.saving.lsns),
-                Arc::clone(&db.saving.rw_tables),
+                &db.saving.balance,
+                &db.saving.lsns,
+                &db.saving.rw_tables,
                 savings_pk.into(),
                 &meta,
             )?; // read 2 -- get savings
 
             scheduler.read_value(
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 checking_pk.into(),
                 &meta,
             )?; // read 3 -- get checking
@@ -79,17 +79,17 @@ pub fn deposit_checking(
             let meta = scheduler.begin();
 
             scheduler.read_value(
-                Arc::clone(&db.accounts.customer_id),
-                Arc::clone(&db.accounts.lsns),
-                Arc::clone(&db.accounts.rw_tables),
+                &db.accounts.customer_id,
+                &db.accounts.lsns,
+                &db.accounts.rw_tables,
                 offset,
                 &meta,
             )?; // read 1 -- get customer id
 
             let res = scheduler.read_value(
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset,
                 &meta,
             )?; // read 2 -- current balance
@@ -98,9 +98,9 @@ pub fn deposit_checking(
 
             scheduler.write_value(
                 &balance,
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset,
                 &meta,
             )?; // write 1 -- update balance
@@ -130,18 +130,18 @@ pub fn transact_savings(
 
             debug!("read cust id");
             scheduler.read_value(
-                Arc::clone(&db.accounts.customer_id),
-                Arc::clone(&db.accounts.lsns),
-                Arc::clone(&db.accounts.rw_tables),
+                &db.accounts.customer_id,
+                &db.accounts.lsns,
+                &db.accounts.rw_tables,
                 offset,
                 &meta,
             )?; // read 1 -- get customer id
 
             debug!("read saving");
             let res = scheduler.read_value(
-                Arc::clone(&db.saving.balance),
-                Arc::clone(&db.saving.lsns),
-                Arc::clone(&db.saving.rw_tables),
+                &db.saving.balance,
+                &db.saving.lsns,
+                &db.saving.rw_tables,
                 offset,
                 &meta,
             )?; // read 2 -- current savings balance
@@ -156,9 +156,9 @@ pub fn transact_savings(
 
             scheduler.write_value(
                 &Data::from(balance),
-                Arc::clone(&db.saving.balance),
-                Arc::clone(&db.saving.lsns),
-                Arc::clone(&db.saving.rw_tables),
+                &db.saving.balance,
+                &db.saving.lsns,
+                &db.saving.rw_tables,
                 offset,
                 &meta,
             )?; // write 1 -- update saving balance
@@ -188,43 +188,43 @@ pub fn amalgmate(
             let meta = scheduler.begin(); // register
 
             scheduler.read_value(
-                Arc::clone(&db.accounts.customer_id),
-                Arc::clone(&db.accounts.lsns),
-                Arc::clone(&db.accounts.rw_tables),
+                &db.accounts.customer_id,
+                &db.accounts.lsns,
+                &db.accounts.rw_tables,
                 offset1,
                 &meta,
             )?; // read 1 -- get customer1 id
 
             let res1 = scheduler.read_value(
-                Arc::clone(&db.saving.balance),
-                Arc::clone(&db.saving.lsns),
-                Arc::clone(&db.saving.rw_tables),
+                &db.saving.balance,
+                &db.saving.lsns,
+                &db.saving.rw_tables,
                 offset1,
                 &meta,
             )?; // read 2 -- current savings balance (customer1)
 
             let res2 = scheduler.read_value(
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset1,
                 &meta,
             )?; // read 3 -- current checking balance (customer1)
 
             scheduler.write_value(
                 &Data::Double(0.0),
-                Arc::clone(&db.saving.balance),
-                Arc::clone(&db.saving.lsns),
-                Arc::clone(&db.saving.rw_tables),
+                &db.saving.balance,
+                &db.saving.lsns,
+                &db.saving.rw_tables,
                 offset1,
                 &meta,
             )?; // write 1 -- update saving balance (customer1)
 
             scheduler.write_value(
                 &Data::Double(0.0),
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset1,
                 &meta,
             )?; // write 2 -- update checking balance (customer1)
@@ -232,17 +232,17 @@ pub fn amalgmate(
             let sum = f64::try_from(res1)? + f64::try_from(res2)?; // amount to send
 
             scheduler.read_value(
-                Arc::clone(&db.accounts.customer_id),
-                Arc::clone(&db.accounts.lsns),
-                Arc::clone(&db.accounts.rw_tables),
+                &db.accounts.customer_id,
+                &db.accounts.lsns,
+                &db.accounts.rw_tables,
                 offset2,
                 &meta,
             )?; // read 4 -- get customer2 id
 
             let res3 = scheduler.read_value(
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset2,
                 &meta,
             )?; // read 5 -- current checking balance (customer2)
@@ -251,9 +251,9 @@ pub fn amalgmate(
 
             scheduler.write_value(
                 &Data::Double(bal),
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset2,
                 &meta,
             )?;
@@ -283,9 +283,9 @@ pub fn write_check(
 
             debug!("read cust id");
             scheduler.read_value(
-                Arc::clone(&db.accounts.customer_id),
-                Arc::clone(&db.accounts.lsns),
-                Arc::clone(&db.accounts.rw_tables),
+                &db.accounts.customer_id,
+                &db.accounts.lsns,
+                &db.accounts.rw_tables,
                 offset,
                 &meta,
             )?; // get customer id
@@ -293,18 +293,18 @@ pub fn write_check(
             debug!("read savings");
 
             let savings = f64::try_from(scheduler.read_value(
-                Arc::clone(&db.saving.balance),
-                Arc::clone(&db.saving.lsns),
-                Arc::clone(&db.saving.rw_tables),
+                &db.saving.balance,
+                &db.saving.lsns,
+                &db.saving.rw_tables,
                 offset,
                 &meta,
             )?)?; // get savings balance
 
             debug!("read checking");
             let checking = f64::try_from(scheduler.read_value(
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset,
                 &meta,
             )?)?; // get checking balance
@@ -321,9 +321,9 @@ pub fn write_check(
             debug!("write checking");
             scheduler.write_value(
                 &Data::Double(new_check),
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset,
                 &meta,
             )?; // update checking balance
@@ -353,17 +353,17 @@ pub fn send_payment(
             let meta = scheduler.begin(); // register
 
             scheduler.read_value(
-                Arc::clone(&db.accounts.customer_id),
-                Arc::clone(&db.accounts.lsns),
-                Arc::clone(&db.accounts.rw_tables),
+                &db.accounts.customer_id,
+                &db.accounts.lsns,
+                &db.accounts.rw_tables,
                 offset1,
                 &meta,
             )?; // get cust1 id
 
             let mut checking = f64::try_from(scheduler.read_value(
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset1,
                 &meta,
             )?)?; // get cust1 checking
@@ -378,25 +378,25 @@ pub fn send_payment(
 
             scheduler.write_value(
                 &Data::Double(checking),
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset1,
                 &meta,
             )?; // update cust1 checking balance
 
             scheduler.read_value(
-                Arc::clone(&db.accounts.customer_id),
-                Arc::clone(&db.accounts.lsns),
-                Arc::clone(&db.accounts.rw_tables),
+                &db.accounts.customer_id,
+                &db.accounts.lsns,
+                &db.accounts.rw_tables,
                 offset2,
                 &meta,
             )?; // get cust2 id
 
             let mut checking = f64::try_from(scheduler.read_value(
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset2,
                 &meta,
             )?)?; // get cust2 checking
@@ -405,9 +405,9 @@ pub fn send_payment(
 
             scheduler.write_value(
                 &Data::Double(checking),
-                Arc::clone(&db.checking.balance),
-                Arc::clone(&db.checking.lsns),
-                Arc::clone(&db.checking.rw_tables),
+                &db.checking.balance,
+                &db.checking.lsns,
+                &db.checking.rw_tables,
                 offset2,
                 &meta,
             )?; // update cust2 checking

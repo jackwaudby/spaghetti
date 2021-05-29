@@ -45,9 +45,9 @@ impl Scheduler {
 
     pub fn read_value(
         &self,
-        column: Arc<Vec<Tuple>>,
-        lsns: Arc<Vec<AtomicU64>>,
-        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        column: &Arc<Vec<Tuple>>,
+        lsns: &Arc<Vec<AtomicU64>>,
+        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
         offset: usize,
         meta: &TransactionInfo,
     ) -> Result<Data, NonFatalError> {
@@ -61,9 +61,9 @@ impl Scheduler {
     pub fn write_value(
         &self,
         value: &Data,
-        column: Arc<Vec<Tuple>>,
-        lsns: Arc<Vec<AtomicU64>>,
-        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        column: &Arc<Vec<Tuple>>,
+        lsns: &Arc<Vec<AtomicU64>>,
+        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
         offset: usize,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError> {
@@ -96,9 +96,9 @@ pub trait Protocol: fmt::Display + fmt::Debug {
 
     fn read_value(
         &self,
-        column: Arc<Vec<Tuple>>,
-        lsns: Arc<Vec<AtomicU64>>,
-        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        column: &Arc<Vec<Tuple>>,
+        lsns: &Arc<Vec<AtomicU64>>,
+        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
         offset: usize,
         meta: &TransactionInfo,
     ) -> Result<Data, NonFatalError>;
@@ -106,9 +106,9 @@ pub trait Protocol: fmt::Display + fmt::Debug {
     fn write_value(
         &self,
         value: &Data,
-        column: Arc<Vec<Tuple>>,
-        lsns: Arc<Vec<AtomicU64>>,
-        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        column: &Arc<Vec<Tuple>>,
+        lsns: &Arc<Vec<AtomicU64>>,
+        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
         offset: usize,
         meta: &TransactionInfo,
     ) -> Result<(), NonFatalError>;
