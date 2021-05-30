@@ -22,7 +22,7 @@ pub struct SmallBankDatabase {
 #[derive(Debug)]
 pub struct Accounts {
     pub customer_id: Arc<Vec<Tuple>>,
-    pub lsns: Arc<Vec<AtomicU64>>,
+    pub lsns: Vec<AtomicU64>,
     pub rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
 }
 
@@ -70,7 +70,7 @@ impl Accounts {
 
         Accounts {
             customer_id: Arc::new(customer_id),
-            lsns: Arc::new(lsns),
+            lsns: lsns,
             rw_tables: Arc::new(rw_tables),
         }
     }

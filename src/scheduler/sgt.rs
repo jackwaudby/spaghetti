@@ -360,7 +360,7 @@ impl Protocol for SerializationGraph {
     fn read_value(
         &self,
         column: &Arc<Vec<Tuple>>,
-        lsns: &Arc<Vec<AtomicU64>>,
+        lsns: &[AtomicU64],
         rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
         offset: usize,
         meta: &TransactionInfo,
@@ -448,7 +448,7 @@ impl Protocol for SerializationGraph {
         &self,
         value: &Data,
         column: &Arc<Vec<Tuple>>,
-        lsns: &Arc<Vec<AtomicU64>>,
+        lsns: &[AtomicU64],
         rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
         offset: usize,
         meta: &TransactionInfo,
