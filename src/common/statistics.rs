@@ -309,7 +309,7 @@ impl LocalStatistics {
                     }
                 }
 
-                OptimisticWaitHit(ref mut metric) => match reason {
+                OptimisticWaitHit(ref mut _metric) => match reason {
                     // NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
                     //     OptimisedWaitHitError::Hit(_) => metric.inc_hit(),
                     //     OptimisedWaitHitError::PredecessorAborted(_, _) => metric.inc_pur_aborted(),
@@ -631,21 +631,21 @@ impl HitListReasons {
         }
     }
 
-    fn inc_row_dirty(&mut self) {
-        self.row_dirty += 1;
-    }
+    // fn inc_row_dirty(&mut self) {
+    //     self.row_dirty += 1;
+    // }
 
-    fn inc_hit(&mut self) {
-        self.hit += 1;
-    }
+    // fn inc_hit(&mut self) {
+    //     self.hit += 1;
+    // }
 
-    fn inc_pur_active(&mut self) {
-        self.pur_active += 1;
-    }
+    // fn inc_pur_active(&mut self) {
+    //     self.pur_active += 1;
+    // }
 
-    fn inc_pur_aborted(&mut self) {
-        self.pur_aborted += 1;
-    }
+    // fn inc_pur_aborted(&mut self) {
+    //     self.pur_aborted += 1;
+    // }
 
     fn merge(&mut self, other: HitListReasons) {
         self.row_dirty += other.row_dirty;

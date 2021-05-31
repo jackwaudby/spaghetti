@@ -27,6 +27,9 @@ lazy_static! {
     };
 }
 
+#[derive(Debug)]
+pub struct TatpDatabase;
+
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum TatpTransaction {
     GetSubscriberData,

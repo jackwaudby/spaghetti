@@ -1,26 +1,12 @@
+use spaghetti::common::statistics::GlobalStatistics;
+use spaghetti::common::utils;
+use spaghetti::scheduler::Scheduler;
+use spaghetti::storage::Database;
+
 use clap::clap_app;
 use crossbeam_utils::thread;
-use spaghetti::common::error::NonFatalError;
-use spaghetti::common::message::{InternalResponse, Message, Outcome, Parameters, Transaction};
-
-use spaghetti::common::statistics::GlobalStatistics;
-use spaghetti::common::statistics::LocalStatistics;
-use spaghetti::common::wait_manager::WaitManager;
-use spaghetti::gpc::helper;
-use spaghetti::gpc::threads::{self, Worker};
-use spaghetti::scheduler::Scheduler;
-use spaghetti::workloads::smallbank;
-use spaghetti::workloads::smallbank::keys::SmallBankPrimaryKey::*;
-use spaghetti::workloads::smallbank::paramgen::SmallBankTransactionProfile;
-use spaghetti::workloads::Database;
-use spaghetti::workloads::PrimaryKey::*;
-use std::fs::{self, OpenOptions};
-use std::path::Path;
 use std::sync::mpsc;
-use std::sync::Arc;
-use std::time::Duration;
 use std::time::Instant;
-use tracing::debug;
 
 fn main() {
     let matches = clap_app!(spag =>
@@ -36,7 +22,7 @@ fn main() {
     )
     .get_matches();
 
-    let mut settings = helper::init_config("Embedded.toml"); // init config
+    let mut settings = utils::init_config("Embedded.toml"); // init config
 
     // overwrite default with any supplied runtime value
     if let Some(w) = matches.value_of("WORKLOAD") {
@@ -65,9 +51,9 @@ fn main() {
 
     let config = settings;
 
-    helper::set_log_level(&config); // set log level
+    utils::set_log_level(&config); // set log level
 
-    helper::create_results_dir(&config); // create results dir
+    utils::create_results_dir(&config); // create results dir
 
     let mut global_stats = GlobalStatistics::new(&config); // init stats
 
@@ -79,12 +65,12 @@ fn main() {
     }
 
     let dg_start = Instant::now(); // init database
-    let database: Database = helper::init_database(&config);
+    let database: Database = utils::init_database(&config);
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
     let cores = config.get_int("cores").unwrap() as usize;
-    let scheduler: Scheduler = helper::init_scheduler(&config); // init scheduler
+    let scheduler: Scheduler = utils::init_scheduler(&config); // init scheduler
     let (tx, rx) = mpsc::channel(); // channel to send statistics
 
     tracing::info!("Starting execution");
@@ -97,12 +83,12 @@ fn main() {
         let database = &database;
         let config = &config;
 
-        for (id, core_id) in core_ids[..cores].iter().enumerate() {
+        for (_, core_id) in core_ids[..cores].iter().enumerate() {
             let txc = tx.clone();
             // TODO: give thread an id
             s.spawn(move |_| {
                 core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                helper::run(config, scheduler, database, txc);
+                utils::run(config, scheduler, database, txc);
             });
         }
     })

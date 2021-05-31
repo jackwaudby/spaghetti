@@ -1,112 +1,72 @@
-use crate::common::ds::atomic_linked_list::AtomicLinkedList;
-use crate::scheduler::TransactionInfo;
-use crate::storage::row::Tuple;
+use crate::common::error::FatalError;
+use crate::storage::table::Table;
+use crate::workloads::smallbank::*;
+use crate::workloads::smallbank::{self, SmallBankDatabase};
 
-use nohash_hasher::IntMap;
+use config::Config;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::fmt;
-use std::sync::atomic::AtomicU64;
-use std::sync::Arc;
+use tracing::info;
 
 pub mod datatype;
 
-pub mod catalog;
+pub mod tuple;
 
-pub mod row;
+pub mod table;
 
-type Column = Vec<Tuple>;
-
-#[derive(Debug)]
-pub struct SmallBankDatabase(IntMap<usize, Table>);
+pub mod access;
 
 #[derive(Debug)]
-pub struct Table {
-    columns: IntMap<usize, Column>,
-    lsns: Vec<AtomicU64>,
-    rw_tables: Vec<AtomicLinkedList<Access>>,
+pub enum Database {
+    SmallBank(SmallBankDatabase),
+    Tatp,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Access {
-    Read(TransactionInfo),
-    Write(TransactionInfo),
-}
+impl Database {
+    pub fn new(config: &Config) -> crate::Result<Self> {
+        let workload = config.get_str("workload")?;
+        match workload.as_str() {
+            "smallbank" => {
+                let sf = config.get_int("scale_factor")? as u64; // scale factor
+                let set_seed = config.get_bool("set_seed")?; // set seed
+                let use_balance_mix = config.get_bool("use_balance_mix")?; // balance mix
+                let population = *SB_SF_MAP.get(&sf).unwrap() as usize; // population size
+                let mut database = SmallBankDatabase::new(population); // create database
+                let mut rng: StdRng = SeedableRng::from_entropy();
+                let contention = match sf {
+                    0 => "NA",
+                    1 => "high",
+                    2 => "mid",
+                    3 => "low",
+                    4 => "very low",
+                    5 => "very very low",
+                    _ => panic!("invalid scale factor"),
+                };
+                info!("Generate SmallBank SF-{}", sf);
+                smallbank::loader::populate_tables(population, &mut database, &mut rng)?; // generate data
+                info!("Parameter generator set seed: {}", set_seed);
+                info!("Balance mix: {}", use_balance_mix);
+                info!("Contention: {}", contention);
 
-impl SmallBankDatabase {
-    pub fn new(population: usize) -> Self {
-        let mut map = IntMap::default();
-
-        map.insert(0, Table::new(population, 1)); // accounts
-        map.insert(1, Table::new(population, 2)); // checking
-        map.insert(2, Table::new(population, 2)); // saving
-
-        SmallBankDatabase(map)
+                Ok(Database::SmallBank(database))
+            }
+            "tatp" => unimplemented!(),
+            _ => return Err(Box::new(FatalError::IncorrectWorkload(workload))),
+        }
     }
 
     pub fn get_table(&self, id: usize) -> &Table {
-        self.0.get(&id).unwrap()
-    }
-
-    pub fn get_mut_table(&mut self, id: usize) -> &mut Table {
-        self.0.get_mut(&id).unwrap()
+        match self {
+            Database::SmallBank(ref db) => db.get_table(id),
+            Database::Tatp => unimplemented!(),
+        }
     }
 }
 
-impl Table {
-    pub fn new(population: usize, column_cnt: usize) -> Self {
-        let mut columns = IntMap::default();
-        for id in 0..column_cnt {
-            let mut column = Vec::with_capacity(population);
-            for _ in 0..population {
-                column.push(Tuple::new())
-            }
-            columns.insert(id, column);
-        }
-
-        let mut lsns = Vec::with_capacity(population);
-        let mut rw_tables = Vec::with_capacity(population);
-
-        for _ in 0..population {
-            lsns.push(AtomicU64::new(0));
-            rw_tables.push(AtomicLinkedList::new())
-        }
-
-        Table {
-            columns,
-            lsns,
-            rw_tables,
-        }
-    }
-
-    pub fn add_column(&mut self, id: usize, column: Column) {
-        self.columns.insert(id, column);
-    }
-
-    pub fn get_tuple(&self, id: usize, offset: usize) -> &Tuple {
-        &self.columns.get(&id).unwrap()[offset]
-    }
-
-    pub fn get_lsn(&self, offset: usize) -> &AtomicU64 {
-        &self.lsns[offset]
-    }
-
-    pub fn get_rwtable(&self, offset: usize) -> &AtomicLinkedList<Access> {
-        &self.rw_tables[offset]
-    }
-}
-
-pub fn access_eq(a: &Access, b: &Access) -> bool {
-    matches!(
-        (a, b),
-        (&Access::Read(..), &Access::Read(..)) | (&Access::Write(..), &Access::Write(..))
-    )
-}
-
-impl fmt::Display for Access {
+impl fmt::Display for Database {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use Access::*;
-        match &self {
-            Read(id) => write!(f, "r-{}", id),
-            Write(id) => write!(f, "w-{}", id),
-        }
+        write!(f, "TODO").unwrap();
+        Ok(())
     }
 }

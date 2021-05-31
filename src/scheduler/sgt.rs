@@ -1,4 +1,3 @@
-use crate::common::ds::atomic_linked_list::AtomicLinkedList;
 use crate::common::error::NonFatalError;
 use crate::scheduler::sgt::epoch_manager::{EpochGuard, EpochManager};
 use crate::scheduler::sgt::error::SerializationGraphError;
@@ -6,20 +5,17 @@ use crate::scheduler::sgt::node::{ArcNode, Node, WeakNode};
 use crate::scheduler::sgt::transaction_information::{
     Operation, OperationType, TransactionInformation,
 };
-use crate::scheduler::Tuple;
-use crate::scheduler::{Scheduler, TransactionInfo};
+use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
-use crate::storage::Access;
-use crate::storage::Table;
-use crate::workloads::smallbank::SB_SF_MAP;
-use crate::workloads::Database;
+use crate::storage::table::Table;
+use crate::storage::Database;
 
 use crossbeam_epoch as epoch;
 use parking_lot::Mutex;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use thread_local::ThreadLocal;
 use tracing::{debug, info};
@@ -257,12 +253,7 @@ impl SerializationGraph {
     }
 
     /// Check if a transaction can be committed.
-    pub fn check_committed(
-        &self,
-        this: &ArcNode,
-        meta: &TransactionInfo,
-        database: &Database,
-    ) -> bool {
+    pub fn check_committed(&self, this: &ArcNode, database: &Database) -> bool {
         if self.needs_abort(&this) {
             return false; // abort check
         }
@@ -284,7 +275,7 @@ impl SerializationGraph {
             return false; // abort check
         }
 
-        let success = self.erase_graph_constraints(&this, meta, database);
+        let success = self.erase_graph_constraints(&this, database);
 
         if success {
             self.cleanup();
@@ -294,12 +285,7 @@ impl SerializationGraph {
     }
 
     /// Cycle check then commit.
-    pub fn erase_graph_constraints(
-        &self,
-        this: &ArcNode,
-        meta: &TransactionInfo,
-        database: &Database,
-    ) -> bool {
+    pub fn erase_graph_constraints(&self, this: &ArcNode, database: &Database) -> bool {
         let guard = &epoch::pin();
         let is_cycle = self.cycle_check(&this);
 
@@ -352,8 +338,8 @@ impl SerializationGraph {
 }
 
 impl SerializationGraph {
-    pub fn begin(&self) -> TransactionInfo {
-        let handle = std::thread::current();
+    pub fn begin(&self) -> TransactionId {
+        //        let handle = std::thread::current();
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // inc txn ctr
 
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
@@ -370,7 +356,7 @@ impl SerializationGraph {
         debug_assert!(self.txn_info.get().is_some(), "{:?}", self.txn_info);
         debug_assert!(self.this_node.get().is_some(), "{:?}", self.this_node);
 
-        TransactionInfo::SerializationGraph(weak)
+        TransactionId::SerializationGraph(weak)
     }
 
     pub fn read_value(
@@ -378,11 +364,11 @@ impl SerializationGraph {
         table_id: usize,
         column_id: usize,
         offset: usize,
-        meta: &TransactionInfo,
+        meta: &TransactionId,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
         debug!("read");
-        if let TransactionInfo::SerializationGraph(_) = meta {
+        if let TransactionId::SerializationGraph(_) = meta {
             let guard = &epoch::pin(); // pin thread to garbage collector
 
             let this: ArcNode =
@@ -391,7 +377,7 @@ impl SerializationGraph {
             if self.needs_abort(&this) {
                 drop(guard); // unpin
                 debug!("needs abort");
-                return Err(self.abort(meta, database)); // abort
+                return Err(self.abort(database)); // abort
             }
 
             let table: &Table = database.get_table(table_id); // get table
@@ -414,7 +400,7 @@ impl SerializationGraph {
                 if id < &prv {
                     match access {
                         Access::Write(txn_info) => match txn_info {
-                            TransactionInfo::SerializationGraph(from_node) => {
+                            TransactionId::SerializationGraph(from_node) => {
                                 if !self.insert_and_check(&this, from_node.clone(), false) {
                                     cyclic = true;
                                     break;
@@ -432,7 +418,7 @@ impl SerializationGraph {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 drop(guard); // unpin
-                self.abort(meta, database); // abort
+                self.abort(database); // abort
                 debug!("cycle found");
                 return Err(SerializationGraphError::CycleFound.into());
             }
@@ -468,11 +454,11 @@ impl SerializationGraph {
         table_id: usize,
         column_id: usize,
         offset: usize,
-        meta: &TransactionInfo,
+        meta: &TransactionId,
         database: &Database,
     ) -> Result<(), NonFatalError> {
         debug!("write");
-        if let TransactionInfo::SerializationGraph(_) = meta {
+        if let TransactionId::SerializationGraph(_) = meta {
             let guard = &epoch::pin(); // pin thread to garbage collector
             let this: ArcNode =
                 Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap()); // this node
@@ -485,7 +471,7 @@ impl SerializationGraph {
             loop {
                 if self.needs_abort(&this) {
                     drop(guard);
-                    return Err(self.abort(meta, database));
+                    return Err(self.abort(database));
                 }
 
                 prv = rw_table.push_front(Access::Write(meta.clone()));
@@ -506,7 +492,7 @@ impl SerializationGraph {
                     if id < &prv {
                         match access {
                             Access::Write(from) => {
-                                if let TransactionInfo::SerializationGraph(from_node) = from {
+                                if let TransactionId::SerializationGraph(from_node) = from {
                                     debug_assert!(
                                         from_node.upgrade().is_some(),
                                         "not found: {}",
@@ -538,7 +524,7 @@ impl SerializationGraph {
                     rw_table.erase(prv); // remove from rw table
                     lsn.store(prv + 1, Ordering::Release); // update lsn
                     drop(guard);
-                    self.abort(meta, database);
+                    self.abort(database);
                     return Err(SerializationGraphError::CycleFound.into());
                 }
 
@@ -557,7 +543,7 @@ impl SerializationGraph {
                 if id < &prv {
                     match access {
                         Access::Read(from) => {
-                            if let TransactionInfo::SerializationGraph(from_node) = from {
+                            if let TransactionId::SerializationGraph(from_node) = from {
                                 if !self.insert_and_check(&this, from_node.clone(), true) {
                                     cyclic = true;
                                     break;
@@ -573,7 +559,7 @@ impl SerializationGraph {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 drop(guard);
-                self.abort(meta, database);
+                self.abort(database);
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
@@ -600,15 +586,15 @@ impl SerializationGraph {
     }
 
     /// Commit operation.
-    pub fn commit(&self, meta: &TransactionInfo, database: &Database) -> Result<(), NonFatalError> {
+    pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
         let this: ArcNode = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
 
         loop {
             if self.needs_abort(&this) {
-                return Err(self.abort(meta, database));
+                return Err(self.abort(database));
             }
 
-            if self.check_committed(&this, meta, database) {
+            if self.check_committed(&this, database) {
                 break;
             }
         }
@@ -621,7 +607,7 @@ impl SerializationGraph {
     /// Abort operation.
     ///
     /// Call sg abort procedure then remove accesses and revert writes.
-    pub fn abort(&self, meta: &TransactionInfo, database: &Database) -> NonFatalError {
+    pub fn abort(&self, database: &Database) -> NonFatalError {
         let this: ArcNode = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
         let guard = &epoch::pin();
 

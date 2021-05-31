@@ -1,5 +1,5 @@
 use crate::storage::datatype::Data;
-use crate::storage::SmallBankDatabase;
+use crate::workloads::smallbank::SmallBankDatabase;
 use crate::workloads::smallbank::{MAX_BALANCE, MIN_BALANCE};
 use crate::Result;
 

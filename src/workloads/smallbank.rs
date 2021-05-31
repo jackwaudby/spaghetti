@@ -1,4 +1,7 @@
+use crate::storage::table::Table;
+
 use lazy_static::lazy_static;
+use nohash_hasher::IntMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum_macros::EnumIter;
@@ -8,8 +11,6 @@ pub mod loader;
 pub mod paramgen;
 
 pub mod procedures;
-
-pub mod keys;
 
 pub mod error;
 
@@ -35,6 +36,9 @@ pub static WRITE_CHECK_AMOUNT: f64 = 5.0;
 pub static HOTSPOT_PERCENTAGE: f64 = 0.25;
 pub static HOTSPOT_FIXED_SIZE: u64 = 2;
 
+#[derive(Debug)]
+pub struct SmallBankDatabase(IntMap<usize, Table>);
+
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum SmallBankTransaction {
     Balance,
@@ -43,4 +47,24 @@ pub enum SmallBankTransaction {
     Amalgamate,
     WriteCheck,
     SendPayment,
+}
+
+impl SmallBankDatabase {
+    pub fn new(population: usize) -> Self {
+        let mut map = IntMap::default();
+
+        map.insert(0, Table::new(population, 1)); // accounts
+        map.insert(1, Table::new(population, 2)); // checking
+        map.insert(2, Table::new(population, 2)); // saving
+
+        SmallBankDatabase(map)
+    }
+
+    pub fn get_table(&self, id: usize) -> &Table {
+        self.0.get(&id).unwrap()
+    }
+
+    pub fn get_mut_table(&mut self, id: usize) -> &mut Table {
+        self.0.get_mut(&id).unwrap()
+    }
 }

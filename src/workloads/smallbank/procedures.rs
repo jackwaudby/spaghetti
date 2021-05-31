@@ -1,16 +1,13 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::Scheduler;
 use crate::storage::datatype::Data;
+use crate::storage::Database;
 use crate::workloads::smallbank::error::SmallBankError;
-use crate::workloads::smallbank::keys::SmallBankPrimaryKey::*;
 use crate::workloads::smallbank::paramgen::{
     Amalgamate, Balance, DepositChecking, SendPayment, TransactSaving, WriteCheck,
 };
-use crate::workloads::Database;
-use crate::workloads::PrimaryKey::*;
 
 use std::convert::TryFrom;
-use std::sync::Arc;
 use tracing::debug;
 
 /// Balance transaction.
@@ -22,7 +19,7 @@ pub fn balance<'a>(
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
     match &*database {
-        Database::SmallBank(db) => {
+        Database::SmallBank(_) => {
             debug!("balance txn");
             let offset = params.name as usize;
             let meta = scheduler.begin(); // register
@@ -45,7 +42,7 @@ pub fn deposit_checking<'a>(
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
     match &*database {
-        Database::SmallBank(db) => {
+        Database::SmallBank(_) => {
             debug!("deposit checking txn");
             let offset = params.name as usize;
             let meta = scheduler.begin();
@@ -69,7 +66,7 @@ pub fn transact_savings<'a>(
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
     match &*database {
-        Database::SmallBank(db) => {
+        Database::SmallBank(_) => {
             debug!("transact savings txn");
             let offset = params.name as usize;
             let meta = scheduler.begin(); // register
@@ -99,7 +96,7 @@ pub fn amalgmate<'a>(
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
     match &*database {
-        Database::SmallBank(db) => {
+        Database::SmallBank(_) => {
             debug!("amalgmate");
             let offset1 = params.name1 as usize;
             let offset2 = params.name2 as usize;
@@ -130,7 +127,7 @@ pub fn write_check<'a>(
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
     match &*database {
-        Database::SmallBank(db) => {
+        Database::SmallBank(_) => {
             debug!("write check txn");
             let offset = params.name as usize;
             let meta = scheduler.begin();
@@ -163,7 +160,7 @@ pub fn send_payment<'a>(
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
     match &*database {
-        Database::SmallBank(db) => {
+        Database::SmallBank(_) => {
             debug!("send payment");
             let offset1 = params.name1 as usize;
             let offset2 = params.name2 as usize;

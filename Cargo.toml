@@ -12,8 +12,8 @@ A concurrency control evaluation framework.
 debug = true
 
 [[bin]]
-name = "spag-gpc"
-path = "src/bin/gpc.rs"
+name = "spag"
+path = "src/bin/main.rs"
 
 [[bench]]
 name = "bsgt_bench"
