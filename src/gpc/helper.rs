@@ -1,18 +1,27 @@
+use crate::common::error::NonFatalError;
 use crate::common::message::{InternalResponse, Message, Outcome, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
+use crate::common::wait_manager::WaitManager;
 use crate::gpc::threads::{Recon, Worker};
+
 use crate::scheduler::Scheduler;
 use crate::workloads::smallbank;
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
 use crate::workloads::Database;
 
+use crate::gpc::helper;
+use crate::gpc::threads::log_result;
+
 use config::Config;
-use std::fs;
+use crossbeam_utils::thread;
+use std::fs::{self, OpenOptions};
+use std::io::prelude::*;
 use std::path::Path;
 use std::sync::mpsc;
 use std::sync::Arc;
-
+use std::time::{Duration, Instant};
+use tracing::debug;
 use tracing::Level;
 use tracing_subscriber::FmtSubscriber;
 
@@ -62,44 +71,147 @@ pub fn set_log_level(config: &Config) {
 }
 
 /// Initialise database.
-pub fn init_database(config: &Config) -> Arc<Database> {
-    Arc::new(Database::new(config).unwrap())
+pub fn init_database(config: &Config) -> Database {
+    Database::new(config).unwrap()
 }
 
 /// Initialise the scheduler.
-pub fn init_scheduler(config: &Config) -> Arc<Scheduler> {
-    Arc::new(Scheduler::new(config).unwrap())
+pub fn init_scheduler(config: &Config) -> Scheduler {
+    Scheduler::new(config).unwrap()
 }
 
-/// Start execution with `cores` workers.
 pub fn run(
-    cores: usize,
-    scheduler: Arc<Scheduler>,
-    config: Arc<Config>,
-    workload: Arc<Database>,
+    config: &Config,
+    scheduler: &Scheduler,
+    database: &Database,
     tx: mpsc::Sender<LocalStatistics>,
 ) {
-    let mut workers = Vec::with_capacity(cores); // worker per core
-    let core_ids = core_affinity::get_core_ids().unwrap(); // error -- no cores found
+    let id = 1;
+    let timeout = config.get_int("timeout").unwrap() as u64;
+    let p = config.get_str("protocol").unwrap();
+    let w = config.get_str("workload").unwrap();
+    let max_transactions = config.get_int("transactions").unwrap() as u32;
+    let record = config.get_bool("record").unwrap();
+    let log_results = config.get_bool("log_results").unwrap();
+    let mut stats = LocalStatistics::new(id as u32, &w, &p);
 
-    for (id, core_id) in core_ids[..cores].iter().enumerate() {
-        workers.push(Worker::new(
-            id as usize,
-            Some(*core_id),
-            Arc::clone(&config),
-            Arc::clone(&scheduler),
-            Arc::clone(&workload),
-            tx.clone(),
-        ));
+    let mut generator = helper::get_transaction_generator(config); // initialise transaction generator
+
+    let mut wm = WaitManager::new();
+
+    // create results file -- dir created by this point
+    let mut fh;
+    if log_results {
+        let workload = config.get_str("workload").unwrap();
+        let protocol = config.get_str("protocol").unwrap();
+
+        let dir;
+        let file;
+        if workload.as_str() == "acid" {
+            let anomaly = config.get_str("anomaly").unwrap();
+            dir = format!("./log/{}/{}/{}/", workload, protocol, anomaly);
+            file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, id);
+        } else {
+            dir = format!("./log/{}/{}/", workload, protocol);
+            file = format!("./log/{}/{}/thread-{}.json", workload, protocol, id);
+        }
+
+        if Path::new(&dir).exists() {
+            if Path::new(&file).exists() {
+                fs::remove_file(&file).unwrap(); // remove file if already exists
+            }
+        } else {
+            panic!("dir should exist");
+        }
+
+        fh = Some(
+            OpenOptions::new()
+                .write(true)
+                .append(true)
+                .create(true)
+                .open(&file)
+                .expect("cannot open file"),
+        );
+    } else {
+        fh = None;
     }
 
-    for mut worker in workers {
-        if let Some(thread) = worker.thread.take() {
-            thread.join().unwrap();
+    let mut completed = 0;
+
+    let timeout_start = Instant::now(); // timeout
+    let runtime = Duration::new(timeout * 60, 0);
+    let timeout_end = timeout_start + runtime;
+
+    let start_worker = Instant::now();
+
+    loop {
+        if completed == max_transactions {
+            tracing::debug!(
+                "All transactions sent: {} = {}",
+                completed,
+                max_transactions
+            );
+            break;
+        } else if Instant::now() > timeout_end {
+            tracing::info!("Timeout reached: {} minute(s)", timeout);
+            break;
+        } else {
+            let txn = generator.get_next(); // generate txn
+
+            let mut restart = true;
+
+            let start_latency = Instant::now();
+
+            while restart {
+                let ir = helper::execute(txn.clone(), scheduler, database); // execute txn
+
+                let InternalResponse {
+                    transaction,
+                    outcome,
+                    ..
+                } = ir;
+
+                match outcome {
+                    Outcome::Committed { .. } => {
+                        restart = false;
+                        stats.record(transaction, outcome.clone(), restart);
+                        wm.reset();
+                        if log_results {
+                            log_result(&mut fh, outcome.clone());
+                        }
+                        debug!("complete: committed");
+                    }
+                    Outcome::Aborted { ref reason } => {
+                        if let NonFatalError::SmallBankError(_) = reason {
+                            restart = false;
+                            wm.reset();
+                            stats.record(transaction, outcome.clone(), restart);
+                            if log_results {
+                                log_result(&mut fh, outcome.clone());
+                            }
+                            debug!("complete: aborted");
+                        } else {
+                            restart = true; // protocol abort
+                            debug!("restart: {}", reason);
+                            stats.record(transaction, outcome.clone(), restart);
+                            let start_wm = Instant::now();
+                            wm.wait();
+                            stats.stop_wait_manager(start_wm);
+                        }
+                    }
+                }
+            }
+
+            stats.stop_latency(start_latency);
+            completed += 1;
         }
     }
 
-    drop(tx);
+    stats.stop_worker(start_worker);
+
+    if record {
+        tx.send(stats).unwrap();
+    }
 }
 
 /// Run recon queries.
@@ -118,10 +230,10 @@ pub fn recon_run(
 }
 
 /// Execute a transaction.
-pub fn execute(
+pub fn execute<'a>(
     txn: Message,
-    scheduler: Arc<Scheduler>,
-    workload: Arc<Database>,
+    scheduler: &'a Scheduler,
+    workload: &'a Database,
 ) -> InternalResponse {
     if let Message::Request {
         request_no,
@@ -244,7 +356,7 @@ pub fn execute(
 }
 
 /// Get transaction generator
-pub fn get_transaction_generator(config: Arc<Config>) -> ParameterGenerator {
+pub fn get_transaction_generator(config: &Config) -> ParameterGenerator {
     let sf = config.get_int("scale_factor").unwrap() as u64;
     let set_seed = config.get_bool("set_seed").unwrap();
     let seed;

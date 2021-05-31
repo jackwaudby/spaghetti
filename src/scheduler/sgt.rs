@@ -7,10 +7,12 @@ use crate::scheduler::sgt::transaction_information::{
     Operation, OperationType, TransactionInformation,
 };
 use crate::scheduler::Tuple;
-use crate::scheduler::{Protocol, TransactionInfo};
+use crate::scheduler::{Scheduler, TransactionInfo};
 use crate::storage::datatype::Data;
 use crate::storage::Access;
+use crate::storage::Table;
 use crate::workloads::smallbank::SB_SF_MAP;
+use crate::workloads::Database;
 
 use crossbeam_epoch as epoch;
 use parking_lot::Mutex;
@@ -255,7 +257,12 @@ impl SerializationGraph {
     }
 
     /// Check if a transaction can be committed.
-    pub fn check_committed(&self, this: &ArcNode, meta: &TransactionInfo) -> bool {
+    pub fn check_committed(
+        &self,
+        this: &ArcNode,
+        meta: &TransactionInfo,
+        database: &Database,
+    ) -> bool {
         if self.needs_abort(&this) {
             return false; // abort check
         }
@@ -277,7 +284,7 @@ impl SerializationGraph {
             return false; // abort check
         }
 
-        let success = self.erase_graph_constraints(&this, meta);
+        let success = self.erase_graph_constraints(&this, meta, database);
 
         if success {
             self.cleanup();
@@ -287,7 +294,12 @@ impl SerializationGraph {
     }
 
     /// Cycle check then commit.
-    pub fn erase_graph_constraints(&self, this: &ArcNode, meta: &TransactionInfo) -> bool {
+    pub fn erase_graph_constraints(
+        &self,
+        this: &ArcNode,
+        meta: &TransactionInfo,
+        database: &Database,
+    ) -> bool {
         let guard = &epoch::pin();
         let is_cycle = self.cycle_check(&this);
 
@@ -311,19 +323,23 @@ impl SerializationGraph {
         for op in ops {
             let Operation {
                 op_type,
-                column,
-                rw_tables,
+                table_id,
+                column_id,
                 offset,
                 prv,
             } = op;
 
+            let table = database.get_table(table_id);
+            let tuple = table.get_tuple(column_id, offset);
+            let rwtable = table.get_rwtable(offset);
+
             match op_type {
                 OperationType::Read => {
-                    rw_tables[offset].erase(prv); // remove access
+                    rwtable.erase(prv); // remove access
                 }
                 OperationType::Write => {
-                    column[offset].get().commit(); // revert
-                    rw_tables[offset].erase(prv); // remove access
+                    tuple.get().commit(); // revert
+                    rwtable.erase(prv); // remove access
                 }
             }
         }
@@ -335,8 +351,8 @@ impl SerializationGraph {
     }
 }
 
-impl Protocol for SerializationGraph {
-    fn begin(&self) -> TransactionInfo {
+impl SerializationGraph {
+    pub fn begin(&self) -> TransactionInfo {
         let handle = std::thread::current();
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // inc txn ctr
 
@@ -347,7 +363,7 @@ impl Protocol for SerializationGraph {
             .get_or(|| RefCell::new(EpochGuard::new(Arc::clone(&self.em)))); // init epoch guard
 
         self.this_node.get_or(|| RefCell::new(None)); // init this_node
-        self.thread_id.get_or(|| handle.name().unwrap().to_string());
+                                                      //        self.thread_id.get_or(|| handle.name().unwrap().to_string());
         let weak = self.create_node();
 
         debug_assert!(self.txn_ctr.get().is_some(), "{:?}", self.txn_ctr);
@@ -357,13 +373,13 @@ impl Protocol for SerializationGraph {
         TransactionInfo::SerializationGraph(weak)
     }
 
-    fn read_value(
+    pub fn read_value(
         &self,
-        column: &Arc<Vec<Tuple>>,
-        lsns: &[AtomicU64],
-        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
+        table_id: usize,
+        column_id: usize,
         offset: usize,
         meta: &TransactionInfo,
+        database: &Database,
     ) -> Result<Data, NonFatalError> {
         debug!("read");
         if let TransactionInfo::SerializationGraph(_) = meta {
@@ -375,15 +391,17 @@ impl Protocol for SerializationGraph {
             if self.needs_abort(&this) {
                 drop(guard); // unpin
                 debug!("needs abort");
-                return Err(self.abort(meta)); // abort
+                return Err(self.abort(meta, database)); // abort
             }
 
-            let rw_table = &rw_tables[offset]; // rw table
-            let prv = rw_table.push_front(Access::Read(meta.clone()));
+            let table: &Table = database.get_table(table_id); // get table
+            let rw_table = table.get_rwtable(offset); // get rwtable
+            let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
+            let lsn = table.get_lsn(offset);
 
             debug!("spin");
             loop {
-                let i = lsns[offset].load(Ordering::Relaxed); // current lsn
+                let i = lsn.load(Ordering::Relaxed); // current lsn
                 if i == prv {
                     break; // break when prv == lsn
                 }
@@ -412,14 +430,20 @@ impl Protocol for SerializationGraph {
 
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
-                lsns[offset].store(prv + 1, Ordering::Release); // update lsn
+                lsn.store(prv + 1, Ordering::Release); // update lsn
                 drop(guard); // unpin
-                self.abort(meta); // abort
+                self.abort(meta, database); // abort
                 debug!("cycle found");
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            let vals = column[offset].get().get_value().unwrap().get_value(); // read
+            let vals = table
+                .get_tuple(column_id, offset)
+                .get()
+                .get_value()
+                .unwrap()
+                .get_value(); // read
+
             debug!("read vals");
             self.txn_info
                 .get()
@@ -427,15 +451,9 @@ impl Protocol for SerializationGraph {
                 .borrow_mut()
                 .as_mut()
                 .unwrap()
-                .add(
-                    OperationType::Read,
-                    Arc::clone(column),
-                    Arc::clone(rw_tables),
-                    offset,
-                    prv,
-                ); // record operation
+                .add(OperationType::Read, table_id, column_id, offset, prv); // record operation
             debug!("registered");
-            lsns[offset].store(prv + 1, Ordering::Release); // update lsn
+            lsn.store(prv + 1, Ordering::Release); // update lsn
             drop(guard); // unpin
             Ok(vals)
         } else {
@@ -444,33 +462,36 @@ impl Protocol for SerializationGraph {
     }
 
     /// Write operation.
-    fn write_value(
+    pub fn write_value(
         &self,
         value: &Data,
-        column: &Arc<Vec<Tuple>>,
-        lsns: &[AtomicU64],
-        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
+        table_id: usize,
+        column_id: usize,
         offset: usize,
         meta: &TransactionInfo,
+        database: &Database,
     ) -> Result<(), NonFatalError> {
         debug!("write");
         if let TransactionInfo::SerializationGraph(_) = meta {
             let guard = &epoch::pin(); // pin thread to garbage collector
             let this: ArcNode =
                 Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap()); // this node
-            let rw_table = &rw_tables[offset]; // rw table
+
+            let table = database.get_table(table_id);
+            let rw_table = table.get_rwtable(offset);
+            let lsn = table.get_lsn(offset);
             let mut prv; // init prv
 
             loop {
                 if self.needs_abort(&this) {
                     drop(guard);
-                    return Err(self.abort(meta));
+                    return Err(self.abort(meta, database));
                 }
 
                 prv = rw_table.push_front(Access::Write(meta.clone()));
 
                 loop {
-                    let i = lsns[offset].load(Ordering::Relaxed); // current lsn
+                    let i = lsn.load(Ordering::Relaxed); // current lsn
 
                     if i == prv {
                         break; // if current = previous then this transaction can execute
@@ -515,17 +536,15 @@ impl Protocol for SerializationGraph {
 
                 if cyclic {
                     rw_table.erase(prv); // remove from rw table
-                    lsns[offset].store(prv + 1, Ordering::Release); // update lsn
-
+                    lsn.store(prv + 1, Ordering::Release); // update lsn
                     drop(guard);
-                    self.abort(meta);
+                    self.abort(meta, database);
                     return Err(SerializationGraphError::CycleFound.into());
                 }
 
                 if wait {
                     rw_table.erase(prv); // remove from rw table
-                    lsns[offset].store(prv + 1, Ordering::Release); // update lsn
-
+                    lsn.store(prv + 1, Ordering::Release); // update lsn
                     continue;
                 }
                 break;
@@ -552,13 +571,17 @@ impl Protocol for SerializationGraph {
 
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
-                lsns[offset].store(prv + 1, Ordering::Release); // update lsn
+                lsn.store(prv + 1, Ordering::Release); // update lsn
                 drop(guard);
-                self.abort(meta);
+                self.abort(meta, database);
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            column[offset].get().set_value(value).unwrap();
+            table
+                .get_tuple(column_id, offset)
+                .get()
+                .set_value(value)
+                .unwrap();
 
             self.txn_info
                 .get()
@@ -566,15 +589,9 @@ impl Protocol for SerializationGraph {
                 .borrow_mut()
                 .as_mut()
                 .unwrap()
-                .add(
-                    OperationType::Write,
-                    Arc::clone(column),
-                    Arc::clone(rw_tables),
-                    offset,
-                    prv,
-                ); // record operation
+                .add(OperationType::Write, table_id, column_id, offset, prv); // record operation
 
-            lsns[offset].store(prv + 1, Ordering::Release); // update lsn
+            lsn.store(prv + 1, Ordering::Release); // update lsn
             drop(guard);
             Ok(())
         } else {
@@ -583,15 +600,15 @@ impl Protocol for SerializationGraph {
     }
 
     /// Commit operation.
-    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
+    pub fn commit(&self, meta: &TransactionInfo, database: &Database) -> Result<(), NonFatalError> {
         let this: ArcNode = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
 
         loop {
             if self.needs_abort(&this) {
-                return Err(self.abort(meta));
+                return Err(self.abort(meta, database));
             }
 
-            if self.check_committed(&this, meta) {
+            if self.check_committed(&this, meta, database) {
                 break;
             }
         }
@@ -604,7 +621,7 @@ impl Protocol for SerializationGraph {
     /// Abort operation.
     ///
     /// Call sg abort procedure then remove accesses and revert writes.
-    fn abort(&self, meta: &TransactionInfo) -> NonFatalError {
+    pub fn abort(&self, meta: &TransactionInfo, database: &Database) -> NonFatalError {
         let this: ArcNode = Arc::clone(&self.this_node.get().unwrap().borrow().as_ref().unwrap());
         let guard = &epoch::pin();
 
@@ -622,19 +639,23 @@ impl Protocol for SerializationGraph {
         for op in ops {
             let Operation {
                 op_type,
-                column,
-                rw_tables,
+                table_id,
+                column_id,
                 offset,
                 prv,
             } = op;
 
+            let table = database.get_table(table_id);
+            let rwtable = table.get_rwtable(offset);
+            let tuple = table.get_tuple(column_id, offset);
+
             match op_type {
                 OperationType::Read => {
-                    rw_tables[offset].erase(prv); // remove access
+                    rwtable.erase(prv); // remove access
                 }
                 OperationType::Write => {
-                    column[offset].get().revert(); // revert
-                    rw_tables[offset].erase(prv); // remove access
+                    tuple.get().revert(); // revert
+                    rwtable.erase(prv); // remove access
                 }
             }
         }

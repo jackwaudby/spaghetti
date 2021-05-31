@@ -5,6 +5,7 @@ use crate::scheduler::sgt::SerializationGraph;
 use crate::storage::datatype::Data;
 use crate::storage::row::Tuple;
 use crate::storage::Access;
+use crate::workloads::Database;
 
 use config::Config;
 use std::fmt;
@@ -25,7 +26,7 @@ pub enum TransactionInfo {
 }
 
 impl Scheduler {
-    pub fn new(config: &Config) -> crate::Result<Scheduler> {
+    pub fn new(config: &Config) -> crate::Result<Self> {
         let cores = config.get_int("cores")? as usize;
 
         let protocol = match config.get_str("protocol")?.as_str() {
@@ -45,15 +46,15 @@ impl Scheduler {
 
     pub fn read_value(
         &self,
-        column: &Arc<Vec<Tuple>>,
-        lsns: &[AtomicU64],
-        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
+        table_id: usize,
+        column_id: usize,
         offset: usize,
         meta: &TransactionInfo,
+        database: &Database,
     ) -> Result<Data, NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.read_value(column, lsns, rw_tables, offset, meta),
+            SerializationGraph(sg) => sg.read_value(table_id, column_id, offset, meta, database),
             //  OptimisticWaitHit(owh) => owh.read(index, key, columns, meta),
         }
     }
@@ -61,62 +62,63 @@ impl Scheduler {
     pub fn write_value(
         &self,
         value: &Data,
-        column: &Arc<Vec<Tuple>>,
-        lsns: &[AtomicU64],
-        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
+        table_id: usize,
+        column_id: usize,
         offset: usize,
         meta: &TransactionInfo,
+        database: &Database,
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.write_value(value, column, lsns, rw_tables, offset, meta),
-            //  OptimisticWaitHit(owh) => owh.write(index, key, columns, read, params, f, meta),
+            SerializationGraph(sg) => {
+                sg.write_value(value, table_id, column_id, offset, meta, database)
+            } //  OptimisticWaitHit(owh) => owh.write(index, key, columns, read, params, f, meta),
         }
     }
 
-    pub fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
+    pub fn commit(&self, meta: &TransactionInfo, database: &Database) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.commit(meta),
+            SerializationGraph(sg) => sg.commit(meta, database),
             //    OptimisticWaitHit(owh) => owh.commit(meta),
         }
     }
 
-    pub fn abort(&self, meta: &TransactionInfo) -> NonFatalError {
+    pub fn abort(&self, meta: &TransactionInfo, database: &Database) -> NonFatalError {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.abort(meta),
+            SerializationGraph(sg) => sg.abort(meta, database),
             //   OptimisticWaitHit(owh) => owh.abort(meta),
         }
     }
 }
 
-pub trait Protocol: fmt::Display + fmt::Debug {
-    fn begin(&self) -> TransactionInfo;
+// pub trait Protocol: fmt::Display + fmt::Debug {
+//     fn begin(&self) -> TransactionInfo;
 
-    fn read_value(
-        &self,
-        column: &Arc<Vec<Tuple>>,
-        lsns: &[AtomicU64],
-        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
-        offset: usize,
-        meta: &TransactionInfo,
-    ) -> Result<Data, NonFatalError>;
+//     fn read_value(
+//         &self,
+//         column: &[Tuple],
+//         lsns: &[AtomicU64],
+//         rw_tables: &[AtomicLinkedList<Access>],
+//         offset: usize,
+//         meta: &TransactionInfo,
+//     ) -> Result<Data, NonFatalError>;
 
-    fn write_value(
-        &self,
-        value: &Data,
-        column: &Arc<Vec<Tuple>>,
-        lsns: &[AtomicU64],
-        rw_tables: &Arc<Vec<AtomicLinkedList<Access>>>,
-        offset: usize,
-        meta: &TransactionInfo,
-    ) -> Result<(), NonFatalError>;
+//     fn write_value(
+//         &self,
+//         value: &Data,
+//         column: &[Tuple],
+//         lsns: &[AtomicU64],
+//         rw_tables: &[AtomicLinkedList<Access>],
+//         offset: usize,
+//         meta: &TransactionInfo,
+//     ) -> Result<(), NonFatalError>;
 
-    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError>;
+//     fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError>;
 
-    fn abort(&self, meta: &TransactionInfo) -> NonFatalError;
-}
+//     fn abort(&self, meta: &TransactionInfo) -> NonFatalError;
+// }
 
 impl PartialEq for TransactionInfo {
     fn eq(&self, other: &Self) -> bool {

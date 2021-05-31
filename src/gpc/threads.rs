@@ -5,9 +5,12 @@ use crate::common::statistics::LocalStatistics;
 use crate::common::wait_manager::WaitManager;
 use crate::gpc::helper;
 use crate::scheduler::Scheduler;
-
 use crate::workloads::Database;
+
 use config::Config;
+
+//use crossbeam_utils::thread;
+
 use std::fs::{self, OpenOptions};
 use std::io::prelude::*;
 use std::path::Path;
@@ -28,159 +31,155 @@ pub struct Recon {
 }
 
 impl Worker {
-    pub fn new(
-        id: usize,
-        core_id: Option<core_affinity::CoreId>,
-        config: Arc<Config>,
-        scheduler: Arc<Scheduler>,
-        workload: Arc<Database>,
-        tx: mpsc::Sender<LocalStatistics>,
-    ) -> Worker {
-        let timeout = config.get_int("timeout").unwrap() as u64;
-        let p = config.get_str("protocol").unwrap();
-        let w = config.get_str("workload").unwrap();
-        let max_transactions = config.get_int("transactions").unwrap() as u32;
-        let record = config.get_bool("record").unwrap();
-        let log_results = config.get_bool("log_results").unwrap();
+    // pub fn new<'a>(
+    //     id: usize,
+    //     core_id: Option<core_affinity::CoreId>,
+    //     config: &'a Config,
+    //     scheduler: &'a Scheduler,
+    //     workload: &'a Database,
+    //     tx: mpsc::Sender<LocalStatistics>,
+    // ) -> Worker {
+    //     let timeout = config.get_int("timeout").unwrap() as u64;
+    //     let p = config.get_str("protocol").unwrap();
+    //     let w = config.get_str("workload").unwrap();
+    //     let max_transactions = config.get_int("transactions").unwrap() as u32;
+    //     let record = config.get_bool("record").unwrap();
+    //     let log_results = config.get_bool("log_results").unwrap();
 
-        let mut stats = LocalStatistics::new(id as u32, &w, &p);
+    //     let mut stats = LocalStatistics::new(id as u32, &w, &p);
 
-        let builder = thread::Builder::new().name(id.to_string());
+    //     let builder = thread::Builder::new().name(id.to_string());
 
-        let mut wm = WaitManager::new();
+    // let mut wm = WaitManager::new();
 
-        let thread = builder
-            .spawn(move || {
-                if let Some(core_id) = core_id {
-                    core_affinity::set_for_current(core_id); // pin thread to cpu core
-                }
-                let mut generator = helper::get_transaction_generator(Arc::clone(&config)); // initialise transaction generator
+    // let thread = builder
+    //     .spawn(move || {
+    //         if let Some(core_id) = core_id {
+    //             core_affinity::set_for_current(core_id); // pin thread to cpu core
+    //         }
+    //         let mut generator = helper::get_transaction_generator(config); // initialise transaction generator
 
-                // create results file -- dir created by this point
-                let mut fh;
-                if log_results {
-                    let workload = config.get_str("workload").unwrap();
-                    let protocol = config.get_str("protocol").unwrap();
+    //         // create results file -- dir created by this point
+    //         let mut fh;
+    //         if log_results {
+    //             let workload = config.get_str("workload").unwrap();
+    //             let protocol = config.get_str("protocol").unwrap();
 
-                    let dir;
-                    let file;
-                    if workload.as_str() == "acid" {
-                        let anomaly = config.get_str("anomaly").unwrap();
-                        dir = format!("./log/{}/{}/{}/", workload, protocol, anomaly);
-                        file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, id);
-                    } else {
-                        dir = format!("./log/{}/{}/", workload, protocol);
-                        file = format!("./log/{}/{}/thread-{}.json", workload, protocol, id);
-                    }
+    //             let dir;
+    //             let file;
+    //             if workload.as_str() == "acid" {
+    //                 let anomaly = config.get_str("anomaly").unwrap();
+    //                 dir = format!("./log/{}/{}/{}/", workload, protocol, anomaly);
+    //                 file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, id);
+    //             } else {
+    //                 dir = format!("./log/{}/{}/", workload, protocol);
+    //                 file = format!("./log/{}/{}/thread-{}.json", workload, protocol, id);
+    //             }
 
-                    if Path::new(&dir).exists() {
-                        if Path::new(&file).exists() {
-                            fs::remove_file(&file).unwrap(); // remove file if already exists
-                        }
-                    } else {
-                        panic!("dir should exist");
-                    }
+    //             if Path::new(&dir).exists() {
+    //                 if Path::new(&file).exists() {
+    //                     fs::remove_file(&file).unwrap(); // remove file if already exists
+    //                 }
+    //             } else {
+    //                 panic!("dir should exist");
+    //             }
 
-                    fh = Some(
-                        OpenOptions::new()
-                            .write(true)
-                            .append(true)
-                            .create(true)
-                            .open(&file)
-                            .expect("cannot open file"),
-                    );
-                } else {
-                    fh = None;
-                }
+    //             fh = Some(
+    //                 OpenOptions::new()
+    //                     .write(true)
+    //                     .append(true)
+    //                     .create(true)
+    //                     .open(&file)
+    //                     .expect("cannot open file"),
+    //             );
+    //         } else {
+    //             fh = None;
+    //         }
 
-                let mut completed = 0;
+    //         let mut completed = 0;
 
-                let timeout_start = Instant::now(); // timeout
-                let runtime = Duration::new(timeout * 60, 0);
-                let timeout_end = timeout_start + runtime;
+    //         let timeout_start = Instant::now(); // timeout
+    //         let runtime = Duration::new(timeout * 60, 0);
+    //         let timeout_end = timeout_start + runtime;
 
-                let start_worker = Instant::now();
+    //         let start_worker = Instant::now();
 
-                loop {
-                    if completed == max_transactions {
-                        tracing::debug!(
-                            "All transactions sent: {} = {}",
-                            completed,
-                            max_transactions
-                        );
-                        break;
-                    } else if Instant::now() > timeout_end {
-                        tracing::info!("Timeout reached: {} minute(s)", timeout);
-                        break;
-                    } else {
-                        let txn = generator.get_next(); // generate txn
+    //         loop {
+    //             if completed == max_transactions {
+    //                 tracing::debug!(
+    //                     "All transactions sent: {} = {}",
+    //                     completed,
+    //                     max_transactions
+    //                 );
+    //                 break;
+    //             } else if Instant::now() > timeout_end {
+    //                 tracing::info!("Timeout reached: {} minute(s)", timeout);
+    //                 break;
+    //             } else {
+    //                 let txn = generator.get_next(); // generate txn
 
-                        let mut restart = true;
+    //                 let mut restart = true;
 
-                        let start_latency = Instant::now();
+    //                 let start_latency = Instant::now();
 
-                        while restart {
-                            let ir = helper::execute(
-                                txn.clone(),
-                                Arc::clone(&scheduler),
-                                Arc::clone(&workload),
-                            ); // execute txn
+    //                 while restart {
+    //                     let ir = helper::execute(txn.clone(), scheduler, workload); // execute txn
 
-                            let InternalResponse {
-                                transaction,
-                                outcome,
-                                ..
-                            } = ir;
+    //                     let InternalResponse {
+    //                         transaction,
+    //                         outcome,
+    //                         ..
+    //                     } = ir;
 
-                            match outcome {
-                                Outcome::Committed { .. } => {
-                                    restart = false;
-                                    stats.record(transaction, outcome.clone(), restart);
-                                    wm.reset();
-                                    if log_results {
-                                        log_result(&mut fh, outcome.clone());
-                                    }
-                                    debug!("complete: committed");
-                                }
-                                Outcome::Aborted { ref reason } => {
-                                    if let NonFatalError::SmallBankError(_) = reason {
-                                        restart = false;
-                                        wm.reset();
-                                        stats.record(transaction, outcome.clone(), restart);
-                                        if log_results {
-                                            log_result(&mut fh, outcome.clone());
-                                        }
-                                        debug!("complete: aborted");
-                                    } else {
-                                        restart = true; // protocol abort
-                                        debug!("restart: {}", reason);
-                                        stats.record(transaction, outcome.clone(), restart);
-                                        let start_wm = Instant::now();
-                                        wm.wait();
-                                        stats.stop_wait_manager(start_wm);
-                                    }
-                                }
-                            }
-                        }
+    //                     match outcome {
+    //                         Outcome::Committed { .. } => {
+    //                             restart = false;
+    //                             stats.record(transaction, outcome.clone(), restart);
+    //                             wm.reset();
+    //                             if log_results {
+    //                                 log_result(&mut fh, outcome.clone());
+    //                             }
+    //                             debug!("complete: committed");
+    //                         }
+    //                         Outcome::Aborted { ref reason } => {
+    //                             if let NonFatalError::SmallBankError(_) = reason {
+    //                                 restart = false;
+    //                                 wm.reset();
+    //                                 stats.record(transaction, outcome.clone(), restart);
+    //                                 if log_results {
+    //                                     log_result(&mut fh, outcome.clone());
+    //                                 }
+    //                                 debug!("complete: aborted");
+    //                             } else {
+    //                                 restart = true; // protocol abort
+    //                                 debug!("restart: {}", reason);
+    //                                 stats.record(transaction, outcome.clone(), restart);
+    //                                 let start_wm = Instant::now();
+    //                                 wm.wait();
+    //                                 stats.stop_wait_manager(start_wm);
+    //                             }
+    //                         }
+    //                     }
+    //                 }
 
-                        stats.stop_latency(start_latency);
-                        completed += 1;
-                    }
-                }
+    //                 stats.stop_latency(start_latency);
+    //                 completed += 1;
+    //             }
+    //         }
 
-                stats.stop_worker(start_worker);
+    //         stats.stop_worker(start_worker);
 
-                if record {
-                    tx.send(stats).unwrap();
-                }
-            })
-            .unwrap();
+    //         if record {
+    //             tx.send(stats).unwrap();
+    //         }
+    //     })
+    //     .unwrap();
 
-        Worker {
-            id,
-            thread: Some(thread),
-        }
-    }
+    // Worker {
+    //     id,
+    //     thread: Some(thread),
+    // }
+    //   }
 }
 
 impl Recon {
@@ -320,7 +319,7 @@ impl Recon {
     }
 }
 
-fn log_result(fh: &mut Option<std::fs::File>, outcome: Outcome) {
+pub fn log_result(fh: &mut Option<std::fs::File>, outcome: Outcome) {
     if let Some(ref mut fh) = fh {
         match outcome {
             Outcome::Committed { value } => {

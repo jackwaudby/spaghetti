@@ -105,7 +105,8 @@ impl SmallBankGenerator {
     fn uniform_mix(&mut self, n: f32) -> (SmallBankTransaction, SmallBankTransactionProfile) {
         match n {
             // BALANCE
-            x if x < 0.15 => {
+            // x if x < 0.15 => {
+            _ => {
                 let name = self.get_name();
                 let payload = Balance { name };
 
@@ -113,71 +114,69 @@ impl SmallBankGenerator {
                     SmallBankTransaction::Balance,
                     SmallBankTransactionProfile::Balance(payload),
                 )
-            }
+            } // // DEPOSIT_CHECKING
+              // x if x < 0.30 => {
+              //     let name = self.get_name();
 
-            // DEPOSIT_CHECKING
-            x if x < 0.30 => {
-                let name = self.get_name();
+              //     let payload = DepositChecking {
+              //         name,
+              //         value: self.deposit_checking_amount,
+              //     };
+              //     (
+              //         SmallBankTransaction::DepositChecking,
+              //         SmallBankTransactionProfile::DepositChecking(payload),
+              //     )
+              // }
+              // // TRANSACT_SAVING
+              // x if x < 0.45 => {
+              //     let name = self.get_name();
 
-                let payload = DepositChecking {
-                    name,
-                    value: self.deposit_checking_amount,
-                };
-                (
-                    SmallBankTransaction::DepositChecking,
-                    SmallBankTransactionProfile::DepositChecking(payload),
-                )
-            }
-            // TRANSACT_SAVING
-            x if x < 0.45 => {
-                let name = self.get_name();
+              //     let payload = TransactSaving {
+              //         name,
+              //         value: self.transact_savings_amount,
+              //     };
+              //     (
+              //         SmallBankTransaction::TransactSaving,
+              //         SmallBankTransactionProfile::TransactSaving(payload),
+              //     )
+              // }
+              // // AMALGAMATE
+              // x if x < 0.60 => {
+              //     let (name1, name2) = self.get_names();
 
-                let payload = TransactSaving {
-                    name,
-                    value: self.transact_savings_amount,
-                };
-                (
-                    SmallBankTransaction::TransactSaving,
-                    SmallBankTransactionProfile::TransactSaving(payload),
-                )
-            }
-            // AMALGAMATE
-            x if x < 0.60 => {
-                let (name1, name2) = self.get_names();
+              //     let payload = Amalgamate { name1, name2 };
+              //     (
+              //         SmallBankTransaction::Amalgamate,
+              //         SmallBankTransactionProfile::Amalgamate(payload),
+              //     )
+              // }
+              // // WRITE_CHECK
+              // x if x < 0.75 => {
+              //     let name = self.get_name();
 
-                let payload = Amalgamate { name1, name2 };
-                (
-                    SmallBankTransaction::Amalgamate,
-                    SmallBankTransactionProfile::Amalgamate(payload),
-                )
-            }
-            // WRITE_CHECK
-            x if x < 0.75 => {
-                let name = self.get_name();
+              //     let payload = WriteCheck {
+              //         name,
+              //         value: self.write_check_amount,
+              //     };
+              //     (
+              //         SmallBankTransaction::WriteCheck,
+              //         SmallBankTransactionProfile::WriteCheck(payload),
+              //     )
+              // }
+              // // SEND_PAYMENT
+              // _ => {
+              //     let (name1, name2) = self.get_names();
 
-                let payload = WriteCheck {
-                    name,
-                    value: self.write_check_amount,
-                };
-                (
-                    SmallBankTransaction::WriteCheck,
-                    SmallBankTransactionProfile::WriteCheck(payload),
-                )
-            }
-            // SEND_PAYMENT
-            _ => {
-                let (name1, name2) = self.get_names();
-
-                let payload = SendPayment {
-                    name1,
-                    name2,
-                    value: self.send_payment_amount,
-                };
-                (
-                    SmallBankTransaction::SendPayment,
-                    SmallBankTransactionProfile::SendPayment(payload),
-                )
-            }
+              //     let payload = SendPayment {
+              //         name1,
+              //         name2,
+              //         value: self.send_payment_amount,
+              //     };
+              //     (
+              //         SmallBankTransaction::SendPayment,
+              //         SmallBankTransactionProfile::SendPayment(payload),
+              //     )
+              // }
         }
     }
 

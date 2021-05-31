@@ -14,23 +14,36 @@ pub fn populate_tables(
     rng: &mut StdRng,
 ) -> Result<()> {
     for cid in 0..population {
-        database.accounts.customer_id[cid]
+        // accounts
+        database
+            .get_mut_table(0)
+            .get_tuple(0, cid)
             .get()
-            .init_value(Data::from(cid as u64))?;
+            .init_value(Data::Uint(cid as u64))?;
 
+        // checking
         let cbal = rng.gen_range(MIN_BALANCE..=MAX_BALANCE) as f64;
-        database.checking.customer_id[cid]
+        database
+            .get_mut_table(1)
+            .get_tuple(0, cid)
             .get()
-            .init_value(Data::from(cid as u64))?;
-        database.checking.balance[cid]
+            .init_value(Data::Uint(cid as u64))?;
+        database
+            .get_mut_table(1)
+            .get_tuple(1, cid)
             .get()
             .init_value(Data::Double(cbal))?;
 
+        // saving
         let sbal = rng.gen_range(MIN_BALANCE..=MAX_BALANCE) as f64;
-        database.saving.customer_id[cid]
+        database
+            .get_mut_table(2)
+            .get_tuple(0, cid)
             .get()
-            .init_value(Data::from(cid as u64))?;
-        database.saving.balance[cid]
+            .init_value(Data::Uint(cid as u64))?;
+        database
+            .get_mut_table(2)
+            .get_tuple(1, cid)
             .get()
             .init_value(Data::Double(sbal))?;
     }

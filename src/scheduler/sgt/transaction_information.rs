@@ -12,8 +12,8 @@ pub struct TransactionInformation {
 #[derive(Debug, Clone)]
 pub struct Operation {
     pub op_type: OperationType,
-    pub column: Arc<Vec<Tuple>>,
-    pub rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+    pub table_id: usize,
+    pub column_id: usize,
     pub offset: usize,
     pub prv: u64,
 }
@@ -34,15 +34,15 @@ impl TransactionInformation {
     pub fn add(
         &mut self,
         op_type: OperationType,
-        column: Arc<Vec<Tuple>>,
-        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        table_id: usize,
+        column_id: usize,
         offset: usize,
         prv: u64,
     ) {
         self.operations
             .as_mut()
             .unwrap()
-            .push(Operation::new(op_type, column, rw_tables, offset, prv));
+            .push(Operation::new(op_type, table_id, column_id, offset, prv));
     }
 
     pub fn get(&mut self) -> Vec<Operation> {
@@ -59,15 +59,15 @@ impl Default for TransactionInformation {
 impl Operation {
     pub fn new(
         op_type: OperationType,
-        column: Arc<Vec<Tuple>>,
-        rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
+        table_id: usize,
+        column_id: usize,
         offset: usize,
         prv: u64,
     ) -> Self {
         Operation {
             op_type,
-            column,
-            rw_tables,
+            table_id,
+            column_id,
             offset,
             prv,
         }

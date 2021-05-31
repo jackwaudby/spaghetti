@@ -2,6 +2,7 @@ use crate::common::ds::atomic_linked_list::AtomicLinkedList;
 use crate::scheduler::TransactionInfo;
 use crate::storage::row::Tuple;
 
+use nohash_hasher::IntMap;
 use std::fmt;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -12,120 +13,85 @@ pub mod catalog;
 
 pub mod row;
 
-#[derive(Debug)]
-pub struct SmallBankDatabase {
-    pub accounts: Accounts,
-    pub saving: Saving,
-    pub checking: Checking,
-}
+type Column = Vec<Tuple>;
 
 #[derive(Debug)]
-pub struct Accounts {
-    pub customer_id: Arc<Vec<Tuple>>,
-    pub lsns: Vec<AtomicU64>,
-    pub rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
-}
+pub struct SmallBankDatabase(IntMap<usize, Table>);
 
 #[derive(Debug)]
-pub struct Saving {
-    pub customer_id: Arc<Vec<Tuple>>,
-    pub balance: Arc<Vec<Tuple>>,
-    pub lsns: Arc<Vec<AtomicU64>>,
-    pub rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
-}
-
-#[derive(Debug)]
-pub struct Checking {
-    pub customer_id: Arc<Vec<Tuple>>,
-    pub balance: Arc<Vec<Tuple>>,
-    pub lsns: Arc<Vec<AtomicU64>>,
-    pub rw_tables: Arc<Vec<AtomicLinkedList<Access>>>,
-}
-
-impl SmallBankDatabase {
-    pub fn new(population: usize) -> Self {
-        let accounts = Accounts::new(population);
-        let saving = Saving::new(population);
-        let checking = Checking::new(population);
-
-        SmallBankDatabase {
-            accounts,
-            saving,
-            checking,
-        }
-    }
-}
-
-impl Accounts {
-    pub fn new(population: usize) -> Self {
-        let mut customer_id = Vec::with_capacity(population);
-        let mut lsns = Vec::with_capacity(population);
-        let mut rw_tables = Vec::with_capacity(population);
-
-        for _ in 0..population {
-            customer_id.push(Tuple::new());
-            lsns.push(AtomicU64::new(0));
-            rw_tables.push(AtomicLinkedList::new())
-        }
-
-        Accounts {
-            customer_id: Arc::new(customer_id),
-            lsns: lsns,
-            rw_tables: Arc::new(rw_tables),
-        }
-    }
-}
-
-impl Saving {
-    pub fn new(population: usize) -> Self {
-        let mut customer_id = Vec::with_capacity(population);
-        let mut balance = Vec::with_capacity(population);
-        let mut lsns = Vec::with_capacity(population);
-        let mut rw_tables = Vec::with_capacity(population);
-
-        for _ in 0..population {
-            customer_id.push(Tuple::new());
-            balance.push(Tuple::new());
-            lsns.push(AtomicU64::new(0));
-            rw_tables.push(AtomicLinkedList::new())
-        }
-
-        Saving {
-            customer_id: Arc::new(customer_id),
-            balance: Arc::new(balance),
-            lsns: Arc::new(lsns),
-            rw_tables: Arc::new(rw_tables),
-        }
-    }
-}
-
-impl Checking {
-    pub fn new(population: usize) -> Self {
-        let mut customer_id = Vec::with_capacity(population);
-        let mut balance = Vec::with_capacity(population);
-        let mut lsns = Vec::with_capacity(population);
-        let mut rw_tables = Vec::with_capacity(population);
-
-        for _ in 0..population {
-            customer_id.push(Tuple::new());
-            balance.push(Tuple::new());
-            lsns.push(AtomicU64::new(0));
-            rw_tables.push(AtomicLinkedList::new())
-        }
-
-        Checking {
-            customer_id: Arc::new(customer_id),
-            balance: Arc::new(balance),
-            lsns: Arc::new(lsns),
-            rw_tables: Arc::new(rw_tables),
-        }
-    }
+pub struct Table {
+    columns: IntMap<usize, Column>,
+    lsns: Vec<AtomicU64>,
+    rw_tables: Vec<AtomicLinkedList<Access>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Access {
     Read(TransactionInfo),
     Write(TransactionInfo),
+}
+
+impl SmallBankDatabase {
+    pub fn new(population: usize) -> Self {
+        let mut map = IntMap::default();
+
+        map.insert(0, Table::new(population, 1)); // accounts
+        map.insert(1, Table::new(population, 2)); // checking
+        map.insert(2, Table::new(population, 2)); // saving
+
+        SmallBankDatabase(map)
+    }
+
+    pub fn get_table(&self, id: usize) -> &Table {
+        self.0.get(&id).unwrap()
+    }
+
+    pub fn get_mut_table(&mut self, id: usize) -> &mut Table {
+        self.0.get_mut(&id).unwrap()
+    }
+}
+
+impl Table {
+    pub fn new(population: usize, column_cnt: usize) -> Self {
+        let mut columns = IntMap::default();
+        for id in 0..column_cnt {
+            let mut column = Vec::with_capacity(population);
+            for _ in 0..population {
+                column.push(Tuple::new())
+            }
+            columns.insert(id, column);
+        }
+
+        let mut lsns = Vec::with_capacity(population);
+        let mut rw_tables = Vec::with_capacity(population);
+
+        for _ in 0..population {
+            lsns.push(AtomicU64::new(0));
+            rw_tables.push(AtomicLinkedList::new())
+        }
+
+        Table {
+            columns,
+            lsns,
+            rw_tables,
+        }
+    }
+
+    pub fn add_column(&mut self, id: usize, column: Column) {
+        self.columns.insert(id, column);
+    }
+
+    pub fn get_tuple(&self, id: usize, offset: usize) -> &Tuple {
+        &self.columns.get(&id).unwrap()[offset]
+    }
+
+    pub fn get_lsn(&self, offset: usize) -> &AtomicU64 {
+        &self.lsns[offset]
+    }
+
+    pub fn get_rwtable(&self, offset: usize) -> &AtomicLinkedList<Access> {
+        &self.rw_tables[offset]
+    }
 }
 
 pub fn access_eq(a: &Access, b: &Access) -> bool {
