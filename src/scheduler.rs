@@ -9,6 +9,8 @@ use std::fmt;
 
 pub mod sgt;
 
+pub mod owh2;
+
 #[derive(Debug)]
 pub enum Scheduler {
     SerializationGraph(SerializationGraph),
