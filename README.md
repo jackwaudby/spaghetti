@@ -1,7 +1,7 @@
 ![Git Hub Workflow Status](https://img.shields.io/github/workflow/status/jackwaudby/spaghetti/Rust?logo=Github)
 ![Codecov](https://img.shields.io/codecov/c/github/jackwaudby/spaghetti?logo=codecov)
 
-# Spaghetti: Yet Another Concurrency Control Evaluation Framework
+# Spaghetti: A Concurrency Control Evaluation Framework
 
 This framework is designed to run on many-core machines. 
 Configuration is set in `Settings.toml`.
