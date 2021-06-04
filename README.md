@@ -13,15 +13,7 @@ cargo build --release
 ./target/debug/spag -c 1 -p sgt -t 10000
 ```
 
-## Results
-
-Benchmark results are stored in `./results/` and a report can be produced using:
-```
-cd scripts/
-./generate-report.sh
-```
-
-## Misc
+### Misc
 ```
 #run tests with logging
 RUST_LOG=debug cargo test -- --test-threads=1 --nocapture
