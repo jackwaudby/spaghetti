@@ -15,19 +15,29 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-use tracing::debug;
 use tracing::Level;
+use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub fn init_config(file: &str) -> Config {
-    tracing::info!("initialise configuration using {}", file);
+    info!("initialise configuration using {}", file);
     let mut settings = Config::default();
     settings.merge(config::File::with_name(file)).unwrap();
-
     settings
 }
 
-pub fn create_results_dir(config: &Config) {
+pub fn set_log_level(config: &Config) {
+    let level = match config.get_str("log").unwrap().as_str() {
+        "info" => Level::INFO,
+        "debug" => Level::DEBUG,
+        "trace" => Level::TRACE,
+        _ => Level::WARN,
+    };
+    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
+}
+
+pub fn create_log_dir(config: &Config) {
     let log_results = config.get_bool("log_results").unwrap();
 
     if log_results {
@@ -48,17 +58,6 @@ pub fn create_results_dir(config: &Config) {
 
         fs::create_dir_all(&dir).unwrap(); // create directory
     }
-}
-
-pub fn set_log_level(config: &Config) {
-    let level = match config.get_str("log").unwrap().as_str() {
-        "info" => Level::INFO,
-        "debug" => Level::DEBUG,
-        "trace" => Level::TRACE,
-        _ => Level::WARN,
-    };
-    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
-    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 }
 
 pub fn init_database(config: &Config) -> Database {

@@ -50,7 +50,7 @@ fn main() {
     }
 
     utils::set_log_level(&config);
-    utils::create_results_dir(&config);
+    utils::create_log_dir(&config);
 
     let mut global_stats = GlobalStatistics::new(&config);
 
