@@ -9,7 +9,7 @@ Configuration is set in `Settings.toml`.
 #build
 cargo build --release
 
-#run embedded mode
+#run
 ./target/debug/spag -c 1 -p sgt -t 10000
 ```
 
