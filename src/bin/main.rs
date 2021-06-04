@@ -7,6 +7,7 @@ use clap::clap_app;
 use crossbeam_utils::thread;
 use std::sync::mpsc;
 use std::time::Instant;
+use tracing::info;
 
 fn main() {
     let matches = clap_app!(spag =>
@@ -49,30 +50,22 @@ fn main() {
     }
 
     utils::set_log_level(&config);
-
     utils::create_results_dir(&config);
 
-    let mut global_stats = GlobalStatistics::new(&config); // init stats
+    let mut global_stats = GlobalStatistics::new(&config);
 
-    if config.get_str("workload").unwrap().as_str() == "acid" {
-        let anomaly = config.get_str("anomaly").unwrap();
-        let delay = config.get_int("delay").unwrap();
-        tracing::info!("ACID test: {}", anomaly);
-        tracing::info!("Aritifical operation delay (secs): {}", delay);
-    }
-
-    let dg_start = Instant::now(); // init database
+    let dg_start = Instant::now();
     let database: Database = utils::init_database(&config);
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
-    let cores = config.get_int("cores").unwrap() as usize;
-    let scheduler: Scheduler = utils::init_scheduler(&config); // init scheduler
-    let (tx, rx) = mpsc::channel(); // channel to send statistics
+    let scheduler: Scheduler = utils::init_scheduler(&config);
+    let (tx, rx) = mpsc::channel();
 
-    tracing::info!("Starting execution");
+    info!("Starting execution");
     global_stats.start();
 
+    let cores = config.get_int("cores").unwrap() as usize;
     let core_ids = core_affinity::get_core_ids().unwrap();
 
     thread::scope(|s| {
@@ -90,12 +83,13 @@ fn main() {
         }
     })
     .unwrap();
+
     drop(tx);
 
     global_stats.end();
-    tracing::info!("Execution finished");
+    info!("Execution finished");
 
-    tracing::info!("Collecting statistics..");
+    info!("Collecting statistics..");
     while let Ok(local_stats) = rx.recv() {
         global_stats.merge_into(local_stats);
     }
