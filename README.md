@@ -3,33 +3,14 @@
 
 # Spaghetti: Yet Another Concurrency Control Evaluation Framework
 
-The framework can be ran in 2 modes:
-+ Embedded
-
-## Embedded Mode
-
-The transaction generator and server run on the same machine.
-Configuration is set in `Embedded.toml`.
+This framework is designed to run on many-core machines. 
+Configuration is set in `Settings.toml`.
 ```
 #build
-cargo build
+cargo build --release
 
 #run embedded mode
-./target/debug/spag-gpc -c 1 -p basic-sgt -t 10000
-```
-
-## Datagen
-
-In either mode data can be generated on the fly before each run or loaded from `csv` files, datagen produces these `csv` files.
-Configuration is set in `Generator.toml`: data generation.
- Generated data is stored in `./data/`
-
-```
-#build
-cargo build
-
-#run data gen
-./target/debug/spag-gen
+./target/debug/spag -c 1 -p sgt -t 10000
 ```
 
 ## Results
@@ -37,21 +18,17 @@ cargo build
 Benchmark results are stored in `./results/` and a report can be produced using:
 ```
 cd scripts/
-
 ./generate-report.sh
 ```
 
 ## Misc
-To run tests with log info use:
 ```
+#run tests with logging
 RUST_LOG=debug cargo test -- --test-threads=1 --nocapture
-```
 
-Test coverage can be ran locally using:
-```
+#run test coverage locally
 docker run --security-opt seccomp=unconfined -v "${PWD}:/volume" xd009642/tarpaulin:0.16.0
-```
 
-```
-cargo flamegraph -o 30-core.svg --bin=spag-gpc -- -c 30 -p basic-sgt -t 1000000
+#generate a flamegraph (linux only)
+cargo flamegraph -o 30-core.svg --bin=spag -- -c 30 -p sgt -t 1000000
 ```
