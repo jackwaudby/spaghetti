@@ -1,0 +1,23 @@
+log = "info"
+record = true
+log_results = false
+
+transactions = 10000
+
+timeout = 10
+warmup = 1
+set_seed = false
+
+protocol="sgt"
+cores = 1
+garbage_collection = false
+garbage_collection_sleep = 1
+
+scale_factor = 1
+
+workload = "smallbank"
+anomaly = "g1c"
+load = false
+
+nurand = true
+use_balance_mix = false

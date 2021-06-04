@@ -22,38 +22,35 @@ fn main() {
     )
     .get_matches();
 
-    let mut settings = utils::init_config("Embedded.toml"); // init config
+    let mut config = utils::init_config("Settings.toml");
 
-    // overwrite default with any supplied runtime value
     if let Some(w) = matches.value_of("WORKLOAD") {
-        settings.set("workload", w).unwrap();
+        config.set("workload", w).unwrap();
     }
 
     if let Some(p) = matches.value_of("PROTOCOL") {
-        settings.set("protocol", p).unwrap();
+        config.set("protocol", p).unwrap();
     }
 
     if let Some(s) = matches.value_of("SF") {
-        settings.set("scale_factor", s).unwrap();
+        config.set("scale_factor", s).unwrap();
     }
 
     if let Some(t) = matches.value_of("TRANSACTIONS") {
-        settings.set("transactions", t).unwrap();
+        config.set("transactions", t).unwrap();
     }
 
     if let Some(c) = matches.value_of("CORES") {
-        settings.set("cores", c).unwrap();
+        config.set("cores", c).unwrap();
     }
 
     if let Some(l) = matches.value_of("LOG") {
-        settings.set("log", l).unwrap();
+        config.set("log", l).unwrap();
     }
 
-    let config = settings;
+    utils::set_log_level(&config);
 
-    utils::set_log_level(&config); // set log level
-
-    utils::create_results_dir(&config); // create results dir
+    utils::create_results_dir(&config);
 
     let mut global_stats = GlobalStatistics::new(&config); // init stats
 
