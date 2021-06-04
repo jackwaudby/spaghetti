@@ -4,7 +4,6 @@
 # Spaghetti: Yet Another Concurrency Control Evaluation Framework
 
 The framework can be ran in 2 modes:
-+ Client-server (WIP)
 + Embedded
 
 ## Embedded Mode
@@ -17,24 +16,6 @@ cargo build
 
 #run embedded mode
 ./target/debug/spag-gpc -c 1 -p basic-sgt -t 10000
-```
-
-## Client-Server Mode
-
-A server accepts transaction requests from clients over the network.
-Configuration is set in:
-* `Client.toml`: per client.
-* `Server.toml`: server.
-
-```
-#build
-cargo build
-
-#run server
-./target/debug/spag-server
-
-#run client(s)
-./target/debug/spag-client
 ```
 
 ## Datagen

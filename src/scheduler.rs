@@ -9,8 +9,6 @@ use std::fmt;
 
 pub mod sgt;
 
-pub mod owh2;
-
 #[derive(Debug)]
 pub enum Scheduler {
     SerializationGraph(SerializationGraph),
@@ -32,7 +30,6 @@ impl Scheduler {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.begin(),
-            //  OptimisticWaitHit(owh) => owh.begin(),
         }
     }
 
@@ -47,7 +44,6 @@ impl Scheduler {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.read_value(table_id, column_id, offset, meta, database),
-            //  OptimisticWaitHit(owh) => owh.read(index, key, columns, meta),
         }
     }
 
@@ -64,7 +60,7 @@ impl Scheduler {
         match self {
             SerializationGraph(sg) => {
                 sg.write_value(value, table_id, column_id, offset, meta, database)
-            } //  OptimisticWaitHit(owh) => owh.write(index, key, columns, read, params, f, meta),
+            }
         }
     }
 
@@ -72,7 +68,6 @@ impl Scheduler {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.commit(database),
-            //    OptimisticWaitHit(owh) => owh.commit(meta),
         }
     }
 
@@ -80,7 +75,6 @@ impl Scheduler {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.abort(database),
-            //   OptimisticWaitHit(owh) => owh.abort(meta),
         }
     }
 }

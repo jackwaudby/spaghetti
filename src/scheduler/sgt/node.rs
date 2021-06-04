@@ -11,7 +11,7 @@ pub struct Node(RwLock<Attributes>);
 
 #[derive(Debug)]
 pub struct Attributes {
-    pub incoming: Option<Mutex<Vec<(WeakNode, bool)>>>,
+    incoming: Option<Mutex<Vec<(WeakNode, bool)>>>,
     outgoing: Option<Mutex<Vec<(WeakNode, bool)>>>,
     committed: AtomicBool,
     cascading_abort: AtomicBool,
