@@ -10,8 +10,10 @@ use crate::storage::table::Table;
 use crate::storage::Database;
 
 use crossbeam_epoch::{self as epoch, Guard};
+use rustc_hash::FxHashSet;
 use std::cell::RefCell;
-use std::collections::HashSet;
+
+//use std::collections::HashSet;
 use std::fmt;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -29,7 +31,7 @@ pub mod error;
 pub struct SerializationGraph<'a> {
     txn_ctr: ThreadLocal<RefCell<u64>>,
     this_node: ThreadLocal<RefCell<Option<&'a RwNode<'a>>>>,
-    visited: ThreadLocal<RefCell<HashSet<usize>>>,
+    visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
     stack: ThreadLocal<RefCell<Vec<&'a RwNode<'a>>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
 }
@@ -152,7 +154,7 @@ impl<'a> SerializationGraph<'a> {
         let start = this;
         let mut visited = self
             .visited
-            .get_or(|| RefCell::new(HashSet::new()))
+            .get_or(|| RefCell::new(FxHashSet::default()))
             .borrow_mut();
 
         let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
