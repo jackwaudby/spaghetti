@@ -13,6 +13,7 @@ use crossbeam_epoch::{self as epoch, Guard};
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::fmt;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use thread_local::ThreadLocal;
@@ -343,12 +344,14 @@ impl<'a> SerializationGraph<'a> {
             let lsn = table.get_lsn(offset);
 
             debug!("spin");
-            loop {
-                let i = lsn.load(Ordering::Relaxed); // current lsn
-                if i == prv {
-                    break; // break when prv == lsn
-                }
-            }
+            // loop {
+            //     let i = lsn.load(Ordering::Relaxed); // current lsn
+            //     if i == prv {
+            //         break; // break when prv == lsn
+            //     }
+            // }
+
+            spin(prv, lsn);
             debug!("lsn = prv");
             let snapshot = rw_table.iter(guard); // iterator over access history
 
@@ -440,13 +443,14 @@ impl<'a> SerializationGraph<'a> {
 
                 prv = rw_table.push_front(Access::Write(meta.clone()));
 
-                loop {
-                    let i = lsn.load(Ordering::Relaxed); // current lsn
+                spin(prv, lsn);
+                // loop {
+                //     let i = lsn.load(Ordering::Relaxed); // current lsn
 
-                    if i == prv {
-                        break; // if current = previous then this transaction can execute
-                    }
-                }
+                //     if i == prv {
+                //         break; // if current = previous then this transaction can execute
+                //     }
+                // }
 
                 let snapshot = rw_table.iter(guard);
 
@@ -633,3 +637,12 @@ impl<'a> SerializationGraph<'a> {
 //         Ok(())
 //     }
 // }
+
+fn spin(prv: u64, lsn: &AtomicU64) {
+    loop {
+        let i = lsn.load(Ordering::Relaxed); // current lsn
+        if i == prv {
+            break; // break when prv == lsn
+        }
+    }
+}
