@@ -3,18 +3,17 @@ use crate::scheduler::sgt::SerializationGraph;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::storage::Database;
-
 use config::Config;
-use std::fmt;
+use crossbeam_epoch::Guard;
 
 pub mod sgt;
 
 #[derive(Debug)]
-pub enum Scheduler {
-    SerializationGraph(SerializationGraph),
+pub enum Scheduler<'a> {
+    SerializationGraph(SerializationGraph<'a>),
 }
 
-impl Scheduler {
+impl<'a> Scheduler<'a> {
     pub fn new(config: &Config) -> crate::Result<Self> {
         let cores = config.get_int("cores")? as usize;
 
@@ -23,6 +22,7 @@ impl Scheduler {
             "owh" => unimplemented!(),
             _ => panic!("Incorrect concurrency control protocol"),
         };
+
         Ok(protocol)
     }
 
@@ -33,21 +33,24 @@ impl Scheduler {
         }
     }
 
-    pub fn read_value(
+    pub fn read_value<'g>(
         &self,
         table_id: usize,
         column_id: usize,
         offset: usize,
         meta: &TransactionId,
         database: &Database,
+        guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.read_value(table_id, column_id, offset, meta, database),
+            SerializationGraph(sg) => {
+                sg.read_value(table_id, column_id, offset, meta, database, guard)
+            }
         }
     }
 
-    pub fn write_value(
+    pub fn write_value<'g>(
         &self,
         value: &Data,
         table_id: usize,
@@ -55,32 +58,37 @@ impl Scheduler {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
+        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => {
-                sg.write_value(value, table_id, column_id, offset, meta, database)
+                sg.write_value(value, table_id, column_id, offset, meta, database, guard)
             }
         }
     }
 
-    pub fn commit(&self, _meta: &TransactionId, database: &Database) -> Result<(), NonFatalError> {
+    pub fn commit<'g>(
+        &self,
+        _meta: &TransactionId,
+        database: &Database,
+        guard: &'g Guard,
+    ) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.commit(database),
+            SerializationGraph(sg) => sg.commit(database, guard),
         }
     }
 
-    pub fn abort(&self, _meta: &TransactionId, database: &Database) -> NonFatalError {
+    pub fn abort<'g>(
+        &self,
+        _meta: &TransactionId,
+        database: &Database,
+        guard: &'g Guard,
+    ) -> NonFatalError {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.abort(database),
+            SerializationGraph(sg) => sg.abort(database, guard),
         }
-    }
-}
-
-impl fmt::Display for Scheduler {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TODO")
     }
 }

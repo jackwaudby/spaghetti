@@ -1,5 +1,3 @@
-use crate::scheduler::sgt::node::WeakNode;
-
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -10,7 +8,7 @@ pub enum Access {
 
 #[derive(Debug, Clone)]
 pub enum TransactionId {
-    SerializationGraph(WeakNode),
+    SerializationGraph(usize),
     OptimisticWaitHit(usize, usize),
 }
 
@@ -29,7 +27,7 @@ impl fmt::Display for TransactionId {
         use TransactionId::*;
 
         match &self {
-            SerializationGraph(node) => write!(f, "{}", node.as_ptr() as usize),
+            SerializationGraph(node) => write!(f, "{}", node),
             OptimisticWaitHit(thread_id, seq_num) => write!(f, "({}-{})", thread_id, seq_num),
         }
     }
@@ -41,7 +39,7 @@ impl PartialEq for TransactionId {
             (
                 &TransactionId::SerializationGraph(ref wn1),
                 &TransactionId::SerializationGraph(ref wn2),
-            ) => wn1.ptr_eq(&wn2),
+            ) => wn1 == wn2,
             (&TransactionId::OptimisticWaitHit(a, b), &TransactionId::OptimisticWaitHit(c, d)) => {
                 (a == c) && (b == d)
             }
