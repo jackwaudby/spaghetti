@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::sgt::error::SerializationGraphError;
+use crate::scheduler::sgt::node::EdgeSet;
 use crate::scheduler::sgt::node::{Edge, RwNode};
 use crate::scheduler::sgt::transaction_information::{
     Operation, OperationType, TransactionInformation,
@@ -10,9 +11,9 @@ use crate::storage::table::Table;
 use crate::storage::Database;
 
 use crossbeam_epoch::{self as epoch, Guard};
+use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use std::cell::RefCell;
-
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
@@ -28,6 +29,7 @@ pub mod error;
 pub struct SerializationGraph<'a> {
     txn_ctr: ThreadLocal<RefCell<u64>>,
     this_node: ThreadLocal<RefCell<Option<&'a RwNode<'a>>>>,
+    recycled: ThreadLocal<RefCell<Vec<EdgeSet<'a>>>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
     stack: ThreadLocal<RefCell<Vec<Edge<'a>>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
@@ -40,6 +42,7 @@ impl<'a> SerializationGraph<'a> {
         Self {
             txn_ctr: ThreadLocal::new(),
             this_node: ThreadLocal::new(),
+            recycled: ThreadLocal::new(),
             visited: ThreadLocal::new(),
             stack: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
@@ -47,7 +50,22 @@ impl<'a> SerializationGraph<'a> {
     }
 
     pub fn create_node(&self) -> usize {
-        let node = Box::new(RwNode::new()); // allocated node on the heap
+        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
+            Some(TransactionInformation::new()); // reset txn info
+
+        let mut recycled = self.recycled.get_or(|| RefCell::new(vec![])).borrow_mut();
+
+        let incoming;
+        let outgoing;
+        if recycled.is_empty() {
+            incoming = Mutex::new(FxHashSet::default());
+            outgoing = Mutex::new(FxHashSet::default());
+        } else {
+            incoming = recycled.pop().unwrap();
+            outgoing = recycled.pop().unwrap();
+        }
+
+        let node = Box::new(RwNode::new_with_sets(incoming, outgoing)); // allocated node on the heap
         let id = node::to_usize(node);
         let nref = node::from_usize(id);
         self.this_node
@@ -70,7 +88,10 @@ impl<'a> SerializationGraph<'a> {
 
         let this_rlock = this.read(); // read write lock
 
-        for edge in &outgoing {
+        let mut g = outgoing.lock();
+        let edge_set = g.iter();
+
+        for edge in edge_set {
             match edge {
                 Edge::ReadWrite(that) => {
                     let that_rlock = that.read(); // get read lock on outgoing edge
@@ -90,11 +111,18 @@ impl<'a> SerializationGraph<'a> {
                 }
             }
         }
-        this_rlock.clear_outgoing();
+        // this_rlock.clear_outgoing(); // change TODO
+        g.clear();
+        drop(g);
 
         if this_rlock.is_aborted() {
-            this_rlock.clear_incoming();
+            //   this_rlock.clear_incoming(); // change TODO
+            incoming.lock().clear();
         }
+
+        let mut recycled = self.recycled.get_or(|| RefCell::new(vec![])).borrow_mut();
+        recycled.push(incoming);
+        recycled.push(outgoing);
 
         drop(this_rlock);
 

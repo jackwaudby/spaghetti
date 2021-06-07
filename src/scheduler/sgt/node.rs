@@ -33,7 +33,7 @@ pub fn ref_to_usize<'a>(node: &'a RwNode<'a>) -> usize {
     ptr as usize
 }
 
-type NodeSet<'a> = Mutex<FxHashSet<Edge<'a>>>;
+pub type EdgeSet<'a> = Mutex<FxHashSet<Edge<'a>>>;
 
 #[derive(Debug, Clone)]
 pub enum Edge<'a> {
@@ -48,8 +48,8 @@ pub struct RwNode<'a> {
 
 #[derive(Debug)]
 pub struct Node<'a> {
-    incoming: NodeSet<'a>,
-    outgoing: NodeSet<'a>,
+    incoming: Option<EdgeSet<'a>>,
+    outgoing: Option<EdgeSet<'a>>,
     committed: AtomicBool,
     cascading_abort: AtomicBool,
     aborted: AtomicBool,
@@ -61,6 +61,12 @@ impl<'a> RwNode<'a> {
     pub fn new() -> Self {
         Self {
             node: RwLock::new(Node::new()),
+        }
+    }
+
+    pub fn new_with_sets(incoming: EdgeSet<'a>, outgoing: EdgeSet<'a>) -> Self {
+        Self {
+            node: RwLock::new(Node::new_with_sets(incoming, outgoing)),
         }
     }
 
@@ -76,8 +82,20 @@ impl<'a> RwNode<'a> {
 impl<'a> Node<'a> {
     pub fn new() -> Self {
         Self {
-            incoming: Mutex::new(FxHashSet::default()),
-            outgoing: Mutex::new(FxHashSet::default()),
+            incoming: Some(Mutex::new(FxHashSet::default())),
+            outgoing: Some(Mutex::new(FxHashSet::default())),
+            committed: AtomicBool::new(false),
+            cascading_abort: AtomicBool::new(false),
+            aborted: AtomicBool::new(false),
+            cleaned: AtomicBool::new(false),
+            checked: AtomicBool::new(false),
+        }
+    }
+
+    pub fn new_with_sets(incoming: EdgeSet<'a>, outgoing: EdgeSet<'a>) -> Self {
+        Self {
+            incoming: Some(incoming),
+            outgoing: Some(outgoing),
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
@@ -87,7 +105,7 @@ impl<'a> Node<'a> {
     }
 
     pub fn incoming_edge_exists(&self, from: &'a RwNode<'a>) -> bool {
-        let guard = self.incoming.lock();
+        let guard = self.incoming.as_ref().unwrap().lock();
         let a = Edge::Other(from);
         let b = Edge::ReadWrite(from);
         let exists = guard.contains(&a) || guard.contains(&b);
@@ -99,7 +117,7 @@ impl<'a> Node<'a> {
         let handle = std::thread::current();
         debug!("{:?}, check incoming", handle.id());
 
-        let guard = self.incoming.lock();
+        let guard = self.incoming.as_ref().unwrap().lock();
         let emp = !guard.is_empty();
         debug!("{:?}, has incoming: {}", handle.id(), emp);
         debug!("{:?}, size: {}", handle.id(), guard.len());
@@ -111,7 +129,7 @@ impl<'a> Node<'a> {
     }
 
     pub fn insert_incoming(&self, from_node: &'a RwNode<'a>, rw_edge: bool) {
-        let mut guard = self.incoming.lock();
+        let mut guard = self.incoming.as_ref().unwrap().lock();
         let edge;
         if rw_edge {
             edge = Edge::ReadWrite(from_node);
@@ -123,13 +141,13 @@ impl<'a> Node<'a> {
     }
 
     pub fn remove_incoming(&self, from: &Edge<'a>) {
-        let mut guard = self.incoming.lock();
+        let mut guard = self.incoming.as_ref().unwrap().lock();
         guard.remove(from);
         drop(guard);
     }
 
     pub fn insert_outgoing(&self, to_node: &'a RwNode<'a>, rw_edge: bool) {
-        let mut guard = self.outgoing.lock();
+        let mut guard = self.outgoing.as_ref().unwrap().lock();
         let edge;
         if rw_edge {
             edge = Edge::ReadWrite(to_node);
@@ -141,33 +159,27 @@ impl<'a> Node<'a> {
     }
 
     pub fn clear_incoming(&self) {
-        let mut guard = self.incoming.lock();
+        let mut guard = self.incoming.as_ref().unwrap().lock();
         guard.clear();
         drop(guard);
     }
 
     pub fn clear_outgoing(&self) {
-        let mut guard = self.outgoing.lock();
+        let mut guard = self.outgoing.as_ref().unwrap().lock();
         guard.clear();
         drop(guard);
     }
 
-    pub fn take_incoming(&mut self) -> FxHashSet<Edge<'a>> {
-        let g = self.incoming.lock();
-        let res = g.clone();
-        drop(g);
-        res
+    pub fn take_incoming(&mut self) -> EdgeSet<'a> {
+        self.incoming.take().unwrap()
     }
 
-    pub fn take_outgoing(&mut self) -> FxHashSet<Edge<'a>> {
-        let g = self.outgoing.lock();
-        let res = g.clone();
-        drop(g);
-        res
+    pub fn take_outgoing(&mut self) -> EdgeSet<'a> {
+        self.outgoing.take().unwrap()
     }
 
     pub fn get_outgoing(&self) -> FxHashSet<Edge<'a>> {
-        let guard = self.outgoing.lock();
+        let guard = self.outgoing.as_ref().unwrap().lock();
         let out = guard.clone();
         drop(guard);
         out
@@ -259,10 +271,10 @@ impl<'a> fmt::Display for Edge<'a> {
 impl<'a> fmt::Display for Node<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut incoming = String::new();
-        let empty = self.incoming.lock().is_empty();
+        let empty = self.incoming.as_ref().unwrap().lock().is_empty();
         if !empty {
             incoming.push('[');
-            let g = self.incoming.lock();
+            let g = self.incoming.as_ref().unwrap().lock();
             for edge in &*g {
                 incoming.push_str(&format!("{}", edge));
                 incoming.push_str(", ");
