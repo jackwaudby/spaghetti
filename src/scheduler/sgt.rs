@@ -82,8 +82,8 @@ impl<'a> SerializationGraph<'a> {
 
         let mut this_wlock = this.write(); // get write lock
         this_wlock.set_cleaned(); // set as cleaned
-        let mut outgoing = this_wlock.take_outgoing(); // remove edges
-        let mut incoming = this_wlock.take_incoming();
+        let outgoing = this_wlock.take_outgoing(); // remove edges
+        let incoming = this_wlock.take_incoming();
         drop(this_wlock); // drop write lock
 
         let this_rlock = this.read(); // read write lock
