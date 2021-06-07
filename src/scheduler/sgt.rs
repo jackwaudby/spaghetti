@@ -75,7 +75,7 @@ impl<'a> SerializationGraph<'a> {
                 Edge::ReadWrite(that) => {
                     let that_rlock = that.read(); // get read lock on outgoing edge
                     if !that_rlock.is_cleaned() {
-                        that_rlock.remove_incoming(edge);
+                        that_rlock.remove_incoming(&Edge::ReadWrite(this)); // remove incoming from this node
                     }
                     drop(that_rlock);
                 }
@@ -84,16 +84,16 @@ impl<'a> SerializationGraph<'a> {
                     if this_rlock.is_aborted() {
                         that_rlock.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
                     } else if !that_rlock.is_cleaned() {
-                        that_rlock.remove_incoming(edge);
+                        that_rlock.remove_incoming(&Edge::Other(this));
                     }
                     drop(that_rlock);
                 }
             }
         }
-        outgoing.clear();
+        this_rlock.clear_outgoing();
 
         if this_rlock.is_aborted() {
-            incoming.clear();
+            this_rlock.clear_incoming();
         }
 
         drop(this_rlock);
@@ -116,7 +116,7 @@ impl<'a> SerializationGraph<'a> {
         }
 
         let this_rlock = this.read(); // get read lock on this_node
-        let exists = this_rlock.incoming_edge_exists(from.clone()); // check from_node exists
+        let exists = this_rlock.incoming_edge_exists(from); // check from_node exists
         drop(this_rlock);
 
         loop {
@@ -264,6 +264,7 @@ impl<'a> SerializationGraph<'a> {
 
     /// Cycle check then commit.
     pub fn erase_graph_constraints(&self, this: &'a RwNode<'a>, database: &Database) -> bool {
+        debug!("egc");
         let guard = &epoch::pin();
         let is_cycle = self.cycle_check(&this);
 
@@ -356,15 +357,8 @@ impl<'a> SerializationGraph<'a> {
             let lsn = table.get_lsn(offset);
 
             debug!("spin");
-            // loop {
-            //     let i = lsn.load(Ordering::Relaxed); // current lsn
-            //     if i == prv {
-            //         break; // break when prv == lsn
-            //     }
-            // }
-
             spin(prv, lsn);
-            debug!("lsn = prv");
+
             let snapshot = rw_table.iter(guard); // iterator over access history
 
             let mut cyclic = false; // insert and check each access
@@ -448,7 +442,7 @@ impl<'a> SerializationGraph<'a> {
             let mut prv; // init prv
 
             loop {
-                if self.needs_abort(&this) {
+                if self.needs_abort(this) {
                     drop(guard);
                     return Err(self.abort(database, guard));
                 }
@@ -456,13 +450,6 @@ impl<'a> SerializationGraph<'a> {
                 prv = rw_table.push_front(Access::Write(meta.clone()));
 
                 spin(prv, lsn);
-                // loop {
-                //     let i = lsn.load(Ordering::Relaxed); // current lsn
-
-                //     if i == prv {
-                //         break; // if current = previous then this transaction can execute
-                //     }
-                // }
 
                 let snapshot = rw_table.iter(guard);
 
@@ -575,11 +562,12 @@ impl<'a> SerializationGraph<'a> {
             if self.needs_abort(&this) {
                 return Err(self.abort(database, guard));
             }
-            debug!("commit attempt");
-
-            if self.check_committed(&this, database, guard) {
+            let cc = self.check_committed(&this, database, guard);
+            if cc {
                 break;
             }
+
+            debug!("commit attempt: {}", cc);
         }
 
         Ok(())
@@ -637,25 +625,66 @@ impl<'a> SerializationGraph<'a> {
     }
 }
 
-// impl fmt::Display for SerializationGraph<'_> {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         writeln!(f).unwrap();
-//         writeln!(
-//             f,
-//             "this_node: {}",
-//             self.this_node.get().unwrap().borrow().as_ref().unwrap()
-//         )
-//         .unwrap();
-//         writeln!(f, "txn_ctr: {}", self.txn_ctr.get().unwrap().borrow()).unwrap();
-//         Ok(())
-//     }
-// }
-
 fn spin(prv: u64, lsn: &AtomicU64) {
     loop {
         let i = lsn.load(Ordering::Relaxed); // current lsn
         if i == prv {
             break; // break when prv == lsn
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn no_cycle() {
+        let n1 = RwNode::new();
+        let n2 = RwNode::new();
+        n1.read().insert_outgoing(&n2, true);
+        n2.read().insert_incoming(&n1, true);
+
+        let sg = SerializationGraph::new(1);
+
+        assert_eq!(sg.cycle_check(&n1), false);
+        assert_eq!(sg.cycle_check(&n2), false);
+    }
+
+    #[test]
+    fn direct_cycle() {
+        let n1 = RwNode::new();
+        let n2 = RwNode::new();
+        n1.read().insert_incoming(&n2, true);
+        n1.read().insert_outgoing(&n2, true);
+
+        n2.read().insert_incoming(&n1, true);
+        n2.read().insert_outgoing(&n1, true);
+
+        let sg = SerializationGraph::new(1);
+
+        assert_eq!(sg.cycle_check(&n1), true);
+        assert_eq!(sg.cycle_check(&n2), true);
+    }
+
+    #[test]
+    fn trans_cycle() {
+        let n1 = RwNode::new();
+        let n2 = RwNode::new();
+        let n3 = RwNode::new();
+
+        n1.read().insert_outgoing(&n2, true);
+        n1.read().insert_incoming(&n3, true);
+
+        n2.read().insert_outgoing(&n3, true);
+        n2.read().insert_incoming(&n1, true);
+
+        n3.read().insert_outgoing(&n1, true);
+        n3.read().insert_incoming(&n2, true);
+
+        let sg = SerializationGraph::new(1);
+
+        assert_eq!(sg.cycle_check(&n1), true);
+        assert_eq!(sg.cycle_check(&n2), true);
+        assert_eq!(sg.cycle_check(&n3), true);
     }
 }

@@ -1,5 +1,6 @@
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::FxHashSet;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -95,9 +96,17 @@ impl<'a> Node<'a> {
     }
 
     pub fn is_incoming(&self) -> bool {
+        let handle = std::thread::current();
+        debug!("{:?}, check incoming", handle.id());
+
         let guard = self.incoming.lock();
         let emp = !guard.is_empty();
+        debug!("{:?}, has incoming: {}", handle.id(), emp);
+        debug!("{:?}, size: {}", handle.id(), guard.len());
+
         drop(guard);
+        //  debug!("{}", self);
+
         emp
     }
 
@@ -210,8 +219,8 @@ impl<'a> PartialEq for Edge<'a> {
         use Edge::*;
 
         match (self, other) {
-            (&ReadWrite(ref a), &ReadWrite(ref b)) => ptr::eq(a, b),
-            (&Other(ref a), &Other(ref b)) => ptr::eq(a, b),
+            (&ReadWrite(a), &ReadWrite(b)) => ptr::eq(a, b),
+            (&Other(a), &Other(b)) => ptr::eq(a, b),
             _ => false,
         }
     }
@@ -233,5 +242,101 @@ impl<'a> Hash for Edge<'a> {
                 id.hash(hasher)
             }
         }
+    }
+}
+
+impl<'a> fmt::Display for Edge<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Edge::ReadWrite(node) => writeln!(f, "rw: {}", ref_to_usize(node)).unwrap(),
+            Edge::Other(node) => writeln!(f, "other: {}", ref_to_usize(node)).unwrap(),
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> fmt::Display for Node<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut incoming = String::new();
+        let empty = self.incoming.lock().is_empty();
+        if !empty {
+            incoming.push('[');
+            let g = self.incoming.lock();
+            for edge in &*g {
+                incoming.push_str(&format!("{}", edge));
+                incoming.push_str(", ");
+            }
+            drop(g);
+            incoming.push_str(&format!("]"));
+        } else {
+            incoming.push_str("[]");
+        }
+
+        writeln!(f).unwrap();
+        writeln!(f, "incoming: {}", incoming).unwrap();
+        writeln!(f, "committed: {:?}", self.committed).unwrap();
+        writeln!(f, "cascading_abort: {:?}", self.cascading_abort).unwrap();
+        writeln!(f, "aborted: {:?}", self.aborted).unwrap();
+        writeln!(f, "cleaned: {:?}", self.cleaned).unwrap();
+        write!(f, "checked: {:?}", self.checked).unwrap();
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn utils() {
+        let node = RwNode::new();
+        let boxed = Box::new(node);
+        let id = to_usize(boxed);
+        let ref_node = from_usize(id);
+        let ref_id = ref_to_usize(ref_node);
+        assert_eq!(id, ref_id);
+
+        let n1 = RwNode::new();
+        let nr1 = &n1;
+        let nr2 = nr1.clone();
+        let nr3 = &nr2;
+
+        assert_eq!(ref_to_usize(nr1), ref_to_usize(&nr2));
+        assert_eq!(ref_to_usize(nr1), ref_to_usize(nr3));
+    }
+
+    #[test]
+    fn edge() {
+        let node = RwNode::new();
+        let e1 = Edge::ReadWrite(&node);
+        let e2 = Edge::ReadWrite(&node);
+        assert_eq!(e1, e2);
+
+        let e3 = Edge::Other(&node);
+        assert!(e3 != e1);
+
+        let onode = RwNode::new();
+        let e4 = Edge::ReadWrite(&onode);
+        assert!(e1 != e4);
+    }
+
+    #[test]
+    fn node() {
+        let node1 = RwNode::new();
+        let node2 = RwNode::new();
+
+        node1.read().insert_incoming(&node2, true);
+        node1.read().insert_incoming(&node2, true);
+        node1.read().insert_incoming(&node2, false);
+        assert_eq!(node1.read().is_incoming(), true);
+
+        let edge = Edge::ReadWrite(&node2);
+        node1.read().remove_incoming(&edge);
+        assert_eq!(node1.read().is_incoming(), true);
+
+        let edge = Edge::Other(&node2);
+        node1.read().remove_incoming(&edge);
+        assert_eq!(node1.read().is_incoming(), false);
     }
 }
