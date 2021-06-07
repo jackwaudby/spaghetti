@@ -13,10 +13,8 @@ use crossbeam_epoch::{self as epoch, Guard};
 use rustc_hash::FxHashSet;
 use std::cell::RefCell;
 
-use std::fmt;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 use thread_local::ThreadLocal;
 use tracing::{debug, info};
 
@@ -197,8 +195,6 @@ impl<'a> SerializationGraph<'a> {
             let rlock = current.read();
             let val1 = !(rlock.is_committed() || rlock.is_aborted() || rlock.is_cascading_abort());
             if val1 {
-                let val2 =
-                    !(rlock.is_committed() || rlock.is_aborted() || rlock.is_cascading_abort());
                 let outgoing = rlock.get_outgoing();
                 let mut out = outgoing.into_iter().collect();
                 stack.append(&mut out);

@@ -1,6 +1,5 @@
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::FxHashSet;
-use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -41,40 +40,20 @@ pub enum Edge<'a> {
     Other(&'a RwNode<'a>),
 }
 
-impl<'a> PartialEq for Edge<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        use Edge::*;
-
-        match (self, other) {
-            (&ReadWrite(ref a), &ReadWrite(ref b)) => ptr::eq(a, b),
-            (&Other(ref a), &Other(ref b)) => ptr::eq(a, b),
-            _ => false,
-        }
-    }
-}
-
-impl<'a> Eq for Edge<'a> {}
-
-impl<'a> Hash for Edge<'a> {
-    fn hash<H: Hasher>(&self, hasher: &mut H) {
-        use Edge::*;
-
-        match self {
-            ReadWrite(node) => {
-                let id = ref_to_usize(node);
-                id.hash(hasher)
-            }
-            Other(node) => {
-                let id = ref_to_usize(node);
-                id.hash(hasher)
-            }
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct RwNode<'a> {
     node: RwLock<Node<'a>>,
+}
+
+#[derive(Debug)]
+pub struct Node<'a> {
+    incoming: NodeSet<'a>,
+    outgoing: NodeSet<'a>,
+    committed: AtomicBool,
+    cascading_abort: AtomicBool,
+    aborted: AtomicBool,
+    cleaned: AtomicBool,
+    checked: AtomicBool,
 }
 
 impl<'a> RwNode<'a> {
@@ -91,17 +70,6 @@ impl<'a> RwNode<'a> {
     pub fn write(&self) -> RwLockWriteGuard<Node<'a>> {
         self.node.write()
     }
-}
-
-#[derive(Debug)]
-pub struct Node<'a> {
-    incoming: NodeSet<'a>,
-    outgoing: NodeSet<'a>,
-    committed: AtomicBool,
-    cascading_abort: AtomicBool,
-    aborted: AtomicBool,
-    cleaned: AtomicBool,
-    checked: AtomicBool,
 }
 
 impl<'a> Node<'a> {
@@ -130,7 +98,6 @@ impl<'a> Node<'a> {
         let guard = self.incoming.lock();
         let emp = !guard.is_empty();
         drop(guard);
-        debug!("has incoming: {}", emp);
         emp
     }
 
@@ -190,10 +157,6 @@ impl<'a> Node<'a> {
         res
     }
 
-    // pub fn take_outgoing(&mut self) -> Mutex<Vec<(&RwNode, bool)>> {
-    //     self.outgoing.take().unwrap()
-    // }
-
     pub fn get_outgoing(&self) -> FxHashSet<Edge<'a>> {
         let guard = self.outgoing.lock();
         let out = guard.clone();
@@ -242,51 +205,33 @@ impl<'a> Node<'a> {
     }
 }
 
-// impl<'a> fmt::Display for Node<'a> {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         let mut incoming = String::new();
-//         let n = self.read().incoming.as_ref().unwrap().lock().len();
+impl<'a> PartialEq for Edge<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        use Edge::*;
 
-//         if n > 0 {
-//             incoming.push('[');
+        match (self, other) {
+            (&ReadWrite(ref a), &ReadWrite(ref b)) => ptr::eq(a, b),
+            (&Other(ref a), &Other(ref b)) => ptr::eq(a, b),
+            _ => false,
+        }
+    }
+}
 
-//             for (node, rw_edge) in &self.read().incoming.as_ref().unwrap().lock()[0..n - 1] {
-//                 incoming.push_str(&format!("{}-{}", node.as_ptr() as usize, rw_edge));
-//                 incoming.push_str(", ");
-//             }
+impl<'a> Eq for Edge<'a> {}
 
-//             let (node, rw_edge) = &self.read().incoming.as_ref().unwrap().lock()[n - 1].clone();
-//             incoming.push_str(&format!("{}-{}]", node.as_ptr() as usize, rw_edge));
-//         } else {
-//             incoming.push_str("[]");
-//         }
+impl<'a> Hash for Edge<'a> {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        use Edge::*;
 
-//         let mut outgoing = String::new();
-//         let m = self.read().incoming.as_ref().unwrap().lock().len();
-
-//         if m > 0 {
-//             outgoing.push('[');
-
-//             for (node, rw_edge) in &self.read().outgoing.as_ref().unwrap().lock()[0..m - 1] {
-//                 outgoing.push_str(&format!("{}-{}", node.as_ptr() as usize, rw_edge));
-//                 outgoing.push_str(", ");
-//             }
-
-//             let (node, rw_edge) = self.read().outgoing.as_ref().unwrap().lock()[m - 1].clone();
-//             outgoing.push_str(&format!("{}-{}]", node.as_ptr() as usize, rw_edge));
-//         } else {6
-//             outgoing.push_str("[]");
-//         }
-
-//         writeln!(f).unwrap();
-//         writeln!(f, "incoming: {}", incoming).unwrap();
-//         writeln!(f, "outgoing: {}", outgoing).unwrap();
-//         writeln!(f, "committed: {:?}", self.read().committed).unwrap();
-//         writeln!(f, "cascading_abort: {:?}", self.read().cascading_abort).unwrap();
-//         writeln!(f, "aborted: {:?}", self.read().aborted).unwrap();
-//         writeln!(f, "cleaned: {:?}", self.read().cleaned).unwrap();
-//         write!(f, "checked: {:?}", self.read().checked).unwrap();
-
-//         Ok(())
-//     }
-// }
+        match self {
+            ReadWrite(node) => {
+                let id = ref_to_usize(node);
+                id.hash(hasher)
+            }
+            Other(node) => {
+                let id = ref_to_usize(node);
+                id.hash(hasher)
+            }
+        }
+    }
+}
