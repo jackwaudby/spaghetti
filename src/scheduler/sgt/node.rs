@@ -1,7 +1,10 @@
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use rustc_hash::FxHashSet;
 use std::fmt;
+use std::hash::{Hash, Hasher};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tracing::debug;
 
 pub fn from_usize<'a>(address: usize) -> &'a RwNode<'a> {
     // Safety: finding an address in some access history implies the corresponding node is either:
@@ -25,7 +28,49 @@ pub fn to_box<'a>(address: usize) -> Box<RwNode<'a>> {
     }
 }
 
-type NodeSet<'a> = Mutex<Vec<(&'a RwNode<'a>, bool)>>;
+pub fn ref_to_usize<'a>(node: &'a RwNode<'a>) -> usize {
+    let ptr: *const RwNode<'a> = node;
+    ptr as usize
+}
+
+type NodeSet<'a> = Mutex<FxHashSet<Edge<'a>>>;
+
+#[derive(Debug, Clone)]
+pub enum Edge<'a> {
+    ReadWrite(&'a RwNode<'a>),
+    Other(&'a RwNode<'a>),
+}
+
+impl<'a> PartialEq for Edge<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        use Edge::*;
+
+        match (self, other) {
+            (&ReadWrite(ref a), &ReadWrite(ref b)) => ptr::eq(a, b),
+            (&Other(ref a), &Other(ref b)) => ptr::eq(a, b),
+            _ => false,
+        }
+    }
+}
+
+impl<'a> Eq for Edge<'a> {}
+
+impl<'a> Hash for Edge<'a> {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        use Edge::*;
+
+        match self {
+            ReadWrite(node) => {
+                let id = ref_to_usize(node);
+                id.hash(hasher)
+            }
+            Other(node) => {
+                let id = ref_to_usize(node);
+                id.hash(hasher)
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct RwNode<'a> {
@@ -62,8 +107,8 @@ pub struct Node<'a> {
 impl<'a> Node<'a> {
     pub fn new() -> Self {
         Self {
-            incoming: Mutex::new(vec![]),
-            outgoing: Mutex::new(vec![]),
+            incoming: Mutex::new(FxHashSet::default()),
+            outgoing: Mutex::new(FxHashSet::default()),
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
@@ -74,7 +119,9 @@ impl<'a> Node<'a> {
 
     pub fn incoming_edge_exists(&self, from: &'a RwNode<'a>) -> bool {
         let guard = self.incoming.lock();
-        let exists = guard.iter().any(|(edge, _)| !ptr::eq(*edge, from));
+        let a = Edge::Other(from);
+        let b = Edge::ReadWrite(from);
+        let exists = guard.contains(&a) || guard.contains(&b);
         drop(guard);
         exists
     }
@@ -82,26 +129,38 @@ impl<'a> Node<'a> {
     pub fn is_incoming(&self) -> bool {
         let guard = self.incoming.lock();
         let emp = !guard.is_empty();
-
         drop(guard);
+        debug!("has incoming: {}", emp);
         emp
     }
 
     pub fn insert_incoming(&self, from_node: &'a RwNode<'a>, rw_edge: bool) {
         let mut guard = self.incoming.lock();
-        guard.push((from_node, rw_edge));
+        let edge;
+        if rw_edge {
+            edge = Edge::ReadWrite(from_node);
+        } else {
+            edge = Edge::Other(from_node);
+        }
+        guard.insert(edge);
         drop(guard);
     }
 
-    pub fn remove_incoming(&self, from: &'a RwNode<'a>) {
+    pub fn remove_incoming(&self, from: &Edge<'a>) {
         let mut guard = self.incoming.lock();
-        guard.retain(|(edge, _)| !ptr::eq(*edge, from));
+        guard.remove(from);
         drop(guard);
     }
 
     pub fn insert_outgoing(&self, to_node: &'a RwNode<'a>, rw_edge: bool) {
         let mut guard = self.outgoing.lock();
-        guard.push((to_node, rw_edge));
+        let edge;
+        if rw_edge {
+            edge = Edge::ReadWrite(to_node);
+        } else {
+            edge = Edge::Other(to_node);
+        }
+        guard.insert(edge);
         drop(guard);
     }
 
@@ -117,14 +176,14 @@ impl<'a> Node<'a> {
         drop(guard);
     }
 
-    pub fn take_incoming(&mut self) -> Vec<(&'a RwNode<'a>, bool)> {
+    pub fn take_incoming(&mut self) -> FxHashSet<Edge<'a>> {
         let g = self.incoming.lock();
         let res = g.clone();
         drop(g);
         res
     }
 
-    pub fn take_outgoing(&mut self) -> Vec<(&'a RwNode<'a>, bool)> {
+    pub fn take_outgoing(&mut self) -> FxHashSet<Edge<'a>> {
         let g = self.outgoing.lock();
         let res = g.clone();
         drop(g);
@@ -135,25 +194,11 @@ impl<'a> Node<'a> {
     //     self.outgoing.take().unwrap()
     // }
 
-    pub fn get_outgoing(&self, v1: bool, v2: bool) -> Vec<(&'a RwNode<'a>, bool)> {
-        //     match self.outgoing {
-        //         Some(ref x) => {
+    pub fn get_outgoing(&self) -> FxHashSet<Edge<'a>> {
         let guard = self.outgoing.lock();
         let out = guard.clone();
         drop(guard);
         out
-        //         }
-        //         None => {
-        //             let v3 = !self.is_aborted() || !self.is_cascading_abort(); // || !self.is_committed();
-        //             panic!("{:?}; {}; {}; {}", self, v1, v2, v3)
-        //         }
-        //     }
-
-        //     // let guard = self.outgoing.as_ref().unwrap().lock();
-        //     // let out = guard.clone();
-
-        //     // drop(guard);
-        //     // out
     }
 
     pub fn is_aborted(&self) -> bool {

@@ -52,3 +52,4 @@ spin = {version = "0.9.0", features = ["ticket_mutex"]}
 thread_local = "1.1.3"
 crossbeam-utils = "0.8.4"
 crossbeam-epoch = "0.9.4"
+flurry = "0.3.1"

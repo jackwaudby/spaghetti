@@ -1,6 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::sgt::error::SerializationGraphError;
-use crate::scheduler::sgt::node::RwNode;
+use crate::scheduler::sgt::node::{Edge, RwNode};
 use crate::scheduler::sgt::transaction_information::{
     Operation, OperationType, TransactionInformation,
 };
@@ -13,7 +13,6 @@ use crossbeam_epoch::{self as epoch, Guard};
 use rustc_hash::FxHashSet;
 use std::cell::RefCell;
 
-//use std::collections::HashSet;
 use std::fmt;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -32,7 +31,7 @@ pub struct SerializationGraph<'a> {
     txn_ctr: ThreadLocal<RefCell<u64>>,
     this_node: ThreadLocal<RefCell<Option<&'a RwNode<'a>>>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
-    stack: ThreadLocal<RefCell<Vec<&'a RwNode<'a>>>>,
+    stack: ThreadLocal<RefCell<Vec<Edge<'a>>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
 }
 
@@ -73,16 +72,25 @@ impl<'a> SerializationGraph<'a> {
 
         let this_rlock = this.read(); // read write lock
 
-        for (that, rw_edge) in &outgoing {
-            let that_rlock = that.read(); // get read lock on outgoing edge
-
-            if this_rlock.is_aborted() && !rw_edge {
-                that_rlock.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
-            } else if !that_rlock.is_cleaned() {
-                that_rlock.remove_incoming(this);
+        for edge in &outgoing {
+            match edge {
+                Edge::ReadWrite(that) => {
+                    let that_rlock = that.read(); // get read lock on outgoing edge
+                    if !that_rlock.is_cleaned() {
+                        that_rlock.remove_incoming(edge);
+                    }
+                    drop(that_rlock);
+                }
+                Edge::Other(that) => {
+                    let that_rlock = that.read(); // get read lock on outgoing edge
+                    if this_rlock.is_aborted() {
+                        that_rlock.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
+                    } else if !that_rlock.is_cleaned() {
+                        that_rlock.remove_incoming(edge);
+                    }
+                    drop(that_rlock);
+                }
             }
-
-            drop(that_rlock);
         }
         outgoing.clear();
 
@@ -151,6 +159,7 @@ impl<'a> SerializationGraph<'a> {
     }
 
     pub fn cycle_check(&self, this: &'a RwNode<'a>) -> bool {
+        debug!("cycle check");
         let start = this;
         let mut visited = self
             .visited
@@ -163,12 +172,17 @@ impl<'a> SerializationGraph<'a> {
         stack.clear();
 
         let this_rlock = this.read();
-        let outgoing = this_rlock.get_outgoing(true, true);
-        let mut out: Vec<&RwNode> = outgoing.into_iter().map(|(node, _)| node).collect();
+        let outgoing = this_rlock.get_outgoing(); // FxHashSet<Edge<'a>>
+        let mut out = outgoing.into_iter().collect();
         stack.append(&mut out);
         drop(this_rlock);
 
-        while let Some(current) = stack.pop() {
+        while let Some(edge) = stack.pop() {
+            let current = match edge {
+                Edge::ReadWrite(node) => node,
+                Edge::Other(node) => node,
+            };
+
             if std::ptr::eq(start, current) {
                 return true; // cycle found
             }
@@ -185,8 +199,8 @@ impl<'a> SerializationGraph<'a> {
             if val1 {
                 let val2 =
                     !(rlock.is_committed() || rlock.is_aborted() || rlock.is_cascading_abort());
-                let outgoing = rlock.get_outgoing(val1, val2);
-                let mut out: Vec<&RwNode> = outgoing.into_iter().map(|(node, _)| node).collect();
+                let outgoing = rlock.get_outgoing();
+                let mut out = outgoing.into_iter().collect();
                 stack.append(&mut out);
             }
 
@@ -565,6 +579,7 @@ impl<'a> SerializationGraph<'a> {
             if self.needs_abort(&this) {
                 return Err(self.abort(database, guard));
             }
+            debug!("commit attempt");
 
             if self.check_committed(&this, database, guard) {
                 break;
