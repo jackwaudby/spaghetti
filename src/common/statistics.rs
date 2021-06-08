@@ -318,6 +318,7 @@ impl LocalStatistics {
                     // NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
                     _ => {}
                 },
+                _ => {}
             }
         }
     }
@@ -472,6 +473,7 @@ impl AbortBreakdown {
         let protocol_specific = match protocol {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
+            "nocc" => ProtocolAbortBreakdown::NoConcurrencyControl,
             _ => unimplemented!(),
         };
 
@@ -505,6 +507,7 @@ impl AbortBreakdown {
                     panic!("protocol abort breakdowns do not match");
                 }
             }
+            _ => {}
         }
 
         match self.workload_specific {
@@ -584,6 +587,7 @@ impl SmallBankReasons {
 enum ProtocolAbortBreakdown {
     SerializationGraph(SerializationGraphReasons),
     OptimisticWaitHit(HitListReasons),
+    NoConcurrencyControl,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
