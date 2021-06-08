@@ -37,7 +37,8 @@ impl WaitManager {
         let n = usize::pow(2, self.retries);
         let ind = self.rng.gen_range(0..n);
         let wait_time = self.slots[ind];
-        thread::sleep(Duration::from_micros(wait_time));
+        //   thread::sleep(Duration::from_micros(wait_time));
+        thread::sleep(Duration::from_micros(0));
     }
 
     pub fn reset(&mut self) {
