@@ -269,43 +269,43 @@ impl<'a> RwNode<'a> {
     }
 
     pub fn is_aborted(&self) -> bool {
-        self.aborted.load(Ordering::AcqRel)
+        self.aborted.load(Ordering::Acquire)
     }
 
     pub fn set_aborted(&self) {
-        self.aborted.store(true, Ordering::AcqRel);
+        self.aborted.store(true, Ordering::Release);
     }
 
     pub fn is_cascading_abort(&self) -> bool {
-        self.cascading_abort.load(Ordering::AcqRel)
+        self.cascading_abort.load(Ordering::Acquire)
     }
 
     pub fn set_cascading_abort(&self) {
-        self.cascading_abort.store(true, Ordering::AcqRel);
+        self.cascading_abort.store(true, Ordering::Release);
     }
 
     pub fn is_committed(&self) -> bool {
-        self.committed.load(Ordering::AcqRel)
+        self.committed.load(Ordering::Acquire)
     }
 
     pub fn set_committed(&self) {
-        self.committed.store(true, Ordering::AcqRel);
+        self.committed.store(true, Ordering::Release);
     }
 
     pub fn is_checked(&self) -> bool {
-        self.checked.load(Ordering::AcqRel)
+        self.checked.load(Ordering::Acquire)
     }
 
     pub fn set_checked(&self, val: bool) {
-        self.checked.store(val, Ordering::AcqRel);
+        self.checked.store(val, Ordering::Release);
     }
 
     pub fn is_cleaned(&self) -> bool {
-        self.cleaned.load(Ordering::AcqRel)
+        self.cleaned.load(Ordering::Acquire)
     }
 
     pub fn set_cleaned(&self) {
-        self.cleaned.store(true, Ordering::AcqRel);
+        self.cleaned.store(true, Ordering::Release);
     }
 }
 
