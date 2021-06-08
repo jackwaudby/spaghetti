@@ -284,7 +284,7 @@ impl<'a> SerializationGraph<'a> {
         &self,
         this: &'a RwNode<'a>,
         database: &Database,
-        _guard: &'g Guard,
+        guard: &'g Guard,
     ) -> bool {
         let is_cycle = self.cycle_check(&this); // cycle check
 
@@ -317,11 +317,11 @@ impl<'a> SerializationGraph<'a> {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
                     tuple.get().commit(); // revert
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv, guard); // remove access
                 }
             }
         }
@@ -369,7 +369,7 @@ impl<'a> SerializationGraph<'a> {
 
             let table: &Table = database.get_table(table_id); // get table
             let rw_table = table.get_rwtable(offset); // get rwtable
-            let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
+            let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
             let lsn = table.get_lsn(offset);
 
             debug!("spin");
@@ -399,7 +399,7 @@ impl<'a> SerializationGraph<'a> {
             debug!("edges added");
 
             if cyclic {
-                rw_table.erase(prv); // remove from rw table
+                rw_table.erase(prv, guard); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 self.abort(database, guard); // abort
                 debug!("cycle found");
@@ -463,7 +463,7 @@ impl<'a> SerializationGraph<'a> {
                     return Err(self.abort(database, guard));
                 }
 
-                prv = rw_table.push_front(Access::Write(meta.clone()));
+                prv = rw_table.push_front(Access::Write(meta.clone()), guard);
 
                 spin(prv, lsn);
 
@@ -496,14 +496,14 @@ impl<'a> SerializationGraph<'a> {
                 }
 
                 if cyclic {
-                    rw_table.erase(prv); // remove from rw table
+                    rw_table.erase(prv, guard); // remove from rw table
                     lsn.store(prv + 1, Ordering::Release); // update lsn
                     self.abort(database, guard);
                     return Err(SerializationGraphError::CycleFound.into());
                 }
 
                 if wait {
-                    rw_table.erase(prv); // remove from rw table
+                    rw_table.erase(prv, guard); // remove from rw table
                     lsn.store(prv + 1, Ordering::Release); // update lsn
                     continue;
                 }
@@ -532,7 +532,7 @@ impl<'a> SerializationGraph<'a> {
             }
 
             if cyclic {
-                rw_table.erase(prv); // remove from rw table
+                rw_table.erase(prv, guard); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 self.abort(database, guard);
                 return Err(SerializationGraphError::CycleFound.into());
@@ -625,11 +625,11 @@ impl<'a> SerializationGraph<'a> {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
                     tuple.get().revert(); // revert
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv, guard); // remove access
                 }
             }
         }

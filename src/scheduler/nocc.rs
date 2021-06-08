@@ -43,12 +43,12 @@ impl NoConcurrencyControl {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        _guard: &'g Guard,
+        guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         if let TransactionId::NoConcurrencyControl = meta {
             let table: &Table = database.get_table(table_id); // get table
             let rw_table = table.get_rwtable(offset); // get rwtable
-            let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
+            let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
             let lsn = table.get_lsn(offset);
 
             spin(prv, lsn);
@@ -84,13 +84,13 @@ impl NoConcurrencyControl {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        _guard: &'g Guard,
+        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         if let TransactionId::NoConcurrencyControl = meta {
             let table = database.get_table(table_id);
             let rw_table = table.get_rwtable(offset);
             let lsn = table.get_lsn(offset);
-            let prv = rw_table.push_front(Access::Write(meta.clone()));
+            let prv = rw_table.push_front(Access::Write(meta.clone()), guard);
             spin(prv, lsn);
 
             let tuple = table.get_tuple(column_id, offset).get(); // get tuple
@@ -114,7 +114,7 @@ impl NoConcurrencyControl {
     }
 
     /// Commit operation.
-    pub fn commit<'g>(&self, database: &Database, _guard: &'g Guard) -> Result<(), NonFatalError> {
+    pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
         let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
 
         for op in ops {
@@ -131,10 +131,10 @@ impl NoConcurrencyControl {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv, guard); // remove access
                 }
             }
         }
@@ -143,7 +143,7 @@ impl NoConcurrencyControl {
     }
 
     /// Abort operation.
-    pub fn abort<'g>(&self, database: &Database, _guard: &'g Guard) -> NonFatalError {
+    pub fn abort<'g>(&self, database: &Database, guard: &'g Guard) -> NonFatalError {
         let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
 
         for op in ops {
@@ -160,10 +160,10 @@ impl NoConcurrencyControl {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv, guard); // remove access
                 }
             }
         }

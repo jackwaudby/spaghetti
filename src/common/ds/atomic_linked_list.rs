@@ -31,7 +31,7 @@ impl<T> AtomicLinkedList<T> {
     }
 
     /// Push an element to the head of the list. Returns (all-time) position in the list.
-    pub fn push_front(&self, t: T) -> u64 {
+    pub fn push_front<'g>(&self, t: T, guard: &'g Guard) -> u64 {
         let id = self.id.fetch_add(1, SeqCst); // get node id
 
         let mut new = Owned::new(Node {
@@ -40,7 +40,7 @@ impl<T> AtomicLinkedList<T> {
             next: Atomic::null(),
         }); // create node
 
-        let guard = &epoch::pin(); // pin thread
+        //    let guard = &epoch::pin(); // pin thread
 
         loop {
             let head = self.head.load(Relaxed, guard); // snapshot current
@@ -53,7 +53,7 @@ impl<T> AtomicLinkedList<T> {
                 .compare_exchange(head, new, Relaxed, Relaxed, guard)
             {
                 Ok(_) => {
-                    drop(guard);
+                    //       drop(guard);
                     return id;
                 }
                 Err(cse) => {
@@ -95,14 +95,13 @@ impl<T> AtomicLinkedList<T> {
         }
     }
 
-    pub fn erase(&self, id: u64) -> Option<T> {
+    pub fn erase<'g>(&self, id: u64, guard: &'g Guard) -> Option<T> {
         let lg = self.lock.lock(); // 1 erase at a time
-        let guard = &epoch::pin();
 
         let mut left = Shared::null(); // Shared
         let mut current;
         loop {
-            current = self.head.load(Acquire, &guard); // Shared
+            current = self.head.load(Acquire, guard); // Shared
 
             // traverse until current is node to be removed
             while let Some(node) = unsafe { current.as_ref() } {
@@ -110,14 +109,14 @@ impl<T> AtomicLinkedList<T> {
                     break;
                 }
                 left = current;
-                current = node.next.load(Acquire, &guard); // Shared
+                current = node.next.load(Acquire, guard); // Shared
             }
 
             let right = match unsafe { current.as_ref() } {
-                Some(node) => node.next.load(Acquire, &guard),
+                Some(node) => node.next.load(Acquire, guard),
                 None => {
                     drop(lg);
-                    drop(guard);
+                    //        drop(guard);
                     return None;
                 }
             };
@@ -160,7 +159,7 @@ impl<T> AtomicLinkedList<T> {
         unsafe { guard.defer_destroy(current) }; // deallocate
 
         drop(lg);
-        drop(guard);
+        //   drop(guard);
         return Some(unsafe { ptr::read(&*(current.as_ref().unwrap()).data) }); // return value
     }
 }
