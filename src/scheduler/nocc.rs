@@ -16,7 +16,7 @@ use tracing::info;
 
 #[derive(Debug)]
 pub struct NoConcurrencyControl {
-    txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
+    txn_info: ThreadLocal<RefCell<TransactionInformation>>,
 }
 
 impl NoConcurrencyControl {
@@ -28,8 +28,10 @@ impl NoConcurrencyControl {
     }
 
     pub fn begin(&self) -> TransactionId {
-        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
-            Some(TransactionInformation::new());
+        *self
+            .txn_info
+            .get_or(|| RefCell::new(TransactionInformation::new()))
+            .borrow_mut() = TransactionInformation::new();
 
         TransactionId::NoConcurrencyControl
     }
@@ -58,13 +60,13 @@ impl NoConcurrencyControl {
                 .unwrap()
                 .get_value(); // read
 
-            self.txn_info
-                .get()
-                .unwrap()
-                .borrow_mut()
-                .as_mut()
-                .unwrap()
-                .add(OperationType::Read, table_id, column_id, offset, prv); // record operation
+            self.txn_info.get().unwrap().borrow_mut().add(
+                OperationType::Read,
+                table_id,
+                column_id,
+                offset,
+                prv,
+            ); // record operation
             lsn.store(prv + 1, Ordering::Release); // update lsn
 
             Ok(vals)
@@ -95,13 +97,13 @@ impl NoConcurrencyControl {
             tuple.set_value(value).unwrap(); // set value
             tuple.commit(); // commit; operations never fail
 
-            self.txn_info
-                .get()
-                .unwrap()
-                .borrow_mut()
-                .as_mut()
-                .unwrap()
-                .add(OperationType::Write, table_id, column_id, offset, prv); // record operation
+            self.txn_info.get().unwrap().borrow_mut().add(
+                OperationType::Write,
+                table_id,
+                column_id,
+                offset,
+                prv,
+            ); // record operation
 
             lsn.store(prv + 1, Ordering::Release); // update lsn
 
@@ -113,14 +115,7 @@ impl NoConcurrencyControl {
 
     /// Commit operation.
     pub fn commit<'g>(&self, database: &Database, _guard: &'g Guard) -> Result<(), NonFatalError> {
-        let ops = self
-            .txn_info
-            .get()
-            .unwrap()
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .get(); // get operations
+        let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
 
         for op in ops {
             let Operation {
@@ -149,14 +144,7 @@ impl NoConcurrencyControl {
 
     /// Abort operation.
     pub fn abort<'g>(&self, database: &Database, _guard: &'g Guard) -> NonFatalError {
-        let ops = self
-            .txn_info
-            .get()
-            .unwrap()
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .get(); // get operations
+        let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
 
         for op in ops {
             let Operation {
