@@ -141,7 +141,7 @@ impl SmallBankGenerator {
                 )
             }
             // AMALGAMATE
-            x if x < 0.46 => {
+            x if x < 0.60 => {
                 let (name1, name2) = self.get_names();
 
                 let payload = Amalgamate { name1, name2 };
