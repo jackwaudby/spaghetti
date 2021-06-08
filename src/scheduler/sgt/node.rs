@@ -1,10 +1,10 @@
 use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use rustc_hash::FxHashSet;
+use std::cell::UnsafeCell;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
-use tracing::debug;
 
 pub fn from_usize<'a>(address: usize) -> &'a RwNode<'a> {
     // Safety: finding an address in some access history implies the corresponding node is either:
@@ -41,71 +41,100 @@ pub enum Edge<'a> {
     Other(&'a RwNode<'a>),
 }
 
-#[derive(Debug)]
-pub struct RwNode<'a> {
-    node: RwLock<Node<'a>>,
-}
+// #[derive(Debug)]
+// pub struct RwNode<'a> {
+//     //    node: RwLock<Node<'a>>,
+//     node: Node<'a>,
+// }
 
 #[derive(Debug)]
-pub struct Node<'a> {
-    incoming: Option<EdgeSet<'a>>,
-    outgoing: Option<EdgeSet<'a>>,
+pub struct RwNode<'a> {
+    incoming: UnsafeCell<Option<EdgeSet<'a>>>,
+    outgoing: UnsafeCell<Option<EdgeSet<'a>>>,
     committed: AtomicBool,
     cascading_abort: AtomicBool,
     aborted: AtomicBool,
     cleaned: AtomicBool,
     checked: AtomicBool,
+    lock: RwLock<u32>,
 }
+
+unsafe impl<'a> Send for RwNode<'a> {}
+unsafe impl<'a> Sync for RwNode<'a> {}
+
+// impl<'a> RwNode<'a> {
+//     pub fn new() -> Self {
+//         Self {
+//             //            node: RwLock::new(Node::new()),
+//             node: Node::new(),
+//         }
+//     }
+
+//     pub fn new_with_sets(incoming: EdgeSet<'a>, outgoing: EdgeSet<'a>) -> Self {
+//         Self {
+//             //            node: RwLock::new(Node::new_with_sets(incoming, outgoing)),
+//             node: Node::new_with_sets(incoming, outgoing),
+//         }
+//     }
+
+//     //    pub fn read(&self) -> RwLockReadGuard<Node<'a>> {
+
+//     pub fn read(&self) -> RwLockReadGuard<u32> {
+//         self.node.lock.read()
+//     }
+
+//     //    pub fn write(&self) -> RwLockWriteGuard<Node<'a>> {
+//     pub fn write(&self) -> RwLockWriteGuard<u32> {
+//         self.node.lock.write()
+//     }
+// }
 
 impl<'a> RwNode<'a> {
+    pub fn read(&self) -> RwLockReadGuard<u32> {
+        self.lock.read()
+    }
+
+    //    pub fn write(&self) -> RwLockWriteGuard<Node<'a>> {
+    pub fn write(&self) -> RwLockWriteGuard<u32> {
+        self.lock.write()
+    }
+
     pub fn new() -> Self {
         Self {
-            node: RwLock::new(Node::new()),
-        }
-    }
-
-    pub fn new_with_sets(incoming: EdgeSet<'a>, outgoing: EdgeSet<'a>) -> Self {
-        Self {
-            node: RwLock::new(Node::new_with_sets(incoming, outgoing)),
-        }
-    }
-
-    pub fn read(&self) -> RwLockReadGuard<Node<'a>> {
-        self.node.read()
-    }
-
-    pub fn write(&self) -> RwLockWriteGuard<Node<'a>> {
-        self.node.write()
-    }
-}
-
-impl<'a> Node<'a> {
-    pub fn new() -> Self {
-        Self {
-            incoming: Some(Mutex::new(FxHashSet::default())),
-            outgoing: Some(Mutex::new(FxHashSet::default())),
+            incoming: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
+            outgoing: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
+            lock: RwLock::new(0),
         }
     }
 
     pub fn new_with_sets(incoming: EdgeSet<'a>, outgoing: EdgeSet<'a>) -> Self {
         Self {
-            incoming: Some(incoming),
-            outgoing: Some(outgoing),
+            incoming: UnsafeCell::new(Some(incoming)),
+            outgoing: UnsafeCell::new(Some(outgoing)),
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
+            lock: RwLock::new(0),
         }
     }
 
     pub fn incoming_edge_exists(&self, from: &'a RwNode<'a>) -> bool {
-        let guard = self.incoming.as_ref().unwrap().lock();
+        let guard = unsafe {
+            self.incoming
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+        };
         let a = Edge::Other(from);
         let b = Edge::ReadWrite(from);
         let exists = guard.contains(&a) || guard.contains(&b);
@@ -114,22 +143,32 @@ impl<'a> Node<'a> {
     }
 
     pub fn is_incoming(&self) -> bool {
-        let handle = std::thread::current();
-        debug!("{:?}, check incoming", handle.id());
-
-        let guard = self.incoming.as_ref().unwrap().lock();
+        let guard = unsafe {
+            self.incoming
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+        };
         let emp = !guard.is_empty();
-        debug!("{:?}, has incoming: {}", handle.id(), emp);
-        debug!("{:?}, size: {}", handle.id(), guard.len());
 
         drop(guard);
-        //  debug!("{}", self);
 
         emp
     }
 
     pub fn insert_incoming(&self, from_node: &'a RwNode<'a>, rw_edge: bool) {
-        let mut guard = self.incoming.as_ref().unwrap().lock();
+        let mut guard = unsafe {
+            self.incoming
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+        };
         let edge;
         if rw_edge {
             edge = Edge::ReadWrite(from_node);
@@ -141,13 +180,29 @@ impl<'a> Node<'a> {
     }
 
     pub fn remove_incoming(&self, from: &Edge<'a>) {
-        let mut guard = self.incoming.as_ref().unwrap().lock();
+        let mut guard = unsafe {
+            self.incoming
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+        };
         guard.remove(from);
         drop(guard);
     }
 
     pub fn insert_outgoing(&self, to_node: &'a RwNode<'a>, rw_edge: bool) {
-        let mut guard = self.outgoing.as_ref().unwrap().lock();
+        let mut guard = unsafe {
+            self.outgoing
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+        };
         let edge;
         if rw_edge {
             edge = Edge::ReadWrite(to_node);
@@ -159,27 +214,52 @@ impl<'a> Node<'a> {
     }
 
     pub fn clear_incoming(&self) {
-        let mut guard = self.incoming.as_ref().unwrap().lock();
+        let mut guard = unsafe {
+            self.incoming
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+        };
         guard.clear();
         drop(guard);
     }
 
     pub fn clear_outgoing(&self) {
-        let mut guard = self.outgoing.as_ref().unwrap().lock();
+        let mut guard = unsafe {
+            self.outgoing
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+        };
         guard.clear();
         drop(guard);
     }
 
-    pub fn take_incoming(&mut self) -> EdgeSet<'a> {
-        self.incoming.take().unwrap()
+    pub fn take_incoming(&self) -> EdgeSet<'a> {
+        unsafe { self.incoming.get().as_mut().unwrap().take().unwrap() }
     }
 
-    pub fn take_outgoing(&mut self) -> EdgeSet<'a> {
-        self.outgoing.take().unwrap()
+    pub fn take_outgoing(&self) -> EdgeSet<'a> {
+        unsafe { self.outgoing.get().as_mut().unwrap().take().unwrap() }
     }
 
     pub fn get_outgoing(&self) -> FxHashSet<Edge<'a>> {
-        let guard = self.outgoing.as_ref().unwrap().lock();
+        let guard = unsafe {
+            self.outgoing
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+        };
+
         let out = guard.clone();
         drop(guard);
         out
@@ -268,13 +348,30 @@ impl<'a> fmt::Display for Edge<'a> {
     }
 }
 
-impl<'a> fmt::Display for Node<'a> {
+impl<'a> fmt::Display for RwNode<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut incoming = String::new();
-        let empty = self.incoming.as_ref().unwrap().lock().is_empty();
+        let empty = unsafe {
+            self.incoming
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+                .is_empty()
+        };
         if !empty {
             incoming.push('[');
-            let g = self.incoming.as_ref().unwrap().lock();
+            let g = unsafe {
+                self.incoming
+                    .get()
+                    .as_ref()
+                    .unwrap()
+                    .as_ref()
+                    .unwrap()
+                    .lock()
+            };
             for edge in &*g {
                 incoming.push_str(&format!("{}", edge));
                 incoming.push_str(", ");

@@ -10,7 +10,7 @@ use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 use crate::storage::Database;
 
-use crossbeam_epoch::{self as epoch, Guard};
+use crossbeam_epoch::Guard;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use std::cell::RefCell;
@@ -77,16 +77,12 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Cleanup a node.
-    pub fn cleanup<'g>(&self, guard: &'g Guard) {
-        let this: &RwNode = self.this_node.get().unwrap().borrow_mut().take().unwrap(); // take
-
-        let mut this_wlock = this.write(); // get write lock
-        this_wlock.set_cleaned(); // set as cleaned
-        let outgoing = this_wlock.take_outgoing(); // remove edges
-        let incoming = this_wlock.take_incoming();
+    pub fn cleanup<'g>(&self, this: &'a RwNode<'a>, guard: &'g Guard) {
+        let this_wlock = this.write(); // get write lock
+        this.set_cleaned(); // set as cleaned
+        let outgoing = this.take_outgoing(); // remove edges
+        let incoming = this.take_incoming();
         drop(this_wlock); // drop write lock
-
-        let this_rlock = this.read(); // read write lock
 
         let mut g = outgoing.lock();
         let edge_set = g.iter();
@@ -95,36 +91,34 @@ impl<'a> SerializationGraph<'a> {
             match edge {
                 Edge::ReadWrite(that) => {
                     let that_rlock = that.read(); // get read lock on outgoing edge
-                    if !that_rlock.is_cleaned() {
-                        that_rlock.remove_incoming(&Edge::ReadWrite(this)); // remove incoming from this node
+                    if !that.is_cleaned() {
+                        that.remove_incoming(&Edge::ReadWrite(this)); // remove incoming from this node
                     }
                     drop(that_rlock);
                 }
                 Edge::Other(that) => {
-                    let that_rlock = that.read(); // get read lock on outgoing edge
-                    if this_rlock.is_aborted() {
-                        that_rlock.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
-                    } else if !that_rlock.is_cleaned() {
-                        that_rlock.remove_incoming(&Edge::Other(this));
+                    if this.is_aborted() {
+                        that.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
+                    } else {
+                        let that_rlock = that.read(); // get read lock on outgoing edge
+                        if !that.is_cleaned() {
+                            that.remove_incoming(&Edge::Other(this));
+                        }
+                        drop(that_rlock);
                     }
-                    drop(that_rlock);
                 }
             }
         }
-        // this_rlock.clear_outgoing(); // change TODO
         g.clear();
         drop(g);
 
-        if this_rlock.is_aborted() {
-            //   this_rlock.clear_incoming(); // change TODO
+        if this.is_aborted() {
             incoming.lock().clear();
         }
 
         let mut recycled = self.recycled.get_or(|| RefCell::new(vec![])).borrow_mut();
         recycled.push(incoming);
         recycled.push(outgoing);
-
-        drop(this_rlock);
 
         let this_ptr: *const RwNode<'a> = this;
         let this_usize = this_ptr as usize;
@@ -143,39 +137,37 @@ impl<'a> SerializationGraph<'a> {
             return true; // check for self edge
         }
 
-        let this_rlock = this.read(); // get read lock on this_node
-        let exists = this_rlock.incoming_edge_exists(from); // check from_node exists
-        drop(this_rlock);
+        let exists = this.incoming_edge_exists(from); // check if (from) --> (this) already exists
 
         loop {
+            // if does not exist
             if !exists {
-                let this_rlock = this.read();
-                let from_rlock = from.read();
+                // if (from) has aborted and is ww/wr edge
+                if from.is_aborted() && !rw {
+                    this.set_cascading_abort();
+                    return false; // then cascadingly abort (this)
+                }
 
-                if from_rlock.is_aborted() && !rw {
-                    this_rlock.set_cascading_abort();
+                let from_rlock = from.read(); // get shared lock on (from)
+
+                // if (from) cleaned
+                if from.is_cleaned() {
                     drop(from_rlock);
-                    drop(this_rlock);
-                    return false; // cascading abort
+                    return true; // do not insert edge
                 }
 
-                if from_rlock.is_cleaned() {
+                // if (from) checked
+                if from.is_checked() {
                     drop(from_rlock);
-                    drop(this_rlock);
-                    return true; // from node cleaned
+                    continue; // in process of terminating so try again
                 }
 
-                if from_rlock.is_checked() {
-                    drop(from_rlock); // drop read lock
-
-                    drop(this_rlock);
-                    continue; // from node checked
-                }
-
-                this_rlock.insert_incoming(from, rw); // insert edge
-                from_rlock.insert_outgoing(this, rw);
+                let this_rlock = this.read(); // get shared lock on (this)
+                this.insert_incoming(from, rw); // insert edge
+                from.insert_outgoing(this, rw);
                 drop(from_rlock);
                 drop(this_rlock);
+
                 let is_cycle = self.cycle_check(&this); // cycle check
                 return !is_cycle;
             } else {
@@ -198,7 +190,7 @@ impl<'a> SerializationGraph<'a> {
         stack.clear();
 
         let this_rlock = this.read();
-        let outgoing = this_rlock.get_outgoing(); // FxHashSet<Edge<'a>>
+        let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
         let mut out = outgoing.into_iter().collect();
         stack.append(&mut out);
         drop(this_rlock);
@@ -221,9 +213,10 @@ impl<'a> SerializationGraph<'a> {
             visited.insert(current_addr);
 
             let rlock = current.read();
-            let val1 = !(rlock.is_committed() || rlock.is_aborted() || rlock.is_cascading_abort());
+            let val1 =
+                !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
             if val1 {
-                let outgoing = rlock.get_outgoing();
+                let outgoing = current.get_outgoing();
                 let mut out = outgoing.into_iter().collect();
                 stack.append(&mut out);
             }
@@ -235,22 +228,18 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Check if a transaction needs to abort.
-    pub fn needs_abort(&self, this: &RwNode) -> bool {
-        let this_rlock = this.read();
-        let aborted = this_rlock.is_aborted();
-        let cascading_abort = this_rlock.is_cascading_abort();
-        drop(this_rlock);
+    pub fn needs_abort(&self, this: &'a RwNode<'a>) -> bool {
+        let aborted = this.is_aborted();
+        let cascading_abort = this.is_cascading_abort();
 
         aborted || cascading_abort
     }
 
     /// Set aborted and cleanup.
-    pub fn abort_procedure<'g>(&self, this: &RwNode, guard: &'g Guard) {
-        let this_rlock = this.read();
-        this_rlock.set_aborted();
-        drop(this_rlock);
+    pub fn abort_procedure<'g>(&self, this: &'a RwNode<'a>, guard: &'g Guard) {
+        this.set_aborted();
 
-        self.cleanup(guard);
+        self.cleanup(this, guard);
     }
 
     /// Check if a transaction can be committed.
@@ -260,47 +249,47 @@ impl<'a> SerializationGraph<'a> {
         database: &Database,
         guard: &'g Guard,
     ) -> bool {
-        if self.needs_abort(&this) {
+        if self.needs_abort(this) {
             return false; // abort check
         }
 
         let this_wlock = this.write();
-        this_wlock.set_checked(true);
+        this.set_checked(true);
         drop(this_wlock);
 
         let this_rlock = this.read();
 
-        if this_rlock.is_incoming() {
-            this_rlock.set_checked(false);
+        if this.is_incoming() {
+            this.set_checked(false);
             drop(this_rlock);
             return false;
         }
         drop(this_rlock);
 
-        if self.needs_abort(&this) {
+        if self.needs_abort(this) {
             return false; // abort check
         }
 
-        let success = self.erase_graph_constraints(&this, database);
+        let success = self.erase_graph_constraints(this, database, guard);
 
         if success {
-            self.cleanup(guard);
+            self.cleanup(this, guard);
         }
 
         success
     }
 
     /// Cycle check then commit.
-    pub fn erase_graph_constraints(&self, this: &'a RwNode<'a>, database: &Database) -> bool {
-        debug!("egc");
-        let guard = &epoch::pin();
-        let is_cycle = self.cycle_check(&this);
-
-        let this_rlock = this.read();
+    pub fn erase_graph_constraints<'g>(
+        &self,
+        this: &'a RwNode<'a>,
+        database: &Database,
+        _guard: &'g Guard,
+    ) -> bool {
+        let is_cycle = self.cycle_check(&this); // cycle check
 
         if is_cycle {
-            this_rlock.set_aborted();
-            drop(this_rlock);
+            this.set_aborted(); // cycle so abort (this)
             return false;
         }
 
@@ -337,9 +326,8 @@ impl<'a> SerializationGraph<'a> {
             }
         }
 
-        this_rlock.set_committed();
-        drop(this_rlock);
-        drop(guard);
+        this.set_committed();
+
         true
     }
 
@@ -490,10 +478,7 @@ impl<'a> SerializationGraph<'a> {
                                 if let TransactionId::SerializationGraph(from_addr) = from {
                                     let from = node::from_usize(*from_addr); // convert to ptr
 
-                                    let rlock = from.read();
-                                    if !rlock.is_committed() {
-                                        drop(rlock);
-
+                                    if !from.is_committed() {
                                         if !self.insert_and_check(this, from, false) {
                                             cyclic = true;
                                             break;
