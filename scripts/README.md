@@ -54,3 +54,19 @@ cd No-False-Negatives/ &&
 rm -rf build && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release ../ && make -j16 &&
 ./bin/db svcc_tatp NoFalseNegatives 100 100000 4
 ```
+
+###  Profiling
+Valgrind suite:
+- *memcheck* is a memory error detector
+- *massif* is a heap profiler
+- *cachegrind* is a cache profiler. Simulates a machine with two levels of instruction and data caching. Also, displays branch misprediction. Note conditional branches jump to a location based on some condition, whereas indirect branches jump based on the results of previous instructions.
+```
+valgrind --tool=memcheck <program>
+valgrind --tool=massif <program>
+valgrind --tool=cachegrind --branch-sim=yes <program>
+```
+
+Perf
+```
+perf stat --event task-clock,context-switches,page-faults,cycles,instructions,branches,branch-misses,cache-references,cache-misses <program> > /dev/null
+```
