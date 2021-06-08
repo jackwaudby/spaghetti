@@ -1,5 +1,6 @@
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
-use parking_lot::Mutex;
+//use parking_lot::Mutex;
+use spin::Mutex;
 use std::mem::ManuallyDrop;
 use std::ptr;
 use std::sync::atomic::AtomicU64;
