@@ -639,10 +639,11 @@ impl<'a> SerializationGraph<'a> {
 }
 
 fn spin(prv: u64, lsn: &AtomicU64) {
-    loop {
-        let i = lsn.load(Ordering::Relaxed); // current lsn
-        if i == prv {
-            break; // break when prv == lsn
+    let mut i = 0;
+    while lsn.load(Ordering::Relaxed) != prv {
+        i += 1;
+        if i >= 10000 {
+            std::thread::yield_now();
         }
     }
 }
