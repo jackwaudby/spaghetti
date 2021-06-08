@@ -10,7 +10,6 @@ use std::sync::atomic::Ordering::{Acquire, Relaxed, SeqCst};
 pub struct AtomicLinkedList<T> {
     id: AtomicU64,
     head: Atomic<Node<T>>,
-    size: AtomicU64,
     lock: Mutex<u64>,
 }
 
@@ -27,7 +26,6 @@ impl<T> AtomicLinkedList<T> {
         AtomicLinkedList {
             id: AtomicU64::new(0),
             head: Atomic::null(),
-            size: AtomicU64::new(0),
             lock: Mutex::new(0),
         }
     }
@@ -55,7 +53,6 @@ impl<T> AtomicLinkedList<T> {
                 .compare_exchange(head, new, Relaxed, Relaxed, guard)
             {
                 Ok(_) => {
-                    self.size.fetch_add(1, SeqCst); // increment list size
                     drop(guard);
                     return id;
                 }
@@ -85,8 +82,6 @@ impl<T> AtomicLinkedList<T> {
                             guard,
                         ) {
                             Ok(_) => {
-                                self.size.fetch_sub(1, SeqCst); // increment list size
-
                                 guard.defer_destroy(head_snapshot);
                                 drop(guard);
                                 return Some(ptr::read(&*(*head).data));
@@ -98,10 +93,6 @@ impl<T> AtomicLinkedList<T> {
                 }
             }
         }
-    }
-
-    pub fn size(&self) -> u64 {
-        self.size.load(Relaxed)
     }
 
     pub fn erase(&self, id: u64) -> Option<T> {
@@ -166,7 +157,6 @@ impl<T> AtomicLinkedList<T> {
             }
         }
 
-        self.size.fetch_sub(1, SeqCst); // decrement list size
         unsafe { guard.defer_destroy(current) }; // deallocate
 
         drop(lg);
