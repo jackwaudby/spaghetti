@@ -1,4 +1,7 @@
-use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+//use parking_lot::{Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use parking_lot::Mutex;
+use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+
 use rustc_hash::FxHashSet;
 use std::cell::UnsafeCell;
 use std::fmt;
