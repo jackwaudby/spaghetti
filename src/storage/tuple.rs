@@ -24,7 +24,7 @@ impl Tuple {
 pub struct Internal {
     current: Field,
     pub prev: Option<Field>,
-    state: State,
+    pub state: State,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -60,28 +60,14 @@ impl Internal {
         Ok(OpResult::new(Some(self.current.get())))
     }
 
-    pub fn append_value(&mut self, value: &Data) -> Result<OpResult, NonFatalError> {
-        match self.state {
-            State::Modified => Err(NonFatalError::RowDirty),
-            State::Clean => {
-                let prev = self.current.clone(); // set prev fields
-                self.prev = Some(prev);
-                self.current.append(value.clone()); // append value to list
-                self.state = State::Modified; // set state
-
-                Ok(OpResult::new(None))
-            }
-        }
-    }
-
     pub fn set_value(&mut self, value: &Data) -> Result<OpResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty),
             State::Clean => {
+                self.state = State::Modified; // set state
                 let prev = self.current.clone(); // set prev fields
                 self.prev = Some(prev);
                 self.current.set(value.clone());
-                self.state = State::Modified; // set state
 
                 Ok(OpResult::new(None))
             }
@@ -89,8 +75,8 @@ impl Internal {
     }
 
     pub fn commit(&mut self) {
-        self.state = State::Clean;
         self.prev = None;
+        self.state = State::Clean;
     }
 
     pub fn revert(&mut self) {
