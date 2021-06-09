@@ -9,7 +9,6 @@ use crate::workloads::smallbank::paramgen::{
 
 use crossbeam_epoch as epoch;
 use std::convert::TryFrom;
-use tracing::debug;
 
 /// Balance transaction.
 ///

@@ -372,7 +372,6 @@ impl<'a> SerializationGraph<'a> {
             let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
             let lsn = table.get_lsn(offset);
 
-            debug!("spin");
             spin(prv, lsn);
 
             let snapshot = rw_table.iter(guard); // iterator over access history
@@ -396,13 +395,12 @@ impl<'a> SerializationGraph<'a> {
                     }
                 }
             }
-            debug!("edges added");
 
             if cyclic {
                 rw_table.erase(prv, guard); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 self.abort(database, guard); // abort
-                debug!("cycle found");
+
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
@@ -413,7 +411,8 @@ impl<'a> SerializationGraph<'a> {
                 .unwrap()
                 .get_value(); // read
 
-            debug!("read vals");
+            lsn.store(prv + 1, Ordering::Release); // update lsn
+
             self.txn_info
                 .get()
                 .unwrap()
@@ -421,9 +420,7 @@ impl<'a> SerializationGraph<'a> {
                 .as_mut()
                 .unwrap()
                 .add(OperationType::Read, table_id, column_id, offset, prv); // record operation
-            debug!("registered");
-            lsn.store(prv + 1, Ordering::Release); // update lsn
-            drop(guard); // unpin -- TODO: check if this should be here!
+
             Ok(vals)
         } else {
             panic!("unexpected transaction info");
@@ -441,7 +438,6 @@ impl<'a> SerializationGraph<'a> {
         database: &Database,
         guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
-        debug!("write");
         if let TransactionId::SerializationGraph(_) = meta {
             let this = &self
                 .this_node
@@ -544,6 +540,8 @@ impl<'a> SerializationGraph<'a> {
                 .set_value(value)
                 .unwrap();
 
+            lsn.store(prv + 1, Ordering::Release); // update lsn
+
             self.txn_info
                 .get()
                 .unwrap()
@@ -551,8 +549,6 @@ impl<'a> SerializationGraph<'a> {
                 .as_mut()
                 .unwrap()
                 .add(OperationType::Write, table_id, column_id, offset, prv); // record operation
-
-            lsn.store(prv + 1, Ordering::Release); // update lsn
 
             Ok(())
         } else {
@@ -643,7 +639,7 @@ fn spin(prv: u64, lsn: &AtomicU64) {
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
         if i >= 10000 {
-            //            std::thread::yield_now();
+            std::thread::yield_now();
         }
     }
 }
