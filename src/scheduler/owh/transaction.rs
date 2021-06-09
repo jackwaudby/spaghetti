@@ -1,39 +1,39 @@
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::NonFatalError;
-use crate::workloads::PrimaryKey;
 
 use parking_lot::Mutex;
+use rustc_hash::FxHashSet;
 use std::cell::UnsafeCell;
+use std::hash::{Hash, Hasher};
 
-unsafe impl Sync for Transaction {}
-
-#[derive(Debug)]
-pub struct Transaction {
-    id: usize,
-    start_epoch: u64,
-    state: Mutex<TransactionState>,
-    wait_list: UnsafeCell<Option<Vec<(usize, usize)>>>,
-    hit_list: UnsafeCell<Option<Vec<(usize, usize)>>>,
-    info: UnsafeCell<TransactionInformation>,
+pub fn from_usize<'a>(address: usize) -> &'a Transaction<'a> {
+    // Safety: finding an address in some access history implies the corresponding transaction is either:
+    // (i) pinned on another thread, so it is save to give out reference to it.
+    // (ii) scheduled for deletion by another thread, again we can safely give out a reference, as it won't be destroyed
+    // until after this thread is unpinned.
+    unsafe { &*(address as *const Transaction<'a>) }
 }
 
-#[derive(Debug)]
-pub struct TransactionInformation {
-    operations: Option<Vec<Operation>>,
+pub fn to_usize<'a>(txn: Box<Transaction<'a>>) -> usize {
+    let raw: *mut Transaction = Box::into_raw(txn);
+    raw as usize
 }
 
-#[derive(Debug, Clone)]
-pub struct Operation {
-    pub op_type: OperationType,
-    pub key: PrimaryKey,
-    pub index: usize,
+pub fn to_box<'a>(address: usize) -> Box<Transaction<'a>> {
+    // Safety: a node is owned by a single thread, so this method is only called once in order to pass the node to the
+    // epoch based garbage collector.
+    unsafe {
+        let raw = address as *mut Transaction<'a>;
+        Box::from_raw(raw)
+    }
 }
 
-#[derive(Debug, Clone)]
-pub enum OperationType {
-    Read,
-    Write,
+pub fn ref_to_usize<'a>(txn: &'a Transaction<'a>) -> usize {
+    let ptr: *const Transaction<'a> = txn;
+    ptr as usize
 }
+
+pub type PredecessorSet<'a> = FxHashSet<&'a Transaction<'a>>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TransactionState {
@@ -43,29 +43,32 @@ pub enum TransactionState {
 }
 
 #[derive(Debug)]
+pub struct Transaction<'a> {
+    state: Mutex<TransactionState>,
+
+    // Predecessors found by reading entered here.
+    wait_list: UnsafeCell<Option<PredecessorSet<'a>>>,
+
+    // Predecessors found by writing entered here.
+    hit_list: UnsafeCell<Option<PredecessorSet<'a>>>,
+}
+
+#[derive(Debug)]
 pub enum PredecessorUpon {
     Read,
     Write,
 }
 
-impl Transaction {
-    pub fn new(id: usize, start_epoch: u64) -> Transaction {
-        Transaction {
-            id,
-            start_epoch,
+unsafe impl<'a> Send for Transaction<'a> {}
+unsafe impl<'a> Sync for Transaction<'a> {}
+
+impl<'a> Transaction<'a> {
+    pub fn new() -> Self {
+        Self {
             state: Mutex::new(TransactionState::Active),
-            wait_list: UnsafeCell::new(Some(vec![])),
-            hit_list: UnsafeCell::new(Some(vec![])),
-            info: UnsafeCell::new(TransactionInformation::new()),
+            wait_list: UnsafeCell::new(Some(FxHashSet::default())),
+            hit_list: UnsafeCell::new(Some(FxHashSet::default())),
         }
-    }
-
-    pub fn get_id(&self) -> usize {
-        self.id
-    }
-
-    pub fn get_start_epoch(&self) -> u64 {
-        self.start_epoch
     }
 
     pub fn get_state(&self) -> TransactionState {
@@ -80,31 +83,35 @@ impl Transaction {
         let mut guard = self.state.lock();
         let state = guard.clone();
         if state == TransactionState::Aborted {
-            return Err(OptimisedWaitHitError::Hit(self.id.to_string()).into());
+            return Err(OptimisedWaitHitError::Hit("TODO".to_string()).into());
         } else {
             *guard = TransactionState::Committed;
         }
         Ok(())
     }
 
-    pub fn add_predecessor(&self, id: (usize, usize), predecessor_upon: PredecessorUpon) {
+    pub fn add_predecessor(
+        &self,
+        predecessor: &'a Transaction<'a>,
+        predecessor_upon: PredecessorUpon,
+    ) {
         use PredecessorUpon::*;
 
         unsafe {
             match predecessor_upon {
                 Read => {
                     let v = &mut *self.wait_list.get();
-                    v.as_mut().unwrap().push(id)
+                    v.as_mut().unwrap().insert(predecessor);
                 }
                 Write => {
                     let v = &mut *self.hit_list.get();
-                    v.as_mut().unwrap().push(id)
+                    v.as_mut().unwrap().insert(predecessor);
                 }
             }
         }
     }
 
-    pub fn get_predecessors(&self, predecessor_upon: PredecessorUpon) -> Vec<(usize, usize)> {
+    pub fn get_predecessors(&self, predecessor_upon: PredecessorUpon) -> PredecessorSet<'a> {
         use PredecessorUpon::*;
         unsafe {
             match predecessor_upon {
@@ -119,47 +126,19 @@ impl Transaction {
             }
         }
     }
+}
 
-    pub fn get_info(&self) -> Vec<Operation> {
-        unsafe {
-            let v = &mut *self.info.get();
-            v.get()
-        }
-    }
-
-    pub fn add_info(&self, op_type: OperationType, key: PrimaryKey, index: usize) {
-        unsafe {
-            let v = &mut *self.info.get();
-            v.add(op_type, key, index);
-        }
+impl<'a> PartialEq for &'a Transaction<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(self, other)
     }
 }
 
-impl TransactionInformation {
-    pub fn new() -> Self {
-        TransactionInformation {
-            operations: Some(Vec::with_capacity(8)),
-        }
-    }
+impl<'a> Eq for &'a Transaction<'a> {}
 
-    pub fn add(&mut self, op_type: OperationType, key: PrimaryKey, index: usize) {
-        self.operations
-            .as_mut()
-            .unwrap()
-            .push(Operation::new(op_type, key, index));
-    }
-
-    pub fn get(&mut self) -> Vec<Operation> {
-        self.operations.take().unwrap()
-    }
-}
-
-impl Operation {
-    pub fn new(op_type: OperationType, key: PrimaryKey, index: usize) -> Self {
-        Operation {
-            op_type,
-            key,
-            index,
-        }
+impl<'a> Hash for &'a Transaction<'a> {
+    fn hash<H: Hasher>(&self, hasher: &mut H) {
+        let id = ref_to_usize(self);
+        id.hash(hasher)
     }
 }

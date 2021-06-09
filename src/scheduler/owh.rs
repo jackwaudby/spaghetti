@@ -1,510 +1,396 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
-use crate::scheduler::owh::garbage_collection::GarbageCollector;
-use crate::scheduler::owh::thread_state::ThreadState;
-use crate::scheduler::owh::transaction::{
-    Operation, OperationType, PredecessorUpon, TransactionState,
+use crate::scheduler::owh::transaction::{PredecessorUpon, Transaction, TransactionState};
+use crate::scheduler::sgt::transaction_information::{
+    Operation, OperationType, TransactionInformation,
 };
-use crate::scheduler::{CurrentValues, NewValues, Scheduler, TransactionInfo};
-use crate::storage;
+use crate::scheduler::Database;
+use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
-use crate::storage::Access;
-use crate::workloads::smallbank::SB_SF_MAP;
-use crate::workloads::PrimaryKey;
-use crate::workloads::Workload;
+use crate::storage::table::Table;
 
-use std::collections::VecDeque;
-use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
-use std::{fmt, thread};
-use tracing::{debug, info};
-
-pub mod epoch;
+use crossbeam_epoch::Guard;
+use std::cell::RefCell;
+use std::sync::atomic::{AtomicU64, Ordering};
+use thread_local::ThreadLocal;
+use tracing::info;
 
 pub mod error;
 
 pub mod transaction;
 
-pub mod terminated_list;
-
-pub mod thread_state;
-
-pub mod garbage_collection;
-
 #[derive(Debug)]
-pub struct OptimisedWaitHit {
-    thread_states: Arc<Vec<Arc<ThreadState>>>,
-    data: Arc<Workload>,
-    garbage_collector: Option<GarbageCollector>,
-    sender: Option<Mutex<mpsc::Sender<()>>>,
-    accounts: usize,
+pub struct OptimisedWaitHit<'a> {
+    transaction: ThreadLocal<RefCell<Option<&'a Transaction<'a>>>>,
+    transaction_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
 }
 
-impl OptimisedWaitHit {
-    pub fn new(size: usize, data: Workload) -> Self {
-        let config = data.get_config();
+impl<'a> OptimisedWaitHit<'a> {
+    pub fn new(size: usize) -> Self {
+        info!("Initialise optimised wait hit with {} thread(s)", size);
 
-        let sf = config.get_int("scale_factor").unwrap() as u64;
-        let accounts = *SB_SF_MAP.get(&sf).unwrap() as usize;
-
-        let do_gc = config.get_bool("garbage_collection").unwrap();
-        info!("Initialise optimised wait-hit with {} core(s)", size);
-        let mut terminated_lists = vec![];
-
-        for _ in 0..size {
-            let list = Arc::new(ThreadState::new(do_gc));
-            terminated_lists.push(list);
-        }
-        let atomic_tl = Arc::new(terminated_lists);
-
-        let garbage_collector;
-        let sender;
-        if do_gc {
-            let (tx, rx) = mpsc::channel(); // shutdown channel
-            sender = Some(Mutex::new(tx));
-            let sleep = config.get_int("garbage_collection_sleep").unwrap() as u64; // seconds
-            garbage_collector = Some(GarbageCollector::new(
-                Arc::clone(&atomic_tl),
-                rx,
-                sleep,
-                size,
-            ));
-        } else {
-            garbage_collector = None;
-            sender = None;
-        }
-
-        OptimisedWaitHit {
-            thread_states: atomic_tl,
-            data: Arc::new(data),
-            garbage_collector,
-            sender,
-            accounts,
+        Self {
+            transaction: ThreadLocal::new(),
+            transaction_info: ThreadLocal::new(),
         }
     }
-}
 
-impl Scheduler for OptimisedWaitHit {
-    fn begin(&self) -> TransactionInfo {
-        let thread_id = thread::current()
-            .name()
-            .unwrap()
-            .to_string()
-            .parse::<usize>()
-            .unwrap();
-        debug!("tid: {}; begin", thread_id);
+    pub fn begin(&self) -> TransactionId {
+        *self
+            .transaction_info
+            .get_or(|| RefCell::new(None))
+            .borrow_mut() = Some(TransactionInformation::new()); // reset txn info
 
-        let seq_num = self.thread_states[thread_id].new_transaction();
+        let transaction = Box::new(Transaction::new()); // create transaction on heap
 
-        TransactionInfo::OptimisticWaitHit(thread_id, seq_num)
+        let id = transaction::to_usize(transaction); // get id
+        let tref = transaction::from_usize(id); // convert to reference
+        self.transaction
+            .get_or(|| RefCell::new(None))
+            .borrow_mut()
+            .replace(tref); // replace local transaction reference
+
+        TransactionId::OptimisticWaitHit(id)
     }
 
-    fn read(
+    pub fn read_value<'g>(
         &self,
-        index_id: usize,
-        key: &PrimaryKey,
-        columns: &[&str],
-        meta: &TransactionInfo,
-    ) -> Result<Vec<Data>, NonFatalError> {
-        if let TransactionInfo::OptimisticWaitHit(thread_id, seq_num) = meta {
-            debug!("tid: {}; read", thread_id);
-            let offset = storage::calculate_offset(key.into(), index_id, self.accounts);
-            let record = self.data.get_db().get_record(offset); // get record
+        table_id: usize,
+        column_id: usize,
+        offset: usize,
+        meta: &TransactionId,
+        database: &Database,
+        guard: &'g Guard,
+    ) -> Result<Data, NonFatalError> {
+        let transaction = self
+            .transaction
+            .get()
+            .unwrap()
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .clone(); // this transaction
 
-            let mut guard = record.get_rw_table().get_lock();
-            let prv = guard.push_front(Access::Read(meta.clone())); // get prv
-            drop(guard);
+        let table: &Table = database.get_table(table_id); // get table
+        let rw_table = table.get_rwtable(offset); // get rwtable
+        let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
+        let lsn = table.get_lsn(offset);
 
-            let lsn = record.get_lsn();
-            loop {
-                let i = lsn.get();
+        spin(prv, lsn);
 
-                if i == prv {
-                    break; // prv == lsn
+        let snapshot = rw_table.iter(guard); // iterator over access history
+
+        for (id, access) in snapshot {
+            if id < &prv {
+                match access {
+                    Access::Write(txn_info) => match txn_info {
+                        TransactionId::OptimisticWaitHit(pred_addr) => {
+                            let pred = transaction::from_usize(*pred_addr); // convert to ptr
+                            if std::ptr::eq(transaction, pred) {
+                                continue;
+                            } else {
+                                transaction.add_predecessor(pred, PredecessorUpon::Read);
+                            }
+                        }
+                        _ => panic!("unexpected transaction information"),
+                    },
+                    Access::Read(_) => {}
                 }
             }
+        }
 
-            let guard = record.get_rw_table().get_lock();
-            let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
-            drop(guard);
+        let vals = table
+            .get_tuple(column_id, offset)
+            .get()
+            .get_value()
+            .unwrap()
+            .get_value(); // read
+
+        self.transaction_info
+            .get()
+            .unwrap()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .add(OperationType::Read, table_id, column_id, offset, prv); // record operation
+
+        lsn.store(prv + 1, Ordering::Release); // update lsn
+
+        Ok(vals)
+    }
+
+    pub fn write_value<'g>(
+        &self,
+        value: &Data,
+        table_id: usize,
+        column_id: usize,
+        offset: usize,
+        meta: &TransactionId,
+        database: &Database,
+        guard: &'g Guard,
+    ) -> Result<(), NonFatalError> {
+        let transaction: &'a Transaction<'a> = &self
+            .transaction
+            .get()
+            .unwrap()
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .clone(); // this transaction
+
+        let table = database.get_table(table_id); // handle to table
+        let rw_table = table.get_rwtable(offset); // handle to rwtable
+        let prv = rw_table.push_front(Access::Write(meta.clone()), guard); // append access
+
+        let lsn = table.get_lsn(offset); // handle to lsn
+        spin(prv, lsn); // spin until access granted
+
+        let tuple = table.get_tuple(column_id, offset); // handle to tuple
+        let dirty = tuple.get().is_dirty();
+
+        if dirty {
+            rw_table.erase(prv, guard); // remove from rwtable
+            lsn.store(prv + 1, Ordering::Release); // update lsn
+            self.abort(database, guard); // abort this transaction
+            return Err(NonFatalError::RowDirty(
+                "todo".to_string(),
+                "todo".to_string(),
+            ));
+        } else {
+            let snapshot = rw_table.iter(guard); // iterator over rwtable
 
             for (id, access) in snapshot {
-                if id < prv {
+                if id < &prv {
                     match access {
-                        Access::Write(txn_info) => match txn_info {
-                            TransactionInfo::OptimisticWaitHit(ref pthread_id, ref pseq_num) => {
-                                if pthread_id == thread_id && pseq_num == seq_num {
-                                    continue; // self dependency
+                        Access::Read(txn_info) => match txn_info {
+                            TransactionId::OptimisticWaitHit(pred_addr) => {
+                                let pred = transaction::from_usize(*pred_addr); // convert to ptr
+                                if std::ptr::eq(transaction, pred) {
+                                    continue;
                                 } else {
-                                    self.thread_states[*thread_id].add_predecessor(
-                                        *seq_num,
-                                        (*pthread_id, *pseq_num),
-                                        PredecessorUpon::Read,
-                                    ); // add pur
+                                    transaction.add_predecessor(pred, PredecessorUpon::Write);
                                 }
                             }
                             _ => panic!("unexpected transaction information"),
                         },
-                        Access::Read(_) => {}
+                        Access::Write(txn_info) => match txn_info {
+                            TransactionId::OptimisticWaitHit(pred_addr) => {
+                                let pred: &'a Transaction<'a> = transaction::from_usize(*pred_addr); // convert to ptr
+                                if std::ptr::eq(transaction, pred) {
+                                    continue;
+                                } else {
+                                    transaction.add_predecessor(pred, PredecessorUpon::Write);
+                                }
+                            }
+                            _ => panic!("unexpected transaction information"),
+                        },
                     }
                 }
             }
 
-            let row = record.get_row();
-            let mut guard = row.get_lock();
-            let mut res = guard.get_values(columns).unwrap();
-            drop(guard);
-            let vals = res.get_values();
+            table
+                .get_tuple(column_id, offset)
+                .get()
+                .set_value(value)
+                .unwrap();
 
-            self.thread_states[*thread_id].add_key(
-                *seq_num,
-                OperationType::Read,
-                key.clone(),
-                index_id,
-            ); // register operation; used to clean up.
+            self.transaction_info
+                .get()
+                .unwrap()
+                .borrow_mut()
+                .as_mut()
+                .unwrap()
+                .add(OperationType::Write, table_id, column_id, offset, prv); // record operation
 
-            lsn.replace(prv + 1); // increment to next operation
+            lsn.store(prv + 1, Ordering::Release); // update lsn
 
-            Ok(vals)
-        } else {
-            panic!("unexpected transaction info");
+            Ok(())
         }
     }
 
-    fn write(
-        &self,
-        index: usize,
-        key: &PrimaryKey,
-        columns: &[&str],
-        read: Option<&[&str]>,
-        params: Option<&[Data]>,
-        f: &dyn Fn(CurrentValues, Option<&[Data]>) -> Result<NewValues, NonFatalError>,
-        meta: &TransactionInfo,
-    ) -> Result<Option<Vec<Data>>, NonFatalError> {
-        if let TransactionInfo::OptimisticWaitHit(thread_id, seq_num) = meta {
-            debug!("tid: {}; write", thread_id);
-            let offset = storage::calculate_offset(key.into(), index, self.accounts);
-            let record = self.data.get_db().get_record(offset); // get record
+    pub fn abort<'g>(&self, database: &Database, guard: &'g Guard) -> NonFatalError {
+        let this = self
+            .transaction
+            .get()
+            .unwrap()
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .clone();
 
-            let mut guard = record.get_rw_table().get_lock();
-            let prv = guard.push_front(Access::Write(meta.clone())); // get prv
-            drop(guard);
+        let ops = self
+            .transaction_info
+            .get()
+            .unwrap()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .get(); // get operations
 
-            let lsn = record.get_lsn();
-            loop {
-                let i = lsn.get();
+        this.set_state(TransactionState::Aborted); // set state.
 
-                if i == prv {
-                    break; // prv == lsn
+        for op in ops {
+            let Operation {
+                op_type,
+                table_id,
+                column_id,
+                offset,
+                prv,
+            } = op;
+
+            let table = database.get_table(table_id);
+            let rwtable = table.get_rwtable(offset);
+            let tuple = table.get_tuple(column_id, offset);
+
+            match op_type {
+                OperationType::Read => {
+                    rwtable.erase(prv, guard); // remove access
+                }
+                OperationType::Write => {
+                    tuple.get().revert(); // revert
+                    rwtable.erase(prv, guard); // remove access
                 }
             }
-
-            let mut row = record.get_row().get_lock();
-            let dirty = row.is_dirty();
-
-            if dirty {
-                drop(row);
-                let mut guard = record.get_rw_table().get_lock();
-                guard.erase((prv, Access::Write(meta.clone())));
-                drop(guard);
-                lsn.replace(prv + 1);
-                self.abort(meta);
-                return Err(NonFatalError::RowDirty(
-                    "todo".to_string(),
-                    "todo".to_string(),
-                ));
-            } else {
-                let guard = record.get_rw_table().get_lock();
-                let snapshot: VecDeque<(u64, Access)> = guard.snapshot(); // get accesses
-                drop(guard);
-
-                for (id, access) in snapshot.clone() {
-                    if id < prv {
-                        match access {
-                            Access::Read(txn_info) => match txn_info {
-                                TransactionInfo::OptimisticWaitHit(
-                                    ref pthread_id,
-                                    ref pseq_num,
-                                ) => {
-                                    if pthread_id == thread_id && pseq_num == seq_num {
-                                        continue; // self dependency
-                                    } else {
-                                        self.thread_states[*thread_id].add_predecessor(
-                                            *seq_num,
-                                            (*pthread_id, *pseq_num),
-                                            PredecessorUpon::Write,
-                                        );
-                                    }
-                                }
-                                _ => panic!("unexpected transaction information"),
-                            },
-                            Access::Write(txn_info) => match txn_info {
-                                TransactionInfo::OptimisticWaitHit(
-                                    ref pthread_id,
-                                    ref pseq_num,
-                                ) => {
-                                    if pthread_id == thread_id && pseq_num == seq_num {
-                                        continue; // self dependency
-                                    } else {
-                                        self.thread_states[*thread_id].add_predecessor(
-                                            *seq_num,
-                                            (*pthread_id, *pseq_num),
-                                            PredecessorUpon::Write,
-                                        );
-                                    }
-                                }
-                                _ => panic!("unexpected transaction information"),
-                            },
-                        }
-                    }
-                }
-
-                let current_values;
-                if let Some(columns) = read {
-                    let mut res = row.get_values(columns).unwrap();
-                    current_values = Some(res.get_values());
-                } else {
-                    current_values = None;
-                }
-
-                let new_values = match f(current_values.clone(), params) {
-                    Ok(res) => res,
-                    Err(e) => {
-                        drop(row);
-
-                        let mut guard = record.get_rw_table().get_lock();
-                        guard.erase((prv, Access::Write(meta.clone())));
-                        drop(guard);
-
-                        lsn.replace(prv + 1);
-
-                        self.abort(meta);
-                        return Err(e);
-                    }
-                };
-
-                row.set_values(columns, &new_values).unwrap();
-                drop(row);
-
-                self.thread_states[*thread_id].add_key(
-                    *seq_num,
-                    OperationType::Write,
-                    key.clone(),
-                    index,
-                ); // register operation; used to clean up.
-
-                lsn.replace(prv + 1);
-
-                Ok(current_values)
-            }
-        } else {
-            panic!("unexpected transaction info");
         }
-    }
 
-    fn abort(&self, meta: &TransactionInfo) -> NonFatalError {
-        if let TransactionInfo::OptimisticWaitHit(thread_id, seq_num) = meta {
-            debug!("tid: {}; abort", thread_id);
-            self.thread_states[*thread_id].set_state(*seq_num, TransactionState::Aborted); // set state.
+        let this_ptr: *const Transaction<'a> = this;
+        let this_usize = this_ptr as usize;
+        let boxed_node = transaction::to_box(this_usize);
 
-            let rg = &self.thread_states[*thread_id];
-            let x = rg.get_transaction_id(*seq_num);
-
-            assert_eq!(x, *seq_num, "{} != {}", x, seq_num);
-
-            let ops = rg.get_info(*seq_num);
-
-            for op in ops {
-                let Operation {
-                    op_type,
-                    ref key,
-                    index,
-                } = op;
-                let offset = storage::calculate_offset(key.into(), index, self.accounts);
-
-                let record = self.data.get_db().get_record(offset);
-                let rw_table = record.get_rw_table();
-                let mut guard = rw_table.get_lock();
-
-                match op_type {
-                    OperationType::Read => {
-                        guard.erase_all(Access::Read(meta.clone())); // remove access
-                        drop(guard);
-                    }
-                    OperationType::Write => {
-                        let row = record.get_row();
-                        let mut rguard = row.get_lock();
-                        rguard.revert();
-                        drop(rguard);
-
-                        guard.erase_all(Access::Write(meta.clone())); // remove access
-
-                        drop(guard);
-                    }
-                }
-            }
-
-            let se = rg.get_start_epoch(*seq_num);
-            rg.get_epoch_tracker().add_terminated(*seq_num, se);
-
-            NonFatalError::NonSerializable
-        } else {
-            panic!("unexpected transaction info");
+        unsafe {
+            guard.defer_unchecked(move || {
+                drop(boxed_node);
+            });
         }
+
+        NonFatalError::NonSerializable // TODO: consistently return the why
     }
 
     /// Commit a transaction.
-    fn commit(&self, meta: &TransactionInfo) -> Result<(), NonFatalError> {
-        if let TransactionInfo::OptimisticWaitHit(thread_id, seq_num) = meta {
-            debug!("tid: {}; commit", thread_id);
-            // CHECK //
-            if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(*seq_num) {
-                self.abort(&meta);
-                return Err(OptimisedWaitHitError::Hit(meta.to_string()).into());
+    pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
+        let transaction = self
+            .transaction
+            .get()
+            .unwrap()
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .clone();
+
+        // CHECK //
+        if let TransactionState::Aborted = transaction.get_state() {
+            self.abort(database, guard);
+            return Err(OptimisedWaitHitError::Hit("TODO".to_string()).into());
+        }
+
+        // HIT PHASE //
+        let hit_list = transaction.get_predecessors(PredecessorUpon::Write);
+        for predecessor in &hit_list {
+            // if active then hit
+            if let TransactionState::Active = predecessor.get_state() {
+                predecessor.set_state(TransactionState::Aborted);
             }
+        }
 
-            // HIT PHASE //
+        // CHECK //
+        if let TransactionState::Aborted = transaction.get_state() {
+            self.abort(database, guard);
+            return Err(OptimisedWaitHitError::Hit("TODO".to_string()).into());
+        }
 
-            let mut hit_list = self.thread_states[*thread_id].get_hit_list(*seq_num); // get hit list
-
-            while !hit_list.is_empty() {
-                let (p_thread_id, p_seq_num) = hit_list.pop().unwrap(); // take a predecessor
-
-                // if active then hit
-                if let TransactionState::Active =
-                    self.thread_states[p_thread_id].get_state(p_seq_num)
-                {
-                    self.thread_states[p_thread_id].set_state(p_seq_num, TransactionState::Aborted);
+        // WAIT PHASE //
+        let wait_list = transaction.get_predecessors(PredecessorUpon::Read);
+        for predecessor in &wait_list {
+            // if active or aborted then abort
+            match predecessor.get_state() {
+                TransactionState::Active => {
+                    self.abort(database, guard);
+                    let e = OptimisedWaitHitError::PredecessorActive("TODO".to_string());
+                    return Err(e.into());
                 }
-            }
-
-            // CHECK //
-            if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(*seq_num) {
-                self.abort(&meta);
-
-                let e = OptimisedWaitHitError::Hit(meta.to_string());
-                debug!("tid: {}; abort: {}", thread_id, e);
-                return Err(e.into());
-            }
-
-            // WAIT PHASE //
-
-            let mut wait_list = self.thread_states[*thread_id].get_wait_list(*seq_num); // get wait list
-
-            while !wait_list.is_empty() {
-                let (p_thread_id, p_seq_num) = wait_list.pop().unwrap(); // take a predecessor
-
-                match self.thread_states[p_thread_id].get_state(p_seq_num) {
-                    TransactionState::Active => {
-                        self.abort(&meta); // abort txn
-                        let e = OptimisedWaitHitError::PredecessorActive(meta.to_string());
-                        debug!("tid: {}; abort: {}", thread_id, e);
-                        return Err(e.into());
-                    }
-                    TransactionState::Aborted => {
-                        self.abort(&meta); // abort txn
-                        let e = OptimisedWaitHitError::PredecessorAborted(
-                            meta.to_string(),
-                            format!("({}-{})", p_thread_id, p_seq_num),
-                        );
-                        debug!("tid: {}; abort: {}", thread_id, e);
-                        return Err(e.into());
-                    }
-                    TransactionState::Committed => {}
+                TransactionState::Aborted => {
+                    self.abort(database, guard);
+                    let e = OptimisedWaitHitError::PredecessorAborted(
+                        "TODO".to_string(),
+                        "TODO".to_string(),
+                    );
+                    return Err(e.into());
                 }
+                TransactionState::Committed => {}
             }
+        }
 
-            // CHECK //
-            if let TransactionState::Aborted = self.thread_states[*thread_id].get_state(*seq_num) {
-                self.abort(&meta); // abort txn
-                let e = OptimisedWaitHitError::Hit(meta.to_string());
-                debug!("tid: {}; abort: {}", thread_id, e);
-                return Err(e.into());
-            }
+        // CHECK //
+        if let TransactionState::Aborted = transaction.get_state() {
+            self.abort(database, guard);
+            return Err(OptimisedWaitHitError::Hit("TODO".to_string()).into());
+        }
 
-            // TRY COMMIT //
+        // TRY COMMIT //
+        let outcome = transaction.try_commit();
+        match outcome {
+            Ok(_) => {
+                // commit changes
 
-            let outcome = self.thread_states[*thread_id].try_commit(*seq_num);
-            match outcome {
-                Ok(_) => {
-                    // commit changes
+                let ops = self
+                    .transaction_info
+                    .get()
+                    .unwrap()
+                    .borrow_mut()
+                    .as_mut()
+                    .unwrap()
+                    .get(); // get operations
 
-                    let rg = &self.thread_states[*thread_id];
+                for op in ops {
+                    let Operation {
+                        op_type,
+                        table_id,
+                        column_id,
+                        offset,
+                        prv,
+                    } = op;
 
-                    let x = rg.get_transaction_id(*seq_num);
-                    assert_eq!(x, *seq_num, "{} != {}", x, seq_num);
+                    let table = database.get_table(table_id);
+                    let tuple = table.get_tuple(column_id, offset);
+                    let rwtable = table.get_rwtable(offset);
 
-                    let ops = rg.get_info(*seq_num);
-
-                    for op in ops {
-                        let Operation {
-                            op_type,
-                            ref key,
-                            index,
-                        } = op;
-                        let offset = storage::calculate_offset(key.into(), index, self.accounts);
-
-                        let record = self.data.get_db().get_record(offset);
-                        let rw_table = record.get_rw_table();
-                        let mut guard = rw_table.get_lock();
-
-                        match op_type {
-                            OperationType::Read => {
-                                guard.erase_all(Access::Read(meta.clone())); // remove access
-                                drop(guard);
-                            }
-                            OperationType::Write => {
-                                let row = record.get_row();
-                                let mut rguard = row.get_lock();
-                                rguard.commit();
-                                drop(rguard);
-
-                                guard.erase_all(Access::Write(meta.clone())); // remove access
-
-                                drop(guard);
-                            }
+                    match op_type {
+                        OperationType::Read => {
+                            rwtable.erase(prv, guard); // remove access
+                        }
+                        OperationType::Write => {
+                            tuple.get().commit(); // revert
+                            rwtable.erase(prv, guard); // remove access
                         }
                     }
-
-                    let se = rg.get_start_epoch(*seq_num);
-                    rg.get_epoch_tracker().add_terminated(*seq_num, se);
-
-                    Ok(())
                 }
-                Err(_) => {
-                    self.abort(&meta);
-                    Err(NonFatalError::NonSerializable)
+
+                let this_ptr: *const Transaction<'a> = transaction;
+                let this_usize = this_ptr as usize;
+                let boxed_node = transaction::to_box(this_usize);
+
+                unsafe {
+                    guard.defer_unchecked(move || {
+                        drop(boxed_node);
+                    });
                 }
+
+                Ok(())
             }
-        } else {
-            panic!("unexpected transaction info");
-        }
-    }
-}
-
-impl Drop for OptimisedWaitHit {
-    fn drop(&mut self) {
-        if let Some(ref mut gc) = self.garbage_collector {
-            self.sender
-                .take()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .send(())
-                .unwrap(); // send shutdown to gc
-
-            if let Some(thread) = gc.thread.take() {
-                match thread.join() {
-                    Ok(_) => debug!("Garbage collector shutdown"),
-                    Err(_) => debug!("Error shutting down garbage collector"),
-                }
+            Err(_) => {
+                self.abort(database, guard);
+                Err(NonFatalError::NonSerializable) // TODO
             }
         }
     }
 }
 
-impl fmt::Display for OptimisedWaitHit {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TODO")
+fn spin(prv: u64, lsn: &AtomicU64) {
+    let mut i = 0;
+    while lsn.load(Ordering::Relaxed) != prv {
+        i += 1;
+        if i >= 10000 {
+            std::thread::yield_now();
+        }
     }
 }

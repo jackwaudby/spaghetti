@@ -10,7 +10,7 @@ pub enum Access {
 pub enum TransactionId {
     NoConcurrencyControl,
     SerializationGraph(usize),
-    OptimisticWaitHit(usize, usize),
+    OptimisticWaitHit(usize),
 }
 
 impl fmt::Display for Access {
@@ -30,7 +30,7 @@ impl fmt::Display for TransactionId {
         match &self {
             NoConcurrencyControl => write!(f, "no id"),
             SerializationGraph(node) => write!(f, "{}", node),
-            OptimisticWaitHit(thread_id, seq_num) => write!(f, "({}-{})", thread_id, seq_num),
+            OptimisticWaitHit(txn) => write!(f, "{}", txn),
         }
     }
 }
@@ -42,10 +42,11 @@ impl PartialEq for TransactionId {
                 &TransactionId::SerializationGraph(ref wn1),
                 &TransactionId::SerializationGraph(ref wn2),
             ) => wn1 == wn2,
+            (
+                &TransactionId::OptimisticWaitHit(ref wn1),
+                &TransactionId::OptimisticWaitHit(ref wn2),
+            ) => wn1 == wn2,
 
-            (&TransactionId::OptimisticWaitHit(a, b), &TransactionId::OptimisticWaitHit(c, d)) => {
-                (a == c) && (b == d)
-            }
             (&TransactionId::NoConcurrencyControl, &TransactionId::NoConcurrencyControl) => true,
             _ => false,
         }

@@ -1,11 +1,14 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::nocc::NoConcurrencyControl;
+use crate::scheduler::owh::OptimisedWaitHit;
 use crate::scheduler::sgt::SerializationGraph;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::storage::Database;
 use config::Config;
 use crossbeam_epoch::Guard;
+
+pub mod owh;
 
 pub mod sgt;
 
@@ -14,6 +17,7 @@ pub mod nocc;
 #[derive(Debug)]
 pub enum Scheduler<'a> {
     SerializationGraph(SerializationGraph<'a>),
+    OptimisedWaitHit(OptimisedWaitHit<'a>),
     NoConcurrencyControl(NoConcurrencyControl),
 }
 
@@ -23,7 +27,7 @@ impl<'a> Scheduler<'a> {
 
         let protocol = match config.get_str("protocol")?.as_str() {
             "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
-            "owh" => unimplemented!(),
+            "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
             _ => panic!("Incorrect concurrency control protocol"),
         };
@@ -35,6 +39,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.begin(),
+            OptimisedWaitHit(owh) => owh.begin(),
             NoConcurrencyControl(nocc) => nocc.begin(),
         }
     }
@@ -52,6 +57,9 @@ impl<'a> Scheduler<'a> {
         match self {
             SerializationGraph(sg) => {
                 sg.read_value(table_id, column_id, offset, meta, database, guard)
+            }
+            OptimisedWaitHit(owh) => {
+                owh.read_value(table_id, column_id, offset, meta, database, guard)
             }
             NoConcurrencyControl(nocc) => {
                 nocc.read_value(table_id, column_id, offset, meta, database, guard)
@@ -74,6 +82,9 @@ impl<'a> Scheduler<'a> {
             SerializationGraph(sg) => {
                 sg.write_value(value, table_id, column_id, offset, meta, database, guard)
             }
+            OptimisedWaitHit(owh) => {
+                owh.write_value(value, table_id, column_id, offset, meta, database, guard)
+            }
             NoConcurrencyControl(nocc) => {
                 nocc.write_value(value, table_id, column_id, offset, meta, database, guard)
             }
@@ -89,6 +100,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.commit(database, guard),
+            OptimisedWaitHit(owh) => owh.commit(database, guard),
             NoConcurrencyControl(nocc) => nocc.commit(database, guard),
         }
     }
@@ -102,6 +114,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.abort(database, guard),
+            OptimisedWaitHit(owh) => owh.abort(database, guard),
             NoConcurrencyControl(nocc) => nocc.abort(database, guard),
         }
     }

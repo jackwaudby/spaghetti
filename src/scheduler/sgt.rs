@@ -423,7 +423,7 @@ impl<'a> SerializationGraph<'a> {
                 .add(OperationType::Read, table_id, column_id, offset, prv); // record operation
             debug!("registered");
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            drop(guard); // unpin
+            drop(guard); // unpin -- TODO: check if this should be here!
             Ok(vals)
         } else {
             panic!("unexpected transaction info");

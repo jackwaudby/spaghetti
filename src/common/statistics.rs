@@ -1,6 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
-//use crate::scheduler::owh::error::OptimisedWaitHitError;
+use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::workloads::smallbank::SmallBankTransaction;
 
@@ -309,13 +309,13 @@ impl LocalStatistics {
                     }
                 }
 
-                OptimisticWaitHit(ref mut _metric) => match reason {
-                    // NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
-                    //     OptimisedWaitHitError::Hit(_) => metric.inc_hit(),
-                    //     OptimisedWaitHitError::PredecessorAborted(_, _) => metric.inc_pur_aborted(),
-                    //     OptimisedWaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
-                    // },
-                    // NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
+                OptimisticWaitHit(ref mut metric) => match reason {
+                    NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
+                        OptimisedWaitHitError::Hit(_) => metric.inc_hit(),
+                        OptimisedWaitHitError::PredecessorAborted(_, _) => metric.inc_pur_aborted(),
+                        OptimisedWaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
+                    },
+                    NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
                     _ => {}
                 },
                 _ => {}
@@ -635,21 +635,21 @@ impl HitListReasons {
         }
     }
 
-    // fn inc_row_dirty(&mut self) {
-    //     self.row_dirty += 1;
-    // }
+    fn inc_row_dirty(&mut self) {
+        self.row_dirty += 1;
+    }
 
-    // fn inc_hit(&mut self) {
-    //     self.hit += 1;
-    // }
+    fn inc_hit(&mut self) {
+        self.hit += 1;
+    }
 
-    // fn inc_pur_active(&mut self) {
-    //     self.pur_active += 1;
-    // }
+    fn inc_pur_active(&mut self) {
+        self.pur_active += 1;
+    }
 
-    // fn inc_pur_aborted(&mut self) {
-    //     self.pur_aborted += 1;
-    // }
+    fn inc_pur_aborted(&mut self) {
+        self.pur_aborted += 1;
+    }
 
     fn merge(&mut self, other: HitListReasons) {
         self.row_dirty += other.row_dirty;
