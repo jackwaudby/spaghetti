@@ -643,7 +643,7 @@ fn spin(prv: u64, lsn: &AtomicU64) {
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
         if i >= 10000 {
-            std::thread::yield_now();
+            //            std::thread::yield_now();
         }
     }
 }
