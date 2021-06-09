@@ -83,7 +83,7 @@ impl<'a> Transaction<'a> {
         let mut guard = self.state.lock();
         let state = guard.clone();
         if state == TransactionState::Aborted {
-            return Err(OptimisedWaitHitError::Hit("TODO".to_string()).into());
+            return Err(OptimisedWaitHitError::Hit.into());
         } else {
             *guard = TransactionState::Committed;
         }

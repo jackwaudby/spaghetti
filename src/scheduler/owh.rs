@@ -35,6 +35,43 @@ impl<'a> OptimisedWaitHit<'a> {
         }
     }
 
+    pub fn get_transaction(&self) -> &'a Transaction<'a> {
+        self.transaction
+            .get()
+            .unwrap()
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .clone()
+    }
+
+    pub fn record_operation(
+        &self,
+        op_type: OperationType,
+        table_id: usize,
+        column_id: usize,
+        offset: usize,
+        prv: u64,
+    ) {
+        self.transaction_info
+            .get()
+            .unwrap()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .add(op_type, table_id, column_id, offset, prv); // record operation
+    }
+
+    pub fn get_operations(&self) -> Vec<Operation> {
+        self.transaction_info
+            .get()
+            .unwrap()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .get()
+    }
+
     pub fn begin(&self) -> TransactionId {
         *self
             .transaction_info
@@ -42,7 +79,6 @@ impl<'a> OptimisedWaitHit<'a> {
             .borrow_mut() = Some(TransactionInformation::new()); // reset txn info
 
         let transaction = Box::new(Transaction::new()); // create transaction on heap
-
         let id = transaction::to_usize(transaction); // get id
         let tref = transaction::from_usize(id); // convert to reference
         self.transaction
@@ -62,32 +98,24 @@ impl<'a> OptimisedWaitHit<'a> {
         database: &Database,
         guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
-        let transaction = self
-            .transaction
-            .get()
-            .unwrap()
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .clone(); // this transaction
-
-        let table: &Table = database.get_table(table_id); // get table
-        let rw_table = table.get_rwtable(offset); // get rwtable
+        let transaction = self.get_transaction(); // transaction active on this thread
+        let table: &Table = database.get_table(table_id); // handle to table
+        let rw_table = table.get_rwtable(offset); // handle to rwtable
         let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
-        let lsn = table.get_lsn(offset);
-
-        spin(prv, lsn);
-
+        let lsn = table.get_lsn(offset); // handle to lsn
+        spin(prv, lsn); // delay until prv == lsn
         let snapshot = rw_table.iter(guard); // iterator over access history
 
+        // for each write in the rwtable, add a predecessor upon read to wait list
         for (id, access) in snapshot {
             if id < &prv {
                 match access {
                     Access::Write(txn_info) => match txn_info {
                         TransactionId::OptimisticWaitHit(pred_addr) => {
                             let pred = transaction::from_usize(*pred_addr); // convert to ptr
+
                             if std::ptr::eq(transaction, pred) {
-                                continue;
+                                continue; // skip self predecessors
                             } else {
                                 transaction.add_predecessor(pred, PredecessorUpon::Read);
                             }
@@ -104,16 +132,8 @@ impl<'a> OptimisedWaitHit<'a> {
             .get()
             .get_value()
             .unwrap()
-            .get_value(); // read
-
-        self.transaction_info
-            .get()
-            .unwrap()
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .add(OperationType::Read, table_id, column_id, offset, prv); // record operation
-
+            .get_value(); // read value
+        self.record_operation(OperationType::Read, table_id, column_id, offset, prv); // record operation
         lsn.store(prv + 1, Ordering::Release); // update lsn
 
         Ok(vals)
@@ -129,36 +149,29 @@ impl<'a> OptimisedWaitHit<'a> {
         database: &Database,
         guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
-        let transaction: &'a Transaction<'a> = &self
-            .transaction
-            .get()
-            .unwrap()
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .clone(); // this transaction
-
+        let transaction: &'a Transaction<'a> = self.get_transaction(); // transaction active on this thread
         let table = database.get_table(table_id); // handle to table
         let rw_table = table.get_rwtable(offset); // handle to rwtable
         let prv = rw_table.push_front(Access::Write(meta.clone()), guard); // append access
-
         let lsn = table.get_lsn(offset); // handle to lsn
-        spin(prv, lsn); // spin until access granted
+        spin(prv, lsn); // delay until prv == lsn
 
         let tuple = table.get_tuple(column_id, offset); // handle to tuple
         let dirty = tuple.get().is_dirty();
 
+        // if tuple is dirty then abort
+        // else for each read in the rwtable, add a predecessor upon write to hit list
         if dirty {
+            assert!(tuple.get().prev.is_some());
+
             rw_table.erase(prv, guard); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database, guard); // abort this transaction
-            return Err(NonFatalError::RowDirty(
-                "todo".to_string(),
-                "todo".to_string(),
-            ));
+            return Err(NonFatalError::RowDirty);
         } else {
-            let snapshot = rw_table.iter(guard); // iterator over rwtable
+            assert!(tuple.get().prev.is_none());
 
+            let snapshot = rw_table.iter(guard); // iterator over rwtable
             for (id, access) in snapshot {
                 if id < &prv {
                     match access {
@@ -194,14 +207,9 @@ impl<'a> OptimisedWaitHit<'a> {
                 .set_value(value)
                 .unwrap();
 
-            self.transaction_info
-                .get()
-                .unwrap()
-                .borrow_mut()
-                .as_mut()
-                .unwrap()
-                .add(OperationType::Write, table_id, column_id, offset, prv); // record operation
+            assert!(tuple.get().prev.is_some());
 
+            self.record_operation(OperationType::Write, table_id, column_id, offset, prv); // record operation
             lsn.store(prv + 1, Ordering::Release); // update lsn
 
             Ok(())
@@ -209,25 +217,10 @@ impl<'a> OptimisedWaitHit<'a> {
     }
 
     pub fn abort<'g>(&self, database: &Database, guard: &'g Guard) -> NonFatalError {
-        let this = self
-            .transaction
-            .get()
-            .unwrap()
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .clone();
+        let this = self.get_transaction();
+        let ops = self.get_operations();
 
-        let ops = self
-            .transaction_info
-            .get()
-            .unwrap()
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .get(); // get operations
-
-        this.set_state(TransactionState::Aborted); // set state.
+        this.set_state(TransactionState::Aborted); // set state
 
         for op in ops {
             let Operation {
@@ -247,7 +240,9 @@ impl<'a> OptimisedWaitHit<'a> {
                     rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
+                    assert!(tuple.get().prev.is_some());
                     tuple.get().revert(); // revert
+                    assert!(tuple.get().prev.is_none());
                     rwtable.erase(prv, guard); // remove access
                 }
             }
@@ -263,24 +258,17 @@ impl<'a> OptimisedWaitHit<'a> {
             });
         }
 
-        NonFatalError::NonSerializable // TODO: consistently return the why
+        NonFatalError::NonSerializable // placeholder
     }
 
     /// Commit a transaction.
     pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
-        let transaction = self
-            .transaction
-            .get()
-            .unwrap()
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .clone();
+        let transaction = self.get_transaction();
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
             self.abort(database, guard);
-            return Err(OptimisedWaitHitError::Hit("TODO".to_string()).into());
+            return Err(OptimisedWaitHitError::Hit.into());
         }
 
         // HIT PHASE //
@@ -295,7 +283,7 @@ impl<'a> OptimisedWaitHit<'a> {
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
             self.abort(database, guard);
-            return Err(OptimisedWaitHitError::Hit("TODO".to_string()).into());
+            return Err(OptimisedWaitHitError::Hit.into());
         }
 
         // WAIT PHASE //
@@ -305,16 +293,11 @@ impl<'a> OptimisedWaitHit<'a> {
             match predecessor.get_state() {
                 TransactionState::Active => {
                     self.abort(database, guard);
-                    let e = OptimisedWaitHitError::PredecessorActive("TODO".to_string());
-                    return Err(e.into());
+                    return Err(OptimisedWaitHitError::PredecessorActive.into());
                 }
                 TransactionState::Aborted => {
                     self.abort(database, guard);
-                    let e = OptimisedWaitHitError::PredecessorAborted(
-                        "TODO".to_string(),
-                        "TODO".to_string(),
-                    );
-                    return Err(e.into());
+                    return Err(OptimisedWaitHitError::PredecessorAborted.into());
                 }
                 TransactionState::Committed => {}
             }
@@ -323,7 +306,7 @@ impl<'a> OptimisedWaitHit<'a> {
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
             self.abort(database, guard);
-            return Err(OptimisedWaitHitError::Hit("TODO".to_string()).into());
+            return Err(OptimisedWaitHitError::Hit.into());
         }
 
         // TRY COMMIT //
@@ -331,15 +314,7 @@ impl<'a> OptimisedWaitHit<'a> {
         match outcome {
             Ok(_) => {
                 // commit changes
-
-                let ops = self
-                    .transaction_info
-                    .get()
-                    .unwrap()
-                    .borrow_mut()
-                    .as_mut()
-                    .unwrap()
-                    .get(); // get operations
+                let ops = self.get_operations();
 
                 for op in ops {
                     let Operation {
@@ -359,7 +334,10 @@ impl<'a> OptimisedWaitHit<'a> {
                             rwtable.erase(prv, guard); // remove access
                         }
                         OperationType::Write => {
+                            assert!(tuple.get().prev.is_some());
+
                             tuple.get().commit(); // revert
+                            assert!(tuple.get().prev.is_none());
                             rwtable.erase(prv, guard); // remove access
                         }
                     }
@@ -377,9 +355,9 @@ impl<'a> OptimisedWaitHit<'a> {
 
                 Ok(())
             }
-            Err(_) => {
+            Err(e) => {
                 self.abort(database, guard);
-                Err(NonFatalError::NonSerializable) // TODO
+                Err(e)
             }
         }
     }

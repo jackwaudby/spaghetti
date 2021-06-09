@@ -23,7 +23,7 @@ impl Tuple {
 #[derive(Debug)]
 pub struct Internal {
     current: Field,
-    prev: Option<Field>,
+    pub prev: Option<Field>,
     state: State,
 }
 
@@ -62,10 +62,7 @@ impl Internal {
 
     pub fn append_value(&mut self, value: &Data) -> Result<OpResult, NonFatalError> {
         match self.state {
-            State::Modified => Err(NonFatalError::RowDirty(
-                "TODO".to_string(),
-                "TODO".to_string(),
-            )),
+            State::Modified => Err(NonFatalError::RowDirty),
             State::Clean => {
                 let prev = self.current.clone(); // set prev fields
                 self.prev = Some(prev);
@@ -79,10 +76,7 @@ impl Internal {
 
     pub fn set_value(&mut self, value: &Data) -> Result<OpResult, NonFatalError> {
         match self.state {
-            State::Modified => Err(NonFatalError::RowDirty(
-                "TODO".to_string(),
-                "TODO".to_string(),
-            )),
+            State::Modified => Err(NonFatalError::RowDirty),
             State::Clean => {
                 let prev = self.current.clone(); // set prev fields
                 self.prev = Some(prev);

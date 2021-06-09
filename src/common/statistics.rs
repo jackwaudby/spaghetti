@@ -311,11 +311,11 @@ impl LocalStatistics {
 
                 OptimisticWaitHit(ref mut metric) => match reason {
                     NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
-                        OptimisedWaitHitError::Hit(_) => metric.inc_hit(),
-                        OptimisedWaitHitError::PredecessorAborted(_, _) => metric.inc_pur_aborted(),
-                        OptimisedWaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
+                        OptimisedWaitHitError::Hit => metric.inc_hit(),
+                        OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+                        OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
                     },
-                    NonFatalError::RowDirty(_, _) => metric.inc_row_dirty(),
+                    NonFatalError::RowDirty => metric.inc_row_dirty(),
                     _ => {}
                 },
                 _ => {}
