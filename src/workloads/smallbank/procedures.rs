@@ -21,20 +21,13 @@ pub fn balance<'a>(
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
-            assert_eq!(epoch::is_pinned(), false);
-
-            debug!("balance txn");
             let offset = params.name as usize;
-
             let guard = &epoch::pin(); // pin thread
-
             let meta = scheduler.begin(); // register
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             scheduler.read_value(1, 1, offset, &meta, database, guard)?; // get checking balance
             scheduler.read_value(2, 1, offset, &meta, database, guard)?; // get savings balance
             scheduler.commit(&meta, database, guard)?; // commit
-
-            // TODO: will the Guard get dropped if the functions return early?
 
             Ok("ok".to_string())
         }
@@ -52,12 +45,8 @@ pub fn deposit_checking<'a>(
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
-            debug!("deposit checking txn");
-            assert_eq!(epoch::is_pinned(), false);
-
-            let guard = &epoch::pin(); // pin thread
             let offset = params.name as usize;
-
+            let guard = &epoch::pin(); // pin thread
             let meta = scheduler.begin();
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             let res = scheduler.read_value(1, 1, offset, &meta, database, guard)?; // get current balance
@@ -81,24 +70,19 @@ pub fn transact_savings<'a>(
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
-            assert_eq!(epoch::is_pinned(), false);
-
-            let guard = &epoch::pin(); // pin thread
-
             let offset = params.name as usize;
-
+            let guard = &epoch::pin(); // pin thread
             let meta = scheduler.begin(); // register
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             let res = scheduler.read_value(2, 1, offset, &meta, database, guard)?; // get savings balance
             let balance = f64::try_from(res)? + params.value; // new balance
-
             if balance < 0.0 {
                 scheduler.abort(&meta, database, guard);
                 return Err(SmallBankError::InsufficientFunds.into());
             }
-
             scheduler.write_value(&Data::from(balance), 2, 1, offset, &meta, database, guard)?; // write 1 -- update saving balance
             scheduler.commit(&meta, database, guard)?;
+
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
@@ -115,26 +99,22 @@ pub fn amalgmate<'a>(
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
-            assert_eq!(epoch::is_pinned(), false);
-
-            let guard = &epoch::pin(); // pin thread
-
-            debug!("amalgmate");
             let offset1 = params.name1 as usize;
             let offset2 = params.name2 as usize;
-
+            let guard = &epoch::pin(); // pin thread
             let meta = scheduler.begin(); // register
             scheduler.read_value(0, 0, offset1, &meta, database, guard)?; // read 1 -- get customer1 id
             let res1 = scheduler.read_value(2, 1, offset1, &meta, database, guard)?; // read 2 -- current savings balance (customer1)
             let res2 = scheduler.read_value(1, 1, offset1, &meta, database, guard)?; // read 3 -- current checking balance (customer1)
-            scheduler.write_value(&Data::Double(0.0), 2, 1, offset1, &meta, database, guard)?; // write 1 -- update saving balance (customer1)
-            scheduler.write_value(&Data::Double(0.0), 1, 1, offset1, &meta, database, guard)?; // write 2 -- update checking balance (customer1)
+            scheduler.write_value(&Data::Double(0.0), 2, 1, offset1, &meta, database, guard)?; // write 1 -- update saving balance (cust1)
+            scheduler.write_value(&Data::Double(0.0), 1, 1, offset1, &meta, database, guard)?; // write 2 -- update checking balance (cust1)
             let sum = f64::try_from(res1)? + f64::try_from(res2)?; // amount to send
             scheduler.read_value(0, 0, offset2, &meta, database, guard)?; // read 4 -- get customer2 id
             let res3 = scheduler.read_value(1, 1, offset2, &meta, database, guard)?; // read 5 -- current checking balance (customer2)
             let bal = sum + f64::try_from(res3)?;
             scheduler.write_value(&Data::Double(bal), 1, 1, offset2, &meta, database, guard)?;
             scheduler.commit(&meta, database, guard)?;
+
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
@@ -151,12 +131,8 @@ pub fn write_check<'a>(
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
-            debug!("write check txn");
-            assert_eq!(epoch::is_pinned(), false);
-
-            let guard = &epoch::pin(); // pin thread
-
             let offset = params.name as usize;
+            let guard = &epoch::pin(); // pin thread
             let meta = scheduler.begin();
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             let savings =
@@ -165,13 +141,10 @@ pub fn write_check<'a>(
                 f64::try_from(scheduler.read_value(1, 1, offset, &meta, database, guard)?)?; // get checking balance
             let total = savings + checking; // total balance
             let mut amount = params.value;
-
             if total < amount {
                 amount += 1.0; // apply overdraft charge
             }
-
             let new_check = total - amount;
-
             scheduler.write_value(
                 &Data::Double(new_check),
                 1,
@@ -182,6 +155,7 @@ pub fn write_check<'a>(
                 guard,
             )?; // update checking balance
             scheduler.commit(&meta, database, guard)?;
+
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
@@ -198,14 +172,9 @@ pub fn send_payment<'a>(
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
-            debug!("send payment");
-            assert_eq!(epoch::is_pinned(), false);
-
-            let guard = &epoch::pin(); // pin thread
-
             let offset1 = params.name1 as usize;
             let offset2 = params.name2 as usize;
-
+            let guard = &epoch::pin(); // pin thread
             let meta = scheduler.begin(); // register
             scheduler.read_value(0, 0, offset1, &meta, database, guard)?; // get cust1 id
             let mut checking =
@@ -238,6 +207,7 @@ pub fn send_payment<'a>(
                 guard,
             )?; // update cust2 checking
             scheduler.commit(&meta, database, guard)?;
+
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
