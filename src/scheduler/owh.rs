@@ -162,12 +162,13 @@ impl<'a> OptimisedWaitHit<'a> {
         // if tuple is dirty then abort
         // else for each read in the rwtable, add a predecessor upon write to hit list
         if dirty {
-            assert!(
-                tuple.get().prev.is_some(),
-                "dirty: {}; tuple: {:?}",
-                dirty,
-                tuple.get()
-            );
+            // assert!(
+            //     tuple.get().prev.is_some(),
+            //     "dirty: {}; tuple: {:?}",
+            //     dirty,
+            //     tuple.get()
+            // );
+            // ok to have state change under feet here
 
             rw_table.erase(prv, guard); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
