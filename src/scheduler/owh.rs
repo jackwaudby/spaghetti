@@ -162,14 +162,24 @@ impl<'a> OptimisedWaitHit<'a> {
         // if tuple is dirty then abort
         // else for each read in the rwtable, add a predecessor upon write to hit list
         if dirty {
-            assert!(tuple.get().prev.is_some());
+            assert!(
+                tuple.get().prev.is_some(),
+                "dirty: {}; tuple: {:?}",
+                dirty,
+                tuple.get()
+            );
 
             rw_table.erase(prv, guard); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database, guard); // abort this transaction
             return Err(NonFatalError::RowDirty);
         } else {
-            assert!(tuple.get().prev.is_none());
+            assert!(
+                tuple.get().prev.is_none(),
+                "dirty: {}; tuple: {:?}",
+                dirty,
+                tuple.get()
+            );
 
             let snapshot = rw_table.iter(guard); // iterator over rwtable
             for (id, access) in snapshot {
@@ -240,9 +250,10 @@ impl<'a> OptimisedWaitHit<'a> {
                     rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
-                    assert!(tuple.get().prev.is_some());
-                    tuple.get().revert(); // revert
-                    assert!(tuple.get().prev.is_none());
+                    assert!(tuple.get().prev.is_some(), "tuple: {:?}", tuple.get());
+                    tuple.get().revert(); // commit
+                    assert!(tuple.get().prev.is_none(), "tuple: {:?}", tuple.get());
+
                     rwtable.erase(prv, guard); // remove access
                 }
             }
@@ -334,10 +345,10 @@ impl<'a> OptimisedWaitHit<'a> {
                             rwtable.erase(prv, guard); // remove access
                         }
                         OperationType::Write => {
-                            assert!(tuple.get().prev.is_some());
+                            assert!(tuple.get().prev.is_some(), "tuple: {:?}", tuple.get());
+                            tuple.get().commit(); // commit
+                            assert!(tuple.get().prev.is_none(), "tuple: {:?}", tuple.get());
 
-                            tuple.get().commit(); // revert
-                            assert!(tuple.get().prev.is_none());
                             rwtable.erase(prv, guard); // remove access
                         }
                     }
