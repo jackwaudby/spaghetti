@@ -43,12 +43,12 @@ impl NoConcurrencyControl {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
+        _guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         if let TransactionId::NoConcurrencyControl = meta {
             let table: &Table = database.get_table(table_id); // get table
-            let rw_table = table.get_rwtable(offset); // get rwtable
-            let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
+            let rw_table = table.get_locked_rwtable(offset); // get rwtable
+            let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
             let lsn = table.get_lsn(offset);
 
             spin(prv, lsn);
@@ -85,13 +85,13 @@ impl NoConcurrencyControl {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
+        _guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         if let TransactionId::NoConcurrencyControl = meta {
             let table = database.get_table(table_id);
-            let rw_table = table.get_rwtable(offset);
+            let rw_table = table.get_locked_rwtable(offset);
             let lsn = table.get_lsn(offset);
-            let prv = rw_table.push_front(Access::Write(meta.clone()), guard);
+            let prv = rw_table.push_front(Access::Write(meta.clone()));
 
             spin(prv, lsn);
 
@@ -116,7 +116,7 @@ impl NoConcurrencyControl {
     }
 
     /// Commit operation.
-    pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
+    pub fn commit<'g>(&self, database: &Database, _guard: &'g Guard) -> Result<(), NonFatalError> {
         let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
 
         for op in ops {
@@ -129,14 +129,14 @@ impl NoConcurrencyControl {
             } = op;
 
             let table = database.get_table(table_id);
-            let rwtable = table.get_rwtable(offset);
+            let rwtable = table.get_locked_rwtable(offset);
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
             }
         }
@@ -145,7 +145,7 @@ impl NoConcurrencyControl {
     }
 
     /// Abort operation.
-    pub fn abort<'g>(&self, database: &Database, guard: &'g Guard) -> NonFatalError {
+    pub fn abort<'g>(&self, database: &Database, _guard: &'g Guard) -> NonFatalError {
         let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
 
         for op in ops {
@@ -158,14 +158,14 @@ impl NoConcurrencyControl {
             } = op;
 
             let table = database.get_table(table_id);
-            let rwtable = table.get_rwtable(offset);
+            let rwtable = table.get_locked_rwtable(offset);
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
             }
         }

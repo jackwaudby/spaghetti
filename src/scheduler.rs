@@ -26,8 +26,10 @@ impl<'a> Scheduler<'a> {
         let cores = config.get_int("cores")? as usize;
 
         let protocol = match config.get_str("protocol")?.as_str() {
-            "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
-            "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
+            // "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
+            "sgt" => unimplemented!(),
+            // "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
+            "owh" => unimplemented!(),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
             _ => panic!("Incorrect concurrency control protocol"),
         };
