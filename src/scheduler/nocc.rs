@@ -60,6 +60,8 @@ impl NoConcurrencyControl {
                 .unwrap()
                 .get_value(); // read
 
+            lsn.store(prv + 1, Ordering::Release); // update lsn
+
             self.txn_info.get().unwrap().borrow_mut().add(
                 OperationType::Read,
                 table_id,
@@ -67,7 +69,6 @@ impl NoConcurrencyControl {
                 offset,
                 prv,
             ); // record operation
-            lsn.store(prv + 1, Ordering::Release); // update lsn
 
             Ok(vals)
         } else {
@@ -91,11 +92,14 @@ impl NoConcurrencyControl {
             let rw_table = table.get_rwtable(offset);
             let lsn = table.get_lsn(offset);
             let prv = rw_table.push_front(Access::Write(meta.clone()), guard);
+
             spin(prv, lsn);
 
             let tuple = table.get_tuple(column_id, offset).get(); // get tuple
             tuple.set_value(value).unwrap(); // set value
             tuple.commit(); // commit; operations never fail
+
+            lsn.store(prv + 1, Ordering::Release); // update lsn
 
             self.txn_info.get().unwrap().borrow_mut().add(
                 OperationType::Write,
@@ -104,8 +108,6 @@ impl NoConcurrencyControl {
                 offset,
                 prv,
             ); // record operation
-
-            lsn.store(prv + 1, Ordering::Release); // update lsn
 
             Ok(())
         } else {
