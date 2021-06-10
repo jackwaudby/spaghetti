@@ -40,8 +40,6 @@ impl<T> AtomicLinkedList<T> {
             next: Atomic::null(),
         }); // create node
 
-        //    let guard = &epoch::pin(); // pin thread
-
         loop {
             let head = self.head.load(Relaxed, guard); // snapshot current
 
@@ -53,7 +51,6 @@ impl<T> AtomicLinkedList<T> {
                 .compare_exchange(head, new, Relaxed, Relaxed, guard)
             {
                 Ok(_) => {
-                    //       drop(guard);
                     return id;
                 }
                 Err(cse) => {
@@ -159,7 +156,7 @@ impl<T> AtomicLinkedList<T> {
         unsafe { guard.defer_destroy(current) }; // deallocate
 
         drop(lg);
-        //   drop(guard);
+
         return Some(unsafe { ptr::read(&*(current.as_ref().unwrap()).data) }); // return value
     }
 }
