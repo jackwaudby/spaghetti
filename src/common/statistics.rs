@@ -474,6 +474,7 @@ impl AbortBreakdown {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
             "nocc" => ProtocolAbortBreakdown::NoConcurrencyControl,
+            "nocc2" => ProtocolAbortBreakdown::NoConcurrencyControl,
             _ => unimplemented!(),
         };
 
