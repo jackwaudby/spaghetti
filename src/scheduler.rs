@@ -35,7 +35,7 @@ impl<'a> Scheduler<'a> {
             // "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
             "owh" => unimplemented!(),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
-            "nocc2" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
+            "nocc2" => Scheduler::NoConcurrencyControl2(NoConcurrencyControl2::new(cores)),
             _ => panic!("Incorrect concurrency control protocol"),
         };
 
