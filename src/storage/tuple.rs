@@ -60,16 +60,21 @@ impl Internal {
         Ok(OpResult::new(Some(self.current.get())))
     }
 
-    pub fn set_value(&mut self, value: &Data) -> Result<OpResult, NonFatalError> {
+    pub fn set_value(&mut self, value: &Data) -> OpResult {
         match self.state {
-            State::Modified => Err(NonFatalError::RowDirty),
+            State::Modified =>
+            //Err(NonFatalError::RowDirty),
+            {
+                panic!("row dirty")
+            }
             State::Clean => {
                 self.state = State::Modified; // set state
                 let prev = self.current.clone(); // set prev fields
                 self.prev = Some(prev);
                 self.current.set(value.clone());
 
-                Ok(OpResult::new(None))
+                OpResult::new(None)
+                //  Ok(OpResult::new(None))
             }
         }
     }
