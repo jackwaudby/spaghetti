@@ -91,7 +91,7 @@ impl<T> AtomicLinkedList<T> {
         }
     }
 
-    pub fn erase<'g>(&self, id: u64, guard: &'g Guard) -> Option<T> {
+    pub fn erase<'g>(&self, id: u64, guard: &'g Guard) {
         let lg = self.lock.lock(); // 1 erase at a time
 
         let mut left = Shared::null(); // Shared
@@ -113,7 +113,7 @@ impl<T> AtomicLinkedList<T> {
                 None => {
                     drop(lg);
                     //        drop(guard);
-                    return None;
+                    return;
                 }
             };
 
@@ -152,11 +152,18 @@ impl<T> AtomicLinkedList<T> {
             }
         }
 
-        unsafe { guard.defer_destroy(current) }; // deallocate
+        // unsafe { guard.defer_destroy(current) }; // deallocate
+
+        unsafe {
+            let mut o = current.into_owned();
+            ManuallyDrop::drop(&mut o.data);
+            ManuallyDrop::drop(&mut o.id);
+            guard.defer_destroy(current);
+        };
 
         drop(lg);
 
-        return Some(unsafe { ptr::read(&*(current.as_ref().unwrap()).data) }); // return value
+        // return Some(unsafe { ptr::read(&*(current.as_ref().unwrap()).data) }); // return value
     }
 }
 
