@@ -247,7 +247,7 @@ impl GlobalStatistics {
             self.cores,
             (self.total_time as f64 / 1000000.0),
             committed,
-            aborted,
+            restarted,
         ))
         .unwrap();
     }
