@@ -241,6 +241,7 @@ impl GlobalStatistics {
         let mut wtr = csv::Writer::from_writer(file);
 
         wtr.serialize((
+            self.scale_factor,
             &self.protocol,
             &self.workload,
             self.cores,

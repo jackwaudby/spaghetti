@@ -9,3 +9,4 @@ ssh_keys/
 .Rhistory
 reports/
 *.svg
+results.csv
