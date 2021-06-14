@@ -53,12 +53,6 @@ impl NoConcurrencyControl {
 
             spin(prv, lsn);
 
-            let snapshot = rw_table.iter(guard); // iterator over access history
-
-            for (id, access) in snapshot {
-                3 * 3;
-            }
-
             let vals = table
                 .get_tuple(column_id, offset)
                 .get()
@@ -100,12 +94,6 @@ impl NoConcurrencyControl {
             let prv = rw_table.push_front(Access::Write(meta.clone()), guard);
 
             spin(prv, lsn);
-
-            let snapshot = rw_table.iter(guard); // iterator over access history
-
-            for (id, access) in snapshot {
-                3 * 3;
-            }
 
             let tuple = table.get_tuple(column_id, offset).get(); // get tuple
             tuple.set_value(value); // set value

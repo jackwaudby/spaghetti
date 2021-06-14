@@ -179,12 +179,15 @@ pub fn run(
                             }
                             debug!("complete: aborted");
                         } else {
-                            restart = true; // protocol abort
+                            // restart = true; // protocol abort
+                            restart = false;
+
                             debug!("restart: {}", reason);
                             stats.record(transaction, outcome.clone(), restart);
-                            let start_wm = Instant::now();
-                            wm.wait();
-                            stats.stop_wait_manager(start_wm);
+
+                            // let start_wm = Instant::now();
+                            // wm.wait();
+                            // stats.stop_wait_manager(start_wm);
                         }
                     }
                 }
