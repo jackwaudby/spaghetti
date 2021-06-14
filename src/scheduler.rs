@@ -1,6 +1,5 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::nocc::NoConcurrencyControl;
-use crate::scheduler::nocc2::NoConcurrencyControl as NoConcurrencyControl2;
 use crate::scheduler::owh::OptimisedWaitHit;
 use crate::scheduler::sgt::SerializationGraph;
 use crate::storage::access::TransactionId;
@@ -22,7 +21,6 @@ pub enum Scheduler<'a> {
     SerializationGraph(SerializationGraph<'a>),
     OptimisedWaitHit(OptimisedWaitHit<'a>),
     NoConcurrencyControl(NoConcurrencyControl),
-    NoConcurrencyControl2(NoConcurrencyControl2),
 }
 
 impl<'a> Scheduler<'a> {
@@ -33,7 +31,6 @@ impl<'a> Scheduler<'a> {
             "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
             "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
-            "nocc2" => Scheduler::NoConcurrencyControl2(NoConcurrencyControl2::new(cores)),
             _ => panic!("Incorrect concurrency control protocol"),
         };
 
@@ -46,7 +43,6 @@ impl<'a> Scheduler<'a> {
             SerializationGraph(sg) => sg.begin(),
             OptimisedWaitHit(owh) => owh.begin(),
             NoConcurrencyControl(nocc) => nocc.begin(),
-            NoConcurrencyControl2(nocc) => nocc.begin(),
         }
     }
 
@@ -68,9 +64,6 @@ impl<'a> Scheduler<'a> {
                 owh.read_value(table_id, column_id, offset, meta, database, guard)
             }
             NoConcurrencyControl(nocc) => {
-                nocc.read_value(table_id, column_id, offset, meta, database, guard)
-            }
-            NoConcurrencyControl2(nocc) => {
                 nocc.read_value(table_id, column_id, offset, meta, database, guard)
             }
         }
@@ -97,9 +90,6 @@ impl<'a> Scheduler<'a> {
             NoConcurrencyControl(nocc) => {
                 nocc.write_value(value, table_id, column_id, offset, meta, database, guard)
             }
-            NoConcurrencyControl2(nocc) => {
-                nocc.write_value(value, table_id, column_id, offset, meta, database, guard)
-            }
         }
     }
 
@@ -114,7 +104,6 @@ impl<'a> Scheduler<'a> {
             SerializationGraph(sg) => sg.commit(database, guard),
             OptimisedWaitHit(owh) => owh.commit(database, guard),
             NoConcurrencyControl(nocc) => nocc.commit(database, guard),
-            NoConcurrencyControl2(nocc) => nocc.commit(database, guard),
         }
     }
 
@@ -129,7 +118,6 @@ impl<'a> Scheduler<'a> {
             SerializationGraph(sg) => sg.abort(database, guard),
             OptimisedWaitHit(owh) => owh.abort(database, guard),
             NoConcurrencyControl(nocc) => nocc.abort(database, guard),
-            NoConcurrencyControl2(nocc) => nocc.abort(database, guard),
         }
     }
 }

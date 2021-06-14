@@ -4,7 +4,6 @@ use std::mem::ManuallyDrop;
 use std::ptr;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, SeqCst};
-use tracing::debug;
 
 #[derive(Debug)]
 pub struct AtomicLinkedList<T> {
