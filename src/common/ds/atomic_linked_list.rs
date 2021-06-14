@@ -4,6 +4,7 @@ use std::mem::ManuallyDrop;
 use std::ptr;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering::{Acquire, Relaxed, SeqCst};
+use tracing::debug;
 
 #[derive(Debug)]
 pub struct AtomicLinkedList<T> {
@@ -92,13 +93,16 @@ impl<T> AtomicLinkedList<T> {
     }
 
     pub fn erase<'g>(&self, id: u64, guard: &'g Guard) {
+        debug!("searching for id: {}", id);
+        debug!("request lock");
         let lg = self.lock.lock(); // 1 erase at a time
-
+        debug!("got lock");
         let mut left = Shared::null(); // Shared
         let mut current;
         loop {
+            debug!("attempt");
             current = self.head.load(Acquire, guard); // Shared
-
+            debug!("{:?}", unsafe { current.as_ref() });
             // traverse until current is node to be removed
             while let Some(node) = unsafe { current.as_ref() } {
                 if *node.id == id {
@@ -158,7 +162,7 @@ impl<T> AtomicLinkedList<T> {
             let mut o = current.into_owned();
             ManuallyDrop::drop(&mut o.data);
             ManuallyDrop::drop(&mut o.id);
-            guard.defer_destroy(current);
+            drop(o);
         };
 
         drop(lg);
