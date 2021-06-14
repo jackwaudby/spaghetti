@@ -230,6 +230,25 @@ impl GlobalStatistics {
             "wait_manager(ms)": format!("{:.0}", (self.wait_manager as f64 / 1000000.0)),
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
+
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open("./results.csv")
+            .unwrap();
+
+        let mut wtr = csv::Writer::from_writer(file);
+
+        wtr.serialize((
+            &self.protocol,
+            &self.workload,
+            self.cores,
+            (self.total_time as f64 / 1000000.0),
+            committed,
+            aborted,
+        ))
+        .unwrap();
     }
 }
 
