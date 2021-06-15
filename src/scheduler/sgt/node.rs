@@ -365,20 +365,32 @@ impl<'a> fmt::Display for RwNode<'a> {
         };
         if !empty {
             incoming.push('[');
-            let g = unsafe {
-                self.incoming
-                    .get()
-                    .as_ref()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
-                    .lock()
-            };
-            for edge in &*g {
-                incoming.push_str(&format!("{}", edge));
-                incoming.push_str(", ");
+
+            match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
+                Some(edges) => {
+                    let g = edges.lock();
+                    for edge in &*g {
+                        incoming.push_str(&format!("{}", edge));
+                        incoming.push_str(", ");
+                    }
+                    drop(g);
+                }
+
+                None => {
+                    incoming.push_str(&format!("cleared]"));
+                }
             }
-            drop(g);
+
+            // let g = unsafe {
+            //     self.incoming
+            //         .get()
+            //         .as_ref()
+            //         .unwrap()
+            //         .as_ref()
+            //         .unwrap()
+            //         .lock()
+            // };
+
             incoming.push_str(&format!("]"));
         } else {
             incoming.push_str("[]");
