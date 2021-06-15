@@ -312,8 +312,6 @@ impl<'a> SerializationGraph<'a> {
             return false;
         }
 
-        this.set_committed();
-
         let ops = self.get_operations();
 
         for op in ops {
@@ -339,6 +337,8 @@ impl<'a> SerializationGraph<'a> {
                 }
             }
         }
+
+        this.set_committed();
 
         true
     }
