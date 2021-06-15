@@ -351,25 +351,51 @@ impl<'a> fmt::Display for RwNode<'a> {
                 }
             }
 
-            // let g = unsafe {
-            //     self.incoming
-            //         .get()
-            //         .as_ref()
-            //         .unwrap()
-            //         .as_ref()
-            //         .unwrap()
-            //         .lock()
-            // };
-
             incoming.push_str(&format!("]"));
         } else {
             incoming.push_str("[]");
+        }
+
+        let mut outgoing = String::new();
+        let empty = match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
+            Some(edges) => {
+                let g = edges.lock();
+                let r = g.is_empty();
+                drop(g);
+                r
+            }
+
+            None => true,
+        };
+
+        if !empty {
+            outgoing.push('[');
+
+            match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
+                Some(edges) => {
+                    let g = edges.lock();
+                    for edge in &*g {
+                        outgoing.push_str(&format!("{}", edge));
+                        outgoing.push_str(", ");
+                    }
+                    drop(g);
+                }
+
+                None => {
+                    outgoing.push_str(&format!("cleared]"));
+                }
+            }
+
+            outgoing.push_str(&format!("]"));
+        } else {
+            outgoing.push_str("[]");
         }
 
         writeln!(f).unwrap();
         writeln!(f, "---node---").unwrap();
         writeln!(f, "id: {}", id).unwrap();
         writeln!(f, "incoming: {}", incoming).unwrap();
+        writeln!(f, "outgoing: {}", outgoing).unwrap();
         writeln!(f, "committed: {:?}", self.committed).unwrap();
         writeln!(f, "cascading_abort: {:?}", self.cascading_abort).unwrap();
         writeln!(f, "aborted: {:?}", self.aborted).unwrap();

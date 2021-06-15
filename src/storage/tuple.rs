@@ -125,7 +125,7 @@ impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             State::Clean => write!(f, "clean"),
-            State::Modified(prv, tid) => write!(f, "modified by: {}; prv: {} ", tid, prv),
+            State::Modified(prv, tid) => write!(f, "modified by {} prv: {} ", tid, prv),
         }
     }
 }
