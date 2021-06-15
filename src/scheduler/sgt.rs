@@ -76,13 +76,13 @@ impl<'a> SerializationGraph<'a> {
 
         let incoming;
         let outgoing;
-        if recycled.is_empty() {
-            incoming = Mutex::new(FxHashSet::default());
-            outgoing = Mutex::new(FxHashSet::default());
-        } else {
-            incoming = recycled.pop().unwrap();
-            outgoing = recycled.pop().unwrap();
-        }
+        // if recycled.is_empty() {
+        incoming = Mutex::new(FxHashSet::default());
+        outgoing = Mutex::new(FxHashSet::default());
+        // } else {
+        //     incoming = recycled.pop().unwrap();
+        //     outgoing = recycled.pop().unwrap();
+        // }
 
         let node = Box::new(RwNode::new_with_sets(incoming, outgoing)); // allocated node on the heap
         let id = node::to_usize(node);
