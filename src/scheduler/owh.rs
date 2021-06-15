@@ -212,7 +212,10 @@ impl<'a> OptimisedWaitHit<'a> {
                 }
             }
 
-            table.get_tuple(column_id, offset).get().set_value(value);
+            table
+                .get_tuple(column_id, offset)
+                .get()
+                .set_value(value, prv);
 
             assert!(tuple.get().prev.is_some());
 

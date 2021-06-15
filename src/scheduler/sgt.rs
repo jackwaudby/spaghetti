@@ -534,7 +534,11 @@ impl<'a> SerializationGraph<'a> {
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
+            if let Err(e) = table
+                .get_tuple(column_id, offset)
+                .get()
+                .set_value(value, prv)
+            {
                 let lsn = lsn.load(Ordering::Acquire);
                 let row = table.get_tuple(column_id, offset).get();
                 panic!(

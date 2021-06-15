@@ -96,7 +96,7 @@ impl NoConcurrencyControl {
         debug!("write - spin complete");
 
         let tuple = table.get_tuple(column_id, offset).get(); // get tuple
-        tuple.set_value(value); // set value
+        tuple.set_value(value, prv); // set value
         tuple.commit(); // commit; operations never fail
 
         debug!("write - update lsn");
