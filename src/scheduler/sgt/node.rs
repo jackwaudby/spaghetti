@@ -128,6 +128,9 @@ impl<'a> RwNode<'a> {
     }
 
     pub fn insert_incoming(&self, from_node: &'a RwNode<'a>, rw_edge: bool) {
+        assert!(!self.is_aborted());
+        assert!(!self.is_committed());
+
         let mut guard = unsafe {
             self.incoming
                 .get()
