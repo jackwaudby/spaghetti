@@ -460,8 +460,10 @@ impl<'a> SerializationGraph<'a> {
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
         let mut prv;
-
+        let mut decisions = Vec::new();
         loop {
+            decisions.clear();
+
             // check for cascading abort
             if self.needs_abort(this) {
                 self.abort(database, guard);
@@ -506,6 +508,8 @@ impl<'a> SerializationGraph<'a> {
 
                                     wait = true;
                                 }
+
+                                decisions.push((from_addr, cyclic, wait));
                             }
                         }
                         Access::Read(_) => {}
@@ -551,8 +555,8 @@ impl<'a> SerializationGraph<'a> {
         let (dirty, state) = tuple.get().is_dirty();
         assert_eq!(
             dirty, false,
-            "uncommitted write observed by transaction: {}, state observed: {}",
-            this, state
+            "uncommitted write observed by transaction: {}state observed: {}\n decisions: {:?}",
+            this, state, decisions
         );
 
         // Now, handle R-W conflicts
