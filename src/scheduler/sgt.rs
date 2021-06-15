@@ -484,12 +484,13 @@ impl<'a> SerializationGraph<'a> {
                     return Err(self.abort(database, guard)); // check if needs abort
                 }
 
+                edges.push(access);
                 if id < &prv {
                     match access {
                         Access::Write(from) => {
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
-                                edges.push(from);
+
                                 if !from.is_committed() {
                                     if !self.insert_and_check(this, from, false) {
                                         cyclic = true;
