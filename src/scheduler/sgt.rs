@@ -526,8 +526,8 @@ impl<'a> SerializationGraph<'a> {
 
             assert_eq!(
                 dirty, false,
-                "\nnot clean: {}\n wait: {}\n cycle: {}\n edges: {:?}",
-                tuple, wait, cyclic, edges
+                "\nnot clean: {}\n wait: {}\n cycle: {}\n edges: {:?}\n this node: {}",
+                tuple, wait, cyclic, edges, this
             );
             break;
         }
