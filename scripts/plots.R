@@ -11,13 +11,13 @@ dat = bind_rows(waudby,durner)
 sf1 = dat %>% filter((sf == 1) | (sf == 100))
 sf3 = dat %>% filter((sf == 3) | (sf == 10000))
 
-ggplot(data=sf1, aes(x=cores, y=commits/(total_time/cores/1000), group=protocol, colour=protocol)) +
+ggplot(data=sf1, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=protocol, colour=protocol)) +
   geom_line() +
   ylab("thpt") +
   ggtitle("SmallBank - High Contention (100 accounts)") +
   theme_bw() 
 
-ggplot(data=sf3, aes(x=cores, y=commits/(total_time/cores/1000), group=protocol, colour=protocol)) +
+ggplot(data=sf3, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=protocol, colour=protocol)) +
   geom_line() +
   ylab("thpt") +
   ggtitle("SmallBank - Low Contention (10000 accounts)") +
