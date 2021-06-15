@@ -471,6 +471,7 @@ impl<'a> SerializationGraph<'a> {
 
             let mut wait = false;
             let mut cyclic = false;
+            let mut edges = Vec::new();
 
             // for each access
             // if is not committed
@@ -488,7 +489,7 @@ impl<'a> SerializationGraph<'a> {
                         Access::Write(from) => {
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
-
+                                edges.push(from);
                                 if !from.is_committed() {
                                     if !self.insert_and_check(this, from, false) {
                                         cyclic = true;
@@ -524,8 +525,8 @@ impl<'a> SerializationGraph<'a> {
 
             assert_eq!(
                 dirty, false,
-                "\nnot clean: {}\n wait: {}\n cycle: {}",
-                tuple, wait, cyclic
+                "\nnot clean: {}\n wait: {}\n cycle: {}\n edges: {:?}",
+                tuple, wait, cyclic, edges
             );
             break;
         }
