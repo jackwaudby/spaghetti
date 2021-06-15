@@ -135,6 +135,7 @@ impl fmt::Display for Internal {
         writeln!(f, "prev: {:?}", self.prev).unwrap();
         writeln!(f, "state: {}", self.state).unwrap();
         writeln!(f, "-----------").unwrap();
+        Ok(())
     }
 }
 
