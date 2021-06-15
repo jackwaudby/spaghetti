@@ -122,7 +122,7 @@ impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             State::Clean => write!(f, "clean"),
-            State::Modified(_, _) => write!(f, "dirty"),
+            State::Modified(prv, tid) => write!(f, "modified by: {}; prv: {} ", tid, prv),
         }
     }
 }
@@ -130,12 +130,7 @@ impl fmt::Display for State {
 impl fmt::Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if let State::Modified(_, tid) = &self.get().state {
-            if let TransactionId::SerializationGraph(id) = tid {
-                let node = from_usize(*id);
-                write!(f, "{:?}", node)
-            } else {
-                write!(f, "TODO")
-            }
+            write!(f, "{}", tid)
         } else {
             write!(f, "TODO")
         }

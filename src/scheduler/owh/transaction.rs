@@ -4,6 +4,7 @@ use crate::scheduler::NonFatalError;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::hash::{Hash, Hasher};
 
 pub fn from_usize<'a>(address: usize) -> &'a Transaction<'a> {
@@ -140,5 +141,12 @@ impl<'a> Hash for &'a Transaction<'a> {
     fn hash<H: Hasher>(&self, hasher: &mut H) {
         let id = ref_to_usize(self);
         id.hash(hasher)
+    }
+}
+
+impl<'a> fmt::Display for Transaction<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "TODO").unwrap();
+        Ok(())
     }
 }

@@ -1,3 +1,6 @@
+use crate::scheduler::owh::transaction;
+use crate::scheduler::sgt::node;
+
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -29,8 +32,8 @@ impl fmt::Display for TransactionId {
 
         match &self {
             NoConcurrencyControl => write!(f, "no id"),
-            SerializationGraph(node) => write!(f, "{}", node),
-            OptimisticWaitHit(txn) => write!(f, "{}", txn),
+            SerializationGraph(txn) => write!(f, "{}", node::from_usize(*txn)),
+            OptimisticWaitHit(txn) => write!(f, "{}", transaction::from_usize(*txn)),
         }
     }
 }
