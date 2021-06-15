@@ -566,7 +566,7 @@ impl<'a> SerializationGraph<'a> {
                 let lsn = lsn.load(Ordering::Acquire);
                 let row = table.get_tuple(column_id, offset);
                 panic!(
-                    "lsn: {}, prv: {}, error: {}, cyclic: {}, row: {}, this: {}",
+                    "\nlsn: {}, \nprv: {}, \nerror: {}, \ncyclic: {}, \nrow: {}, \nthis: {}",
                     lsn, prv, e, cyclic, row, this
                 );
             }
