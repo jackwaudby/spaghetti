@@ -352,6 +352,9 @@ impl<'a> fmt::Display for Edge<'a> {
 
 impl<'a> fmt::Display for RwNode<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let ptr: *const RwNode<'a> = self;
+        let id = ptr as usize;
+
         let mut incoming = String::new();
         let empty = unsafe {
             self.incoming
@@ -398,6 +401,7 @@ impl<'a> fmt::Display for RwNode<'a> {
 
         writeln!(f).unwrap();
         writeln!(f, "---node---").unwrap();
+        writeln!(f, "id: {}", id).unwrap();
         writeln!(f, "incoming: {}", incoming).unwrap();
         writeln!(f, "committed: {:?}", self.committed).unwrap();
         writeln!(f, "cascading_abort: {:?}", self.cascading_abort).unwrap();
