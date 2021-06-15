@@ -522,7 +522,11 @@ impl<'a> SerializationGraph<'a> {
             let tuple = table.get_tuple(column_id, offset); // handle to tuple
             let dirty = tuple.get().is_dirty();
 
-            assert_eq!(dirty, false, "not clean: {}", tuple);
+            assert_eq!(
+                dirty, false,
+                "\nnot clean: {}\n wait: {}\n cycle: {}",
+                tuple, wait, cyclic
+            );
             break;
         }
 
