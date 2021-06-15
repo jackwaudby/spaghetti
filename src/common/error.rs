@@ -147,7 +147,7 @@ impl fmt::Display for NonFatalError {
                 write!(f, "already exists: {} in {}", key, index)
             }
             InvalidColumnType(ref col_type) => write!(f, "invalid: column type {}", col_type),
-            RowDirty(ref tid) => write!(f, "row dirty: {}", tid),
+            RowDirty(ref tid) => write!(f, "row dirty, modified by: {}", tid),
             RowDeleted(ref key, ref table) => write!(f, "deleted: {} in table {}", key, table),
             UnableToConvertToDataType(ref value, ref spaghetti_type) => write!(
                 f,

@@ -526,7 +526,7 @@ impl<'a> SerializationGraph<'a> {
             let tuple = table.get_tuple(column_id, offset); // handle to tuple
             let dirty = tuple.get().is_dirty();
 
-            assert!(!dirty, "not clean");
+            assert_eq!(dirty, false, "not clean");
 
             let snapshot = rw_table.iter(guard);
 
@@ -571,7 +571,7 @@ impl<'a> SerializationGraph<'a> {
                 let lsn = lsn.load(Ordering::Acquire);
                 let row = table.get_tuple(column_id, offset);
                 panic!(
-                    "\nlsn: {}, \nprv: {}, \nerror: {}, \ncyclic: {}, \nrow: {}, \nthis: {}",
+                    "\nlsn: {}, \nprv: {}, \nerror: {} cyclic: {}, \ntuple: {} this: {}",
                     lsn, prv, e, cyclic, row, this
                 );
             }
