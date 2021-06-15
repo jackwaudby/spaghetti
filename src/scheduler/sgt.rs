@@ -483,6 +483,13 @@ impl<'a> SerializationGraph<'a> {
                 // if is not committed
                 // if write access then wait;
                 for (id, access) in snapshot {
+                    // TODO: abort check
+                    if self.needs_abort(this) {
+                        rw_table.erase(prv, guard); // remove from rw table
+                        lsn.store(prv + 1, Ordering::Release); // update lsn
+                        return Err(self.abort(database, guard)); // check if needs abort
+                    }
+
                     if id < &prv {
                         match access {
                             Access::Write(from) => {
@@ -506,14 +513,14 @@ impl<'a> SerializationGraph<'a> {
                     }
                 }
 
-                if cyclic {
+                if cyclic || self.needs_abort(this) {
                     rw_table.erase(prv, guard); // remove from rw table
                     lsn.store(prv + 1, Ordering::Release); // update lsn
                     self.abort(database, guard);
                     return Err(SerializationGraphError::CycleFound.into());
                 }
 
-                if wait {
+                if wait || self.needs_abort(this) {
                     rw_table.erase(prv, guard); // remove from rw table
                     lsn.store(prv + 1, Ordering::Release); // update lsn
                     continue;
@@ -525,6 +532,12 @@ impl<'a> SerializationGraph<'a> {
 
             let mut cyclic = false;
             for (id, access) in snapshot {
+                if self.needs_abort(this) {
+                    rw_table.erase(prv, guard); // remove from rw table
+                    lsn.store(prv + 1, Ordering::Release); // update lsn
+                    return Err(self.abort(database, guard)); // check if needs abort
+                }
+
                 if id < &prv {
                     match access {
                         Access::Read(from) => {
@@ -542,7 +555,7 @@ impl<'a> SerializationGraph<'a> {
                 }
             }
 
-            if cyclic {
+            if cyclic || self.needs_abort(this) {
                 rw_table.erase(prv, guard); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 self.abort(database, guard);

@@ -391,7 +391,7 @@ impl<'a> fmt::Display for RwNode<'a> {
         writeln!(f, "cascading_abort: {:?}", self.cascading_abort).unwrap();
         writeln!(f, "aborted: {:?}", self.aborted).unwrap();
         writeln!(f, "cleaned: {:?}", self.cleaned).unwrap();
-        write!(f, "checked: {:?}", self.checked).unwrap();
+        writeln!(f, "checked: {:?}", self.checked).unwrap();
         writeln!(f, "----------").unwrap();
         Ok(())
     }
