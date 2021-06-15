@@ -1,5 +1,4 @@
 use crate::common::error::NonFatalError;
-use crate::scheduler::sgt::node::from_usize;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::{Data, Field};
 
@@ -17,6 +16,7 @@ impl Tuple {
     }
 
     pub fn get(&self) -> &mut Internal {
+        // Safety: 'correct' access to a tuple is managed by the concurrency control protocol.
         unsafe { &mut *self.0.get() }
     }
 }
@@ -127,12 +127,16 @@ impl fmt::Display for State {
     }
 }
 
+impl fmt::Display for Internal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "current: {}", self.current).unwrap();
+        writeln!(f, "prev: {:?}", self.prev).unwrap();
+        write!(f, "state: {}", self.state)
+    }
+}
+
 impl fmt::Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if let State::Modified(_, tid) = &self.get().state {
-            write!(f, "{}", tid)
-        } else {
-            write!(f, "TODO")
-        }
+        write!(f, "{}", &self.get())
     }
 }

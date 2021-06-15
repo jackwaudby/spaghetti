@@ -342,8 +342,8 @@ impl<'a> Hash for Edge<'a> {
 impl<'a> fmt::Display for Edge<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Edge::ReadWrite(node) => writeln!(f, "rw: {}", ref_to_usize(node)).unwrap(),
-            Edge::Other(node) => writeln!(f, "other: {}", ref_to_usize(node)).unwrap(),
+            Edge::ReadWrite(node) => write!(f, "rw: {}", ref_to_usize(node)).unwrap(),
+            Edge::Other(node) => write!(f, "other: {}", ref_to_usize(node)).unwrap(),
         }
 
         Ok(())
