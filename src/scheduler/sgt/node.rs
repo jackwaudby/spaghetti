@@ -332,6 +332,7 @@ impl<'a> fmt::Display for RwNode<'a> {
                 .lock()
                 .is_empty()
         };
+
         if !empty {
             incoming.push('[');
 

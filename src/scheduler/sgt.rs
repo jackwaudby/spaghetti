@@ -560,8 +560,8 @@ impl<'a> SerializationGraph<'a> {
         let (dirty, state) = tuple.get().is_dirty();
         assert_eq!(
             dirty, false,
-            "uncommitted write observed by transaction: {}state observed: {}\n decisions: {:?}\n iter: {:?}",
-            this, state, decisions, iter
+            "uncommitted write observed by transaction: {}state observed: {}\n decisions: {:?}\n iter: {:?}\n prv: {}",
+            this, state, decisions, iter, prv
         );
 
         // Now, handle R-W conflicts
