@@ -472,6 +472,7 @@ impl<'a> SerializationGraph<'a> {
             let mut wait = false;
             let mut cyclic = false;
             let mut edges = Vec::new();
+            let mut added = Vec::new();
 
             // for each access
             // if is not committed
@@ -496,6 +497,7 @@ impl<'a> SerializationGraph<'a> {
                                         cyclic = true;
                                         break;
                                     }
+                                    added.push(from_addr);
                                     wait = true;
 
                                     break;
@@ -526,8 +528,8 @@ impl<'a> SerializationGraph<'a> {
 
             assert_eq!(
                 dirty, false,
-                "\nnot clean: {}\n wait: {}\n cycle: {}\n edges: {:?}\n this node: {}",
-                tuple, wait, cyclic, edges, this
+                "\nnot clean: {}\n wait: {}\n cycle: {}\n edges: {:?}\n this node: {}\n added: {:?}",
+                tuple, wait, cyclic, edges, this, added
             );
             break;
         }
