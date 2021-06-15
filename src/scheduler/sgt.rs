@@ -548,11 +548,11 @@ impl<'a> SerializationGraph<'a> {
 
         // ASSERT: there must be not an uncommitted write, the record must be clean.
         let tuple = table.get_tuple(column_id, offset); // handle to tuple
-        let dirty = tuple.get().is_dirty();
+        let (dirty, state) = tuple.get().is_dirty();
         assert_eq!(
             dirty, false,
-            "uncommitted write observed by transaction: {}",
-            this
+            "uncommitted write observed by transaction: {}, state observed: {}",
+            this, state
         );
 
         // Now, handle R-W conflicts

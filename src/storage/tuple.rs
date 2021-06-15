@@ -48,11 +48,11 @@ impl Internal {
         }
     }
 
-    pub fn is_dirty(&self) -> bool {
+    pub fn is_dirty(&self) -> (bool, State) {
         if let State::Modified(_, _) = self.state {
-            true
+            (true, self.state.clone())
         } else {
-            false
+            (false, self.state.clone())
         }
     }
 
