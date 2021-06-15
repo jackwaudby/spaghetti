@@ -183,7 +183,8 @@ pub fn run(
                             restart = false;
 
                             debug!("restart: {}", reason);
-                            stats.record(transaction, outcome.clone(), restart);
+                            // stats.record(transaction, outcome.clone(), restart);
+                            stats.record(transaction, outcome.clone(), true);
 
                             // let start_wm = Instant::now();
                             // wm.wait();
