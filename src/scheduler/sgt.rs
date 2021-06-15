@@ -452,86 +452,31 @@ impl<'a> SerializationGraph<'a> {
         database: &Database,
         guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
-        if let TransactionId::SerializationGraph(_) = meta {
-            let this = self.get_transaction();
-            let table = database.get_table(table_id);
-            let rw_table = table.get_rwtable(offset);
-            let lsn = table.get_lsn(offset);
-            let mut prv; // init prv
+        let this = self.get_transaction();
+        let table = database.get_table(table_id);
+        let rw_table = table.get_rwtable(offset);
+        let lsn = table.get_lsn(offset);
+        let mut prv; // init prv
 
-            loop {
-                if self.needs_abort(this) {
-                    return Err(self.abort(database, guard)); // check if needs abort
-                }
-
-                prv = rw_table.push_front(Access::Write(meta.clone()), guard); // add access
-
-                spin(prv, lsn); // wait until my turn
-
-                let snapshot = rw_table.iter(guard);
-
-                let mut wait = false;
-                let mut cyclic = false;
-
-                // for each access
-                // if is not committed
-                // if write access then wait;
-                for (id, access) in snapshot {
-                    // TODO: abort check
-                    if self.needs_abort(this) {
-                        rw_table.erase(prv, guard); // remove from rw table
-                        lsn.store(prv + 1, Ordering::Release); // update lsn
-                        return Err(self.abort(database, guard)); // check if needs abort
-                    }
-
-                    if id < &prv {
-                        match access {
-                            Access::Write(from) => {
-                                if let TransactionId::SerializationGraph(from_addr) = from {
-                                    let from = node::from_usize(*from_addr); // convert to ptr
-
-                                    if !from.is_committed() {
-                                        if !self.insert_and_check(this, from, false) {
-                                            cyclic = true;
-                                            break;
-                                        }
-                                        wait = true;
-
-                                        break;
-                                    } else {
-                                    }
-                                }
-                            }
-                            Access::Read(_) => {}
-                        }
-                    }
-                }
-
-                if cyclic || self.needs_abort(this) {
-                    rw_table.erase(prv, guard); // remove from rw table
-                    lsn.store(prv + 1, Ordering::Release); // update lsn
-                    self.abort(database, guard);
-                    return Err(SerializationGraphError::CycleFound.into());
-                }
-
-                // TODO
-                if wait {
-                    rw_table.erase(prv, guard); // remove from rw table
-                    lsn.store(prv + 1, Ordering::Release); // update lsn
-                    continue;
-                }
-                break;
+        loop {
+            if self.needs_abort(this) {
+                return Err(self.abort(database, guard)); // check if needs abort
             }
 
-            let tuple = table.get_tuple(column_id, offset); // handle to tuple
-            let dirty = tuple.get().is_dirty();
+            prv = rw_table.push_front(Access::Write(meta.clone()), guard); // add access
 
-            assert_eq!(dirty, false, "not clean");
+            spin(prv, lsn); // wait until my turn
 
             let snapshot = rw_table.iter(guard);
 
+            let mut wait = false;
             let mut cyclic = false;
+
+            // for each access
+            // if is not committed
+            // if write access then wait;
             for (id, access) in snapshot {
+                // TODO: abort check
                 if self.needs_abort(this) {
                     rw_table.erase(prv, guard); // remove from rw table
                     lsn.store(prv + 1, Ordering::Release); // update lsn
@@ -540,17 +485,23 @@ impl<'a> SerializationGraph<'a> {
 
                 if id < &prv {
                     match access {
-                        Access::Read(from) => {
+                        Access::Write(from) => {
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
-                                if !self.insert_and_check(this, from, true) {
-                                    cyclic = true;
+                                if !from.is_committed() {
+                                    if !self.insert_and_check(this, from, false) {
+                                        cyclic = true;
+                                        break;
+                                    }
+                                    wait = true;
+
                                     break;
+                                } else {
                                 }
                             }
                         }
-                        Access::Write(_) => {}
+                        Access::Read(_) => {}
                     }
                 }
             }
@@ -562,34 +513,82 @@ impl<'a> SerializationGraph<'a> {
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            if let Err(e) =
-                table
-                    .get_tuple(column_id, offset)
-                    .get()
-                    .set_value(value, prv, meta.clone())
-            {
-                let lsn = lsn.load(Ordering::Acquire);
-                let row = table.get_tuple(column_id, offset);
-                panic!(
-                    "\nlsn: {}, \nprv: {}, \nerror: {} cyclic: {}, \ntuple: {} this: {}",
-                    lsn, prv, e, cyclic, row, this
-                );
+            if wait {
+                rw_table.erase(prv, guard); // remove from rw table
+                lsn.store(prv + 1, Ordering::Release); // update lsn
+                continue;
             }
 
-            lsn.store(prv + 1, Ordering::Release); // update lsn
+            let tuple = table.get_tuple(column_id, offset); // handle to tuple
+            let dirty = tuple.get().is_dirty();
 
-            self.txn_info
-                .get()
-                .unwrap()
-                .borrow_mut()
-                .as_mut()
-                .unwrap()
-                .add(OperationType::Write, table_id, column_id, offset, prv); // record operation
-
-            Ok(())
-        } else {
-            panic!("unexpected transaction info");
+            assert_eq!(dirty, false, "not clean: {}", tuple);
+            break;
         }
+
+        let tuple = table.get_tuple(column_id, offset); // handle to tuple
+        let dirty = tuple.get().is_dirty();
+
+        assert_eq!(dirty, false, "not clean");
+
+        let snapshot = rw_table.iter(guard);
+
+        let mut cyclic = false;
+        for (id, access) in snapshot {
+            if self.needs_abort(this) {
+                rw_table.erase(prv, guard); // remove from rw table
+                lsn.store(prv + 1, Ordering::Release); // update lsn
+                return Err(self.abort(database, guard)); // check if needs abort
+            }
+
+            if id < &prv {
+                match access {
+                    Access::Read(from) => {
+                        if let TransactionId::SerializationGraph(from_addr) = from {
+                            let from = node::from_usize(*from_addr); // convert to ptr
+
+                            if !self.insert_and_check(this, from, true) {
+                                cyclic = true;
+                                break;
+                            }
+                        }
+                    }
+                    Access::Write(_) => {}
+                }
+            }
+        }
+
+        if cyclic || self.needs_abort(this) {
+            rw_table.erase(prv, guard); // remove from rw table
+            lsn.store(prv + 1, Ordering::Release); // update lsn
+            self.abort(database, guard);
+            return Err(SerializationGraphError::CycleFound.into());
+        }
+
+        if let Err(e) = table
+            .get_tuple(column_id, offset)
+            .get()
+            .set_value(value, prv, meta.clone())
+        {
+            let lsn = lsn.load(Ordering::Acquire);
+            let row = table.get_tuple(column_id, offset);
+            panic!(
+                "\nlsn: {}, \nprv: {}, \nerror: {} cyclic: {}, \ntuple: {} this: {}",
+                lsn, prv, e, cyclic, row, this
+            );
+        }
+
+        lsn.store(prv + 1, Ordering::Release); // update lsn
+
+        self.txn_info
+            .get()
+            .unwrap()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .add(OperationType::Write, table_id, column_id, offset, prv); // record operation
+
+        Ok(())
     }
 
     /// Commit operation.
