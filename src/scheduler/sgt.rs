@@ -312,6 +312,8 @@ impl<'a> SerializationGraph<'a> {
             return false;
         }
 
+        this.set_committed();
+
         let ops = self.get_operations();
 
         for op in ops {
@@ -332,14 +334,11 @@ impl<'a> SerializationGraph<'a> {
                     rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
-                    tuple.get().commit(); // revert
-
+                    tuple.get().commit(); // commit
                     rwtable.erase(prv, guard); // remove access
                 }
             }
         }
-
-        this.set_committed();
 
         true
     }
