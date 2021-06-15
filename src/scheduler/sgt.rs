@@ -500,6 +500,7 @@ impl<'a> SerializationGraph<'a> {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
+                            decisions.push((id, access));
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
@@ -512,8 +513,6 @@ impl<'a> SerializationGraph<'a> {
 
                                     wait = true;
                                 }
-
-                                decisions.push((from_addr, cyclic, wait));
                             }
                         }
                         Access::Read(_) => {}
