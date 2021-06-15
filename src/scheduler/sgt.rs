@@ -486,7 +486,7 @@ impl<'a> SerializationGraph<'a> {
             let mut cyclic = false; // flag indicating if a cycle has been found
 
             for (id, access) in snapshot {
-                iter.push(access);
+                iter.push((id, access));
 
                 // check for cascading abort
                 if self.needs_abort(this) {
