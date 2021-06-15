@@ -162,12 +162,6 @@ impl<'a> OptimisedWaitHit<'a> {
         // if tuple is dirty then abort
         // else for each read in the rwtable, add a predecessor upon write to hit list
         if dirty {
-            // assert!(
-            //     tuple.get().prev.is_some(),
-            //     "dirty: {}; tuple: {:?}",
-            //     dirty,
-            //     tuple.get()
-            // );
             // ok to have state change under feet here
 
             rw_table.erase(prv, guard); // remove from rwtable
@@ -215,7 +209,7 @@ impl<'a> OptimisedWaitHit<'a> {
             table
                 .get_tuple(column_id, offset)
                 .get()
-                .set_value(value, prv);
+                .set_value(value, prv, meta.clone());
 
             assert!(tuple.get().prev.is_some());
 

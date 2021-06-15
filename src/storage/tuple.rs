@@ -1,9 +1,10 @@
 use crate::common::error::NonFatalError;
+use crate::scheduler::sgt::node::from_usize;
+use crate::storage::access::TransactionId;
 use crate::storage::datatype::{Data, Field};
 
-use std::fmt;
-
 use std::cell::UnsafeCell;
+use std::fmt;
 
 unsafe impl Sync for Tuple {}
 
@@ -30,7 +31,7 @@ pub struct Internal {
 #[derive(Debug, Clone, PartialEq)]
 pub enum State {
     Clean,
-    Modified(u64),
+    Modified(u64, TransactionId),
 }
 
 #[derive(Debug)]
@@ -48,7 +49,7 @@ impl Internal {
     }
 
     pub fn is_dirty(&self) -> bool {
-        if let State::Modified(_) = self.state {
+        if let State::Modified(_, _) = self.state {
             true
         } else {
             false
@@ -64,14 +65,19 @@ impl Internal {
         Ok(OpResult::new(Some(self.current.get())))
     }
 
-    pub fn set_value(&mut self, value: &Data, prv: u64) -> Result<OpResult, NonFatalError> {
+    pub fn set_value(
+        &mut self,
+        value: &Data,
+        prv: u64,
+        transaction_id: TransactionId,
+    ) -> Result<OpResult, NonFatalError> {
         match self.state {
-            State::Modified(_) => Err(NonFatalError::RowDirty),
+            State::Modified(_, _) => Err(NonFatalError::RowDirty),
             // {
             //     panic!("row dirty")
             // }
             State::Clean => {
-                self.state = State::Modified(prv); // set state
+                self.state = State::Modified(prv, transaction_id); // set state
                 let prev = self.current.clone(); // set prev fields
                 self.prev = Some(prev);
                 self.current.set(value.clone());
@@ -89,7 +95,7 @@ impl Internal {
 
     pub fn revert(&mut self) {
         match self.state {
-            State::Modified(_) => {
+            State::Modified(_, _) => {
                 self.current = self.prev.take().unwrap(); // revert to old values
                 self.state = State::Clean;
             }
@@ -116,13 +122,22 @@ impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             State::Clean => write!(f, "clean"),
-            State::Modified(_) => write!(f, "dirty"),
+            State::Modified(_, _) => write!(f, "dirty"),
         }
     }
 }
 
 impl fmt::Display for Tuple {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TODO")
+        if let State::Modified(_, tid) = &self.get().state {
+            if let TransactionId::SerializationGraph(id) = tid {
+                let node = from_usize(*id);
+                write!(f, "{:?}", node)
+            } else {
+                write!(f, "TODO")
+            }
+        } else {
+            write!(f, "TODO")
+        }
     }
 }

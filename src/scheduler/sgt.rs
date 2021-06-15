@@ -534,15 +534,16 @@ impl<'a> SerializationGraph<'a> {
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            if let Err(e) = table
-                .get_tuple(column_id, offset)
-                .get()
-                .set_value(value, prv)
+            if let Err(e) =
+                table
+                    .get_tuple(column_id, offset)
+                    .get()
+                    .set_value(value, prv, meta.clone())
             {
                 let lsn = lsn.load(Ordering::Acquire);
-                let row = table.get_tuple(column_id, offset).get();
+                let row = table.get_tuple(column_id, offset);
                 panic!(
-                    "lsn: {}, prv: {}, error: {}, cyclic: {}, row: {:?}",
+                    "lsn: {}, prv: {}, error: {}, cyclic: {}, row: {}",
                     lsn, prv, e, cyclic, row
                 );
             }
