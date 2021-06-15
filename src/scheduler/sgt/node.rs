@@ -322,15 +322,15 @@ impl<'a> fmt::Display for RwNode<'a> {
         let id = ptr as usize;
 
         let mut incoming = String::new();
-        let empty = unsafe {
-            self.incoming
-                .get()
-                .as_ref()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .lock()
-                .is_empty()
+        let empty = match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
+            Some(edges) => {
+                let g = edges.lock();
+                let r = g.is_empty();
+                drop(g);
+                r
+            }
+
+            None => true,
         };
 
         if !empty {
