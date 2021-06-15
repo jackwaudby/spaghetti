@@ -72,7 +72,10 @@ impl Internal {
         transaction_id: TransactionId,
     ) -> Result<OpResult, NonFatalError> {
         match self.state {
-            State::Modified(_, _) => Err(NonFatalError::RowDirty),
+            State::Modified(_, _) => {
+                panic!("{}", self);
+                Err(NonFatalError::RowDirty)
+            }
             // {
             //     panic!("row dirty")
             // }

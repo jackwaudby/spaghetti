@@ -313,14 +313,7 @@ impl<'a> SerializationGraph<'a> {
             return false;
         }
 
-        let ops = self
-            .txn_info
-            .get()
-            .unwrap()
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .get(); // get operations
+        let ops = self.get_operations();
 
         for op in ops {
             let Operation {
@@ -594,14 +587,7 @@ impl<'a> SerializationGraph<'a> {
 
     /// Commit operation.
     pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
-        let this = self
-            .this_node
-            .get()
-            .unwrap()
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .clone();
+        let this = self.get_transaction();
 
         loop {
             if self.needs_abort(&this) {
