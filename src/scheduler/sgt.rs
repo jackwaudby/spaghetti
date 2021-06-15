@@ -540,7 +540,7 @@ impl<'a> SerializationGraph<'a> {
                 panic!("lsn: {}, prv: {}, error: {}", lsn, prv, e);
             }
 
-            lsn.store(prv + 1, Ordering::Release); // update lsn
+            lsn.store(prv + 1, Ordering::Acquire); // update lsn
 
             self.txn_info
                 .get()
