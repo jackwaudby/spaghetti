@@ -649,6 +649,10 @@ impl<'a> SerializationGraph<'a> {
 }
 
 fn spin(prv: u64, lsn: &AtomicU64) {
+    let x = lsn.load(Ordering::Relaxed);
+
+    assert!(x <= prv);
+
     let mut i = 0;
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
