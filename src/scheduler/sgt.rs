@@ -536,8 +536,11 @@ impl<'a> SerializationGraph<'a> {
 
             if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
                 let lsn = lsn.load(Ordering::Acquire);
-
-                panic!("lsn: {}, prv: {}, error: {}", lsn, prv, e);
+                let row = table.get_tuple(column_id, offset).get();
+                panic!(
+                    "lsn: {}, prv: {}, error: {}, cyclic: {}, row: {:?}",
+                    lsn, prv, e, cyclic, row
+                );
             }
 
             lsn.store(prv + 1, Ordering::Release); // update lsn
