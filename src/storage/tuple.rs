@@ -73,7 +73,7 @@ impl Internal {
     ) -> Result<OpResult, NonFatalError> {
         match self.state {
             State::Modified(_, _) => {
-                panic!("{}", self);
+                //   panic!("{}", self);
                 Err(NonFatalError::RowDirty)
             }
             // {
