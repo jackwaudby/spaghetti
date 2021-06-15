@@ -558,8 +558,8 @@ impl<'a> SerializationGraph<'a> {
                 let lsn = lsn.load(Ordering::Acquire);
                 let row = table.get_tuple(column_id, offset);
                 panic!(
-                    "lsn: {}, prv: {}, error: {}, cyclic: {}, row: {}",
-                    lsn, prv, e, cyclic, row
+                    "lsn: {}, prv: {}, error: {}, cyclic: {}, row: {}, this: {}",
+                    lsn, prv, e, cyclic, row, this
                 );
             }
 
