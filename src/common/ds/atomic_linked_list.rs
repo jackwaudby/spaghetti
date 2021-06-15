@@ -43,9 +43,6 @@ impl<T> AtomicLinkedList<T> {
             let head = self.head.load(Relaxed, guard); // snapshot current
 
             new.next.store(head, Relaxed); // update next pointer
-            let id = self.id.fetch_add(1, SeqCst); // get node id
-
-            new.id = ManuallyDrop::new(id);
 
             // if snapshot is valid then link new node
             match self
