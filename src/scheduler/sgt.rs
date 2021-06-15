@@ -535,12 +535,12 @@ impl<'a> SerializationGraph<'a> {
             }
 
             if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
-                let lsn = lsn.load(Ordering::Release);
+                let lsn = lsn.load(Ordering::Acquire);
 
                 panic!("lsn: {}, prv: {}, error: {}", lsn, prv, e);
             }
 
-            lsn.store(prv + 1, Ordering::Acquire); // update lsn
+            lsn.store(prv + 1, Ordering::Release); // update lsn
 
             self.txn_info
                 .get()
