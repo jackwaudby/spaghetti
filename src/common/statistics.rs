@@ -335,7 +335,7 @@ impl LocalStatistics {
                         OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
                         OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
                     },
-                    NonFatalError::RowDirty => metric.inc_row_dirty(),
+                    NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
                     _ => {}
                 },
                 _ => {}

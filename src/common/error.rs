@@ -1,6 +1,6 @@
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
-
+use crate::storage::access::TransactionId;
 use crate::workloads::smallbank::error::SmallBankError;
 
 use serde::{Deserialize, Serialize};
@@ -75,7 +75,7 @@ pub enum NonFatalError {
     RowAlreadyExists(String, String),
 
     /// Row dirty.
-    RowDirty,
+    RowDirty(String),
 
     /// Row deleted.
     RowDeleted(String, String),
@@ -147,7 +147,7 @@ impl fmt::Display for NonFatalError {
                 write!(f, "already exists: {} in {}", key, index)
             }
             InvalidColumnType(ref col_type) => write!(f, "invalid: column type {}", col_type),
-            RowDirty => write!(f, "row dirty"),
+            RowDirty(ref tid) => write!(f, "row dirty: {}", tid),
             RowDeleted(ref key, ref table) => write!(f, "deleted: {} in table {}", key, table),
             UnableToConvertToDataType(ref value, ref spaghetti_type) => write!(
                 f,

@@ -167,7 +167,7 @@ impl<'a> OptimisedWaitHit<'a> {
             rw_table.erase(prv, guard); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database, guard); // abort this transaction
-            return Err(NonFatalError::RowDirty);
+            return Err(NonFatalError::RowDirty("todo".to_string()));
         } else {
             assert!(
                 tuple.get().prev.is_none(),

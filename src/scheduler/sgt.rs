@@ -334,6 +334,7 @@ impl<'a> SerializationGraph<'a> {
                 }
                 OperationType::Write => {
                     tuple.get().commit(); // revert
+
                     rwtable.erase(prv, guard); // remove access
                 }
             }
@@ -513,7 +514,8 @@ impl<'a> SerializationGraph<'a> {
                     return Err(SerializationGraphError::CycleFound.into());
                 }
 
-                if wait || self.needs_abort(this) {
+                // TODO
+                if wait {
                     rw_table.erase(prv, guard); // remove from rw table
                     lsn.store(prv + 1, Ordering::Release); // update lsn
                     continue;
