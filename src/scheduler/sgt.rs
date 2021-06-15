@@ -461,8 +461,11 @@ impl<'a> SerializationGraph<'a> {
         let lsn = table.get_lsn(offset);
         let mut prv;
         let mut decisions = Vec::new();
+        let mut iter = Vec::new();
+
         loop {
             decisions.clear();
+            iter.clear();
 
             // check for cascading abort
             if self.needs_abort(this) {
@@ -483,6 +486,8 @@ impl<'a> SerializationGraph<'a> {
             let mut cyclic = false; // flag indicating if a cycle has been found
 
             for (id, access) in snapshot {
+                iter.push(access);
+
                 // check for cascading abort
                 if self.needs_abort(this) {
                     rw_table.erase(prv, guard); // remove from rw table
@@ -555,8 +560,8 @@ impl<'a> SerializationGraph<'a> {
         let (dirty, state) = tuple.get().is_dirty();
         assert_eq!(
             dirty, false,
-            "uncommitted write observed by transaction: {}state observed: {}\n decisions: {:?}",
-            this, state, decisions
+            "uncommitted write observed by transaction: {}state observed: {}\n decisions: {:?}\n iter: {:?}",
+            this, state, decisions, iter
         );
 
         // Now, handle R-W conflicts
