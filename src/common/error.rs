@@ -1,6 +1,5 @@
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
-use crate::storage::access::TransactionId;
 use crate::workloads::smallbank::error::SmallBankError;
 
 use serde::{Deserialize, Serialize};

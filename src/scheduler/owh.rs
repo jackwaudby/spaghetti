@@ -209,7 +209,8 @@ impl<'a> OptimisedWaitHit<'a> {
             table
                 .get_tuple(column_id, offset)
                 .get()
-                .set_value(value, prv, meta.clone());
+                .set_value(value, prv, meta.clone())
+                .unwrap();
 
             assert!(tuple.get().prev.is_some());
 

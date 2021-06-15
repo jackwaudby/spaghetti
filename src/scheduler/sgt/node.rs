@@ -1,7 +1,7 @@
 use parking_lot::Mutex;
+use rustc_hash::FxHashSet;
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use rustc_hash::FxHashSet;
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -43,12 +43,6 @@ pub enum Edge<'a> {
     Other(&'a RwNode<'a>),
 }
 
-// #[derive(Debug)]
-// pub struct RwNode<'a> {
-//     //    node: RwLock<Node<'a>>,
-//     node: Node<'a>,
-// }
-
 #[derive(Debug)]
 pub struct RwNode<'a> {
     incoming: UnsafeCell<Option<EdgeSet<'a>>>,
@@ -64,39 +58,11 @@ pub struct RwNode<'a> {
 unsafe impl<'a> Send for RwNode<'a> {}
 unsafe impl<'a> Sync for RwNode<'a> {}
 
-// impl<'a> RwNode<'a> {
-//     pub fn new() -> Self {
-//         Self {
-//             //            node: RwLock::new(Node::new()),
-//             node: Node::new(),
-//         }
-//     }
-
-//     pub fn new_with_sets(incoming: EdgeSet<'a>, outgoing: EdgeSet<'a>) -> Self {
-//         Self {
-//             //            node: RwLock::new(Node::new_with_sets(incoming, outgoing)),
-//             node: Node::new_with_sets(incoming, outgoing),
-//         }
-//     }
-
-//     //    pub fn read(&self) -> RwLockReadGuard<Node<'a>> {
-
-//     pub fn read(&self) -> RwLockReadGuard<u32> {
-//         self.node.lock.read()
-//     }
-
-//     //    pub fn write(&self) -> RwLockWriteGuard<Node<'a>> {
-//     pub fn write(&self) -> RwLockWriteGuard<u32> {
-//         self.node.lock.write()
-//     }
-// }
-
 impl<'a> RwNode<'a> {
     pub fn read(&self) -> RwLockReadGuard<u32> {
         self.lock.read()
     }
 
-    //    pub fn write(&self) -> RwLockWriteGuard<Node<'a>> {
     pub fn write(&self) -> RwLockWriteGuard<u32> {
         self.lock.write()
     }

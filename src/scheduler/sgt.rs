@@ -7,7 +7,6 @@ use crate::scheduler::sgt::transaction_information::{
 };
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
-use crate::storage::table::Table;
 use crate::storage::Database;
 
 use crossbeam_epoch::Guard;
@@ -364,84 +363,88 @@ impl<'a> SerializationGraph<'a> {
         database: &Database,
         guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
-        debug!("read");
-        if let TransactionId::SerializationGraph(_) = meta {
-            let this = self
-                .this_node
-                .get()
-                .unwrap()
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .clone(); // this node
+        let this = self.get_transaction();
 
-            if self.needs_abort(&this) {
-                drop(guard); // unpin
-                debug!("needs abort");
-                return Err(self.abort(database, guard)); // abort
-            }
+        // check for cascading abort
+        if self.needs_abort(this) {
+            self.abort(database, guard);
+            return Err(SerializationGraphError::CascadingAbort.into());
+        }
 
-            let table: &Table = database.get_table(table_id); // get table
-            let rw_table = table.get_rwtable(offset); // get rwtable
-            let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
-            let lsn = table.get_lsn(offset);
+        let table = database.get_table(table_id);
+        let rw_table = table.get_rwtable(offset);
+        let prv = rw_table.push_front(Access::Read(meta.clone()), guard);
+        let lsn = table.get_lsn(offset);
 
-            spin(prv, lsn);
+        // Safety: ensures exculsive access to the record.
+        unsafe { spin(prv, lsn) }; // busy wait
 
-            let snapshot = rw_table.iter(guard); // iterator over access history
+        // On acquiring the 'lock' on the record can be clean or dirty.
+        // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
+        let snapshot = rw_table.iter(guard);
 
-            let mut cyclic = false; // insert and check each access
-            for (id, access) in snapshot {
-                if id < &prv {
-                    match access {
-                        Access::Write(txn_info) => match txn_info {
-                            TransactionId::SerializationGraph(from_addr) => {
-                                let from = node::from_usize(*from_addr); // convert to ptr
+        let mut cyclic = false; // flag indicating if a cycle has been found
 
-                                if !self.insert_and_check(this, from, false) {
-                                    cyclic = true;
-                                    break;
-                                }
-                            }
-                            _ => panic!("unexpected transaction information"),
-                        },
-                        Access::Read(_) => {}
-                    }
-                }
-            }
-
-            if cyclic {
+        for (id, access) in snapshot {
+            // check for cascading abort
+            if self.needs_abort(this) {
                 rw_table.erase(prv, guard); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                self.abort(database, guard); // abort
-
-                return Err(SerializationGraphError::CycleFound.into());
+                self.abort(database, guard);
+                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
-            let vals = table
-                .get_tuple(column_id, offset)
-                .get()
-                .get_value()
-                .unwrap()
-                .get_value(); // read
+            // only interested in accesses before this one and that are write operations.
+            if id < &prv {
+                match access {
+                    // W-R conflict
+                    Access::Write(from) => {
+                        if let TransactionId::SerializationGraph(from_addr) = from {
+                            let from = node::from_usize(*from_addr); // convert to ptr
 
-            lsn.store(prv + 1, Ordering::Release); // update lsn
-
-            self.txn_info
-                .get()
-                .unwrap()
-                .borrow_mut()
-                .as_mut()
-                .unwrap()
-                .add(OperationType::Read, table_id, column_id, offset, prv); // record operation
-
-            Ok(vals)
-        } else {
-            panic!("unexpected transaction info");
+                            if !self.insert_and_check(this, from, false) {
+                                cyclic = true;
+                                break;
+                            }
+                        }
+                    }
+                    Access::Read(_) => {}
+                }
+            }
         }
+
+        // (i) transaction is in a cycle (cycle = T)
+        // abort transaction
+        if cyclic {
+            rw_table.erase(prv, guard); // remove from rw table
+            lsn.store(prv + 1, Ordering::Release); // update lsn
+            self.abort(database, guard); // abort
+            return Err(SerializationGraphError::CycleFound.into());
+        }
+
+        let vals = table
+            .get_tuple(column_id, offset)
+            .get()
+            .get_value()
+            .unwrap()
+            .get_value(); // read
+
+        lsn.store(prv + 1, Ordering::Release); // update lsn
+
+        self.txn_info
+            .get()
+            .unwrap()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .add(OperationType::Read, table_id, column_id, offset, prv); // record operation
+
+        Ok(vals)
     }
 
     /// Write operation.
+    ///
+    /// A write can executed iff there are no uncommitted writes on a record, else the operation is delayed.
     pub fn write_value<'g>(
         &self,
         value: &Data,
@@ -456,52 +459,52 @@ impl<'a> SerializationGraph<'a> {
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
-        let mut prv; // init prv
+        let mut prv;
 
         loop {
+            // check for cascading abort
             if self.needs_abort(this) {
-                return Err(self.abort(database, guard)); // check if needs abort
+                self.abort(database, guard);
+                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
-            prv = rw_table.push_front(Access::Write(meta.clone()), guard); // add access
+            prv = rw_table.push_front(Access::Write(meta.clone()), guard); // get ticket
 
-            spin(prv, lsn); // wait until my turn
+            // Safety: ensures exculsive access to the record.
+            unsafe { spin(prv, lsn) }; // busy wait
 
+            // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
+            // In this case the operation is restarted after a cycle check.
             let snapshot = rw_table.iter(guard);
 
-            let mut wait = false;
-            let mut cyclic = false;
-            let mut edges = Vec::new();
-            let mut added = Vec::new();
+            let mut wait = false; // flag indicating if there is an uncommitted write
+            let mut cyclic = false; // flag indicating if a cycle has been found
 
-            // for each access
-            // if is not committed
-            // if write access then wait;
             for (id, access) in snapshot {
-                // TODO: abort check
+                // check for cascading abort
                 if self.needs_abort(this) {
                     rw_table.erase(prv, guard); // remove from rw table
                     lsn.store(prv + 1, Ordering::Release); // update lsn
-                    return Err(self.abort(database, guard)); // check if needs abort
+                    self.abort(database, guard);
+                    return Err(SerializationGraphError::CascadingAbort.into());
                 }
 
-                edges.push(access);
+                // only interested in accesses before this one and that are write operations.
                 if id < &prv {
                     match access {
+                        // W-W conflict
                         Access::Write(from) => {
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
+                                // check if write access is uncommitted
                                 if !from.is_committed() {
+                                    // if not in cycle then wait
                                     if !self.insert_and_check(this, from, false) {
                                         cyclic = true;
-                                        break;
                                     }
-                                    added.push(from_addr);
-                                    wait = true;
 
-                                    break;
-                                } else {
+                                    wait = true;
                                 }
                             }
                         }
@@ -510,43 +513,57 @@ impl<'a> SerializationGraph<'a> {
                 }
             }
 
-            if cyclic || self.needs_abort(this) {
+            // (i) transaction is in a cycle (cycle = T)
+            // abort transaction
+            if cyclic {
                 rw_table.erase(prv, guard); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 self.abort(database, guard);
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
+            // (ii) there is an uncommitted write (wait = T)
+            // restart operation
             if wait {
                 rw_table.erase(prv, guard); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 continue;
             }
 
-            let tuple = table.get_tuple(column_id, offset); // handle to tuple
-            let dirty = tuple.get().is_dirty();
-
-            assert_eq!(
-                dirty, false,
-                "\nnot clean: {}\n wait: {}\n cycle: {}\n edges: {:?}\n this node: {}\n added: {:?}",
-                tuple, wait, cyclic, edges, this, added
-            );
-            break;
-        }
-
-        let tuple = table.get_tuple(column_id, offset); // handle to tuple
-        let dirty = tuple.get().is_dirty();
-
-        assert_eq!(dirty, false, "not clean");
-
-        let snapshot = rw_table.iter(guard);
-
-        let mut cyclic = false;
-        for (id, access) in snapshot {
+            // (iii) no w-w conflicts -> clean record (both F)
+            // check for cascading abort
             if self.needs_abort(this) {
                 rw_table.erase(prv, guard); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                return Err(self.abort(database, guard)); // check if needs abort
+                self.abort(database, guard);
+                return Err(SerializationGraphError::CascadingAbort.into());
+            }
+
+            break;
+        }
+
+        // TODO: race condition whereby this transaction sees an uncommitted version.
+        // This should not occur as transaction should, in theory, restart if they ever encounter uncommitted state.
+        // The guard here is the is.committed() check; can this evalute to TRUE before the commit() function completes?
+
+        // ASSERT: there must be not an uncommitted write, the record must be clean.
+        let tuple = table.get_tuple(column_id, offset); // handle to tuple
+        let dirty = tuple.get().is_dirty();
+        assert_eq!(dirty, false, "uncommitted write found");
+
+        // Now, handle R-W conflicts
+        let snapshot = rw_table.iter(guard);
+
+        let mut cyclic = false;
+
+        // only interested in accesses before this one and that are read operations.
+        for (id, access) in snapshot {
+            // check for cascading abort
+            if self.needs_abort(this) {
+                rw_table.erase(prv, guard); // remove from rw table
+                lsn.store(prv + 1, Ordering::Release); // update lsn
+                self.abort(database, guard);
+                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
             if id < &prv {
@@ -566,7 +583,9 @@ impl<'a> SerializationGraph<'a> {
             }
         }
 
-        if cyclic || self.needs_abort(this) {
+        // (iv) transaction is in a cycle (cycle = T)
+        // abort transaction
+        if cyclic {
             rw_table.erase(prv, guard); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database, guard);
@@ -578,15 +597,11 @@ impl<'a> SerializationGraph<'a> {
             .get()
             .set_value(value, prv, meta.clone())
         {
-            let lsn = lsn.load(Ordering::Acquire);
-            let row = table.get_tuple(column_id, offset);
-            panic!(
-                "\nlsn: {}, \nprv: {}, \nerror: {} cyclic: {}, \ntuple: {} this: {}",
-                lsn, prv, e, cyclic, row, this
-            );
+            panic!("{}", e); // ASSERT: never write to an uncommitted value.
         }
 
-        lsn.store(prv + 1, Ordering::Release); // update lsn
+        // update lsn, giving next operation access.
+        lsn.store(prv + 1, Ordering::Release);
 
         self.txn_info
             .get()
@@ -611,8 +626,6 @@ impl<'a> SerializationGraph<'a> {
             if cc {
                 break;
             }
-
-            debug!("commit attempt: {}", cc);
         }
 
         Ok(())
@@ -655,10 +668,12 @@ impl<'a> SerializationGraph<'a> {
     }
 }
 
-fn spin(prv: u64, lsn: &AtomicU64) {
-    let x = lsn.load(Ordering::Relaxed);
+// Busy wait until prv matches lsn.
+unsafe fn spin(prv: u64, lsn: &AtomicU64) {
+    let current = lsn.load(Ordering::Relaxed);
 
-    assert!(x <= prv);
+    // ASSERT: lsn values should be monotonically increasing.
+    assert!(current <= prv);
 
     let mut i = 0;
     while lsn.load(Ordering::Relaxed) != prv {
