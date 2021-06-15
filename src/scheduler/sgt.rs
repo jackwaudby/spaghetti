@@ -49,6 +49,26 @@ impl<'a> SerializationGraph<'a> {
         }
     }
 
+    pub fn get_transaction(&self) -> &'a RwNode<'a> {
+        self.this_node
+            .get()
+            .unwrap()
+            .borrow()
+            .as_ref()
+            .unwrap()
+            .clone()
+    }
+
+    pub fn get_operations(&self) -> Vec<Operation> {
+        self.txn_info
+            .get()
+            .unwrap()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .get()
+    }
+
     pub fn create_node(&self) -> usize {
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
@@ -439,15 +459,7 @@ impl<'a> SerializationGraph<'a> {
         guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         if let TransactionId::SerializationGraph(_) = meta {
-            let this = &self
-                .this_node
-                .get()
-                .unwrap()
-                .borrow()
-                .as_ref()
-                .unwrap()
-                .clone(); // this node
-
+            let this = self.get_transaction();
             let table = database.get_table(table_id);
             let rw_table = table.get_rwtable(offset);
             let lsn = table.get_lsn(offset);
@@ -455,18 +467,21 @@ impl<'a> SerializationGraph<'a> {
 
             loop {
                 if self.needs_abort(this) {
-                    drop(guard);
-                    return Err(self.abort(database, guard));
+                    return Err(self.abort(database, guard)); // check if needs abort
                 }
 
-                prv = rw_table.push_front(Access::Write(meta.clone()), guard);
+                prv = rw_table.push_front(Access::Write(meta.clone()), guard); // add access
 
-                spin(prv, lsn);
+                spin(prv, lsn); // wait until my turn
 
                 let snapshot = rw_table.iter(guard);
 
                 let mut wait = false;
                 let mut cyclic = false;
+
+                // for each access
+                // if is not committed
+                // if write access then wait;
                 for (id, access) in snapshot {
                     if id < &prv {
                         match access {
@@ -594,23 +609,8 @@ impl<'a> SerializationGraph<'a> {
     ///
     /// Call sg abort procedure then remove accesses and revert writes.
     pub fn abort<'g>(&self, database: &Database, guard: &'g Guard) -> NonFatalError {
-        let this = self
-            .this_node
-            .get()
-            .unwrap()
-            .borrow()
-            .as_ref()
-            .unwrap()
-            .clone();
-
-        let ops = self
-            .txn_info
-            .get()
-            .unwrap()
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .get(); // get operations
+        let this = self.get_transaction();
+        let ops = self.get_operations();
 
         self.abort_procedure(&this, guard); // sg abort
 
@@ -632,8 +632,8 @@ impl<'a> SerializationGraph<'a> {
                     rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
-                    tuple.get().revert(); // revert
                     rwtable.erase(prv, guard); // remove access
+                    tuple.get().revert(); // revert
                 }
             }
         }
