@@ -523,6 +523,11 @@ impl<'a> SerializationGraph<'a> {
                 break;
             }
 
+            let tuple = table.get_tuple(column_id, offset); // handle to tuple
+            let dirty = tuple.get().is_dirty();
+
+            assert!(!dirty, "not clean");
+
             let snapshot = rw_table.iter(guard);
 
             let mut cyclic = false;
