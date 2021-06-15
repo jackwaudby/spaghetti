@@ -645,8 +645,8 @@ impl<'a> SerializationGraph<'a> {
                     rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv, guard); // remove access
                     tuple.get().revert(); // revert
+                    rwtable.erase(prv, guard); // remove access
                 }
             }
         }
