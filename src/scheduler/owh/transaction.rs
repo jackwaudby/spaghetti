@@ -146,7 +146,7 @@ impl<'a> Hash for &'a Transaction<'a> {
 
 impl<'a> fmt::Display for Transaction<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TODO").unwrap();
+        write!(f, "TXN").unwrap();
         Ok(())
     }
 }
