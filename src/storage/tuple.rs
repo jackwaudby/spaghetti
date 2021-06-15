@@ -129,9 +129,12 @@ impl fmt::Display for State {
 
 impl fmt::Display for Internal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f).unwrap();
+        writeln!(f, "---tuple---").unwrap();
         writeln!(f, "current: {}", self.current).unwrap();
         writeln!(f, "prev: {:?}", self.prev).unwrap();
-        write!(f, "state: {}", self.state)
+        writeln!(f, "state: {}", self.state).unwrap();
+        writeln!(f, "-----------").unwrap();
     }
 }
 

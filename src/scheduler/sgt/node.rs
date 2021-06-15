@@ -385,12 +385,14 @@ impl<'a> fmt::Display for RwNode<'a> {
         }
 
         writeln!(f).unwrap();
+        writeln!(f, "---node---").unwrap();
         writeln!(f, "incoming: {}", incoming).unwrap();
         writeln!(f, "committed: {:?}", self.committed).unwrap();
         writeln!(f, "cascading_abort: {:?}", self.cascading_abort).unwrap();
         writeln!(f, "aborted: {:?}", self.aborted).unwrap();
         writeln!(f, "cleaned: {:?}", self.cleaned).unwrap();
         write!(f, "checked: {:?}", self.checked).unwrap();
+        writeln!(f, "----------").unwrap();
         Ok(())
     }
 }
