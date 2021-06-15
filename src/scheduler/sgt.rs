@@ -333,6 +333,8 @@ impl<'a> SerializationGraph<'a> {
                 }
                 OperationType::Write => {
                     tuple.get().commit(); // commit
+                    let (dirty, _) = tuple.get().is_dirty();
+                    assert!(!dirty);
                     rwtable.erase(prv, guard); // remove access
                 }
             }
@@ -670,6 +672,9 @@ impl<'a> SerializationGraph<'a> {
                 }
                 OperationType::Write => {
                     tuple.get().revert(); // revert
+                    let (dirty, _) = tuple.get().is_dirty();
+                    assert!(!dirty);
+
                     rwtable.erase(prv, guard); // remove access
                 }
             }
