@@ -464,6 +464,8 @@ impl<'a> SerializationGraph<'a> {
         let mut decisions = Vec::new();
         let mut iter = Vec::new();
 
+        let mut retries = 0;
+
         loop {
             decisions.clear();
             iter.clear();
@@ -536,6 +538,7 @@ impl<'a> SerializationGraph<'a> {
             if wait {
                 rw_table.erase(prv, guard); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
+                retries += 1;
                 continue;
             }
 
@@ -560,8 +563,8 @@ impl<'a> SerializationGraph<'a> {
         let (dirty, state) = tuple.get().is_dirty();
         assert_eq!(
             dirty, false,
-            "uncommitted write observed by transaction: {}state observed: {}\n decisions: {:?}\n iter: {:?}\n prv: {}\n tuple {}",
-            this, state, decisions, iter, prv, tuple
+            "uncommitted write observed by transaction: {}state observed: {}\n decisions: {:?}\n iter: {:?}\n prv: {}\n tuple {}\n retries: {}",
+            this, state, decisions, iter, prv, tuple,retries
         );
 
         // Now, handle R-W conflicts
