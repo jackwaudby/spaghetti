@@ -562,9 +562,11 @@ impl<'a> SerializationGraph<'a> {
                                     // if not in cycle then wait
                                     if !self.insert_and_check(this, Edge::Other(*from_addr)) {
                                         cyclic = true;
+                                        break; // no reason to check other accesses
                                     }
 
-                                    wait = true;
+                                    wait = true; // retry operation
+                                    break;
                                 } else {
                                 }
                             }
@@ -611,7 +613,7 @@ impl<'a> SerializationGraph<'a> {
         // ASSERT: there must be not an uncommitted write, the record must be clean.
         let tuple = table.get_tuple(column_id, offset); // handle to tuple
         let (dirty, _) = tuple.get().is_dirty();
-        assert_eq!(dirty, false,);
+        assert_eq!(dirty, false, "{}", this);
 
         // Now, handle R-W conflicts
         let snapshot = rw_table.iter(guard);
