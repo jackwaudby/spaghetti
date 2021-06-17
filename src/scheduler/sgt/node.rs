@@ -321,78 +321,64 @@ impl<'a> fmt::Display for Edge<'a> {
 
 impl<'a> fmt::Display for RwNode<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // node id
         let ptr: *const RwNode<'a> = self;
         let id = ptr as usize;
 
+        // incoming edges
         let mut incoming = String::new();
-        let empty = match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
+
+        match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
+            // edge set not removed
             Some(edges) => {
-                let g = edges.lock();
-                let r = g.is_empty();
-                drop(g);
-                r
-            }
+                let guard = edges.lock(); // lock edge set
 
-            None => true,
-        };
-
-        if !empty {
-            incoming.push('[');
-
-            match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
-                Some(edges) => {
-                    let g = edges.lock();
-                    for edge in &*g {
+                // not removed but empty
+                if guard.is_empty() {
+                    incoming.push_str("[empty]");
+                } else {
+                    // contains edges
+                    for edge in &*guard {
                         incoming.push_str(&format!("{}", edge));
                         incoming.push_str(", ");
                     }
-                    drop(g);
+                    incoming.pop(); // remove trailing ', '
+                    incoming.pop();
+                    incoming.push_str(&format!("]"));
                 }
 
-                None => {
-                    incoming.push_str(&format!("cleared]"));
-                }
+                drop(guard);
             }
-
-            incoming.push_str(&format!("]"));
-        } else {
-            incoming.push_str("[empty]");
-        }
-
-        let mut outgoing = String::new();
-        let empty = match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
-            Some(edges) => {
-                let g = edges.lock();
-                let r = g.is_empty();
-                drop(g);
-                r
-            }
-
-            None => true,
+            // edge set has been removed
+            None => incoming.push_str("[cleared]"),
         };
 
-        if !empty {
-            outgoing.push('[');
+        let mut outgoing = String::new();
 
-            match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
-                Some(edges) => {
-                    let g = edges.lock();
-                    for edge in &*g {
+        match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
+            // edge set not removed
+            Some(edges) => {
+                let guard = edges.lock(); // lock edge set
+
+                // not removed but empty
+                if guard.is_empty() {
+                    outgoing.push_str("[empty]");
+                } else {
+                    // contains edges
+                    for edge in &*guard {
                         outgoing.push_str(&format!("{}", edge));
                         outgoing.push_str(", ");
                     }
-                    drop(g);
+                    outgoing.pop(); // remove trailing ', '
+                    outgoing.pop();
+                    outgoing.push_str(&format!("]"));
                 }
 
-                None => {
-                    outgoing.push_str(&format!("cleared]"));
-                }
+                drop(guard);
             }
-
-            outgoing.push_str(&format!("]"));
-        } else {
-            outgoing.push_str("[empty]");
-        }
+            // edge set has been removed
+            None => outgoing.push_str("[cleared]"),
+        };
 
         writeln!(f).unwrap();
         writeln!(f, "---node---").unwrap();
