@@ -9,7 +9,7 @@ pub enum Access {
     Write(TransactionId),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TransactionId {
     NoConcurrencyControl,
     SerializationGraph(usize),
@@ -38,23 +38,23 @@ impl fmt::Display for TransactionId {
     }
 }
 
-impl PartialEq for TransactionId {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (
-                &TransactionId::SerializationGraph(ref wn1),
-                &TransactionId::SerializationGraph(ref wn2),
-            ) => wn1 == wn2,
-            (
-                &TransactionId::OptimisticWaitHit(ref wn1),
-                &TransactionId::OptimisticWaitHit(ref wn2),
-            ) => wn1 == wn2,
+// impl PartialEq for TransactionId {
+//     fn eq(&self, other: &Self) -> bool {
+//         match (self, other) {
+//             (
+//                 &TransactionId::SerializationGraph(ref wn1),
+//                 &TransactionId::SerializationGraph(ref wn2),
+//             ) => wn1 == wn2,
+//             (
+//                 &TransactionId::OptimisticWaitHit(ref wn1),
+//                 &TransactionId::OptimisticWaitHit(ref wn2),
+//             ) => wn1 == wn2,
 
-            (&TransactionId::NoConcurrencyControl, &TransactionId::NoConcurrencyControl) => true,
-            _ => false,
-        }
-    }
-}
+//             (&TransactionId::NoConcurrencyControl, &TransactionId::NoConcurrencyControl) => true,
+//             _ => false,
+//         }
+//     }
+// }
 
 pub fn access_eq(a: &Access, b: &Access) -> bool {
     matches!(
