@@ -356,7 +356,7 @@ impl<'a> fmt::Display for RwNode<'a> {
 
             incoming.push_str(&format!("]"));
         } else {
-            incoming.push_str("[]");
+            incoming.push_str("[empty]");
         }
 
         let mut outgoing = String::new();
@@ -391,7 +391,7 @@ impl<'a> fmt::Display for RwNode<'a> {
 
             outgoing.push_str(&format!("]"));
         } else {
-            outgoing.push_str("[]");
+            outgoing.push_str("[empty]");
         }
 
         writeln!(f).unwrap();

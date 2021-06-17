@@ -283,6 +283,7 @@ impl<'a> SerializationGraph<'a> {
             drop(this_rlock);
             return false;
         }
+
         drop(this_rlock);
 
         if self.needs_abort(this) {
