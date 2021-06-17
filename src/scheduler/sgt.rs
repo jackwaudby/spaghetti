@@ -314,34 +314,6 @@ impl<'a> SerializationGraph<'a> {
             return false;
         }
 
-        let ops = self.get_operations();
-
-        for op in ops {
-            let Operation {
-                op_type,
-                table_id,
-                column_id,
-                offset,
-                prv,
-            } = op;
-
-            let table = database.get_table(table_id);
-            let tuple = table.get_tuple(column_id, offset);
-            let rwtable = table.get_rwtable(offset);
-
-            match op_type {
-                OperationType::Read => {
-                    rwtable.erase(prv, guard); // remove access
-                }
-                OperationType::Write => {
-                    tuple.get().commit(); // commit
-                    let (dirty, _) = tuple.get().is_dirty();
-                    assert!(!dirty);
-                    rwtable.erase(prv, guard); // remove access
-                }
-            }
-        }
-
         this.set_committed();
 
         true
@@ -655,6 +627,35 @@ impl<'a> SerializationGraph<'a> {
                 break;
             }
         }
+
+        let ops = self.get_operations();
+
+        for op in ops {
+            let Operation {
+                op_type,
+                table_id,
+                column_id,
+                offset,
+                prv,
+            } = op;
+
+            let table = database.get_table(table_id);
+            let tuple = table.get_tuple(column_id, offset);
+            let rwtable = table.get_rwtable(offset);
+
+            match op_type {
+                OperationType::Read => {
+                    rwtable.erase(prv, guard); // remove access
+                }
+                OperationType::Write => {
+                    tuple.get().commit(); // commit
+                    let (dirty, _) = tuple.get().is_dirty();
+                    assert!(!dirty);
+                    rwtable.erase(prv, guard); // remove access
+                }
+            }
+        }
+
         this.set_complete();
         Ok(())
     }
