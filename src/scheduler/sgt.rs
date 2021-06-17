@@ -463,14 +463,20 @@ impl<'a> SerializationGraph<'a> {
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
         let mut prv;
-        let mut decisions = Vec::new();
-        let mut iter = Vec::new();
+        let mut observed = Vec::new();
+        let mut before = Vec::new();
+        let mut before_write = Vec::new();
+        let mut before_write_active = Vec::new();
+        let mut before_write_committed = Vec::new();
 
         let mut retries = 0;
 
         loop {
-            decisions.clear();
-            iter.clear();
+            observed.clear();
+            before.clear();
+            before_write.clear();
+            before_write_active.clear();
+            before_write_committed.clear();
 
             // check for cascading abort
             if self.needs_abort(this) {
@@ -491,7 +497,7 @@ impl<'a> SerializationGraph<'a> {
             let mut cyclic = false; // flag indicating if a cycle has been found
 
             for (id, access) in snapshot {
-                iter.push((id, access));
+                observed.push((id, access));
 
                 // check for cascading abort
                 if self.needs_abort(this) {
@@ -503,21 +509,25 @@ impl<'a> SerializationGraph<'a> {
 
                 // only interested in accesses before this one and that are write operations.
                 if id < &prv {
+                    before.push((id, access));
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
-                            decisions.push((id, access));
+                            before_write.push((id, access));
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
+                                    before_write_active.push((id, access));
                                     // if not in cycle then wait
                                     if !self.insert_and_check(this, from, false) {
                                         cyclic = true;
                                     }
 
                                     wait = true;
+                                } else {
+                                    before_write_committed.push((id, access));
                                 }
                             }
                         }
@@ -565,8 +575,8 @@ impl<'a> SerializationGraph<'a> {
         let (dirty, state) = tuple.get().is_dirty();
         assert_eq!(
             dirty, false,
-            "uncommitted write observed by transaction: {}state observed: {}\n decisions: {:?}\n iter: {:?}\n prv: {}\n tuple {}\n retries: {}",
-            this, state, decisions, iter, prv, tuple,retries
+            "uncommitted write observed by transaction: {}state observed: {}\n observed: {:?}\n before: {:?}\n before_write: {:?}\n before_write_committed: {:?}\n before_write_active: {:?}\n prv: {}\n tuple {}\n retries: {}",
+            this, state, observed, before, before_write, before_write_committed, before_write_active, prv, tuple,retries
         );
 
         // Now, handle R-W conflicts
