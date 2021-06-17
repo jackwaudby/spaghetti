@@ -52,6 +52,7 @@ pub struct RwNode<'a> {
     aborted: AtomicBool,
     cleaned: AtomicBool,
     checked: AtomicBool,
+    complete: AtomicBool,
     lock: RwLock<u32>,
 }
 
@@ -76,6 +77,7 @@ impl<'a> RwNode<'a> {
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
+            complete: AtomicBool::new(false),
             lock: RwLock::new(0),
         }
     }
@@ -89,6 +91,7 @@ impl<'a> RwNode<'a> {
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
+            complete: AtomicBool::new(false),
             lock: RwLock::new(0),
         }
     }
@@ -275,6 +278,10 @@ impl<'a> RwNode<'a> {
     pub fn set_cleaned(&self) {
         self.cleaned.store(true, Ordering::Release);
     }
+
+    pub fn set_complete(&self) {
+        self.complete.store(true, Ordering::Release);
+    }
 }
 
 impl<'a> PartialEq for Edge<'a> {
@@ -393,6 +400,7 @@ impl<'a> fmt::Display for RwNode<'a> {
         writeln!(f, "aborted: {:?}", self.aborted).unwrap();
         writeln!(f, "cleaned: {:?}", self.cleaned).unwrap();
         writeln!(f, "checked: {:?}", self.checked).unwrap();
+        writeln!(f, "complete: {:?}", self.complete).unwrap();
         writeln!(f, "----------").unwrap();
         Ok(())
     }

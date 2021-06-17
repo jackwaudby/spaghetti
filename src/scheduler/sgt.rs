@@ -291,6 +291,7 @@ impl<'a> SerializationGraph<'a> {
         }
 
         let success = self.erase_graph_constraints(this, database, guard);
+        // TODO need to set checked back to false?
 
         if success {
             self.cleanup(this, guard);
@@ -644,7 +645,7 @@ impl<'a> SerializationGraph<'a> {
                 break;
             }
         }
-
+        this.set_complete();
         Ok(())
     }
 
@@ -683,6 +684,8 @@ impl<'a> SerializationGraph<'a> {
                 }
             }
         }
+
+        this.set_complete();
 
         NonFatalError::NonSerializable // TODO: return the why
     }
