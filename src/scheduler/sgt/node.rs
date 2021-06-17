@@ -338,6 +338,7 @@ impl<'a> fmt::Display for RwNode<'a> {
                     incoming.push_str("[empty]");
                 } else {
                     // contains edges
+                    incoming.push_str(&format!("["));
                     for edge in &*guard {
                         incoming.push_str(&format!("{}", edge));
                         incoming.push_str(", ");
@@ -365,6 +366,8 @@ impl<'a> fmt::Display for RwNode<'a> {
                     outgoing.push_str("[empty]");
                 } else {
                     // contains edges
+                    outgoing.push_str(&format!("["));
+
                     for edge in &*guard {
                         outgoing.push_str(&format!("{}", edge));
                         outgoing.push_str(", ");
