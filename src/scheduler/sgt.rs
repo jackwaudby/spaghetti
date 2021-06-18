@@ -598,6 +598,7 @@ impl<'a> SerializationGraph<'a> {
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
         let mut prv;
+        let mut attempts = 0;
 
         loop {
             // check for cascading abort
@@ -709,6 +710,7 @@ impl<'a> SerializationGraph<'a> {
                 );
 
                 lsn.store(prv + 1, Ordering::Release); // update lsn
+                attempts += 1;
                 continue;
             }
 
@@ -740,7 +742,11 @@ impl<'a> SerializationGraph<'a> {
         // ASSERT: there must be not an uncommitted write, the record must be clean.
         let tuple = table.get_tuple(column_id, offset); // handle to tuple
         let (dirty, _) = tuple.get().is_dirty();
-        assert_eq!(dirty, false, "{}", this);
+        assert_eq!(
+            dirty, false,
+            "{} attempts: {} rwtable: {:?}",
+            this, attempts, rw_table
+        );
 
         // Now, handle R-W conflicts
         let snapshot = rw_table.iter(guard);
@@ -796,12 +802,12 @@ impl<'a> SerializationGraph<'a> {
             return Err(SerializationGraphError::CycleFound.into());
         }
 
-        if let Err(_) = table
+        if let Err(e) = table
             .get_tuple(column_id, offset)
             .get()
             .set_value(value, prv, meta.clone())
         {
-            // panic!("{}", e); // ASSERT: never write to an uncommitted value.
+            panic!("{}", e); // ASSERT: never write to an uncommitted value.
         }
 
         // update lsn, giving next operation access.
