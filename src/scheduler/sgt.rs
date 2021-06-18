@@ -600,6 +600,7 @@ impl<'a> SerializationGraph<'a> {
         let mut prv;
         let mut attempts = 0;
         let mut prvs = Vec::new();
+        let mut delays = Vec::new();
 
         loop {
             // check for cascading abort
@@ -714,6 +715,7 @@ impl<'a> SerializationGraph<'a> {
 
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 attempts += 1;
+                delays.push(wait);
                 continue;
             }
 
@@ -735,6 +737,7 @@ impl<'a> SerializationGraph<'a> {
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
+            delays.push(wait);
             break;
         }
 
