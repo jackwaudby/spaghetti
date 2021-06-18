@@ -684,7 +684,6 @@ impl<'a> SerializationGraph<'a> {
         let mut prvs = Vec::new();
         let mut delays = Vec::new();
         let mut cs = Vec::new();
-        let mut acs = Vec::new();
 
         loop {
             // check for cascading abort
@@ -716,10 +715,7 @@ impl<'a> SerializationGraph<'a> {
             let mut cyclic = false; // flag indicating if a cycle has been found
 
             let mut conflicts = Vec::new();
-            let mut accesses = Vec::new();
             for (id, access) in snapshot {
-                accesses.push((id, access));
-
                 // check for cascading abort
                 if self.needs_abort(this) {
                     rw_table.erase(prv, guard); // remove from rw table
@@ -743,7 +739,7 @@ impl<'a> SerializationGraph<'a> {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
-                            conflicts.push(access);
+                            conflicts.push(format!("{}-{}", attempts, from));
 
                             debug!(
                                 "{} detected conflict with {}",
@@ -766,13 +762,13 @@ impl<'a> SerializationGraph<'a> {
                                         cyclic = true;
                                         debug!("{} detected a cycle", node::ref_to_usize(this));
                                         cs.push(conflicts);
-                                        acs.push(accesses);
+
                                         break; // no reason to check other accesses
                                     }
                                     debug!("{} must delay", node::ref_to_usize(this));
                                     wait = true; // retry operation
                                     cs.push(conflicts);
-                                    acs.push(accesses);
+
                                     break;
                                 } else {
                                 }
@@ -781,8 +777,7 @@ impl<'a> SerializationGraph<'a> {
                         Access::Read(_) => {}
                     }
                 }
-                cs.push(conflicts);
-                acs.push(accesses);
+                cs.push(conflicts.clone());
             }
 
             // (i) transaction is in a cycle (cycle = T)

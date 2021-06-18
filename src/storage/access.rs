@@ -17,8 +17,8 @@ impl fmt::Display for Access {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Access::*;
         match &self {
-            Read(id) => write!(f, "r({})", id),
-            Write(id) => write!(f, "w({})", id),
+            Read(id) => write!(f, "r-{}", id),
+            Write(id) => write!(f, "w-{})", id),
         }
     }
 }
