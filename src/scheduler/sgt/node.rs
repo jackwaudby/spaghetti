@@ -144,13 +144,11 @@ impl RwNode {
                             Edge::WriteRead(node) => node,
                         };
 
-                        // let from_ref = from_usize(*from_id);
+                        let from_ref = from_usize(*from_id);
 
-                        //    if from_ref.is_cleaned()
-                        //         && (from_ref.is_aborted() || from_ref.is_committed())
-                        //     {
-                        //         panic!("incoming edge from a cleaned and terminated node!");
-                        //     }
+                        if from_ref.is_complete() {
+                            panic!("incoming edge from a cleaned and terminated node!");
+                        }
                     }
 
                     drop(guard);
