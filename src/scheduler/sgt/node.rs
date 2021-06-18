@@ -43,8 +43,9 @@ pub enum Edge {
 
 #[derive(Debug)]
 pub struct RwNode {
-    incoming: UnsafeCell<Option<EdgeSet>>,
+    pub incoming: UnsafeCell<Option<EdgeSet>>,
     outgoing: UnsafeCell<Option<EdgeSet>>,
+    pub inserted: UnsafeCell<Vec<Edge>>,
     pub removed: UnsafeCell<Vec<Edge>>,
     committed: AtomicBool,
     cascading_abort: AtomicBool,
@@ -73,6 +74,8 @@ impl RwNode {
             incoming: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             outgoing: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             removed: UnsafeCell::new(Vec::new()),
+            inserted: UnsafeCell::new(Vec::new()),
+
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
@@ -89,6 +92,8 @@ impl RwNode {
             incoming: UnsafeCell::new(Some(incoming)),
             outgoing: UnsafeCell::new(Some(outgoing)),
             removed: UnsafeCell::new(Vec::new()),
+            inserted: UnsafeCell::new(Vec::new()),
+
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
@@ -298,8 +303,8 @@ impl RwNode {
 impl fmt::Display for Edge {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Edge::ReadWrite(node) => write!(f, "rw: {}", node).unwrap(),
-            Edge::Other(node) => write!(f, "other: {}", node).unwrap(),
+            Edge::ReadWrite(id) => write!(f, "rw:{}", id).unwrap(),
+            Edge::Other(id) => write!(f, "o:{}", id).unwrap(),
         }
 
         Ok(())
@@ -328,16 +333,7 @@ impl fmt::Display for RwNode {
                     incoming.push_str(&format!("["));
 
                     for edge in &*guard {
-                        let node = match edge {
-                            Edge::Other(id) => id,
-                            Edge::ReadWrite(id) => id,
-                        };
-
-                        incoming.push_str(&format!(
-                            "(edge: {}, node: {})",
-                            edge,
-                            from_usize(*node)
-                        ));
+                        incoming.push_str(&format!("({})", edge));
                         incoming.push_str(", ");
                     }
                     incoming.pop(); // remove trailing ', '
@@ -366,7 +362,7 @@ impl fmt::Display for RwNode {
                     outgoing.push_str(&format!("["));
 
                     for edge in &*guard {
-                        outgoing.push_str(&format!("{}", edge));
+                        outgoing.push_str(&format!("({})", edge));
                         outgoing.push_str(", ");
                     }
                     outgoing.pop(); // remove trailing ', '
@@ -381,20 +377,27 @@ impl fmt::Display for RwNode {
         };
 
         writeln!(f).unwrap();
-        writeln!(f, "---node---").unwrap();
+        // writeln!(f, "---node---").unwrap();
         writeln!(f, "id: {}", id).unwrap();
         writeln!(f, "incoming: {}", incoming).unwrap();
         writeln!(f, "outgoing: {}", outgoing).unwrap();
-        writeln!(f, "committed: {:?}", self.committed).unwrap();
-        writeln!(f, "cascading_abort: {:?}", self.cascading_abort).unwrap();
-        writeln!(f, "aborted: {:?}", self.aborted).unwrap();
-        writeln!(f, "cleaned: {:?}", self.cleaned).unwrap();
-        writeln!(f, "checked: {:?}", self.checked).unwrap();
-        writeln!(f, "complete: {:?}", self.complete).unwrap();
+        writeln!(f, "inserted: {:?}", unsafe { self.inserted.get().as_ref() }).unwrap();
         writeln!(f, "removed: {:?}", unsafe { self.removed.get().as_ref() }).unwrap();
-        writeln!(f, "cleared: {:?}", unsafe { self.cleared.get().as_ref() }).unwrap();
+        write!(
+            f,
+            "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}",
+            self.committed, self.cascading_abort, self.aborted, self.cleaned, self.checked
+        )
+        .unwrap();
+        // writeln!(f, "cascading _abort: {:?}", self.cascading_abort).unwrap();
+        // writeln!(f, "aborted: {:?}", self.aborted).unwrap();
+        // writeln!(f, "cleaned: {:?}", self.cleaned).unwrap();
+        // writeln!(f, "checked: {:?}", self.checked).unwrap();
+        // writeln!(f, "complete: {:?}", self.complete).unwrap();
+        // writeln!(f, "removed: {:?}", unsafe { self.removed.get().as_ref() }).unwrap();
+        // writeln!(f, "cleared: {:?}", unsafe { self.cleared.get().as_ref() }).unwrap();
 
-        writeln!(f, "----------").unwrap();
+        // writeln!(f, "----------").unwrap();
         Ok(())
     }
 }

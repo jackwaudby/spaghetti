@@ -20,8 +20,8 @@ impl fmt::Display for Access {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Access::*;
         match &self {
-            Read(id) => write!(f, "r-{}", id),
-            Write(id) => write!(f, "w-{}", id),
+            Read(id) => write!(f, "r({})", id),
+            Write(id) => write!(f, "w({})", id),
         }
     }
 }
@@ -32,8 +32,8 @@ impl fmt::Display for TransactionId {
 
         match &self {
             NoConcurrencyControl => write!(f, "no id"),
-            SerializationGraph(txn) => write!(f, "{}", node::from_usize(*txn)),
-            OptimisticWaitHit(txn) => write!(f, "{}", transaction::from_usize(*txn)),
+            SerializationGraph(txn) => write!(f, "{}", txn),
+            OptimisticWaitHit(txn) => write!(f, "{}", txn),
         }
     }
 }
