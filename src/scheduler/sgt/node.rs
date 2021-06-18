@@ -147,7 +147,7 @@ impl RwNode {
                         let from_ref = from_usize(*from_id);
 
                         if from_ref.is_complete() {
-                            panic!("incoming edge from a completed node!");
+                            panic!("incoming edge from a completed node! {}", self);
                         }
                     }
 
