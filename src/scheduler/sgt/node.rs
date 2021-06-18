@@ -46,7 +46,7 @@ pub enum Edge {
 pub struct RwNode {
     pub incoming: UnsafeCell<Option<EdgeSet>>,
     outgoing: UnsafeCell<Option<EdgeSet>>,
-    pub inserted: UnsafeCell<Vec<Edge>>,
+    pub inserted: UnsafeCell<Vec<String>>,
     pub removed: UnsafeCell<Vec<Edge>>,
     committed: AtomicBool,
     cascading_abort: AtomicBool,

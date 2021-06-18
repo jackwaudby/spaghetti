@@ -176,7 +176,14 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Insert an incoming edge into (this) node from (from) node, followed by a cycle check.
-    pub fn insert_and_check(&self, this_ref: &'a RwNode, from: Edge) -> bool {
+    pub fn insert_and_check(
+        &self,
+        this_ref: &'a RwNode,
+        from: Edge,
+        table_id: usize,
+        column_id: usize,
+        offset: usize,
+    ) -> bool {
         let this_id = node::ref_to_usize(this_ref); // id of this node
 
         match from {
@@ -207,12 +214,13 @@ impl<'a> SerializationGraph<'a> {
                         debug!("inserted {}-[rw]->{}", from_id, this_id);
                         this_ref.insert_incoming(Edge::ReadWrite(from_id));
                         unsafe {
-                            this_ref
-                                .inserted
-                                .get()
-                                .as_mut()
-                                .unwrap()
-                                .push(Edge::ReadWrite(from_id))
+                            this_ref.inserted.get().as_mut().unwrap().push(format!(
+                                "{}-({},{},{})",
+                                Edge::ReadWrite(from_id),
+                                table_id,
+                                column_id,
+                                offset,
+                            ))
                         };
 
                         from_ref.insert_outgoing(Edge::ReadWrite(this_id));
@@ -259,12 +267,13 @@ impl<'a> SerializationGraph<'a> {
                         from_ref.insert_outgoing(Edge::WriteWrite(this_id));
                         debug!("inserted {}-[o]->{}", from_id, this_id);
                         unsafe {
-                            this_ref
-                                .inserted
-                                .get()
-                                .as_mut()
-                                .unwrap()
-                                .push(Edge::WriteWrite(from_id))
+                            this_ref.inserted.get().as_mut().unwrap().push(format!(
+                                "{}-({},{},{})",
+                                Edge::WriteWrite(from_id),
+                                table_id,
+                                column_id,
+                                offset,
+                            ))
                         };
 
                         drop(from_rlock);
@@ -311,12 +320,13 @@ impl<'a> SerializationGraph<'a> {
                         from_ref.insert_outgoing(Edge::WriteRead(this_id));
                         debug!("inserted {}-[o]->{}", from_id, this_id);
                         unsafe {
-                            this_ref
-                                .inserted
-                                .get()
-                                .as_mut()
-                                .unwrap()
-                                .push(Edge::WriteRead(from_id))
+                            this_ref.inserted.get().as_mut().unwrap().push(format!(
+                                "{}-({},{},{})",
+                                Edge::WriteRead(from_id),
+                                table_id,
+                                column_id,
+                                offset
+                            ))
                         };
 
                         drop(from_rlock);
@@ -579,7 +589,13 @@ impl<'a> SerializationGraph<'a> {
                             from
                         );
                         if let TransactionId::SerializationGraph(from_id) = from {
-                            if !self.insert_and_check(this, Edge::WriteRead(*from_id)) {
+                            if !self.insert_and_check(
+                                this,
+                                Edge::WriteRead(*from_id),
+                                table_id,
+                                column_id,
+                                offset,
+                            ) {
                                 debug!("{} detected a cycle", node::ref_to_usize(this));
                                 cyclic = true;
                                 break;
@@ -735,7 +751,13 @@ impl<'a> SerializationGraph<'a> {
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
-                                    if !self.insert_and_check(this, Edge::WriteWrite(*from_addr)) {
+                                    if !self.insert_and_check(
+                                        this,
+                                        Edge::WriteWrite(*from_addr),
+                                        table_id,
+                                        column_id,
+                                        offset,
+                                    ) {
                                         cyclic = true;
                                         debug!("{} detected a cycle", node::ref_to_usize(this));
                                         break; // no reason to check other accesses
@@ -859,7 +881,13 @@ impl<'a> SerializationGraph<'a> {
                         );
 
                         if let TransactionId::SerializationGraph(from_addr) = from {
-                            if !self.insert_and_check(this, Edge::ReadWrite(*from_addr)) {
+                            if !self.insert_and_check(
+                                this,
+                                Edge::ReadWrite(*from_addr),
+                                table_id,
+                                column_id,
+                                offset,
+                            ) {
                                 cyclic = true;
                                 break;
                             }
