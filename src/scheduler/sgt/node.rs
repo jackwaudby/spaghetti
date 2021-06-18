@@ -298,6 +298,39 @@ impl RwNode {
     pub fn set_complete(&self) {
         self.complete.store(true, Ordering::Release);
     }
+
+    pub fn print_incoming(&self) -> String {
+        let mut incoming = String::new();
+
+        match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
+            // incoming edge not removed
+            Some(edges) => {
+                let guard = edges.lock(); // lock edge set
+
+                // not removed but empty
+                if guard.is_empty() {
+                    incoming.push_str("[ ]");
+                } else {
+                    // contains edges
+                    incoming.push_str(&format!("["));
+
+                    for edge in &*guard {
+                        incoming.push_str(&format!("{}", edge));
+                        incoming.push_str(", ");
+                    }
+                    incoming.pop(); // remove trailing ', '
+                    incoming.pop();
+                    incoming.push_str(&format!("]"));
+                }
+
+                drop(guard);
+            }
+            // edge set has been removed
+            None => incoming.push_str("[cleared]"),
+        };
+
+        incoming
+    }
 }
 
 impl fmt::Display for Edge {
@@ -314,88 +347,61 @@ impl fmt::Display for Edge {
 
 impl fmt::Display for RwNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // node id
+        let mut nodes = FxHashSet::default(); // set of nodes discovered
+
+        // start node id
         let ptr: *const RwNode = self;
         let id = ptr as usize;
 
-        // incoming edges
-        let mut incoming = String::new();
+        nodes.insert(id);
 
-        match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
-            // edge set not removed
-            Some(edges) => {
-                let guard = edges.lock(); // lock edge set
+        // // incoming edges
 
-                // not removed but empty
-                if guard.is_empty() {
-                    incoming.push_str("[empty]");
-                } else {
-                    // contains edges
-                    incoming.push_str(&format!("["));
+        // let mut outgoing = String::new();
 
-                    for edge in &*guard {
-                        let e = match edge {
-                            Edge::ReadWrite(id) => format!("{}", from_usize(*id)),
-                            Edge::WriteWrite(id) => format!("{}", from_usize(*id)),
-                            Edge::WriteRead(id) => format!("{}", from_usize(*id)),
-                        };
+        // match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
+        //     // edge set not removed
+        //     Some(edges) => {
+        //         let guard = edges.lock(); // lock edge set
 
-                        incoming.push_str(&format!("{}", e));
-                        incoming.push_str(", ");
-                    }
-                    incoming.pop(); // remove trailing ', '
-                    incoming.pop();
-                    incoming.push_str(&format!("]"));
-                }
+        //         // not removed but empty
+        //         if guard.is_empty() {
+        //             outgoing.push_str("[empty]");
+        //         } else {
+        //             // contains edges
+        //             outgoing.push_str(&format!("["));
 
-                drop(guard);
-            }
-            // edge set has been removed
-            None => incoming.push_str("[cleared]"),
-        };
+        //             for edge in &*guard {
+        //                 outgoing.push_str(&format!("({})", edge));
+        //                 outgoing.push_str(", ");
+        //             }
+        //             outgoing.pop(); // remove trailing ', '
+        //             outgoing.pop();
+        //             outgoing.push_str(&format!("]"));
+        //         }
 
-        let mut outgoing = String::new();
+        //         drop(guard);
+        //     }
+        //     // edge set has been removed
+        //     None => outgoing.push_str("[cleared]"),
+        // };
 
-        match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
-            // edge set not removed
-            Some(edges) => {
-                let guard = edges.lock(); // lock edge set
+        for node in nodes.iter() {
+            let n = from_usize(*node);
 
-                // not removed but empty
-                if guard.is_empty() {
-                    outgoing.push_str("[empty]");
-                } else {
-                    // contains edges
-                    outgoing.push_str(&format!("["));
-
-                    for edge in &*guard {
-                        outgoing.push_str(&format!("({})", edge));
-                        outgoing.push_str(", ");
-                    }
-                    outgoing.pop(); // remove trailing ', '
-                    outgoing.pop();
-                    outgoing.push_str(&format!("]"));
-                }
-
-                drop(guard);
-            }
-            // edge set has been removed
-            None => outgoing.push_str("[cleared]"),
-        };
-
-        writeln!(f).unwrap();
-        // writeln!(f, "---node---").unwrap();
-        writeln!(f, "id: {}", id).unwrap();
-        writeln!(f, "incoming: {}", incoming).unwrap();
-        writeln!(f, "outgoing: {}", outgoing).unwrap();
-        // writeln!(f, "inserted: {:?}", unsafe { self.inserted.get().as_ref() }).unwrap();
-        // writeln!(f, "removed: {:?}", unsafe { self.removed.get().as_ref() }).unwrap();
-        write!(
-            f,
-            "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}",
-            self.committed, self.cascading_abort, self.aborted, self.cleaned, self.checked
-        )
-        .unwrap();
+            writeln!(f).unwrap();
+            writeln!(f, "id: {}", node).unwrap();
+            writeln!(f, "incoming: {}", n.print_incoming()).unwrap();
+            // writeln!(f, "outgoing: {}", outgoing).unwrap();
+            // writeln!(f, "inserted: {:?}", unsafe { self.inserted.get().as_ref() }).unwrap();
+            // writeln!(f, "removed: {:?}", unsafe { self.removed.get().as_ref() }).unwrap();
+            write!(
+                f,
+                "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}",
+                n.committed, n.cascading_abort, n.aborted, n.cleaned, n.checked
+            )
+            .unwrap();
+        }
         // writeln!(f, "cascading _abort: {:?}", self.cascading_abort).unwrap();
         // writeln!(f, "aborted: {:?}", self.aborted).unwrap();
         // writeln!(f, "cleaned: {:?}", self.cleaned).unwrap();

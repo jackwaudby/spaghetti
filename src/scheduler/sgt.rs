@@ -846,10 +846,16 @@ impl<'a> SerializationGraph<'a> {
         // ASSERT: there must be not an uncommitted write, the record must be clean.
         let tuple = table.get_tuple(column_id, offset); // handle to tuple
         let (dirty, _) = tuple.get().is_dirty();
+        // assert_eq!(
+        //     dirty, false,
+        //     "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?} \ntuple_state: {}",
+        //     table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs,tuple
+        // );
+
         assert_eq!(
             dirty, false,
-            "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?} \ntuple_state: {}",
-            table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs,tuple
+            "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?}",
+            table_id, column_id, offset, this, attempts, rw_table
         );
 
         // Now, handle R-W conflicts
