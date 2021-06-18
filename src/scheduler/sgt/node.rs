@@ -136,6 +136,23 @@ impl RwNode {
                 Some(edges) => {
                     let guard = edges.lock();
                     let res = guard.is_empty();
+
+                    for edge in guard.iter() {
+                        let from_id = match edge {
+                            Edge::ReadWrite(node) => node,
+                            Edge::WriteWrite(node) => node,
+                            Edge::WriteRead(node) => node,
+                        };
+
+                        let from_ref = from_usize(*from_id);
+
+                        if from_ref.is_cleaned()
+                            && (from_ref.is_aborted() || from_ref.is_committed())
+                        {
+                            panic!("incoming edge from a cleaned and terminated node!");
+                        }
+                    }
+
                     drop(guard);
                     !res
                 }
