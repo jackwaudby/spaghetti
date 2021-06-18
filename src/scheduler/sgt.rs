@@ -848,8 +848,8 @@ impl<'a> SerializationGraph<'a> {
         let (dirty, _) = tuple.get().is_dirty();
         assert_eq!(
             dirty, false,
-            "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?}",
-            table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs
+            "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?} \ntuple_state: {}",
+            table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs,tuple
         );
 
         // Now, handle R-W conflicts
