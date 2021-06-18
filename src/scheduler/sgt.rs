@@ -684,6 +684,7 @@ impl<'a> SerializationGraph<'a> {
         let mut prvs = Vec::new();
         let mut delays = Vec::new();
         let mut cs = Vec::new();
+        let mut acs = Vec::new();
 
         loop {
             // check for cascading abort
@@ -714,7 +715,11 @@ impl<'a> SerializationGraph<'a> {
             let mut wait = false; // flag indicating if there is an uncommitted write
             let mut cyclic = false; // flag indicating if a cycle has been found
 
+            let mut conflicts = Vec::new();
+            let mut accesses = Vec::new();
             for (id, access) in snapshot {
+                accesses.push((id, access));
+
                 // check for cascading abort
                 if self.needs_abort(this) {
                     rw_table.erase(prv, guard); // remove from rw table
@@ -733,7 +738,7 @@ impl<'a> SerializationGraph<'a> {
                 }
 
                 // only interested in accesses before this one and that are write operations.
-                let mut conflicts = Vec::new();
+
                 if id < &prv {
                     match access {
                         // W-W conflict
@@ -761,11 +766,13 @@ impl<'a> SerializationGraph<'a> {
                                         cyclic = true;
                                         debug!("{} detected a cycle", node::ref_to_usize(this));
                                         cs.push(conflicts);
+                                        acs.push(accesses);
                                         break; // no reason to check other accesses
                                     }
                                     debug!("{} must delay", node::ref_to_usize(this));
                                     wait = true; // retry operation
                                     cs.push(conflicts);
+                                    acs.push(accesses);
                                     break;
                                 } else {
                                 }
@@ -775,6 +782,7 @@ impl<'a> SerializationGraph<'a> {
                     }
                 }
                 cs.push(conflicts);
+                acs.push(accesses);
             }
 
             // (i) transaction is in a cycle (cycle = T)
