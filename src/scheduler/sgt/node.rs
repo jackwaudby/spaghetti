@@ -76,7 +76,6 @@ impl RwNode {
             outgoing: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             removed: UnsafeCell::new(Vec::new()),
             inserted: UnsafeCell::new(Vec::new()),
-
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
