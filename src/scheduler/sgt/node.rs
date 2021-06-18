@@ -147,7 +147,7 @@ impl RwNode {
                         let from_ref = from_usize(*from_id);
 
                         if from_ref.is_complete() {
-                            panic!("incoming edge from a completed node! {}", self);
+                            panic!("incoming edge from a completed node!");
                         }
                     }
 
@@ -270,7 +270,6 @@ impl RwNode {
         match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
             Some(edges) => {
                 let guard = edges.lock();
-
                 let out = guard.clone();
                 drop(guard);
                 out
