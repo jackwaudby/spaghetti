@@ -334,7 +334,13 @@ impl fmt::Display for RwNode {
                     incoming.push_str(&format!("["));
 
                     for edge in &*guard {
-                        incoming.push_str(&format!("({})", edge));
+                        let e = match edge {
+                            Edge::ReadWrite(id) => format!("{}", from_usize(*id)),
+                            Edge::WriteWrite(id) => format!("{}", from_usize(*id)),
+                            Edge::WriteRead(id) => format!("{}", from_usize(*id)),
+                        };
+
+                        incoming.push_str(&format!("{}", e));
                         incoming.push_str(", ");
                     }
                     incoming.pop(); // remove trailing ', '
@@ -382,8 +388,8 @@ impl fmt::Display for RwNode {
         writeln!(f, "id: {}", id).unwrap();
         writeln!(f, "incoming: {}", incoming).unwrap();
         writeln!(f, "outgoing: {}", outgoing).unwrap();
-        writeln!(f, "inserted: {:?}", unsafe { self.inserted.get().as_ref() }).unwrap();
-        writeln!(f, "removed: {:?}", unsafe { self.removed.get().as_ref() }).unwrap();
+        // writeln!(f, "inserted: {:?}", unsafe { self.inserted.get().as_ref() }).unwrap();
+        // writeln!(f, "removed: {:?}", unsafe { self.removed.get().as_ref() }).unwrap();
         write!(
             f,
             "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}",
