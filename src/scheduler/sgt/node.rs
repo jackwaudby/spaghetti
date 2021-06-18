@@ -144,13 +144,13 @@ impl RwNode {
                             Edge::WriteRead(node) => node,
                         };
 
-                        let from_ref = from_usize(*from_id);
+                        // let from_ref = from_usize(*from_id);
 
-                        if from_ref.is_cleaned()
-                            && (from_ref.is_aborted() || from_ref.is_committed())
-                        {
-                            panic!("incoming edge from a cleaned and terminated node!");
-                        }
+                        //    if from_ref.is_cleaned()
+                        //         && (from_ref.is_aborted() || from_ref.is_committed())
+                        //     {
+                        //         panic!("incoming edge from a cleaned and terminated node!");
+                        //     }
                     }
 
                     drop(guard);
@@ -425,8 +425,8 @@ impl fmt::Display for RwNode {
         writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
         writeln!(
             f,
-            "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}",
-            self.committed, self.cascading_abort, self.aborted, self.cleaned, self.checked
+            "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}, complete: {:?}",
+            self.committed, self.cascading_abort, self.aborted, self.cleaned, self.checked, self.complete
         )
         .unwrap();
         writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
@@ -442,8 +442,8 @@ impl fmt::Display for RwNode {
             writeln!(f, "outgoing: {}", n.print_edges(false)).unwrap();
             writeln!(
                 f,
-                "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}",
-                n.committed, n.cascading_abort, n.aborted, n.cleaned, n.checked
+                "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}, complete: {:?}",
+                n.committed, n.cascading_abort, n.aborted, n.cleaned, n.checked, n.complete
             )
             .unwrap();
             writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
