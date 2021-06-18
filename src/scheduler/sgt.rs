@@ -601,6 +601,7 @@ impl<'a> SerializationGraph<'a> {
         let mut attempts = 0;
         let mut prvs = Vec::new();
         let mut delays = Vec::new();
+        let mut cs = Vec::new();
 
         loop {
             // check for cascading abort
@@ -650,10 +651,13 @@ impl<'a> SerializationGraph<'a> {
                 }
 
                 // only interested in accesses before this one and that are write operations.
+                let mut conflicts = Vec::new();
                 if id < &prv {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
+                            conflicts.push(access);
+
                             debug!(
                                 "{} detected conflict with {}",
                                 node::ref_to_usize(this),
@@ -680,6 +684,7 @@ impl<'a> SerializationGraph<'a> {
                         Access::Read(_) => {}
                     }
                 }
+                cs.push(conflicts);
             }
 
             // (i) transaction is in a cycle (cycle = T)
@@ -750,8 +755,8 @@ impl<'a> SerializationGraph<'a> {
         let (dirty, _) = tuple.get().is_dirty();
         assert_eq!(
             dirty, false,
-            "{} \nattempts: {} \nrwtable: {:?} \nprvs: {:?}",
-            this, attempts, rw_table, prvs
+            "{} \nattempts: {} \nrwtable: {:?} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?}",
+            this, attempts, rw_table, prvs, delays, cs
         );
 
         // Now, handle R-W conflicts
