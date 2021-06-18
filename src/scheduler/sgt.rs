@@ -777,7 +777,6 @@ impl<'a> SerializationGraph<'a> {
                         Access::Read(_) => {}
                     }
                 }
-                cs.push(conflicts.clone());
             }
 
             // (i) transaction is in a cycle (cycle = T)
