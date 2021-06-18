@@ -599,33 +599,7 @@ impl<'a> SerializationGraph<'a> {
         let lsn = table.get_lsn(offset);
         let mut prv;
 
-        let mut counter = 0;
         loop {
-            // if counter > 100000 {
-            //     info!("write operation for {} failed", node::ref_to_usize(this));
-
-            //     info!("{}", this);
-
-            //     for node in unsafe {
-            //         this.incoming
-            //             .get()
-            //             .as_ref()
-            //             .unwrap()
-            //             .as_ref()
-            //             .unwrap()
-            //             .lock()
-            //             .iter()
-            //     } {
-            //         let nr = match node {
-            //             Edge::Other(id) => node::from_usize(*id),
-            //             Edge::ReadWrite(id) => node::from_usize(*id),
-            //         };
-            //         info!("{}", nr);
-            //     }
-
-            //     std::process::exit(1);
-            // }
-
             // check for cascading abort
             if self.needs_abort(this) {
                 self.abort(database, guard);
@@ -735,7 +709,6 @@ impl<'a> SerializationGraph<'a> {
                 );
 
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                counter += 1;
                 continue;
             }
 
@@ -849,33 +822,7 @@ impl<'a> SerializationGraph<'a> {
     pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
         let this = self.get_transaction();
 
-        let mut counter = 0;
         loop {
-            // if counter > 100000 {
-            //     info!("commit for {} failed", node::ref_to_usize(this));
-
-            //     info!("{}", this);
-
-            //     for node in unsafe {
-            //         this.incoming
-            //             .get()
-            //             .as_ref()
-            //             .unwrap()
-            //             .as_ref()
-            //             .unwrap()
-            //             .lock()
-            //             .iter()
-            //     } {
-            //         let nr = match node {
-            //             Edge::Other(id) => node::from_usize(*id),
-            //             Edge::ReadWrite(id) => node::from_usize(*id),
-            //         };
-            //         info!("{}", nr);
-            //     }
-
-            //     std::process::exit(1);
-            // }
-
             if self.needs_abort(&this) {
                 return Err(self.abort(database, guard));
             }
@@ -883,7 +830,6 @@ impl<'a> SerializationGraph<'a> {
             if cc {
                 break;
             }
-            counter += 1;
         }
 
         this.set_complete();
