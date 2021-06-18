@@ -1030,8 +1030,8 @@ mod tests {
         let id2 = node::to_usize(Box::new(n2));
         let node2 = node::from_usize(id2);
 
-        node1.insertoutgoing(Edge::Other(id2));
-        node2.insert_incoming(Edge::Other(id1));
+        node1.insert_outgoing(Edge::WriteWrite(id2));
+        node2.insert_incoming(Edge::WriteWrite(id1));
 
         let sg = SerializationGraph::new(1);
 
@@ -1049,11 +1049,11 @@ mod tests {
         let id2 = node::to_usize(Box::new(n2));
         let node2 = node::from_usize(id2);
 
-        node1.insert_outgoing(Edge::Other(id2));
-        node2.insert_incoming(Edge::Other(id1));
+        node1.insert_outgoing(Edge::WriteWrite(id2));
+        node2.insert_incoming(Edge::WriteWrite(id1));
 
-        node1.insert_incoming(Edge::Other(id2));
-        node2.insert_outgoing(Edge::Other(id1));
+        node1.insert_incoming(Edge::WriteWrite(id2));
+        node2.insert_outgoing(Edge::WriteWrite(id1));
 
         let sg = SerializationGraph::new(1);
 
@@ -1075,14 +1075,14 @@ mod tests {
         let id3 = node::to_usize(Box::new(n3));
         let node3 = node::from_usize(id3);
 
-        node1.insert_outgoing(Edge::Other(id2));
-        node2.insert_incoming(Edge::Other(id1));
+        node1.insert_outgoing(Edge::WriteWrite(id2));
+        node2.insert_incoming(Edge::WriteWrite(id1));
 
-        node3.insert_incoming(Edge::Other(id2));
-        node2.insert_outgoing(Edge::Other(id3));
+        node3.insert_incoming(Edge::WriteWrite(id2));
+        node2.insert_outgoing(Edge::WriteWrite(id3));
 
-        node3.insert_outgoing(Edge::Other(id1));
-        node1.insert_incoming(Edge::Other(id3));
+        node3.insert_outgoing(Edge::WriteWrite(id1));
+        node1.insert_incoming(Edge::WriteWrite(id3));
 
         let sg = SerializationGraph::new(1);
 

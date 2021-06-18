@@ -245,7 +245,22 @@ impl RwNode {
                 .unwrap()
                 .lock()
         };
+        let out = guard.clone();
+        drop(guard);
+        out
+    }
 
+    /// Get a clone of the outgoing edge from node.
+    pub fn get_incoming(&self) -> FxHashSet<Edge> {
+        let guard = unsafe {
+            self.incoming
+                .get()
+                .as_ref()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .lock()
+        };
         let out = guard.clone();
         drop(guard);
         out
@@ -337,6 +352,35 @@ impl RwNode {
 
         res
     }
+
+    pub fn depth_first_search(&self) -> FxHashSet<usize> {
+        let mut visited = FxHashSet::default(); // nodes that have been visited
+        let mut stack = Vec::new(); // nodes left to visit
+
+        let incoming = self.get_incoming(); // start nodes to visit
+        let mut inc = incoming.into_iter().collect();
+        stack.append(&mut inc); // push to stack
+
+        while let Some(edge) = stack.pop() {
+            let current = match edge {
+                Edge::ReadWrite(node) => node,
+                Edge::WriteWrite(node) => node,
+                Edge::WriteRead(node) => node,
+            };
+
+            if visited.contains(&current) {
+                continue; // already visited
+            }
+
+            visited.insert(current);
+
+            let current_ref = from_usize(current);
+            let incoming = current_ref.get_incoming();
+            let mut inc = incoming.into_iter().collect();
+            stack.append(&mut inc);
+        }
+        visited
+    }
 }
 
 impl fmt::Display for Edge {
@@ -353,12 +397,10 @@ impl fmt::Display for Edge {
 
 impl fmt::Display for RwNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut nodes = FxHashSet::default(); // set of nodes discovered
+        let mut nodes = self.depth_first_search(); // nodes found from incoming edges
 
-        // start node id
         let ptr: *const RwNode = self;
         let id = ptr as usize;
-
         nodes.insert(id);
 
         for node in nodes.iter() {
@@ -375,15 +417,7 @@ impl fmt::Display for RwNode {
             )
             .unwrap();
         }
-        // writeln!(f, "cascading _abort: {:?}", self.cascading_abort).unwrap();
-        // writeln!(f, "aborted: {:?}", self.aborted).unwrap();
-        // writeln!(f, "cleaned: {:?}", self.cleaned).unwrap();
-        // writeln!(f, "checked: {:?}", self.checked).unwrap();
-        // writeln!(f, "complete: {:?}", self.complete).unwrap();
-        // writeln!(f, "removed: {:?}", unsafe { self.removed.get().as_ref() }).unwrap();
-        // writeln!(f, "cleared: {:?}", unsafe { self.cleared.get().as_ref() }).unwrap();
 
-        // writeln!(f, "----------").unwrap();
         Ok(())
     }
 }
@@ -420,7 +454,7 @@ mod tests {
         let e2 = Edge::ReadWrite(id);
         assert_eq!(e1, e2);
 
-        let e3 = Edge::Other(id);
+        let e3 = Edge::WriteWrite(id);
         assert!(e3 != e1);
 
         let onode = RwNode::new();
@@ -428,7 +462,7 @@ mod tests {
         let oid = to_usize(oboxed);
 
         let e4 = Edge::ReadWrite(oid);
-        let e5 = Edge::Other(oid);
+        let e5 = Edge::WriteWrite(oid);
 
         assert!(e1 != e4);
         assert!(e1 != e5);
@@ -445,15 +479,43 @@ mod tests {
         let id2 = to_usize(Box::new(n2));
 
         node1.insert_incoming(Edge::ReadWrite(id2));
-        node1.insert_incoming(Edge::Other(id2));
+        node1.insert_incoming(Edge::WriteWrite(id2));
 
         assert_eq!(node1.is_incoming(), true);
 
         node1.remove_incoming(&Edge::ReadWrite(id2));
         assert_eq!(node1.is_incoming(), true);
 
-        let edge = Edge::Other(id2);
+        let edge = Edge::WriteWrite(id2);
         node1.remove_incoming(&edge);
         assert_eq!(node1.is_incoming(), false);
+    }
+
+    #[test]
+    fn dfs() {
+        let n1 = RwNode::new();
+        let id1 = to_usize(Box::new(n1));
+        let node1 = from_usize(id1);
+
+        let n2 = RwNode::new();
+        let id2 = to_usize(Box::new(n2));
+        let node2 = from_usize(id2);
+
+        let n3 = RwNode::new();
+        let id3 = to_usize(Box::new(n3));
+        let node3 = from_usize(id3);
+
+        node2.insert_incoming(Edge::WriteWrite(id1));
+
+        node3.insert_incoming(Edge::WriteWrite(id2));
+
+        node1.insert_incoming(Edge::WriteWrite(id3));
+
+        let mut res = FxHashSet::default();
+        res.insert(id1);
+        res.insert(id2);
+        res.insert(id3);
+
+        assert_eq!(node1.depth_first_search(), res);
     }
 }
