@@ -245,7 +245,7 @@ impl<'a> SerializationGraph<'a> {
                     } else {
                         let from_ref = node::from_usize(from_id);
 
-                        if from_ref.is_aborted() {
+                        if from_ref.is_aborted() || from_ref.is_cascading_abort() {
                             this_ref.set_cascading_abort();
                             return false; // then cascadingly abort (this)
                         }
@@ -298,7 +298,7 @@ impl<'a> SerializationGraph<'a> {
                     } else {
                         let from_ref = node::from_usize(from_id);
 
-                        if from_ref.is_aborted() {
+                        if from_ref.is_aborted() || from_ref.is_cascading_abort() {
                             this_ref.set_cascading_abort();
                             return false; // then cascadingly abort (this)
                         }
