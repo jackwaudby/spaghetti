@@ -599,6 +599,7 @@ impl<'a> SerializationGraph<'a> {
         let lsn = table.get_lsn(offset);
         let mut prv;
         let mut attempts = 0;
+        let mut prvs = Vec::new();
 
         loop {
             // check for cascading abort
@@ -608,6 +609,8 @@ impl<'a> SerializationGraph<'a> {
             }
 
             prv = rw_table.push_front(Access::Write(meta.clone()), guard); // get ticket
+
+            prvs.push(prv);
 
             // Safety: ensures exculsive access to the record.
             unsafe { spin(prv, lsn) }; // busy wait
@@ -744,8 +747,8 @@ impl<'a> SerializationGraph<'a> {
         let (dirty, _) = tuple.get().is_dirty();
         assert_eq!(
             dirty, false,
-            "{} attempts: {} rwtable: {:?}",
-            this, attempts, rw_table
+            "{} \nattempts: {} \nrwtable: {:?} \nprvs: {:?}",
+            this, attempts, rw_table, prvs
         );
 
         // Now, handle R-W conflicts
