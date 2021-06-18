@@ -38,7 +38,8 @@ pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum Edge {
     ReadWrite(usize),
-    Other(usize),
+    WriteWrite(usize),
+    WriteRead(usize),
 }
 
 #[derive(Debug)]
@@ -304,7 +305,8 @@ impl fmt::Display for Edge {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Edge::ReadWrite(id) => write!(f, "rw:{}", id).unwrap(),
-            Edge::Other(id) => write!(f, "o:{}", id).unwrap(),
+            Edge::WriteWrite(id) => write!(f, "ww:{}", id).unwrap(),
+            Edge::WriteRead(id) => write!(f, "wr:{}", id).unwrap(),
         }
 
         Ok(())
