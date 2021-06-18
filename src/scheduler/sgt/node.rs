@@ -299,37 +299,43 @@ impl RwNode {
         self.complete.store(true, Ordering::Release);
     }
 
-    pub fn print_incoming(&self) -> String {
-        let mut incoming = String::new();
+    pub fn print_edges(&self, incoming: bool) -> String {
+        let mut res = String::new();
 
-        match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
+        let edge_set = if incoming {
+            unsafe { self.incoming.get().as_ref().unwrap().as_ref() }
+        } else {
+            unsafe { self.outgoing.get().as_ref().unwrap().as_ref() }
+        };
+
+        match edge_set {
             // incoming edge not removed
             Some(edges) => {
                 let guard = edges.lock(); // lock edge set
 
                 // not removed but empty
                 if guard.is_empty() {
-                    incoming.push_str("[ ]");
+                    res.push_str("[ ]");
                 } else {
                     // contains edges
-                    incoming.push_str(&format!("["));
+                    res.push_str(&format!("["));
 
                     for edge in &*guard {
-                        incoming.push_str(&format!("{}", edge));
-                        incoming.push_str(", ");
+                        res.push_str(&format!("{}", edge));
+                        res.push_str(", ");
                     }
-                    incoming.pop(); // remove trailing ', '
-                    incoming.pop();
-                    incoming.push_str(&format!("]"));
+                    res.pop(); // remove trailing ', '
+                    res.pop();
+                    res.push_str(&format!("]"));
                 }
 
                 drop(guard);
             }
             // edge set has been removed
-            None => incoming.push_str("[cleared]"),
+            None => res.push_str("[cleared]"),
         };
 
-        incoming
+        res
     }
 }
 
@@ -355,46 +361,13 @@ impl fmt::Display for RwNode {
 
         nodes.insert(id);
 
-        // // incoming edges
-
-        // let mut outgoing = String::new();
-
-        // match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
-        //     // edge set not removed
-        //     Some(edges) => {
-        //         let guard = edges.lock(); // lock edge set
-
-        //         // not removed but empty
-        //         if guard.is_empty() {
-        //             outgoing.push_str("[empty]");
-        //         } else {
-        //             // contains edges
-        //             outgoing.push_str(&format!("["));
-
-        //             for edge in &*guard {
-        //                 outgoing.push_str(&format!("({})", edge));
-        //                 outgoing.push_str(", ");
-        //             }
-        //             outgoing.pop(); // remove trailing ', '
-        //             outgoing.pop();
-        //             outgoing.push_str(&format!("]"));
-        //         }
-
-        //         drop(guard);
-        //     }
-        //     // edge set has been removed
-        //     None => outgoing.push_str("[cleared]"),
-        // };
-
         for node in nodes.iter() {
             let n = from_usize(*node);
 
             writeln!(f).unwrap();
             writeln!(f, "id: {}", node).unwrap();
-            writeln!(f, "incoming: {}", n.print_incoming()).unwrap();
-            // writeln!(f, "outgoing: {}", outgoing).unwrap();
-            // writeln!(f, "inserted: {:?}", unsafe { self.inserted.get().as_ref() }).unwrap();
-            // writeln!(f, "removed: {:?}", unsafe { self.removed.get().as_ref() }).unwrap();
+            writeln!(f, "incoming: {}", n.print_edges(true)).unwrap();
+            writeln!(f, "outgoing: {}", n.print_edges(false)).unwrap();
             write!(
                 f,
                 "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}",
