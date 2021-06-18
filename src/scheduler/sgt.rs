@@ -835,6 +835,7 @@ impl<'a> SerializationGraph<'a> {
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
+            attempts += 1;
             delays.push(wait);
             break;
         }
