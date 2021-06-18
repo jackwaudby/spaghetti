@@ -760,10 +760,12 @@ impl<'a> SerializationGraph<'a> {
                                     ) {
                                         cyclic = true;
                                         debug!("{} detected a cycle", node::ref_to_usize(this));
+                                        cs.push(conflicts);
                                         break; // no reason to check other accesses
                                     }
                                     debug!("{} must delay", node::ref_to_usize(this));
                                     wait = true; // retry operation
+                                    cs.push(conflicts);
                                     break;
                                 } else {
                                 }
