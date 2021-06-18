@@ -401,11 +401,26 @@ impl fmt::Display for RwNode {
 
         let ptr: *const RwNode = self;
         let id = ptr as usize;
-        nodes.insert(id);
+        nodes.remove(&id);
+
+        writeln!(f).unwrap();
+        writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
+        writeln!(f, "id: {}", id).unwrap();
+        writeln!(f, "incoming: {}", self.print_edges(true)).unwrap();
+        writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
+        write!(
+            f,
+            "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}",
+            self.committed, self.cascading_abort, self.aborted, self.cleaned, self.checked
+        )
+        .unwrap();
+        writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
+        writeln!(f).unwrap();
 
         for node in nodes.iter() {
             let n = from_usize(*node);
 
+            writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
             writeln!(f).unwrap();
             writeln!(f, "id: {}", node).unwrap();
             writeln!(f, "incoming: {}", n.print_edges(true)).unwrap();
@@ -416,6 +431,8 @@ impl fmt::Display for RwNode {
                 n.committed, n.cascading_abort, n.aborted, n.cleaned, n.checked
             )
             .unwrap();
+            writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
+            writeln!(f).unwrap();
         }
 
         Ok(())
