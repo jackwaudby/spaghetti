@@ -959,8 +959,6 @@ impl<'a> SerializationGraph<'a> {
         let this = self.get_transaction();
         let ops = self.get_operations();
 
-        self.abort_procedure(&this, guard); // sg abort
-
         for op in ops {
             let Operation {
                 op_type,
@@ -987,6 +985,8 @@ impl<'a> SerializationGraph<'a> {
                 }
             }
         }
+
+        self.abort_procedure(&this, guard); // sg abort
 
         this.set_complete();
 
