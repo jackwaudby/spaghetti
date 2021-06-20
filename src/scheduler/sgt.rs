@@ -95,36 +95,63 @@ impl<'a> SerializationGraph<'a> {
         id
     }
 
-    /// Cleanup a node.
+    /// Cleanup node.
+    /// When this method is called the outcome of the transaction is known.
+    ///
     pub fn cleanup<'g>(&self, this: &'a RwNode, guard: &'g Guard) {
+        // Assert: node must be committed or aborted, but not both.
+        assert!(
+            (this.is_committed() && !this.is_aborted())
+                || (!this.is_committed() && this.is_aborted())
+        );
+
+        // Assumption: read/writes can still be found, thus, edges can still be detected.
+        // A node's cleaned flag acts as a barrier for edge insertion.
         let this_wlock = this.write(); // get write lock
         this.set_cleaned(); // set as cleaned
-        let outgoing = this.take_outgoing(); // remove edges
-
-        let incoming = this.take_incoming();
         drop(this_wlock); // drop write lock
 
-        let mut g = outgoing.lock();
+        let outgoing = this.take_outgoing(); // remove edge sets
+        let incoming = this.take_incoming();
 
-        let cop = g.clone();
+        let mut g = outgoing.lock(); // lock on outgoing edge set
 
-        unsafe { this.cleared.get().as_mut().unwrap().replace(cop) };
+        // --- debugging ---
+        let outgoing_clone = g.clone(); // log a copy of what outgoing edge set was
+        unsafe {
+            this.outgoing_clone
+                .get()
+                .as_mut()
+                .unwrap()
+                .replace(outgoing_clone)
+        };
+        // -------------------
 
-        let this_id = node::ref_to_usize(this);
+        let this_id = node::ref_to_usize(this); // node id
+        let outgoing_set = g.iter(); // iterator over outgoing edge set
 
-        let edge_set = g.iter();
-
-        for edge in edge_set {
+        for edge in outgoing_set {
             match edge {
-                Edge::ReadWrite(that) => {
-                    let that = node::from_usize(*that);
-                    let that_rlock = that.read(); // get read lock on outgoing edge
+                // (this) -[rw]-> (that)
+                Edge::ReadWrite(that_id) => {
+                    // Get read lock on outgoing node - prevents node from committing.
+                    let that = node::from_usize(*that_id);
+                    let that_rlock = that.read();
+
+                    // Assert: outgoing node may be aborted or active, but will not be committed.
+                    assert!(!that.is_committed());
+
+                    // If active then the node will not be cleaned and edge must be removed.
+                    // Else, the node is cleaned and must have aborted.
                     if !that.is_cleaned() {
                         that.remove_incoming(&Edge::ReadWrite(this_id)); // remove incoming from this node
                         unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
                     } else {
+                        assert!(that.is_aborted());
                         unsafe { this.out_cleaned.get().as_mut().unwrap().push(edge.clone()) };
                     }
+
+                    // Release read lock.
                     drop(that_rlock);
                 }
                 Edge::WriteWrite(that) => {
@@ -679,15 +706,6 @@ impl<'a> SerializationGraph<'a> {
         guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         let this = self.get_transaction();
-
-        debug!(
-            "write by {} on ({},{},{})",
-            node::ref_to_usize(this),
-            offset,
-            column_id,
-            table_id
-        );
-
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
@@ -711,14 +729,6 @@ impl<'a> SerializationGraph<'a> {
             // Safety: ensures exculsive access to the record.
             unsafe { spin(prv, lsn) }; // busy wait
 
-            debug!(
-                "{} has exculsive access on ({},{},{})",
-                node::ref_to_usize(this),
-                offset,
-                column_id,
-                table_id
-            );
-
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
             let snapshot = rw_table.iter(guard);
@@ -731,33 +741,17 @@ impl<'a> SerializationGraph<'a> {
                 // check for cascading abort
                 if self.needs_abort(this) {
                     rw_table.erase(prv, guard); // remove from rw table
-
-                    debug!(
-                        "{} removed write access from ({},{},{})",
-                        node::ref_to_usize(this),
-                        offset,
-                        column_id,
-                        table_id
-                    );
-
                     self.abort(database, guard);
                     lsn.store(prv + 1, Ordering::Release); // update lsn
                     return Err(SerializationGraphError::CascadingAbort.into());
                 }
 
                 // only interested in accesses before this one and that are write operations.
-
                 if id < &prv {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
                             conflicts.push(format!("{}-{}", attempts, from));
-
-                            debug!(
-                                "{} detected conflict with {}",
-                                node::ref_to_usize(this),
-                                from
-                            );
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
@@ -772,12 +766,12 @@ impl<'a> SerializationGraph<'a> {
                                         offset,
                                     ) {
                                         cyclic = true;
-                                        debug!("{} detected a cycle", node::ref_to_usize(this));
+
                                         cs.push(conflicts);
 
                                         break; // no reason to check other accesses
                                     }
-                                    debug!("{} must delay", node::ref_to_usize(this));
+
                                     wait = true; // retry operation
                                     cs.push(conflicts);
 
@@ -796,14 +790,6 @@ impl<'a> SerializationGraph<'a> {
             if cyclic {
                 rw_table.erase(prv, guard); // remove from rw table
 
-                debug!(
-                    "{} removed write access from ({},{},{})",
-                    node::ref_to_usize(this),
-                    offset,
-                    column_id,
-                    table_id
-                );
-
                 self.abort(database, guard);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(SerializationGraphError::CycleFound.into());
@@ -813,14 +799,6 @@ impl<'a> SerializationGraph<'a> {
             // restart operation
             if wait {
                 rw_table.erase(prv, guard); // remove from rw table
-
-                debug!(
-                    "{} removed write access from ({},{},{})",
-                    node::ref_to_usize(this),
-                    offset,
-                    column_id,
-                    table_id
-                );
 
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 attempts += 1;
@@ -832,14 +810,6 @@ impl<'a> SerializationGraph<'a> {
             // check for cascading abort
             if self.needs_abort(this) {
                 rw_table.erase(prv, guard); // remove from rw table
-
-                debug!(
-                    "{} removed write access from ({},{},{})",
-                    node::ref_to_usize(this),
-                    offset,
-                    column_id,
-                    table_id
-                );
 
                 self.abort(database, guard);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
@@ -881,14 +851,6 @@ impl<'a> SerializationGraph<'a> {
             if self.needs_abort(this) {
                 rw_table.erase(prv, guard); // remove from rw table
 
-                debug!(
-                    "{} removed write access from ({},{},{})",
-                    node::ref_to_usize(this),
-                    offset,
-                    column_id,
-                    table_id
-                );
-
                 self.abort(database, guard);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(SerializationGraphError::CascadingAbort.into());
@@ -897,12 +859,6 @@ impl<'a> SerializationGraph<'a> {
             if id < &prv {
                 match access {
                     Access::Read(from) => {
-                        debug!(
-                            "{} detected conflict with {}",
-                            node::ref_to_usize(this),
-                            from
-                        );
-
                         if let TransactionId::SerializationGraph(from_addr) = from {
                             if !self.insert_and_check(
                                 this,

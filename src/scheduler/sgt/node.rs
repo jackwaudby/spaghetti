@@ -42,6 +42,8 @@ pub enum Edge {
     WriteRead(usize),
 }
 
+/// A `RwNode` is pinned to a single thread, referred to as the 'owning' thread.
+/// This thread is responsible for creating the node and scheduling it for deletion.
 #[derive(Debug)]
 pub struct RwNode {
     pub incoming: UnsafeCell<Option<EdgeSet>>,
@@ -53,11 +55,13 @@ pub struct RwNode {
     checked: AtomicBool,
     complete: AtomicBool,
     lock: RwLock<u32>,
+
+    // For debugging purposes.
     pub inserted: UnsafeCell<Vec<String>>,
     pub removed: UnsafeCell<Vec<Edge>>,
     pub skipped: UnsafeCell<Vec<Edge>>,
     pub out_cleaned: UnsafeCell<Vec<Edge>>,
-    pub cleared: UnsafeCell<Option<FxHashSet<Edge>>>,
+    pub outgoing_clone: UnsafeCell<Option<FxHashSet<Edge>>>,
 }
 
 unsafe impl<'a> Send for RwNode {}
@@ -76,9 +80,6 @@ impl RwNode {
         Self {
             incoming: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             outgoing: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
-            removed: UnsafeCell::new(Vec::new()),
-            skipped: UnsafeCell::new(Vec::new()),
-            out_cleaned: UnsafeCell::new(Vec::new()),
             inserted: UnsafeCell::new(Vec::new()),
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
@@ -87,7 +88,11 @@ impl RwNode {
             checked: AtomicBool::new(false),
             complete: AtomicBool::new(false),
             lock: RwLock::new(0),
-            cleared: UnsafeCell::new(None),
+
+            outgoing_clone: UnsafeCell::new(None),
+            removed: UnsafeCell::new(Vec::new()),
+            skipped: UnsafeCell::new(Vec::new()),
+            out_cleaned: UnsafeCell::new(Vec::new()),
         }
     }
 
@@ -106,7 +111,7 @@ impl RwNode {
             checked: AtomicBool::new(false),
             complete: AtomicBool::new(false),
             lock: RwLock::new(0),
-            cleared: UnsafeCell::new(None),
+            outgoing_clone: UnsafeCell::new(None),
         }
     }
 
@@ -446,8 +451,8 @@ impl fmt::Display for RwNode {
             self.out_cleaned.get().as_mut().unwrap()
         })
         .unwrap();
-        writeln!(f, "cleared: {:?}", unsafe {
-            self.cleared.get().as_mut().unwrap()
+        writeln!(f, "outgoing_clone: {:?}", unsafe {
+            self.outgoing_clone.get().as_mut().unwrap()
         })
         .unwrap();
 
