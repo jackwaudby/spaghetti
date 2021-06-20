@@ -268,18 +268,15 @@ impl RwNode {
 
     /// Get a clone of the outgoing edge from node.
     pub fn get_outgoing(&self) -> FxHashSet<Edge> {
-        let guard = unsafe {
-            self.outgoing
-                .get()
-                .as_ref()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .lock()
-        };
-        let out = guard.clone();
-        drop(guard);
-        out
+        match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
+            Some(edges) => {
+                let guard = edges.lock();
+                let out = guard.clone();
+                drop(guard);
+                out
+            }
+            None => FxHashSet::default(),
+        }
     }
 
     /// Get a clone of the outgoing edge from node.
