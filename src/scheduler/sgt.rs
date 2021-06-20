@@ -223,6 +223,8 @@ impl<'a> SerializationGraph<'a> {
                             ))
                         };
 
+                        assert!(!from_ref.is_complete());
+
                         from_ref.insert_outgoing(Edge::ReadWrite(this_id));
                         drop(from_rlock);
                         drop(this_rlock);
