@@ -440,7 +440,10 @@ impl fmt::Display for RwNode {
         writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
         writeln!(f, "thread id: {:?}", self.thread_id).unwrap();
         writeln!(f, "thread ctr: {:?}", self.thread_ctr).unwrap();
-        writeln!(f, "expected ref id: {:?}", self.node_id).unwrap();
+        writeln!(f, "expected ref id: {:?}", unsafe {
+            self.node_id.get().as_ref().unwrap()
+        })
+        .unwrap();
         writeln!(f, "actual ref id: {}", id).unwrap();
         writeln!(f, "incoming: {}", self.print_edges(true)).unwrap();
         writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
@@ -475,7 +478,14 @@ impl fmt::Display for RwNode {
 
             writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
             writeln!(f).unwrap();
-            writeln!(f, "id: {}", node).unwrap();
+            writeln!(f, "thread id: {:?}", n.thread_id).unwrap();
+            writeln!(f, "thread ctr: {:?}", n.thread_ctr).unwrap();
+            writeln!(f, "expected ref id: {:?}", unsafe {
+                n.node_id.get().as_ref().unwrap()
+            })
+            .unwrap();
+            writeln!(f, "actual ref id: {}", n).unwrap();
+
             writeln!(f, "incoming: {}", n.print_edges(true)).unwrap();
             writeln!(f, "outgoing: {}", n.print_edges(false)).unwrap();
             writeln!(
