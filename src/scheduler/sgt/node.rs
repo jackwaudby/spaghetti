@@ -501,6 +501,22 @@ impl fmt::Display for RwNode {
 
             writeln!(f, "incoming: {}", n.print_edges(true)).unwrap();
             writeln!(f, "outgoing: {}", n.print_edges(false)).unwrap();
+            writeln!(f, "removed: {:?}", unsafe {
+                n.removed.get().as_mut().unwrap()
+            })
+            .unwrap();
+            writeln!(f, "skipped: {:?}", unsafe {
+                n.skipped.get().as_mut().unwrap()
+            })
+            .unwrap();
+            writeln!(f, "out_cleaned: {:?}", unsafe {
+                n.out_cleaned.get().as_mut().unwrap()
+            })
+            .unwrap();
+            writeln!(f, "outgoing_clone: {:?}", unsafe {
+                n.outgoing_clone.get().as_mut().unwrap()
+            })
+            .unwrap();
             writeln!(
                 f,
                 "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}, complete: {:?}",
