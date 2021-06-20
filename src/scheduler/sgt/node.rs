@@ -427,6 +427,11 @@ impl fmt::Display for RwNode {
         writeln!(f, "id: {}", id).unwrap();
         writeln!(f, "incoming: {}", self.print_edges(true)).unwrap();
         writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
+        writeln!(f, "removed: {:?}", unsafe {
+            self.removed.get().as_mut().unwrap()
+        })
+        .unwrap();
+
         writeln!(
             f,
             "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}, complete: {:?}",
