@@ -837,24 +837,20 @@ impl<'a> SerializationGraph<'a> {
             break;
         }
 
-        // TODO: race condition whereby this transaction sees an uncommitted version.
-        // This should not occur as transaction should, in theory, restart if they ever encounter uncommitted state.
-        // The guard here is the is.committed() check; can this evalute to TRUE before the commit() function completes?
-
         // ASSERT: there must be not an uncommitted write, the record must be clean.
         let tuple = table.get_tuple(column_id, offset); // handle to tuple
         let (dirty, _) = tuple.get().is_dirty();
-        // assert_eq!(
-        //     dirty, false,
-        //     "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?} \ntuple_state: {}",
-        //     table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs,tuple
-        // );
-
         assert_eq!(
             dirty, false,
-            "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?}",
-            table_id, column_id, offset, this, attempts, rw_table
+            "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?} \ntuple_state: {}",
+            table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs,tuple
         );
+
+        // assert_eq!(
+        //     dirty, false,
+        //     "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?}",
+        //     table_id, column_id, offset, this, attempts, rw_table
+        // );
 
         // Now, handle R-W conflicts
         let snapshot = rw_table.iter(guard);
