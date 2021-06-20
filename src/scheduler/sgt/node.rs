@@ -484,7 +484,7 @@ impl fmt::Display for RwNode {
                 n.node_id.get().as_ref().unwrap()
             })
             .unwrap();
-            writeln!(f, "actual ref id: {}", n).unwrap();
+            writeln!(f, "actual ref id: {}", node).unwrap();
 
             writeln!(f, "incoming: {}", n.print_edges(true)).unwrap();
             writeln!(f, "outgoing: {}", n.print_edges(false)).unwrap();
