@@ -156,11 +156,12 @@ impl RwNode {
 
                         assert!(
                             !from_ref.is_complete(),
-                            "{} has an incoming edge {} from a completed node {}! {}",
+                            "{} has an incoming edge {} from a completed node {}! {}\n c.abort: {}",
                             id,
                             edge,
                             from_id,
-                            from_ref
+                            from_ref,
+                            self.is_cascading_abort()
                         );
                     }
 
