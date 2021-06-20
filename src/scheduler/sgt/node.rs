@@ -148,10 +148,7 @@ impl RwNode {
 
                         if from_ref.is_complete() {
                             // If a node has completed then all outgoing edges should have been removed.
-                            panic!(
-                                "incoming edge from a completed node: {}, {}!",
-                                from_id, self
-                            );
+                            panic!("incoming edge from a completed node: {}!", from_id);
                         }
                     }
 

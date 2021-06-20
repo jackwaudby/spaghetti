@@ -210,6 +210,10 @@ impl<'a> SerializationGraph<'a> {
                             continue; // if (from) checked in process of terminating so try again
                         }
 
+                        assert!(!from_ref.is_checked());
+                        assert!(!from_ref.is_cleaned());
+                        assert!(!from_ref.is_complete());
+
                         let this_rlock = this_ref.read(); // get shared lock on (this)
                         debug!("inserted {}-[rw]->{}", from_id, this_id);
                         this_ref.insert_incoming(Edge::ReadWrite(from_id));
@@ -222,8 +226,6 @@ impl<'a> SerializationGraph<'a> {
                                 offset,
                             ))
                         };
-
-                        assert!(!from_ref.is_complete());
 
                         from_ref.insert_outgoing(Edge::ReadWrite(this_id));
                         drop(from_rlock);
