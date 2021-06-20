@@ -154,13 +154,21 @@ impl<'a> SerializationGraph<'a> {
                     // Release read lock.
                     drop(that_rlock);
                 }
-                Edge::WriteWrite(that) => {
-                    let that = node::from_usize(*that);
+                // (this) -[ww]-> (that)
+                Edge::WriteWrite(that_id) => {
+                    // Get read lock on outgoing node - prevents node from committing.
+                    let that = node::from_usize(*that_id);
+
+                    // Assert: outgoing node may be aborted or active, but will not be committed.
+                    assert!(!that.is_committed());
+
+                    // If this node aborted then the outgoing node must also abort.
+                    // Else, this node is committed.
                     if this.is_aborted() {
                         unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
-                        that.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
+                        that.set_cascading_abort();
                     } else {
-                        let that_rlock = that.read(); // get read lock on outgoing edge
+                        let that_rlock = that.read();
                         if !that.is_cleaned() {
                             that.remove_incoming(&Edge::WriteWrite(this_id));
                             unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
