@@ -40,9 +40,9 @@ pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum Edge {
     // (node id, table id, column id, offset)
-    ReadWrite(usize, usize, usize, usize),
-    WriteWrite(usize, usize, usize, usize),
-    WriteRead(usize, usize, usize, usize),
+    ReadWrite(usize),
+    WriteWrite(usize),
+    WriteRead(usize),
 }
 
 /// A `RwNode` is pinned to a single thread, referred to as the 'owning' thread.
@@ -396,9 +396,9 @@ impl RwNode {
 
         while let Some(edge) = stack.pop() {
             let current = match edge {
-                Edge::ReadWrite(node, _, _, _) => node,
-                Edge::WriteWrite(node, _, _, _) => node,
-                Edge::WriteRead(node, _, _, _) => node,
+                Edge::ReadWrite(node) => node,
+                Edge::WriteWrite(node) => node,
+                Edge::WriteRead(node) => node,
             };
 
             if visited.contains(&current) {
@@ -419,15 +419,9 @@ impl RwNode {
 impl fmt::Display for Edge {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Edge::ReadWrite(id, table, column, offset) => {
-                write!(f, "rw:{}-({},{},{}))", id, table, column, offset).unwrap()
-            }
-            Edge::WriteWrite(id, table, column, offset) => {
-                write!(f, "ww:{}-({},{},{})", id, table, column, offset).unwrap()
-            }
-            Edge::WriteRead(id, table, column, offset) => {
-                write!(f, "wr:{}-({},{},{})", id, table, column, offset).unwrap()
-            }
+            Edge::ReadWrite(id) => write!(f, "rw:{}", id).unwrap(),
+            Edge::WriteWrite(id) => write!(f, "ww:{}", id,).unwrap(),
+            Edge::WriteRead(id) => write!(f, "wr:{}", id,).unwrap(),
         }
 
         Ok(())
