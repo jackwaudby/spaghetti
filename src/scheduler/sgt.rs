@@ -123,7 +123,7 @@ impl<'a> SerializationGraph<'a> {
                         that.remove_incoming(&Edge::ReadWrite(this_id)); // remove incoming from this node
                         unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
                     } else {
-                        unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
+                        unsafe { this.out_cleaned.get().as_mut().unwrap().push(edge.clone()) };
                     }
                     drop(that_rlock);
                 }
@@ -138,7 +138,7 @@ impl<'a> SerializationGraph<'a> {
                             that.remove_incoming(&Edge::WriteWrite(this_id));
                             unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
                         } else {
-                            unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
+                            unsafe { this.out_cleaned.get().as_mut().unwrap().push(edge.clone()) };
                         }
                         drop(that_rlock);
                     }
@@ -154,7 +154,7 @@ impl<'a> SerializationGraph<'a> {
                             that.remove_incoming(&Edge::WriteRead(this_id));
                             unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
                         } else {
-                            unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
+                            unsafe { this.out_cleaned.get().as_mut().unwrap().push(edge.clone()) };
                         }
                         drop(that_rlock);
                     }
