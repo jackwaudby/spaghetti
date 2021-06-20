@@ -35,8 +35,11 @@ pub fn ref_to_usize<'a>(node: &'a RwNode) -> usize {
 
 pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 
+/// Represents an edge to/from a node.
+/// Specifically, it captures the type of conflict, the conflicting node, and the tuple the conflict occurred on.
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum Edge {
+    // (node id, table id, column id, offset)
     ReadWrite(usize, usize, usize, usize),
     WriteWrite(usize, usize, usize, usize),
     WriteRead(usize, usize, usize, usize),
@@ -46,7 +49,12 @@ pub enum Edge {
 /// This thread is responsible for creating the node and scheduling it for deletion.
 #[derive(Debug)]
 pub struct RwNode {
-    pub incoming: UnsafeCell<Option<EdgeSet>>,
+    // ids
+    thread_id: usize,
+    thread_ctr: usize,
+    node_id: UnsafeCell<Option<usize>>,
+
+    incoming: UnsafeCell<Option<EdgeSet>>,
     outgoing: UnsafeCell<Option<EdgeSet>>,
     committed: AtomicBool,
     cascading_abort: AtomicBool,
@@ -76,8 +84,12 @@ impl RwNode {
         self.lock.write()
     }
 
-    pub fn new() -> Self {
+    pub fn new(thread_id: usize, thread_ctr: usize) -> Self {
         Self {
+            thread_id,
+            thread_ctr,
+            node_id: UnsafeCell::new(None),
+
             incoming: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             outgoing: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             inserted: UnsafeCell::new(Vec::new()),
@@ -96,22 +108,32 @@ impl RwNode {
         }
     }
 
-    pub fn new_with_sets(incoming: EdgeSet, outgoing: EdgeSet) -> Self {
+    pub fn new_with_sets(
+        thread_id: usize,
+        thread_ctr: usize,
+        incoming: EdgeSet,
+        outgoing: EdgeSet,
+    ) -> Self {
         Self {
+            thread_id,
+            thread_ctr,
+            node_id: UnsafeCell::new(None),
+
             incoming: UnsafeCell::new(Some(incoming)),
             outgoing: UnsafeCell::new(Some(outgoing)),
-            removed: UnsafeCell::new(Vec::new()),
             inserted: UnsafeCell::new(Vec::new()),
-            skipped: UnsafeCell::new(Vec::new()),
             committed: AtomicBool::new(false),
-            out_cleaned: UnsafeCell::new(Vec::new()),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
             complete: AtomicBool::new(false),
             lock: RwLock::new(0),
+
             outgoing_clone: UnsafeCell::new(None),
+            removed: UnsafeCell::new(Vec::new()),
+            skipped: UnsafeCell::new(Vec::new()),
+            out_cleaned: UnsafeCell::new(Vec::new()),
         }
     }
 
@@ -146,30 +168,6 @@ impl RwNode {
                 Some(edges) => {
                     let guard = edges.lock();
                     let res = guard.is_empty();
-
-                    for edge in guard.iter() {
-                        let from_id = match edge {
-                            Edge::ReadWrite(node, _, _, _) => node,
-                            Edge::WriteWrite(node, _, _, _) => node,
-                            Edge::WriteRead(node, _, _, _) => node,
-                        };
-
-                        let from_ref = from_usize(*from_id);
-
-                        let ptr: *const RwNode = self;
-                        let id = ptr as usize;
-
-                        // assert!(
-                        //     !from_ref.is_complete() && !self.is_cascading_abort(),
-                        //     "{} has an incoming edge {} from a completed node {}! {}\n c.abort: {}",
-                        //     id,
-                        //     edge,
-                        //     from_id,
-                        //     from_ref,
-                        //     self.is_cascading_abort()
-                        // );
-                    }
-
                     drop(guard);
                     !res
                 }
@@ -295,6 +293,10 @@ impl RwNode {
             }
             None => FxHashSet::default(),
         }
+    }
+
+    pub fn set_id(&self, node_id: usize) {
+        unsafe { *self.node_id.get().as_mut().unwrap() = Some(node_id) };
     }
 
     pub fn is_aborted(&self) -> bool {
@@ -442,7 +444,10 @@ impl fmt::Display for RwNode {
 
         writeln!(f).unwrap();
         writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
-        writeln!(f, "id: {}", id).unwrap();
+        writeln!(f, "thread id: {:?}", self.thread_id).unwrap();
+        writeln!(f, "thread ctr: {:?}", self.thread_ctr).unwrap();
+        writeln!(f, "expected ref id: {:?}", self.node_id).unwrap();
+        writeln!(f, "actual ref id: {}", id).unwrap();
         writeln!(f, "incoming: {}", self.print_edges(true)).unwrap();
         writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
         writeln!(f, "removed: {:?}", unsafe {

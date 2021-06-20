@@ -26,7 +26,7 @@ pub mod error;
 
 #[derive(Debug)]
 pub struct SerializationGraph<'a> {
-    txn_ctr: ThreadLocal<RefCell<u64>>,
+    txn_ctr: ThreadLocal<RefCell<usize>>,
     this_node: ThreadLocal<RefCell<Option<&'a RwNode>>>,
     recycled: ThreadLocal<RefCell<Vec<EdgeSet>>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
@@ -68,7 +68,22 @@ impl<'a> SerializationGraph<'a> {
             .get()
     }
 
+    pub fn begin(&self) -> TransactionId {
+        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
+        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
+            Some(TransactionInformation::new()); // reset txn info
+
+        let id = self.create_node(); // create node
+
+        debug!("start {} ", id);
+
+        TransactionId::SerializationGraph(id)
+    }
+
     pub fn create_node(&self) -> usize {
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+        let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
+
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
 
@@ -84,9 +99,14 @@ impl<'a> SerializationGraph<'a> {
         //     outgoing = recycled.pop().unwrap();
         // }
 
-        let node = Box::new(RwNode::new_with_sets(incoming, outgoing)); // allocated node on the heap
+        let node = Box::new(RwNode::new_with_sets(
+            thread_id, thread_ctr, incoming, outgoing,
+        )); // allocated node on the heap
         let id = node::to_usize(node);
         let nref = node::from_usize(id);
+
+        nref.set_id(id);
+
         self.this_node
             .get_or(|| RefCell::new(None))
             .borrow_mut()
@@ -230,7 +250,7 @@ impl<'a> SerializationGraph<'a> {
         let this_id = node::ref_to_usize(this_ref); // id of this node
 
         match from {
-            Edge::ReadWrite(from_id, table, column, offset) => {
+            Edge::ReadWrite(from_id, table, column, off) => {
                 if this_id == from_id {
                     return true; // check for self edge
                 }
@@ -259,7 +279,7 @@ impl<'a> SerializationGraph<'a> {
 
                         let this_rlock = this_ref.read(); // get shared lock on (this)
                         debug!("inserted {}-[rw]->{}", from_id, this_id);
-                        this_ref.insert_incoming(Edge::ReadWrite(from_id, table, column, offset));
+                        this_ref.insert_incoming(Edge::ReadWrite(from_id, table, column, off));
                         unsafe {
                             this_ref.inserted.get().as_mut().unwrap().push(format!(
                                 "{}-({},{},{})",
@@ -270,7 +290,7 @@ impl<'a> SerializationGraph<'a> {
                             ))
                         };
 
-                        from_ref.insert_outgoing(Edge::ReadWrite(this_id, table, column, offset));
+                        from_ref.insert_outgoing(Edge::ReadWrite(this_id, table, column, off));
                         drop(from_rlock);
                         drop(this_rlock);
 
@@ -280,7 +300,7 @@ impl<'a> SerializationGraph<'a> {
                     }
                 }
             }
-            Edge::WriteWrite(from_id, table, column, offset) => {
+            Edge::WriteWrite(from_id, table, column, off) => {
                 if this_id == from_id {
                     return true; // check for self edge
                 }
@@ -310,8 +330,8 @@ impl<'a> SerializationGraph<'a> {
                         }
 
                         let this_rlock = this_ref.read(); // get shared lock on (this)
-                        this_ref.insert_incoming(Edge::WriteWrite(from_id, table, column, offset));
-                        from_ref.insert_outgoing(Edge::WriteWrite(this_id, table, column, offset));
+                        this_ref.insert_incoming(Edge::WriteWrite(from_id, table, column, off));
+                        from_ref.insert_outgoing(Edge::WriteWrite(this_id, table, column, off));
                         debug!("inserted {}-[o]->{}", from_id, this_id);
                         unsafe {
                             this_ref.inserted.get().as_mut().unwrap().push(format!(
@@ -333,7 +353,7 @@ impl<'a> SerializationGraph<'a> {
                 }
             }
 
-            Edge::WriteRead(from_id, table, column, offset) => {
+            Edge::WriteRead(from_id, table, column, off) => {
                 if this_id == from_id {
                     return true; // check for self edge
                 }
@@ -363,8 +383,8 @@ impl<'a> SerializationGraph<'a> {
                         }
 
                         let this_rlock = this_ref.read(); // get shared lock on (this)
-                        this_ref.insert_incoming(Edge::WriteRead(from_id, table, column, offset));
-                        from_ref.insert_outgoing(Edge::WriteRead(this_id, table, column, offset));
+                        this_ref.insert_incoming(Edge::WriteRead(from_id, table, column, off));
+                        from_ref.insert_outgoing(Edge::WriteRead(this_id, table, column, off));
                         debug!("inserted {}-[o]->{}", from_id, this_id);
                         unsafe {
                             this_ref.inserted.get().as_mut().unwrap().push(format!(
@@ -546,18 +566,6 @@ impl<'a> SerializationGraph<'a> {
         this.set_committed();
 
         true
-    }
-
-    pub fn begin(&self) -> TransactionId {
-        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
-        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
-            Some(TransactionInformation::new()); // reset txn info
-
-        let id = self.create_node(); // create node
-
-        debug!("start {} ", id);
-
-        TransactionId::SerializationGraph(id)
     }
 
     pub fn read_value<'g>(

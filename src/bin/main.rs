@@ -73,13 +73,16 @@ fn main() {
         let database = &database;
         let config = &config;
 
-        for (_, core_id) in core_ids[..cores].iter().enumerate() {
+        for (thread_id, core_id) in core_ids[..cores].iter().enumerate() {
             let txc = tx.clone();
-            // TODO: give thread an id
-            s.spawn(move |_| {
-                core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                utils::run(config, scheduler, database, txc);
-            });
+
+            s.builder()
+                .name(thread_id.to_string())
+                .spawn(move |_| {
+                    core_affinity::set_for_current(*core_id); // pin thread to cpu core
+                    utils::run(config, scheduler, database, txc);
+                })
+                .unwrap();
         }
     })
     .unwrap();
