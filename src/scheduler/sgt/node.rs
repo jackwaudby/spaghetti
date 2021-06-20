@@ -151,9 +151,10 @@ impl RwNode {
 
                         assert!(
                             !from_ref.is_complete(),
-                            "{} has an incoming edge from a completed node {}!",
+                            "{} has an incoming edge from a completed node {}! {}",
                             id,
-                            from_id
+                            from_id,
+                            from_ref
                         );
                     }
 
