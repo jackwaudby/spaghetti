@@ -55,6 +55,7 @@ pub struct RwNode {
     lock: RwLock<u32>,
     pub inserted: UnsafeCell<Vec<String>>,
     pub removed: UnsafeCell<Vec<Edge>>,
+    pub skipped: UnsafeCell<Vec<Edge>>,
     pub cleared: UnsafeCell<Option<FxHashSet<Edge>>>,
 }
 
@@ -75,6 +76,7 @@ impl RwNode {
             incoming: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             outgoing: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             removed: UnsafeCell::new(Vec::new()),
+            skipped: UnsafeCell::new(Vec::new()),
             inserted: UnsafeCell::new(Vec::new()),
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
@@ -93,7 +95,7 @@ impl RwNode {
             outgoing: UnsafeCell::new(Some(outgoing)),
             removed: UnsafeCell::new(Vec::new()),
             inserted: UnsafeCell::new(Vec::new()),
-
+            skipped: UnsafeCell::new(Vec::new()),
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
@@ -429,6 +431,10 @@ impl fmt::Display for RwNode {
         writeln!(f, "incoming: {}", self.print_edges(true)).unwrap();
         writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
         writeln!(f, "removed: {:?}", unsafe {
+            self.removed.get().as_mut().unwrap()
+        })
+        .unwrap();
+        writeln!(f, "skipped: {:?}", unsafe {
             self.removed.get().as_mut().unwrap()
         })
         .unwrap();

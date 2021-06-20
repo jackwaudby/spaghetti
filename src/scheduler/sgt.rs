@@ -122,18 +122,23 @@ impl<'a> SerializationGraph<'a> {
                     if !that.is_cleaned() {
                         that.remove_incoming(&Edge::ReadWrite(this_id)); // remove incoming from this node
                         unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
+                    } else {
+                        unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
                     }
                     drop(that_rlock);
                 }
                 Edge::WriteWrite(that) => {
                     let that = node::from_usize(*that);
                     if this.is_aborted() {
+                        unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
                         that.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
                     } else {
                         let that_rlock = that.read(); // get read lock on outgoing edge
                         if !that.is_cleaned() {
                             that.remove_incoming(&Edge::WriteWrite(this_id));
                             unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
+                        } else {
+                            unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
                         }
                         drop(that_rlock);
                     }
@@ -141,12 +146,15 @@ impl<'a> SerializationGraph<'a> {
                 Edge::WriteRead(that) => {
                     let that = node::from_usize(*that);
                     if this.is_aborted() {
+                        unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
                         that.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
                     } else {
                         let that_rlock = that.read(); // get read lock on outgoing edge
                         if !that.is_cleaned() {
                             that.remove_incoming(&Edge::WriteRead(this_id));
                             unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
+                        } else {
+                            unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
                         }
                         drop(that_rlock);
                     }
