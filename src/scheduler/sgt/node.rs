@@ -154,15 +154,15 @@ impl RwNode {
                         let ptr: *const RwNode = self;
                         let id = ptr as usize;
 
-                        assert!(
-                            !from_ref.is_complete() && !self.is_cascading_abort(),
-                            "{} has an incoming edge {} from a completed node {}! {}\n c.abort: {}",
-                            id,
-                            edge,
-                            from_id,
-                            from_ref,
-                            self.is_cascading_abort()
-                        );
+                        // assert!(
+                        //     !from_ref.is_complete() && !self.is_cascading_abort(),
+                        //     "{} has an incoming edge {} from a completed node {}! {}\n c.abort: {}",
+                        //     id,
+                        //     edge,
+                        //     from_id,
+                        //     from_ref,
+                        //     self.is_cascading_abort()
+                        // );
                     }
 
                     drop(guard);
