@@ -435,7 +435,7 @@ impl fmt::Display for RwNode {
         })
         .unwrap();
         writeln!(f, "skipped: {:?}", unsafe {
-            self.removed.get().as_mut().unwrap()
+            self.skipped.get().as_mut().unwrap()
         })
         .unwrap();
         writeln!(f, "cleared: {:?}", unsafe {
