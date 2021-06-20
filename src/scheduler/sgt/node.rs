@@ -146,10 +146,15 @@ impl RwNode {
 
                         let from_ref = from_usize(*from_id);
 
-                        if from_ref.is_complete() {
-                            // If a node has completed then all outgoing edges should have been removed.
-                            panic!("incoming edge from a completed node: {}!", from_id);
-                        }
+                        let ptr: *const RwNode = self;
+                        let id = ptr as usize;
+
+                        assert!(
+                            !from_ref.is_complete(),
+                            "{} has an incoming edge from a completed node {}!",
+                            id,
+                            from_id
+                        );
                     }
 
                     drop(guard);
