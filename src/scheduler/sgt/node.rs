@@ -46,8 +46,6 @@ pub enum Edge {
 pub struct RwNode {
     pub incoming: UnsafeCell<Option<EdgeSet>>,
     outgoing: UnsafeCell<Option<EdgeSet>>,
-    pub inserted: UnsafeCell<Vec<String>>,
-    pub removed: UnsafeCell<Vec<Edge>>,
     committed: AtomicBool,
     cascading_abort: AtomicBool,
     aborted: AtomicBool,
@@ -55,6 +53,8 @@ pub struct RwNode {
     checked: AtomicBool,
     complete: AtomicBool,
     lock: RwLock<u32>,
+    pub inserted: UnsafeCell<Vec<String>>,
+    pub removed: UnsafeCell<Vec<Edge>>,
     pub cleared: UnsafeCell<Option<FxHashSet<Edge>>>,
 }
 
@@ -430,6 +430,10 @@ impl fmt::Display for RwNode {
         writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
         writeln!(f, "removed: {:?}", unsafe {
             self.removed.get().as_mut().unwrap()
+        })
+        .unwrap();
+        writeln!(f, "cleared: {:?}", unsafe {
+            self.cleared.get().as_mut().unwrap()
         })
         .unwrap();
 
