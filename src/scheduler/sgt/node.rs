@@ -189,13 +189,6 @@ impl RwNode {
         match incoming {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
-                    unsafe {
-                        self.inserted
-                            .get()
-                            .as_mut()
-                            .unwrap()
-                            .push(from.clone().to_string())
-                    };
                     let mut guard = edges.lock();
                     guard.insert(from);
                     drop(guard);
