@@ -1,5 +1,8 @@
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
 use spin::Mutex;
+
+use std::fmt;
+use std::fmt::Debug;
 use std::mem::ManuallyDrop;
 use std::ptr;
 use std::sync::atomic::AtomicU64;
@@ -224,5 +227,28 @@ impl<'g, T> Iterator for Iter<'g, T> {
             }
             None => None,
         }
+    }
+}
+
+impl<T: Debug> fmt::Display for AtomicLinkedList<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let guard = &epoch::pin();
+
+        let it = self.iter(guard);
+
+        let mut res = String::new();
+        res.push_str(&format!("["));
+
+        for access in it {
+            res.push_str(&format!("{:?}", access));
+            res.push_str(", ");
+        }
+
+        res.pop(); // remove trailing ', '
+        res.pop();
+        res.push_str(&format!("]"));
+
+        writeln!(f, "{}", res).unwrap();
+        Ok(())
     }
 }
