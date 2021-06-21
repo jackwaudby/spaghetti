@@ -599,6 +599,7 @@ impl<'a> SerializationGraph<'a> {
         let mut prvs = Vec::new();
         let mut delays = Vec::new();
         let mut cs = Vec::new();
+        let mut seen = Vec::new();
 
         loop {
             // check for cascading abort
@@ -622,7 +623,9 @@ impl<'a> SerializationGraph<'a> {
             let mut cyclic = false; // flag indicating if a cycle has been found
 
             let mut conflicts = Vec::new();
+            let mut saw = Vec::new();
             for (id, access) in snapshot {
+                saw.push(format!("{}-{}", id, access));
                 // only interested in accesses before this one and that are write operations.
                 if id < &prv {
                     match access {
@@ -662,6 +665,7 @@ impl<'a> SerializationGraph<'a> {
                     }
                 }
             }
+            seen.push(saw);
 
             // (i) transaction is in a cycle (cycle = T)
             // abort transaction
@@ -708,8 +712,8 @@ impl<'a> SerializationGraph<'a> {
 
         assert_eq!(
             dirty, false,
-            "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \nconflicts: {:?} \nrwtable: {}",
-            table_id, column_id, offset, tstate, this, attempts, cs, rw_table,
+            "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \nconflicts: {:?} \nrwtable: {} \nseen: {:?}",
+            table_id, column_id, offset, tstate, this, attempts, cs, rw_table, seen
         );
 
         // assert_eq!(
