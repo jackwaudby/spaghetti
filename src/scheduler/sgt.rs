@@ -649,7 +649,6 @@ impl<'a> SerializationGraph<'a> {
             // abort transaction
             if cyclic {
                 rw_table.erase(prv, guard); // remove from rw table
-
                 self.abort(database, guard);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(SerializationGraphError::CycleFound.into());
@@ -670,7 +669,6 @@ impl<'a> SerializationGraph<'a> {
             // check for cascading abort
             if self.needs_abort(this) {
                 rw_table.erase(prv, guard); // remove from rw table
-
                 self.abort(database, guard);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(SerializationGraphError::CascadingAbort.into());

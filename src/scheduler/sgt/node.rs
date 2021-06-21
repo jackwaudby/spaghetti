@@ -438,14 +438,14 @@ impl fmt::Display for Edge {
 impl fmt::Display for RwNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut nodes_in = self.depth_first_search(true); // nodes found from incoming edges
-        let mut nodes_out = self.depth_first_search(false); // nodes found from incoming edges
+                                                          //  let mut nodes_out = self.depth_first_search(false); // nodes found from incoming edges
 
         let ptr: *const RwNode = self;
         let id = ptr as usize;
         nodes_in.remove(&id);
-        nodes_out.remove(&id);
+        //     nodes_out.remove(&id);
 
-        let nodes: FxHashSet<_> = nodes_in.union(&nodes_out).collect();
+        //     let nodes: FxHashSet<_> = nodes_in.union(&nodes_out).collect();
 
         writeln!(f).unwrap();
         writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
@@ -488,8 +488,8 @@ impl fmt::Display for RwNode {
         writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
         writeln!(f).unwrap();
 
-        for node in nodes.iter() {
-            let n = from_usize(**node);
+        for node in nodes_in.iter() {
+            let n = from_usize(*node);
 
             writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
             writeln!(f).unwrap();
