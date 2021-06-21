@@ -185,7 +185,13 @@ impl<'a> SerializationGraph<'a> {
                         unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
                     } else {
                         assert!(that.is_aborted());
-                        unsafe { this.out_cleaned.get().as_mut().unwrap().push(edge.clone()) };
+                        unsafe {
+                            this.outgoing_cleaned
+                                .get()
+                                .as_mut()
+                                .unwrap()
+                                .push(edge.clone())
+                        };
                     }
 
                     // Release read lock.
@@ -210,7 +216,13 @@ impl<'a> SerializationGraph<'a> {
                             that.remove_incoming(&Edge::WriteWrite(this_id));
                             unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
                         } else {
-                            unsafe { this.out_cleaned.get().as_mut().unwrap().push(edge.clone()) };
+                            unsafe {
+                                this.outgoing_cleaned
+                                    .get()
+                                    .as_mut()
+                                    .unwrap()
+                                    .push(edge.clone())
+                            };
                         }
                         drop(that_rlock);
                     }
@@ -226,7 +238,13 @@ impl<'a> SerializationGraph<'a> {
                             that.remove_incoming(&Edge::WriteRead(this_id));
                             unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
                         } else {
-                            unsafe { this.out_cleaned.get().as_mut().unwrap().push(edge.clone()) };
+                            unsafe {
+                                this.outgoing_cleaned
+                                    .get()
+                                    .as_mut()
+                                    .unwrap()
+                                    .push(edge.clone())
+                            };
                         }
                         drop(that_rlock);
                     }
@@ -679,13 +697,19 @@ impl<'a> SerializationGraph<'a> {
             break;
         }
 
-        // ASSERT: there must be not an uncommitted write, the record must be clean.
         let tuple = table.get_tuple(column_id, offset); // handle to tuple
-        let (dirty, _) = tuple.get().is_dirty();
+        let (dirty, tstate) = tuple.get().is_dirty();
+        // Assert: there must be not an uncommitted write, the record must be clean.
+        // assert_eq!(
+        //     dirty, false,
+        //     "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \nrwtable: {} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?} \ntuple_state: {}",
+        //     table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs, tuple
+        // );
+
         assert_eq!(
             dirty, false,
-            "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?} \ntuple_state: {}",
-            table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs, tuple
+            "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \nrwtable: {}",
+            table_id, column_id, offset, tstate, this, attempts, rw_table,
         );
 
         // assert_eq!(

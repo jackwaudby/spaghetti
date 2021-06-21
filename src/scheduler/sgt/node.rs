@@ -68,7 +68,7 @@ pub struct RwNode {
     pub inserted: UnsafeCell<Vec<String>>,
     pub removed: UnsafeCell<Vec<Edge>>,
     pub skipped: UnsafeCell<Vec<Edge>>,
-    pub out_cleaned: UnsafeCell<Vec<Edge>>,
+    pub outgoing_cleaned: UnsafeCell<Vec<Edge>>,
     pub outgoing_clone: UnsafeCell<Option<FxHashSet<Edge>>>,
 }
 
@@ -104,7 +104,7 @@ impl RwNode {
             outgoing_clone: UnsafeCell::new(None),
             removed: UnsafeCell::new(Vec::new()),
             skipped: UnsafeCell::new(Vec::new()),
-            out_cleaned: UnsafeCell::new(Vec::new()),
+            outgoing_cleaned: UnsafeCell::new(Vec::new()),
         }
     }
 
@@ -133,7 +133,7 @@ impl RwNode {
             outgoing_clone: UnsafeCell::new(None),
             removed: UnsafeCell::new(Vec::new()),
             skipped: UnsafeCell::new(Vec::new()),
-            out_cleaned: UnsafeCell::new(Vec::new()),
+            outgoing_cleaned: UnsafeCell::new(Vec::new()),
         }
     }
 
@@ -451,8 +451,8 @@ impl fmt::Display for RwNode {
         writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
         writeln!(f, "thread id: {:?}", self.thread_id).unwrap();
         writeln!(f, "thread ctr: {:?}", self.thread_ctr).unwrap();
-        writeln!(f, "expected ref id: {:?}", unsafe {
-            self.node_id.get().as_ref().unwrap()
+        writeln!(f, "expected ref id: {}", unsafe {
+            self.node_id.get().as_ref().unwrap().unwrap()
         })
         .unwrap();
         writeln!(f, "actual ref id: {}", id).unwrap();
@@ -470,8 +470,8 @@ impl fmt::Display for RwNode {
             self.skipped.get().as_mut().unwrap()
         })
         .unwrap();
-        writeln!(f, "out_cleaned: {:?}", unsafe {
-            self.out_cleaned.get().as_mut().unwrap()
+        writeln!(f, "outgoing_cleaned: {:?}", unsafe {
+            self.outgoing_cleaned.get().as_mut().unwrap()
         })
         .unwrap();
         writeln!(f, "outgoing_clone: {:?}", unsafe {
@@ -511,8 +511,8 @@ impl fmt::Display for RwNode {
                 n.skipped.get().as_mut().unwrap()
             })
             .unwrap();
-            writeln!(f, "out_cleaned: {:?}", unsafe {
-                n.out_cleaned.get().as_mut().unwrap()
+            writeln!(f, "outgoing_cleaned: {:?}", unsafe {
+                n.outgoing_cleaned.get().as_mut().unwrap()
             })
             .unwrap();
             writeln!(f, "outgoing_clone: {:?}", unsafe {
