@@ -249,7 +249,7 @@ impl GlobalStatistics {
             committed,
             restarted,
             aborted,
-            (self.latency as f64 / 1000000.0)) // ms
+            (self.latency as f64 / 1000000.0), // ms
         ))
         .unwrap();
     }
