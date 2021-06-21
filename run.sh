@@ -1,5 +1,7 @@
 #!/bin/bash
 
+rm result.csv
+
 cargo build --release
 
 for protocol in nocc sgt owh
