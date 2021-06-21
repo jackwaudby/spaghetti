@@ -27,7 +27,7 @@ pub fn balance<'a>(
             scheduler.read_value(1, 1, offset, &meta, database, guard)?; // get checking balance
             scheduler.read_value(2, 1, offset, &meta, database, guard)?; // get savings balance
             scheduler.commit(&meta, database, guard)?; // commit
-
+            guard.flush();
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
@@ -53,6 +53,7 @@ pub fn deposit_checking<'a>(
             scheduler.write_value(&balance, 1, 1, offset, &meta, database, guard)?; // write 1 -- update balance
             scheduler.commit(&meta, database, guard)?;
 
+            guard.flush();
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
@@ -82,6 +83,7 @@ pub fn transact_savings<'a>(
             scheduler.write_value(&Data::from(balance), 2, 1, offset, &meta, database, guard)?; // write 1 -- update saving balance
             scheduler.commit(&meta, database, guard)?;
 
+            guard.flush();
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
@@ -114,6 +116,7 @@ pub fn amalgmate<'a>(
             scheduler.write_value(&Data::Double(bal), 1, 1, offset2, &meta, database, guard)?;
             scheduler.commit(&meta, database, guard)?;
 
+            guard.flush();
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
@@ -155,6 +158,7 @@ pub fn write_check<'a>(
             )?; // update checking balance
             scheduler.commit(&meta, database, guard)?;
 
+            guard.flush();
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
@@ -206,7 +210,7 @@ pub fn send_payment<'a>(
                 guard,
             )?; // update cust2 checking
             scheduler.commit(&meta, database, guard)?;
-
+            guard.flush();
             Ok("ok".to_string())
         }
         _ => panic!("unexpected database"),
