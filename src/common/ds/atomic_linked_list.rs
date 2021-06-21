@@ -155,14 +155,26 @@ impl<T> AtomicLinkedList<T> {
 
         // unsafe { guard.defer_destroy(current) }; // deallocate
 
-        unsafe {
-            let mut o = current.into_owned();
-            ManuallyDrop::drop(&mut o.data);
-            ManuallyDrop::drop(&mut o.id);
-            drop(o);
-        };
+        // unsafe {
+        //     let mut o = current.into_owned();
+        //     ManuallyDrop::drop(&mut o.data);
+        //     ManuallyDrop::drop(&mut o.id);
+        //     drop(o);
+        // };
 
         drop(lg);
+
+        unsafe {
+            guard.defer_unchecked(move || {
+                let node = current.into_owned();
+                let id = ManuallyDrop::into_inner(ptr::read(&(*node).id));
+                let data = ManuallyDrop::into_inner(ptr::read(&(*node).data));
+
+                drop(id);
+                drop(data);
+                drop(node);
+            });
+        }
 
         // return Some(unsafe { ptr::read(&*(current.as_ref().unwrap()).data) }); // return value
     }
