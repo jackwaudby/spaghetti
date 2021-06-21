@@ -248,6 +248,8 @@ impl GlobalStatistics {
             (self.total_time as f64 / 1000000.0),
             committed,
             restarted,
+            aborted,
+            (self.latency as f64 / 1000000.0)) // ms
         ))
         .unwrap();
     }
