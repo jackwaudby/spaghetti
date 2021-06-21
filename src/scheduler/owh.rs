@@ -169,13 +169,6 @@ impl<'a> OptimisedWaitHit<'a> {
             self.abort(database, guard); // abort this transaction
             return Err(NonFatalError::RowDirty("todo".to_string()));
         } else {
-            assert!(
-                tuple.get().prev.is_none(),
-                "dirty: {}; tuple: {:?}",
-                dirty,
-                tuple.get()
-            );
-
             let snapshot = rw_table.iter(guard); // iterator over rwtable
             for (id, access) in snapshot {
                 if id < &prv {
@@ -212,8 +205,6 @@ impl<'a> OptimisedWaitHit<'a> {
                 .set_value(value)
                 .unwrap();
 
-            assert!(tuple.get().prev.is_some());
-
             self.record_operation(OperationType::Write, table_id, column_id, offset, prv); // record operation
             lsn.store(prv + 1, Ordering::Release); // update lsn
 
@@ -245,9 +236,7 @@ impl<'a> OptimisedWaitHit<'a> {
                     rwtable.erase(prv, guard); // remove access
                 }
                 OperationType::Write => {
-                    assert!(tuple.get().prev.is_some(), "tuple: {:?}", tuple.get());
                     tuple.get().revert(); // commit
-                    assert!(tuple.get().prev.is_none(), "tuple: {:?}", tuple.get());
 
                     rwtable.erase(prv, guard); // remove access
                 }
@@ -340,10 +329,7 @@ impl<'a> OptimisedWaitHit<'a> {
                             rwtable.erase(prv, guard); // remove access
                         }
                         OperationType::Write => {
-                            assert!(tuple.get().prev.is_some(), "tuple: {:?}", tuple.get());
                             tuple.get().commit(); // commit
-                            assert!(tuple.get().prev.is_none(), "tuple: {:?}", tuple.get());
-
                             rwtable.erase(prv, guard); // remove access
                         }
                     }
