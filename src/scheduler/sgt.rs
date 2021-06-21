@@ -16,7 +16,7 @@ use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
-use tracing::info;
+use tracing::{debug, info};
 
 pub mod transaction_information;
 
@@ -92,6 +92,8 @@ impl<'a> SerializationGraph<'a> {
 
         let id = self.create_node(); // create node
 
+        debug!("start {} ", id);
+
         TransactionId::SerializationGraph(id)
     }
 
@@ -102,17 +104,17 @@ impl<'a> SerializationGraph<'a> {
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
 
-        let mut recycled = self.recycled.get_or(|| RefCell::new(vec![])).borrow_mut();
+        let mut _recycled = self.recycled.get_or(|| RefCell::new(vec![])).borrow_mut();
 
         let incoming;
         let outgoing;
-        if recycled.is_empty() {
-            incoming = Mutex::new(FxHashSet::default());
-            outgoing = Mutex::new(FxHashSet::default());
-        } else {
-            incoming = recycled.pop().unwrap();
-            outgoing = recycled.pop().unwrap();
-        }
+        // if recycled.is_empty() {
+        incoming = Mutex::new(FxHashSet::default());
+        outgoing = Mutex::new(FxHashSet::default());
+        // } else {
+        //     incoming = recycled.pop().unwrap();
+        //     outgoing = recycled.pop().unwrap();
+        // }
 
         let node = Box::new(RwNode::new_with_sets(
             thread_id, thread_ctr, incoming, outgoing,
@@ -132,9 +134,10 @@ impl<'a> SerializationGraph<'a> {
 
     /// Cleanup node.
     /// When this method is called the outcome of the transaction is known.
+    ///
     pub fn cleanup<'g>(&self, this: &'a RwNode, guard: &'g Guard) {
         // Assert: node must be committed or aborted, but not both.
-        debug_assert!(
+        assert!(
             (this.is_committed() && !this.is_aborted())
                 || (!this.is_committed() && this.is_aborted())
         );
@@ -150,6 +153,17 @@ impl<'a> SerializationGraph<'a> {
 
         let mut g = outgoing.lock(); // lock on outgoing edge set
 
+        // --- debugging ---
+        let outgoing_clone = g.clone(); // log a copy of what outgoing edge set was
+        unsafe {
+            this.outgoing_clone
+                .get()
+                .as_mut()
+                .unwrap()
+                .replace(outgoing_clone)
+        };
+        // -------------------
+
         let this_id = node::ref_to_usize(this); // node id
         let outgoing_set = g.iter(); // iterator over outgoing edge set
 
@@ -162,14 +176,22 @@ impl<'a> SerializationGraph<'a> {
                     let that_rlock = that.read();
 
                     // Assert: outgoing node may be aborted or active, but will not be committed.
-                    debug_assert!(!that.is_committed());
+                    assert!(!that.is_committed());
 
                     // If active then the node will not be cleaned and edge must be removed.
                     // Else, the node is cleaned and must have aborted.
                     if !that.is_cleaned() {
                         that.remove_incoming(&Edge::ReadWrite(this_id)); // remove incoming from this node
+                        unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
                     } else {
-                        debug_assert!(that.is_aborted());
+                        assert!(that.is_aborted());
+                        unsafe {
+                            this.outgoing_cleaned
+                                .get()
+                                .as_mut()
+                                .unwrap()
+                                .push(edge.clone())
+                        };
                     }
 
                     // Release read lock.
@@ -180,17 +202,27 @@ impl<'a> SerializationGraph<'a> {
                     // Get read lock on outgoing node - prevents node from committing.
                     let that = node::from_usize(*that_id);
 
-                    // Debug_Assert: outgoing node may be aborted or active, but will not be committed.
-                    debug_assert!(!that.is_committed());
+                    // Assert: outgoing node may be aborted or active, but will not be committed.
+                    assert!(!that.is_committed());
 
                     // If this node aborted then the outgoing node must also abort.
                     // Else, this node is committed.
                     if this.is_aborted() {
+                        unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
                             that.remove_incoming(&Edge::WriteWrite(this_id));
+                            unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
+                        } else {
+                            unsafe {
+                                this.outgoing_cleaned
+                                    .get()
+                                    .as_mut()
+                                    .unwrap()
+                                    .push(edge.clone())
+                            };
                         }
                         drop(that_rlock);
                     }
@@ -198,11 +230,21 @@ impl<'a> SerializationGraph<'a> {
                 Edge::WriteRead(that) => {
                     let that = node::from_usize(*that);
                     if this.is_aborted() {
+                        unsafe { this.skipped.get().as_mut().unwrap().push(edge.clone()) };
                         that.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
                     } else {
                         let that_rlock = that.read(); // get read lock on outgoing edge
                         if !that.is_cleaned() {
                             that.remove_incoming(&Edge::WriteRead(this_id));
+                            unsafe { this.removed.get().as_mut().unwrap().push(edge.clone()) };
+                        } else {
+                            unsafe {
+                                this.outgoing_cleaned
+                                    .get()
+                                    .as_mut()
+                                    .unwrap()
+                                    .push(edge.clone())
+                            };
                         }
                         drop(that_rlock);
                     }
@@ -218,7 +260,7 @@ impl<'a> SerializationGraph<'a> {
 
         let mut recycled = self.recycled.get_or(|| RefCell::new(vec![])).borrow_mut();
         recycled.push(incoming);
-        recycled.push(outgoing);
+        // recycled.push(outgoing);
 
         let this_ptr: *const RwNode = this;
         let this_usize = this_ptr as usize;
@@ -232,7 +274,14 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Insert an incoming edge into (this) node from (from) node, followed by a cycle check.
-    pub fn insert_and_check(&self, this_ref: &'a RwNode, from: Edge) -> bool {
+    pub fn insert_and_check(
+        &self,
+        this_ref: &'a RwNode,
+        from: Edge,
+        table_id: usize,
+        column_id: usize,
+        offset: usize,
+    ) -> bool {
         let this_id = node::ref_to_usize(this_ref); // id of this node
 
         match from {
@@ -259,13 +308,23 @@ impl<'a> SerializationGraph<'a> {
                             continue; // if (from) checked in process of terminating so try again
                         }
 
-                        debug_assert!(!from_ref.is_checked());
-                        debug_assert!(!from_ref.is_cleaned());
-                        debug_assert!(!from_ref.is_complete());
+                        assert!(!from_ref.is_checked());
+                        assert!(!from_ref.is_cleaned());
+                        assert!(!from_ref.is_complete());
 
                         let this_rlock = this_ref.read(); // get shared lock on (this)
-
+                        debug!("inserted {}-[rw]->{}", from_id, this_id);
                         this_ref.insert_incoming(Edge::ReadWrite(from_id));
+                        unsafe {
+                            this_ref.inserted.get().as_mut().unwrap().push(format!(
+                                "{}-({},{},{})",
+                                Edge::ReadWrite(from_id),
+                                table_id,
+                                column_id,
+                                offset,
+                            ))
+                        };
+
                         from_ref.insert_outgoing(Edge::ReadWrite(this_id));
                         drop(from_rlock);
                         drop(this_rlock);
@@ -308,6 +367,17 @@ impl<'a> SerializationGraph<'a> {
                         let this_rlock = this_ref.read(); // get shared lock on (this)
                         this_ref.insert_incoming(Edge::WriteWrite(from_id));
                         from_ref.insert_outgoing(Edge::WriteWrite(this_id));
+                        debug!("inserted {}-[o]->{}", from_id, this_id);
+                        unsafe {
+                            this_ref.inserted.get().as_mut().unwrap().push(format!(
+                                "{}-({},{},{})",
+                                Edge::WriteWrite(from_id),
+                                table_id,
+                                column_id,
+                                offset,
+                            ))
+                        };
+
                         drop(from_rlock);
                         drop(this_rlock);
 
@@ -350,6 +420,17 @@ impl<'a> SerializationGraph<'a> {
                         let this_rlock = this_ref.read(); // get shared lock on (this)
                         this_ref.insert_incoming(Edge::WriteRead(from_id));
                         from_ref.insert_outgoing(Edge::WriteRead(this_id));
+                        debug!("inserted {}-[o]->{}", from_id, this_id);
+                        unsafe {
+                            this_ref.inserted.get().as_mut().unwrap().push(format!(
+                                "{}-({},{},{})",
+                                Edge::WriteRead(from_id),
+                                table_id,
+                                column_id,
+                                offset
+                            ))
+                        };
+
                         drop(from_rlock);
                         drop(this_rlock);
 
@@ -458,7 +539,13 @@ impl<'a> SerializationGraph<'a> {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id) = from {
-                            if !self.insert_and_check(this, Edge::WriteRead(*from_id)) {
+                            if !self.insert_and_check(
+                                this,
+                                Edge::WriteRead(*from_id),
+                                table_id,
+                                column_id,
+                                offset,
+                            ) {
                                 cyclic = true;
                                 break;
                             }
@@ -508,6 +595,12 @@ impl<'a> SerializationGraph<'a> {
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
         let mut prv;
+        let mut attempts = 0;
+        let mut prvs = Vec::new();
+        let mut delays = Vec::new();
+        let mut cs = Vec::new();
+        let mut seen = Vec::new();
+        let mut brw_table;
 
         loop {
             // check for cascading abort
@@ -518,8 +611,11 @@ impl<'a> SerializationGraph<'a> {
 
             prv = rw_table.push_front(Access::Write(meta.clone()), guard); // get ticket
 
+            prvs.push(prv);
+
             // Safety: ensures exculsive access to the record.
             unsafe { spin(prv, lsn) }; // busy wait
+            brw_table = format!("{}", rw_table);
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -528,12 +624,17 @@ impl<'a> SerializationGraph<'a> {
             let mut wait = false; // flag indicating if there is an uncommitted write
             let mut cyclic = false; // flag indicating if a cycle has been found
 
+            let mut conflicts = Vec::new();
+            let mut saw = Vec::new();
+            saw.push(format!("attempt: {}", attempts));
             for (id, access) in snapshot {
+                saw.push(format!("{}-{}", id, access));
                 // only interested in accesses before this one and that are write operations.
                 if id < &prv {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
+                            conflicts.push(format!("{}-{}", attempts, from));
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
@@ -541,15 +642,25 @@ impl<'a> SerializationGraph<'a> {
                                 // if !from.is_committed() {
                                 if !from.is_complete() {
                                     // if not in cycle then wait
-                                    if !self.insert_and_check(this, Edge::WriteWrite(*from_addr)) {
+                                    if !self.insert_and_check(
+                                        this,
+                                        Edge::WriteWrite(*from_addr),
+                                        table_id,
+                                        column_id,
+                                        offset,
+                                    ) {
                                         cyclic = true;
+
+                                        cs.push(conflicts);
 
                                         break; // no reason to check other accesses
                                     }
 
                                     wait = true; // retry operation
+                                    cs.push(conflicts);
 
                                     break;
+                                } else {
                                 }
                             }
                         }
@@ -557,6 +668,7 @@ impl<'a> SerializationGraph<'a> {
                     }
                 }
             }
+            seen.push(saw);
 
             // (i) transaction is in a cycle (cycle = T)
             // abort transaction
@@ -571,7 +683,10 @@ impl<'a> SerializationGraph<'a> {
             // restart operation
             if wait {
                 rw_table.erase(prv, guard); // remove from rw table
+
                 lsn.store(prv + 1, Ordering::Release); // update lsn
+                attempts += 1;
+                delays.push(wait);
                 continue;
             }
 
@@ -584,8 +699,31 @@ impl<'a> SerializationGraph<'a> {
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
+            attempts += 1;
+            delays.push(wait);
             break;
         }
+
+        let tuple = table.get_tuple(column_id, offset); // handle to tuple
+        let dirty = tuple.get().is_dirty();
+        // Assert: there must be not an uncommitted write, the record must be clean.
+        // assert_eq!(
+        //     dirty, false,
+        //     "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \nrwtable: {} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?} \ntuple_state: {}",
+        //     table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs, tuple
+        // );
+
+        assert_eq!(
+            dirty, false,
+            "\ntuple: ({},{},{}) \nwriting node :{} \nattempts made: {} \n this prv: {}\nconflicts: {:?} \nrwtable: {} \nseen: {:?} \nbeforerwtable: {}",
+            table_id, column_id, offset, this, attempts, prv, cs, rw_table, seen,brw_table
+        );
+
+        // assert_eq!(
+        //     dirty, false,
+        //     "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?}",
+        //     table_id, column_id, offset, this, attempts, rw_table
+        // );
 
         // Now, handle R-W conflicts
         let snapshot = rw_table.iter(guard);
@@ -607,7 +745,13 @@ impl<'a> SerializationGraph<'a> {
                 match access {
                     Access::Read(from) => {
                         if let TransactionId::SerializationGraph(from_addr) = from {
-                            if !self.insert_and_check(this, Edge::ReadWrite(*from_addr)) {
+                            if !self.insert_and_check(
+                                this,
+                                Edge::ReadWrite(*from_addr),
+                                table_id,
+                                column_id,
+                                offset,
+                            ) {
                                 cyclic = true;
                                 break;
                             }
@@ -627,12 +771,13 @@ impl<'a> SerializationGraph<'a> {
             return Err(SerializationGraphError::CycleFound.into());
         }
 
-        table
-            .get_tuple(column_id, offset)
-            .get()
-            .set_value(value)
-            .unwrap();
-        lsn.store(prv + 1, Ordering::Release); // update lsn, giving next operation access.
+        if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
+            panic!("{}", e); // ASSERT: never write to an uncommitted value.
+        }
+
+        // update lsn, giving next operation access.
+        lsn.store(prv + 1, Ordering::Release);
+
         self.record(OperationType::Write, table_id, column_id, offset, prv); // record operation
 
         Ok(())
@@ -720,7 +865,7 @@ impl<'a> SerializationGraph<'a> {
                         tuple.get().revert();
                     }
                     let dirty = tuple.get().is_dirty();
-                    debug_assert!(!dirty);
+                    assert!(!dirty);
                     rwtable.erase(prv, guard);
                 }
             }
@@ -732,8 +877,8 @@ impl<'a> SerializationGraph<'a> {
 unsafe fn spin(prv: u64, lsn: &AtomicU64) {
     let current = lsn.load(Ordering::Relaxed);
 
-    // Assert: lsn values should be monotonically increasing.
-    debug_assert!(current <= prv);
+    // ASSERT: lsn values should be monotonically increasing.
+    assert!(current <= prv);
 
     let mut i = 0;
     while lsn.load(Ordering::Relaxed) != prv {
@@ -759,7 +904,6 @@ mod tests {
         let node2 = node::from_usize(id2);
 
         node1.insert_outgoing(Edge::WriteWrite(id2));
-
         node2.insert_incoming(Edge::WriteWrite(id1));
 
         let sg = SerializationGraph::new(1);

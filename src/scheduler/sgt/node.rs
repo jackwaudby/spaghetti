@@ -63,6 +63,13 @@ pub struct RwNode {
     checked: AtomicBool,
     complete: AtomicBool,
     lock: RwLock<u32>,
+
+    // For debugging purposes.
+    pub inserted: UnsafeCell<Vec<String>>,
+    pub removed: UnsafeCell<Vec<Edge>>,
+    pub skipped: UnsafeCell<Vec<Edge>>,
+    pub outgoing_cleaned: UnsafeCell<Vec<Edge>>,
+    pub outgoing_clone: UnsafeCell<Option<FxHashSet<Edge>>>,
 }
 
 unsafe impl<'a> Send for RwNode {}
@@ -85,6 +92,7 @@ impl RwNode {
 
             incoming: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             outgoing: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
+            inserted: UnsafeCell::new(Vec::new()),
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
@@ -92,6 +100,11 @@ impl RwNode {
             checked: AtomicBool::new(false),
             complete: AtomicBool::new(false),
             lock: RwLock::new(0),
+
+            outgoing_clone: UnsafeCell::new(None),
+            removed: UnsafeCell::new(Vec::new()),
+            skipped: UnsafeCell::new(Vec::new()),
+            outgoing_cleaned: UnsafeCell::new(Vec::new()),
         }
     }
 
@@ -108,6 +121,7 @@ impl RwNode {
 
             incoming: UnsafeCell::new(Some(incoming)),
             outgoing: UnsafeCell::new(Some(outgoing)),
+            inserted: UnsafeCell::new(Vec::new()),
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
@@ -115,6 +129,11 @@ impl RwNode {
             checked: AtomicBool::new(false),
             complete: AtomicBool::new(false),
             lock: RwLock::new(0),
+
+            outgoing_clone: UnsafeCell::new(None),
+            removed: UnsafeCell::new(Vec::new()),
+            skipped: UnsafeCell::new(Vec::new()),
+            outgoing_cleaned: UnsafeCell::new(Vec::new()),
         }
     }
 
@@ -161,8 +180,8 @@ impl RwNode {
     /// Insert an incoming edge from a node.
     pub fn insert_incoming(&self, from: Edge) {
         // Assert: should not be attempting to insert an edge is transaction has terminated.
-        debug_assert!(!self.is_aborted());
-        debug_assert!(!self.is_committed());
+        assert!(!self.is_aborted());
+        assert!(!self.is_committed());
 
         // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.
         let incoming = unsafe { self.incoming.get().as_ref() };
@@ -183,7 +202,7 @@ impl RwNode {
     /// Remove an edge from this node's incoming edge set.
     pub fn remove_incoming(&self, from: &Edge) {
         // Assert: should not be attempting to insert an removed is transaction has terminated.
-        debug_assert!(!self.is_complete());
+        assert!(!self.is_complete());
 
         // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.
         let incoming = unsafe { self.incoming.get().as_ref() };
@@ -192,7 +211,7 @@ impl RwNode {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let mut guard = edges.lock();
-                    debug_assert_eq!(guard.remove(from), true);
+                    assert_eq!(guard.remove(from), true);
                     drop(guard);
                 }
                 None => panic!("incoming edge set already cleaned"),
@@ -419,10 +438,14 @@ impl fmt::Display for Edge {
 impl fmt::Display for RwNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut nodes_in = self.depth_first_search(true); // nodes found from incoming edges
+                                                          //  let mut nodes_out = self.depth_first_search(false); // nodes found from incoming edges
 
         let ptr: *const RwNode = self;
         let id = ptr as usize;
         nodes_in.remove(&id);
+        //     nodes_out.remove(&id);
+
+        //     let nodes: FxHashSet<_> = nodes_in.union(&nodes_out).collect();
 
         writeln!(f).unwrap();
         writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
@@ -435,6 +458,26 @@ impl fmt::Display for RwNode {
         writeln!(f, "actual ref id: {}", id).unwrap();
         writeln!(f, "incoming: {}", self.print_edges(true)).unwrap();
         writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
+        writeln!(f, "inserted: {:?}", unsafe {
+            self.inserted.get().as_mut().unwrap()
+        })
+        .unwrap();
+        writeln!(f, "removed: {:?}", unsafe {
+            self.removed.get().as_mut().unwrap()
+        })
+        .unwrap();
+        writeln!(f, "skipped: {:?}", unsafe {
+            self.skipped.get().as_mut().unwrap()
+        })
+        .unwrap();
+        writeln!(f, "outgoing_cleaned: {:?}", unsafe {
+            self.outgoing_cleaned.get().as_mut().unwrap()
+        })
+        .unwrap();
+        writeln!(f, "outgoing_clone: {:?}", unsafe {
+            self.outgoing_clone.get().as_mut().unwrap()
+        })
+        .unwrap();
 
         writeln!(
             f,
@@ -460,7 +503,22 @@ impl fmt::Display for RwNode {
 
             writeln!(f, "incoming: {}", n.print_edges(true)).unwrap();
             writeln!(f, "outgoing: {}", n.print_edges(false)).unwrap();
-
+            writeln!(f, "removed: {:?}", unsafe {
+                n.removed.get().as_mut().unwrap()
+            })
+            .unwrap();
+            writeln!(f, "skipped: {:?}", unsafe {
+                n.skipped.get().as_mut().unwrap()
+            })
+            .unwrap();
+            writeln!(f, "outgoing_cleaned: {:?}", unsafe {
+                n.outgoing_cleaned.get().as_mut().unwrap()
+            })
+            .unwrap();
+            writeln!(f, "outgoing_clone: {:?}", unsafe {
+                n.outgoing_clone.get().as_mut().unwrap()
+            })
+            .unwrap();
             writeln!(
                 f,
                 "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}, complete: {:?}",
