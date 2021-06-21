@@ -624,6 +624,7 @@ impl<'a> SerializationGraph<'a> {
 
             let mut conflicts = Vec::new();
             let mut saw = Vec::new();
+            saw.push(format!("attempt: {}\n", attempts));
             for (id, access) in snapshot {
                 saw.push(format!("{}-{}", id, access));
                 // only interested in accesses before this one and that are write operations.
@@ -665,6 +666,7 @@ impl<'a> SerializationGraph<'a> {
                     }
                 }
             }
+            saw.push("\n".to_string());
             seen.push(saw);
 
             // (i) transaction is in a cycle (cycle = T)
