@@ -600,6 +600,7 @@ impl<'a> SerializationGraph<'a> {
         let mut delays = Vec::new();
         let mut cs = Vec::new();
         let mut seen = Vec::new();
+        let mut brw_table;
 
         loop {
             // check for cascading abort
@@ -614,6 +615,7 @@ impl<'a> SerializationGraph<'a> {
 
             // Safety: ensures exculsive access to the record.
             unsafe { spin(prv, lsn) }; // busy wait
+            brw_table = format!("{}", rw_table);
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -713,8 +715,8 @@ impl<'a> SerializationGraph<'a> {
 
         assert_eq!(
             dirty, false,
-            "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \n this prv: {}\nconflicts: {:?} \nrwtable: {} \nseen: {:?}",
-            table_id, column_id, offset, tstate, this, attempts, prv, cs, rw_table, seen
+            "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \n this prv: {}\nconflicts: {:?} \nrwtable: {} \nseen: {:?} \nbeforerwtable: {}",
+            table_id, column_id, offset, tstate, this, attempts, prv, cs, rw_table, seen,brw_table
         );
 
         // assert_eq!(
