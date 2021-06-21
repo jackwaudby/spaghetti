@@ -708,8 +708,8 @@ impl<'a> SerializationGraph<'a> {
 
         assert_eq!(
             dirty, false,
-            "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \nrwtable: {}",
-            table_id, column_id, offset, tstate, this, attempts, rw_table,
+            "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \nconflicts: {:?} \nrwtable: {}",
+            table_id, column_id, offset, tstate, this, attempts, cs, rw_table,
         );
 
         // assert_eq!(
