@@ -615,7 +615,8 @@ impl<'a> SerializationGraph<'a> {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
                                 // check if write access is uncommitted
-                                if !from.is_committed() {
+                                // if !from.is_committed() {
+                                if !from.is_complete() {
                                     // if not in cycle then wait
                                     if !self.insert_and_check(
                                         this,
