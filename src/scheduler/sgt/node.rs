@@ -189,10 +189,15 @@ impl RwNode {
         match incoming {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
+                    unsafe {
+                        self.inserted
+                            .get()
+                            .as_mut()
+                            .unwrap()
+                            .push(from.clone().to_string())
+                    };
                     let mut guard = edges.lock();
-
                     guard.insert(from);
-
                     drop(guard);
                 }
                 None => panic!("incoming edge set already cleaned"),
@@ -460,6 +465,10 @@ impl fmt::Display for RwNode {
         writeln!(f, "actual ref id: {}", id).unwrap();
         writeln!(f, "incoming: {}", self.print_edges(true)).unwrap();
         writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
+        writeln!(f, "inserted: {:?}", unsafe {
+            self.inserted.get().as_mut().unwrap()
+        })
+        .unwrap();
         writeln!(f, "removed: {:?}", unsafe {
             self.removed.get().as_mut().unwrap()
         })
