@@ -19,7 +19,7 @@ pub struct AtomicLinkedList<T> {
 struct Node<T> {
     id: ManuallyDrop<u64>,
     data: ManuallyDrop<T>,
-    next: Atomic<Node<T>>,
+    next: ManuallyDrop<Atomic<Node<T>>>,
 }
 
 impl<T> AtomicLinkedList<T> {
@@ -39,7 +39,7 @@ impl<T> AtomicLinkedList<T> {
         let mut new = Owned::new(Node {
             id: ManuallyDrop::new(id),
             data: ManuallyDrop::new(t),
-            next: Atomic::null(),
+            next: ManuallyDrop::new(Atomic::null()),
         }); // create node
 
         loop {
@@ -153,30 +153,17 @@ impl<T> AtomicLinkedList<T> {
             }
         }
 
-        // unsafe { guard.defer_destroy(current) }; // deallocate
-
-        // unsafe {
-        //     let mut o = current.into_owned();
-        //     ManuallyDrop::drop(&mut o.data);
-        //     ManuallyDrop::drop(&mut o.id);
-        //     drop(o);
-        // };
-
         drop(lg);
-
         unsafe {
             guard.defer_unchecked(move || {
-                let node = current.into_owned();
-                let id = ManuallyDrop::into_inner(ptr::read(&(*node).id));
-                let data = ManuallyDrop::into_inner(ptr::read(&(*node).data));
+                let mut o = current.into_owned();
+                ManuallyDrop::drop(&mut o.data);
+                ManuallyDrop::drop(&mut o.id);
+                ManuallyDrop::drop(&mut o.next);
 
-                drop(id);
-                drop(data);
-                drop(node);
+                drop(o);
             });
         }
-
-        // return Some(unsafe { ptr::read(&*(current.as_ref().unwrap()).data) }); // return value
     }
 }
 
