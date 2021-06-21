@@ -164,7 +164,6 @@ impl<T> AtomicLinkedList<T> {
                 drop(o);
             });
         }
-        guard.flush();
     }
 }
 
