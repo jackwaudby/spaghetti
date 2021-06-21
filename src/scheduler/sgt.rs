@@ -689,11 +689,11 @@ impl<'a> SerializationGraph<'a> {
         //     table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs,tuple
         // );
 
-        // assert_eq!(
-        //     dirty, false,
-        //     "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?}",
-        //     table_id, column_id, offset, this, attempts, rw_table
-        // );
+        assert_eq!(
+            dirty, false,
+            "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?}",
+            table_id, column_id, offset, this, attempts, rw_table
+        );
 
         // Now, handle R-W conflicts
         let snapshot = rw_table.iter(guard);
@@ -746,7 +746,7 @@ impl<'a> SerializationGraph<'a> {
             .get()
             .set_value(value, prv, meta.clone())
         {
-            // panic!("{}", e); // ASSERT: never write to an uncommitted value.
+            panic!("{}", e); // ASSERT: never write to an uncommitted value.
         }
 
         // update lsn, giving next operation access.
