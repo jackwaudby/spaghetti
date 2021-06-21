@@ -14,8 +14,6 @@ pub mod sgt;
 
 pub mod nocc;
 
-pub mod nocc2;
-
 #[derive(Debug)]
 pub enum Scheduler<'a> {
     SerializationGraph(SerializationGraph<'a>),

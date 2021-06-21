@@ -157,7 +157,7 @@ impl<'a> OptimisedWaitHit<'a> {
         spin(prv, lsn); // delay until prv == lsn
 
         let tuple = table.get_tuple(column_id, offset); // handle to tuple
-        let (dirty, _) = tuple.get().is_dirty();
+        let dirty = tuple.get().is_dirty();
 
         // if tuple is dirty then abort
         // else for each read in the rwtable, add a predecessor upon write to hit list
@@ -209,7 +209,7 @@ impl<'a> OptimisedWaitHit<'a> {
             table
                 .get_tuple(column_id, offset)
                 .get()
-                .set_value(value, prv, meta.clone())
+                .set_value(value)
                 .unwrap();
 
             assert!(tuple.get().prev.is_some());

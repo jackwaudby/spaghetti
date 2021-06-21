@@ -96,7 +96,7 @@ impl NoConcurrencyControl {
             spin(prv, lsn);
 
             let tuple = table.get_tuple(column_id, offset).get(); // get tuple
-            tuple.set_value(value, prv, meta.clone()).unwrap(); // set value
+            tuple.set_value(value).unwrap(); // set value
             tuple.commit(); // commit; operations never fail
 
             lsn.store(prv + 1, Ordering::Release); // update lsn

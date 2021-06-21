@@ -1,5 +1,4 @@
 use crate::common::error::NonFatalError;
-use crate::storage::access::TransactionId;
 use crate::storage::datatype::{Data, Field};
 
 use std::cell::UnsafeCell;
@@ -31,7 +30,7 @@ pub struct Internal {
 #[derive(Debug, Clone, PartialEq)]
 pub enum State {
     Clean,
-    Modified(u64, TransactionId),
+    Modified,
 }
 
 #[derive(Debug)]
@@ -48,11 +47,11 @@ impl Internal {
         }
     }
 
-    pub fn is_dirty(&self) -> (bool, State) {
-        if let State::Modified(_, _) = self.state {
-            (true, self.state.clone())
+    pub fn is_dirty(&self) -> bool {
+        if let State::Modified = self.state {
+            true
         } else {
-            (false, self.state.clone())
+            false
         }
     }
 
@@ -65,27 +64,16 @@ impl Internal {
         Ok(OpResult::new(Some(self.current.get())))
     }
 
-    pub fn set_value(
-        &mut self,
-        value: &Data,
-        prv: u64,
-        transaction_id: TransactionId,
-    ) -> Result<OpResult, NonFatalError> {
+    pub fn set_value(&mut self, value: &Data) -> Result<OpResult, NonFatalError> {
         match self.state {
-            State::Modified(_, ref tid) => {
-                //   panic!("{}", self);
-                Err(NonFatalError::RowDirty(tid.to_string()))
-            }
-            // {
-            //     panic!("row dirty")
-            // }
+            State::Modified => Err(NonFatalError::RowDirty("TODO".to_string())),
+
             State::Clean => {
-                self.state = State::Modified(prv, transaction_id); // set state
+                self.state = State::Modified; // set state
                 let prev = self.current.clone(); // set prev fields
                 self.prev = Some(prev);
                 self.current.set(value.clone());
 
-                // OpResult::new(None)
                 Ok(OpResult::new(None))
             }
         }
@@ -98,7 +86,7 @@ impl Internal {
 
     pub fn revert(&mut self) {
         match self.state {
-            State::Modified(_, _) => {
+            State::Modified => {
                 self.current = self.prev.take().unwrap(); // revert to old values
                 self.state = State::Clean;
             }
@@ -125,18 +113,7 @@ impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self {
             State::Clean => write!(f, "clean"),
-            State::Modified(prv, tid) => {
-                let tid = match tid {
-                    TransactionId::SerializationGraph(tid) => tid,
-                    _ => &1,
-                };
-                write!(
-                    f,
-                    "modified by {} prv: {} ",
-                    crate::scheduler::sgt::node::from_usize(*tid),
-                    prv
-                )
-            }
+            State::Modified => write!(f, "dirty"),
         }
     }
 }
