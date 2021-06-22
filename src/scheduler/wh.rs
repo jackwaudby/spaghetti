@@ -1,24 +1,7 @@
-// commit
-// valid read check
-// for txn in pur
-// if txn has terminated and committed; then remove txn
-// if txn has aborted; then abort this
-// if txn is active; zero-wait policy; abort
-
-// hit list check
-// if txn in HL; then abort
-// else commit t, merge active in PUW into HL
-
-// append 1 to hit list
-
-// abort
-// append this to TL with -1
-// check if in HL and remove if so
-
 use crate::common::error::NonFatalError;
 use crate::scheduler::sgt::transaction_information::{
     Operation, OperationType, TransactionInformation,
-}; // TODO: move to common
+};
 use crate::scheduler::wh::error::WaitHitError;
 use crate::scheduler::wh::shared::Shared;
 use crate::scheduler::wh::shared::TransactionOutcome;
@@ -59,13 +42,8 @@ impl WaitHit {
     }
 
     pub fn get_operations(&self) -> Vec<Operation> {
-        self.txn_info
-            .get()
-            .unwrap()
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .get()
+        let mut txn_info = self.txn_info.get().unwrap().borrow_mut();
+        txn_info.as_mut().unwrap().get()
     }
 
     pub fn record(
@@ -76,13 +54,9 @@ impl WaitHit {
         offset: usize,
         prv: u64,
     ) {
-        self.txn_info
-            .get()
-            .unwrap()
-            .borrow_mut()
-            .as_mut()
-            .unwrap()
-            .add(op_type, table_id, column_id, offset, prv); // record operation
+        let mut txn_info = self.txn_info.get().unwrap().borrow_mut();
+        let res = txn_info.as_mut().unwrap();
+        res.add(op_type, table_id, column_id, offset, prv); // record operation
     }
 
     pub fn begin(&self) -> TransactionId {
@@ -126,7 +100,7 @@ impl WaitHit {
         let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
         let lsn = table.get_lsn(offset);
 
-        spin(prv, lsn);
+        unsafe { spin(prv, lsn) };
 
         let snapshot = rw_table.iter(guard); // iterator over access history
 
@@ -149,18 +123,17 @@ impl WaitHit {
             }
         }
 
-        let vals = table
+        let mut res = table
             .get_tuple(column_id, offset)
             .get()
             .get_value()
-            .unwrap()
-            .get_value(); // read
+            .unwrap();
 
         lsn.store(prv + 1, Ordering::Release); // update lsn
 
         self.record(OperationType::Read, table_id, column_id, offset, prv); // record operation
 
-        Ok(vals)
+        Ok(res.get_value())
     }
 
     /// Write operation.
@@ -184,7 +157,7 @@ impl WaitHit {
         let lsn = table.get_lsn(offset);
         let prv = rw_table.push_front(Access::Write(meta.clone()), guard);
 
-        spin(prv, lsn);
+        unsafe { spin(prv, lsn) };
 
         let tuple = table.get_tuple(column_id, offset); // handle to tuple
         let dirty = tuple.get().is_dirty();
@@ -243,6 +216,8 @@ impl WaitHit {
     }
 
     /// Commit operation.
+    /// Wait phase: for each pur; if terminated and aborted then abort; if active then abort; else committed then continue
+    /// Hit phase: if not in hit list then commit and merge all (active) puw into the hit list; else in hit list then abort
     pub fn commit<'g>(
         &self,
         meta: &TransactionId,
@@ -256,7 +231,7 @@ impl WaitHit {
 
         let mut g = self.shared.get_lock();
 
-        let pur = self.pur.get().unwrap().borrow().clone();
+        let pur = self.pur.get().unwrap().borrow().clone(); // TODO: avoid clone
 
         for pred in pur {
             if g.has_terminated(pred) {
@@ -275,7 +250,7 @@ impl WaitHit {
         if !g.is_in_hit_list(*this_id) {
             self.tidyup(database, guard, true);
 
-            let puw = self.puw.get().unwrap().borrow().clone();
+            let puw = self.puw.get().unwrap().borrow().clone(); // TODO: avoid clone
 
             for pred in puw {
                 if !g.has_terminated(pred) {
@@ -292,6 +267,7 @@ impl WaitHit {
     }
 
     /// Abort operation.
+    /// Remove transaction from the hit list and add to the terminated list.
     pub fn abort<'g>(
         &self,
         meta: &TransactionId,
@@ -310,7 +286,7 @@ impl WaitHit {
 
         self.tidyup(database, guard, false);
 
-        NonFatalError::NonSerializable
+        NonFatalError::NonSerializable // TODO: placeholder
     }
 
     /// Tidyup rwtables and tuples
@@ -340,8 +316,6 @@ impl WaitHit {
                     } else {
                         tuple.get().revert();
                     }
-                    let dirty = tuple.get().is_dirty();
-                    assert!(!dirty);
                     rwtable.erase(prv, guard);
                 }
             }
@@ -349,7 +323,7 @@ impl WaitHit {
     }
 }
 
-fn spin(prv: u64, lsn: &AtomicU64) {
+unsafe fn spin(prv: u64, lsn: &AtomicU64) {
     let mut i = 0;
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
