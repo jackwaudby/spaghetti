@@ -895,11 +895,11 @@ mod tests {
 
     #[test]
     fn no_cycle() {
-        let n1 = RwNode::new();
+        let n1 = RwNode::new(1, 1);
         let id1 = node::to_usize(Box::new(n1));
         let node1 = node::from_usize(id1);
 
-        let n2 = RwNode::new();
+        let n2 = RwNode::new(2, 1);
         let id2 = node::to_usize(Box::new(n2));
         let node2 = node::from_usize(id2);
 
@@ -914,11 +914,11 @@ mod tests {
 
     #[test]
     fn direct_cycle() {
-        let n1 = RwNode::new();
+        let n1 = RwNode::new(1, 1);
         let id1 = node::to_usize(Box::new(n1));
         let node1 = node::from_usize(id1);
 
-        let n2 = RwNode::new();
+        let n2 = RwNode::new(2, 1);
         let id2 = node::to_usize(Box::new(n2));
         let node2 = node::from_usize(id2);
 
@@ -936,15 +936,15 @@ mod tests {
 
     #[test]
     fn trans_cycle() {
-        let n1 = RwNode::new();
+        let n1 = RwNode::new(1, 1);
         let id1 = node::to_usize(Box::new(n1));
         let node1 = node::from_usize(id1);
 
-        let n2 = RwNode::new();
+        let n2 = RwNode::new(2, 1);
         let id2 = node::to_usize(Box::new(n2));
         let node2 = node::from_usize(id2);
 
-        let n3 = RwNode::new();
+        let n3 = RwNode::new(3, 1);
         let id3 = node::to_usize(Box::new(n3));
         let node3 = node::from_usize(id3);
 

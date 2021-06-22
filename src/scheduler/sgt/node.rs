@@ -539,14 +539,14 @@ mod tests {
 
     #[test]
     fn utils() {
-        let node = RwNode::new();
+        let node = RwNode::new(1, 1);
         let boxed = Box::new(node);
         let id = to_usize(boxed);
         let ref_node = from_usize(id);
         let ref_id = ref_to_usize(ref_node);
         assert_eq!(id, ref_id);
 
-        let n1 = RwNode::new();
+        let n1 = RwNode::new(2, 1);
         let nr1 = &n1;
         let nr2 = nr1.clone();
         let nr3 = &nr2;
@@ -557,7 +557,7 @@ mod tests {
 
     #[test]
     fn edge() {
-        let node = RwNode::new();
+        let node = RwNode::new(1, 1);
         let boxed = Box::new(node);
         let id = to_usize(boxed);
 
@@ -568,7 +568,7 @@ mod tests {
         let e3 = Edge::WriteWrite(id);
         assert!(e3 != e1);
 
-        let onode = RwNode::new();
+        let onode = RwNode::new(2, 1);
         let oboxed = Box::new(onode);
         let oid = to_usize(oboxed);
 
@@ -582,11 +582,11 @@ mod tests {
 
     #[test]
     fn node() {
-        let n1 = RwNode::new();
+        let n1 = RwNode::new(1, 1);
         let id1 = to_usize(Box::new(n1));
         let node1 = from_usize(id1);
 
-        let n2 = RwNode::new();
+        let n2 = RwNode::new(2, 1);
         let id2 = to_usize(Box::new(n2));
 
         node1.insert_incoming(Edge::ReadWrite(id2));
@@ -604,15 +604,15 @@ mod tests {
 
     #[test]
     fn dfs() {
-        let n1 = RwNode::new();
+        let n1 = RwNode::new(1, 1);
         let id1 = to_usize(Box::new(n1));
         let node1 = from_usize(id1);
 
-        let n2 = RwNode::new();
+        let n2 = RwNode::new(2, 1);
         let id2 = to_usize(Box::new(n2));
         let node2 = from_usize(id2);
 
-        let n3 = RwNode::new();
+        let n3 = RwNode::new(3, 1);
         let id3 = to_usize(Box::new(n3));
         let node3 = from_usize(id3);
 
@@ -627,6 +627,6 @@ mod tests {
         res.insert(id2);
         res.insert(id3);
 
-        assert_eq!(node1.depth_first_search(), res);
+        assert_eq!(node1.depth_first_search(true), res);
     }
 }
