@@ -10,7 +10,7 @@ A concurrency control evaluation framework.
 
 [profile.release]
 debug = true
-# lto = true
+lto = true
 
 [[bin]]
 name = "spag"
