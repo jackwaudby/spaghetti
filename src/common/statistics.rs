@@ -2,6 +2,7 @@ use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
+use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::smallbank::SmallBankTransaction;
 
 use config::Config;
@@ -331,6 +332,16 @@ impl LocalStatistics {
                     }
                 }
 
+                WaitHit(ref mut metric) => match reason {
+                    NonFatalError::WaitHitError(owhe) => match owhe {
+                        WaitHitError::TransactionInHitList(_) => metric.inc_hit(),
+                        WaitHitError::PredecessorAborted(_) => metric.inc_pur_aborted(),
+                        WaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
+                    },
+                    NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                    _ => {}
+                },
+
                 OptimisticWaitHit(ref mut metric) => match reason {
                     NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
                         OptimisedWaitHitError::Hit => metric.inc_hit(),
@@ -340,6 +351,7 @@ impl LocalStatistics {
                     NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
                     _ => {}
                 },
+
                 _ => {}
             }
         }
@@ -494,9 +506,9 @@ impl AbortBreakdown {
     fn new(protocol: &str, workload: &str) -> AbortBreakdown {
         let protocol_specific = match protocol {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
+            "wh" => ProtocolAbortBreakdown::WaitHit(HitListReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
             "nocc" => ProtocolAbortBreakdown::NoConcurrencyControl,
-            "nocc2" => ProtocolAbortBreakdown::NoConcurrencyControl,
             _ => unimplemented!(),
         };
 
@@ -518,6 +530,13 @@ impl AbortBreakdown {
         match self.protocol_specific {
             SerializationGraph(ref mut reasons) => {
                 if let SerializationGraph(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+            WaitHit(ref mut reasons) => {
+                if let WaitHit(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -609,6 +628,7 @@ impl SmallBankReasons {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 enum ProtocolAbortBreakdown {
     SerializationGraph(SerializationGraphReasons),
+    WaitHit(HitListReasons),
     OptimisticWaitHit(HitListReasons),
     NoConcurrencyControl,
 }

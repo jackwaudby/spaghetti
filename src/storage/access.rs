@@ -11,6 +11,7 @@ pub enum TransactionId {
     NoConcurrencyControl,
     SerializationGraph(usize),
     OptimisticWaitHit(usize),
+    WaitHit(u64),
 }
 
 impl fmt::Display for Access {
@@ -31,6 +32,7 @@ impl fmt::Display for TransactionId {
             NoConcurrencyControl => write!(f, "no id"),
             SerializationGraph(txn) => write!(f, "{}", txn),
             OptimisticWaitHit(txn) => write!(f, "{}", txn),
+            WaitHit(txn) => write!(f, "{}", txn),
         }
     }
 }
