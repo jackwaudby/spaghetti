@@ -1,9 +1,10 @@
+# Produces plots for thpt, av.latency, and abort rate.
 library(ggplot2)
 library(readr)
 library(dplyr)
 
 waudby <- read_csv(file = './results.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
-durner <- read_delim(file = './durner_results.csv', delim = ";",col_names = F)
+durner <- read_delim(file = './durner_sgt.csv', delim = ";",col_names = F)
 durner = durner[,c(1,2,3,5,8,9,11,10,18)]
 colnames(durner) <- c("workload","protocol","sf","cores","total_time","commits","aborts","errors","total_latency")
 durner$protocol = "durner"
@@ -13,15 +14,20 @@ sf3 = dat %>% filter((sf == 3) | (sf == 10000))
 
 ggplot(data=sf1, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=protocol, colour=protocol)) +
   geom_line() +
-  ylab("thpt") +
+  ylab("thpt (million/s)") +
   ggtitle("SmallBank - High Contention (100 accounts)") +
   theme_bw() 
 
+ggsave("./graphics/smallbank_thpt_high.png")
+
+
 ggplot(data=sf3, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=protocol, colour=protocol)) +
   geom_line() +
-  ylab("thpt") +
+  ylab("thpt (million/s)") +
   ggtitle("SmallBank - Low Contention (10000 accounts)") +
   theme_bw() 
+
+ggsave("./graphics/smallbank_thpt_low.png")
 
 ggplot(data=sf1, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=protocol)) +
   geom_line() +
@@ -29,11 +35,17 @@ ggplot(data=sf1, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=
   ggtitle("SmallBank - High Contention (100 accounts)") +
   theme_bw() 
 
+ggsave("./graphics/smallbank_abort_high.png")
+
+
 ggplot(data=sf3, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=protocol)) +
   geom_line() +
   ylab("abort rate") +
   ggtitle("SmallBank - Low Contention (10000 accounts)") +
   theme_bw() 
+
+ggsave("./graphics/smallbank_abort_low.png")
+
 
 # TODO: How do Durner et al. calculate av. latency?
 ggplot(data=sf1, aes(x=cores, y=total_latency/(commits+aborts+errors), group=protocol, colour=protocol)) +
@@ -42,9 +54,13 @@ ggplot(data=sf1, aes(x=cores, y=total_latency/(commits+aborts+errors), group=pro
   ggtitle("SmallBank - High Contention (100 accounts)") +
   theme_bw() 
 
+ggsave("./graphics/smallbank_lat_high.png")
+
+
 ggplot(data=sf3, aes(x=cores, y=total_latency/(commits+aborts+errors), group=protocol, colour=protocol)) +
   geom_line() +
   ylab("av latency (ms)") +
   ggtitle("SmallBank - Low Contention (10000 accounts)") +
   theme_bw() 
 
+ggsave("./graphics/smallbank_lat_low.png")

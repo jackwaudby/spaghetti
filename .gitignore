@@ -10,3 +10,5 @@ ssh_keys/
 reports/
 *.svg
 results.csv
+plot.sh
+graphics/
