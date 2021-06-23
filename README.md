@@ -10,17 +10,6 @@ Configuration is set in `Settings.toml`.
 cargo build --release
 
 #run
-./target/debug/spag -c 1 -p sgt -t 10000
+./target/release/spag -s 1 -p sgt -t 10000 -c 1
 ```
 
-### Misc
-```
-#run tests with logging
-RUST_LOG=debug cargo test -- --test-threads=1 --nocapture
-
-#run test coverage locally
-docker run --security-opt seccomp=unconfined -v "${PWD}:/volume" xd009642/tarpaulin:0.16.0
-
-#generate a flamegraph (linux only)
-cargo flamegraph -o 30-core.svg --bin=spag -- -c 30 -p sgt -t 1000000
-```
