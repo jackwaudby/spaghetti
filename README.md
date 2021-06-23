@@ -33,7 +33,7 @@ cargo test acid -- --test-threads=1
 |   PMP   |:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|
 |   OTV   |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
 |   FR    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
-|   LU    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
+|   LU    |:white_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
 |   WS    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |:heavy_check_mark:    |:x:                   |
 
 ### Comments
