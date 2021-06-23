@@ -1,0 +1,10 @@
+log = "info"
+record = true
+log_results = true
+transactions = 10000
+warmup = 1
+delay = 0
+timeout = 1
+set_seed = false
+scale_factor = 1
+workload = "acid"

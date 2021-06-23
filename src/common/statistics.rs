@@ -3,6 +3,7 @@ use crate::common::message::{Outcome, Transaction};
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::wh::error::WaitHitError;
+use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::SmallBankTransaction;
 
 use config::Config;
@@ -33,10 +34,11 @@ pub struct GlobalStatistics {
     workload: String,
     transaction_breakdown: TransactionBreakdown,
     abort_breakdown: AbortBreakdown,
+    anomaly: Option<String>,
 }
 
 impl GlobalStatistics {
-    pub fn new(config: &Config) -> GlobalStatistics {
+    pub fn new(config: &Config) -> Self {
         let scale_factor = config.get_int("scale_factor").unwrap() as u64;
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
@@ -44,7 +46,12 @@ impl GlobalStatistics {
         let cores = config.get_int("cores").unwrap() as u32;
         let transaction_breakdown = TransactionBreakdown::new(&workload);
         let abort_breakdown = AbortBreakdown::new(&protocol, &workload);
-
+        let anomaly;
+        if let Ok(a) = config.get_str("anomaly") {
+            anomaly = Some(a);
+        } else {
+            anomaly = None;
+        }
         GlobalStatistics {
             scale_factor,
             data_generation: None,
@@ -60,6 +67,7 @@ impl GlobalStatistics {
             cores,
             transaction_breakdown,
             abort_breakdown,
+            anomaly,
         }
     }
 
@@ -93,20 +101,18 @@ impl GlobalStatistics {
         let path;
         let file;
         if self.workload.as_str() == "acid" {
-            path = "./results/todo".to_string();
-            file = "./results/todo/todo.json".to_string();
-            // path = format!(
-            //     "./results/{}/{}/",
-            //     self.workload,
-            //     self.anomaly.as_ref().unwrap()
-            // );
-            // file = format!(
-            //     "./results/{}/{}/{}-sf{}.json",
-            //     self.workload,
-            //     self.anomaly.as_ref().unwrap(),
-            //     self.protocol,
-            //     self.scale_factor
-            // );
+            path = format!(
+                "./results/{}/{}/",
+                self.workload,
+                self.anomaly.as_ref().unwrap()
+            );
+            file = format!(
+                "./results/{}/{}/{}-sf{}.json",
+                self.workload,
+                self.anomaly.as_ref().unwrap(),
+                self.protocol,
+                self.scale_factor
+            );
         } else {
             path = format!("./results/{}", self.workload);
             file = format!(
@@ -164,15 +170,18 @@ impl GlobalStatistics {
                 throughput = 0.0; //tatp_success as f64 / ((self.total_time as f64 / 1000000.0) / 1000.0)
             }
 
-            WorkloadAbortBreakdown::SmallBank(ref _reason) => {
+            WorkloadAbortBreakdown::SmallBank(_) => {
                 let total = (committed + restarted) as f64;
                 abort_rate = restarted as f64 / total * 100.0;
                 throughput = committed as f64
                     / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64)
-            } // _ => {
-              //     abort_rate = (aborted as f64 / completed as f64) * 100.0;
-              //     throughput = committed as f64 / self.end.unwrap().as_secs() as f64
-              // }
+            }
+            WorkloadAbortBreakdown::Acid => {
+                let total = (committed + restarted) as f64;
+                abort_rate = restarted as f64 / total * 100.0;
+                throughput = committed as f64
+                    / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64)
+            }
         }
 
         let mean = self.latency as f64 / (completed as f64) / 1000000.0;
@@ -309,7 +318,7 @@ impl LocalStatistics {
                         metric.inc_insufficient_funds();
                     }
                 }
-
+                Acid => {}
                 Tatp(ref mut metric) => match reason {
                     NonFatalError::RowNotFound(_, _) => {
                         metric.inc_not_found();
@@ -317,6 +326,7 @@ impl LocalStatistics {
                     NonFatalError::RowAlreadyExists(_, _) => {
                         metric.inc_already_exists();
                     }
+
                     _ => unimplemented!(),
                 },
             }
@@ -376,7 +386,18 @@ impl TransactionBreakdown {
                 }
                 TransactionBreakdown { name, transactions }
             }
-            _ => unimplemented!(),
+
+            "acid" => {
+                let name = workload.to_string();
+                let mut transactions = vec![];
+                for transaction in AcidTransaction::iter() {
+                    let metrics = TransactionMetrics::new(Transaction::Acid(transaction));
+                    transactions.push(metrics);
+                }
+                TransactionBreakdown { name, transactions }
+            }
+
+            _ => panic!("{} not implemented", workload),
         }
     }
 
@@ -515,6 +536,7 @@ impl AbortBreakdown {
         let workload_specific = match workload {
             "smallbank" => WorkloadAbortBreakdown::SmallBank(SmallBankReasons::new()),
             "tatp" => WorkloadAbortBreakdown::Tatp(TatpReasons::new()),
+            "acid" => WorkloadAbortBreakdown::Acid,
             _ => unimplemented!(),
         };
 
@@ -567,6 +589,7 @@ impl AbortBreakdown {
                     panic!("workload abort breakdowns do not match");
                 }
             }
+            Acid => {}
         }
     }
 }
@@ -574,6 +597,7 @@ impl AbortBreakdown {
 enum WorkloadAbortBreakdown {
     SmallBank(SmallBankReasons),
     Tatp(TatpReasons),
+    Acid,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

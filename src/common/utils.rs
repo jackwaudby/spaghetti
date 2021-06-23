@@ -6,8 +6,10 @@ use crate::common::wait_manager::WaitManager;
 
 use crate::scheduler::Scheduler;
 use crate::storage::Database;
-use crate::workloads::smallbank;
+use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
+
+use crate::workloads::{acid, smallbank};
 
 use config::Config;
 use std::fs::{self, OpenOptions};
@@ -69,19 +71,19 @@ pub fn init_scheduler(config: &Config) -> Scheduler {
 }
 
 pub fn run(
+    thread_id: usize,
     config: &Config,
     scheduler: &Scheduler,
     database: &Database,
     tx: mpsc::Sender<LocalStatistics>,
 ) {
-    let id = 1; // TODO
     let timeout = config.get_int("timeout").unwrap() as u64;
     let p = config.get_str("protocol").unwrap();
     let w = config.get_str("workload").unwrap();
     let max_transactions = config.get_int("transactions").unwrap() as u32;
     let record = config.get_bool("record").unwrap();
     let log_results = config.get_bool("log_results").unwrap();
-    let mut stats = LocalStatistics::new(id as u32, &w, &p);
+    let mut stats = LocalStatistics::new(thread_id as u32, &w, &p);
 
     let mut generator = get_transaction_generator(config); // initialise transaction generator
 
@@ -98,10 +100,13 @@ pub fn run(
         if workload.as_str() == "acid" {
             let anomaly = config.get_str("anomaly").unwrap();
             dir = format!("./log/{}/{}/{}/", workload, protocol, anomaly);
-            file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, id);
+            file = format!(
+                "./log/acid/{}/{}/thread-{}.json",
+                protocol, anomaly, thread_id
+            );
         } else {
             dir = format!("./log/{}/{}/", workload, protocol);
-            file = format!("./log/{}/{}/thread-{}.json", workload, protocol, id);
+            file = format!("./log/{}/{}/thread-{}.json", workload, protocol, thread_id);
         }
 
         if Path::new(&dir).exists() {
@@ -220,7 +225,53 @@ pub fn execute<'a>(
     {
         let res = match transaction {
             Transaction::Tatp => unimplemented!(),
-
+            Transaction::Acid(_) => {
+                if let Parameters::Acid(params) = parameters {
+                    match params {
+                        AcidTransactionProfile::G0Write(params) => {
+                            acid::procedures::g0_write(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::G0Read(params) => {
+                            acid::procedures::g0_read(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::G1aRead(params) => {
+                            acid::procedures::g1a_read(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::G1aWrite(params) => {
+                            acid::procedures::g1a_write(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::G1cReadWrite(params) => {
+                            acid::procedures::g1c_read_write(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::ImpRead(params) => {
+                            acid::procedures::imp_read(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::ImpWrite(params) => {
+                            acid::procedures::imp_write(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::OtvRead(params) => {
+                            acid::procedures::otv_read(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::OtvWrite(params) => {
+                            acid::procedures::otv_write(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::LostUpdateRead(params) => {
+                            acid::procedures::lu_read(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::LostUpdateWrite(params) => {
+                            acid::procedures::lu_write(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::G2itemRead(params) => {
+                            acid::procedures::g2_item_read(params, scheduler, workload)
+                        }
+                        AcidTransactionProfile::G2itemWrite(params) => {
+                            acid::procedures::g2_item_write(params, scheduler, workload)
+                        }
+                    }
+                } else {
+                    panic!("transaction type and parameters do not match");
+                }
+            }
             Transaction::SmallBank(_) => {
                 if let Parameters::SmallBank(params) = parameters {
                     match params {
@@ -277,9 +328,15 @@ pub fn get_transaction_generator(config: &Config) -> ParameterGenerator {
     match config.get_str("workload").unwrap().as_str() {
         "smallbank" => {
             let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
-
             let gen = SmallBankGenerator::new(sf, set_seed, seed, use_balance_mix);
             ParameterGenerator::SmallBank(gen)
+        }
+        "acid" => {
+            let anomaly = config.get_str("anomaly").unwrap();
+            let delay = config.get_int("delay").unwrap() as u64;
+            let gen = AcidGenerator::new(sf, set_seed, seed, &anomaly, delay);
+
+            ParameterGenerator::Acid(gen)
         }
         _ => unimplemented!(),
     }
