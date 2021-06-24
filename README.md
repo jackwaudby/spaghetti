@@ -25,15 +25,15 @@ cargo test acid -- --test-threads=1
 
 | Anomaly | SGT                  | WH                   | OWH                  | 2PL                  | NOCC                 |
 |---------|----------------------|----------------------|----------------------|----------------------|----------------------| 
-|   G0    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |:heavy_check_mark:    |:heavy_check_mark:    |
-|   G1a   |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    | 
+|   G0    |TODO                  |TODO                  |TODO                  |TODO                  |TODO                  |
+|   G1a   |:x:                   |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    | 
 |   G1b   |:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|
-|   G1c   |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |:heavy_check_mark:    |:heavy_check_mark:|
-|   IMP   |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
+|   G1c   |TODO                  |:heavy_check_mark:    |:x:                   |:heavy_check_mark:    |:heavy_check_mark:|
+|   IMP   |TODO                  |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
 |   PMP   |:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|
-|   OTV   |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
-|   FR    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
-|   LU    |:white_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
+|   OTV   |TODO                  |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
+|   FR    |TODO                  |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
+|   LU    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
 |   WS    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |:heavy_check_mark:    |:x:                   |
 
 ### Comments
