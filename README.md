@@ -29,12 +29,12 @@ cargo test acid -- --test-threads=1
 |   G1a   |:x:                   |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    | 
 |   G1b   |:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|
 |   G1c   |TODO                  |:heavy_check_mark:    |:x:                   |:heavy_check_mark:    |:heavy_check_mark:|
-|   IMP   |TODO                  |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
+|   IMP   |:white_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
 |   PMP   |:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|
-|   OTV   |TODO                  |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
-|   FR    |TODO                  |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
-|   LU    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
-|   WS    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |:heavy_check_mark:    |:x:                   |
+|   OTV   |:white_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
+|   FR    |:white_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
+|   LU    |:white_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:heavy_check_mark:    |:x:                   |
+|   WS    |:white_check_mark:    |:heavy_check_mark:    |:x:                   |:heavy_check_mark:    |:x:                   |
 
 ### Comments
 * `G1b` cannot be implemented as `spaghetti` does not support multiple writes to the same object within a transaction. 
