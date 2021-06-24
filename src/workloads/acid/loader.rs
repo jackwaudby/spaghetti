@@ -2,7 +2,6 @@ use crate::storage::datatype::Data;
 use crate::workloads::acid::AcidDatabase;
 use crate::Result;
 
-use std::sync::Arc;
 use tracing::info;
 
 pub fn populate_tables(population: usize, database: &mut AcidDatabase) -> Result<()> {

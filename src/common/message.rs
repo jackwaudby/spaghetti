@@ -49,7 +49,6 @@ pub enum Message {
 pub enum Transaction {
     Acid(AcidTransaction),
     // Tatp(TatpTransaction)
-    //        ,
     Tatp,
     SmallBank(SmallBankTransaction),
 }

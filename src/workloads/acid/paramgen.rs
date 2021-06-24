@@ -223,7 +223,7 @@ impl AcidGenerator {
     /// OTV Read/Write transactions are generated with equal chance.
     /// The parameters for both transaction are a disjoint person sequence of length 4.
     fn get_otv_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
-        let p = self.persons * 4;
+        let p = self.persons;
 
         let id = self.rng.gen_range(0..p) as f64;
         let id = id / 4.0;
@@ -269,7 +269,7 @@ impl AcidGenerator {
     /// Returns a G2-item Write transactions, as G2-item Read transactions are issued after execution.
     /// Selects a person pair and an update person from the pair.
     fn get_g2item_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
-        let p = self.persons * 4;
+        let p = self.persons;
 
         let id = self.rng.gen_range(0..p) as f64;
         let id = id / 2.0;

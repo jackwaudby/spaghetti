@@ -186,52 +186,39 @@ pub fn g1a_write<'a>(
 
 /// Circular Information Flow (G1c) TRW
 ///
-/// This transaction writes a version a person then read the value of another person, returning the version read.
+/// This transaction writes a version of a person then read the value of another person, returning the version read.
 /// From this a WR dependency can be inferred and a dependency graph constructed.
 pub fn g1c_read_write<'a>(
     params: G1cReadWrite,
     scheduler: &'a Scheduler,
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let pk1 = Acid(Person(params.p1_id)); // --- setup
-    // let pk2 = Acid(Person(params.p2_id));
-    // let columns = ["version"];
-    // let tid = params.transaction_id as i64;
-    // let params = vec![Data::Uint(params.transaction_id as u64)];
+    match &*database {
+        Database::Acid(_) => {
+            let offset1 = params.p1_id as usize;
+            let offset2 = params.p2_id as usize;
+            let tid = Data::Uint(params.transaction_id as u64);
 
-    // let update_version = |_current: Option<Vec<Data>>,
-    //                       params: Option<&[Data]>|
-    //  -> Result<Vec<Data>, NonFatalError> {
-    //     let new_values = vec![params.unwrap()[0].clone()];
-    //     Ok(new_values)
-    // };
+            let guard = &epoch::pin(); // pin thread
 
-    // let meta = protocol.scheduler.register().unwrap(); // --- register
+            let meta = scheduler.begin(); // register
+            scheduler.write_value(&tid, 0, 1, offset1, &meta, database, guard)?; // set to txn id
+            let version = scheduler.read_value(0, 1, offset2, &meta, database, guard)?; // read txn id
+            scheduler.commit(&meta, database, guard)?; // commit
 
-    // protocol.scheduler.update(
-    //     "person",
-    //     Some("person_idx"),
-    //     &pk1,
-    //     &columns,
-    //     None,
-    //     Some(&params),
-    //     &update_version,
-    //     &meta,
-    // )?; // --- update
+            let res = datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&["version", "transaction_id"]),
+                Some(&vec![version, tid]),
+            )
+            .unwrap();
 
-    // let mut values =
-    //     protocol
-    //         .scheduler
-    //         .read("person", Some("person_idx"), &pk2, &columns, &meta)?; // --- read
-
-    // protocol.scheduler.commit(&meta)?; // --- commit
-
-    // values.push(Data::Int(tid)); // --- result
-    // let frcolumns: Vec<&str> = vec!["version", "transaction_id"];
-    // let res = datatype::to_result(None, None, None, Some(&frcolumns), Some(&values)).unwrap();
-
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Item-Many-Preceders (IMP) Read Transaction.
@@ -242,29 +229,30 @@ pub fn imp_read<'a>(
     scheduler: &'a Scheduler,
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let columns = ["version"]; // --- setup
-    // let pk = Acid(Person(params.p_id));
+    match &*database {
+        Database::Acid(_) => {
+            let offset = params.p_id as usize;
+            let guard = &epoch::pin(); // pin thread
 
-    // let meta = protocol.scheduler.register().unwrap(); // --- register
+            let meta = scheduler.begin(); // register
+            let read1 = scheduler.read_value(0, 1, offset, &meta, database, guard)?;
+            thread::sleep(time::Duration::from_millis(params.delay)); // --- artifical delay
+            let read2 = scheduler.read_value(0, 1, offset, &meta, database, guard)?;
+            scheduler.commit(&meta, database, guard)?; // commit
 
-    // let mut read1 = protocol
-    //     .scheduler
-    //     .read("person", Some("person_idx"), &pk, &columns, &meta)?; // --- read 1
+            let res = datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&["first_read", "second_read"]),
+                Some(&vec![read1, read2]),
+            )
+            .unwrap();
 
-    // thread::sleep(time::Duration::from_millis(params.delay)); // --- artifical delay
-
-    // let mut read2 = protocol
-    //     .scheduler
-    //     .read("person", Some("person_idx"), &pk, &columns, &meta)?; // --- read 2
-
-    // protocol.scheduler.commit(&meta)?; // --- commit
-
-    // let columns: Vec<&str> = vec!["first_read", "second_read"]; // --- result
-    // read1.append(&mut read2);
-    // let res = datatype::to_result(None, None, None, Some(&columns), Some(&read1)).unwrap();
-
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Item-Many-Preceders (IMP) Write Transaction.
@@ -275,35 +263,22 @@ pub fn imp_write<'a>(
     scheduler: &'a Scheduler,
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let pk = Acid(Person(params.p_id)); // --- setup
-    // let columns = ["version"];
+    match &*database {
+        Database::Acid(_) => {
+            let offset = params.p_id as usize;
+            let guard = &epoch::pin(); // pin thread
 
-    // let inc_version = |current: Option<Vec<Data>>,
-    //                    _params: Option<&[Data]>|
-    //  -> Result<Vec<Data>, NonFatalError> {
-    //     let current_value = u64::try_from(current.unwrap()[0].clone())?;
-    //     let new_values = vec![Data::Uint(current_value + 1)];
-    //     Ok(new_values)
-    // };
+            let meta = scheduler.begin(); // register
+            let version = scheduler.read_value(0, 1, offset, &meta, database, guard)?; // get friends
+            let new = u64::try_from(version)? + 1;
+            scheduler.write_value(&Data::Uint(new), 0, 1, offset, &meta, database, guard)?; // increment
+            scheduler.commit(&meta, database, guard)?; // commit
 
-    // let meta = protocol.scheduler.register().unwrap(); // --- register
-
-    // protocol.scheduler.update(
-    //     "person",
-    //     Some("person_idx"),
-    //     &pk,
-    //     &columns,
-    //     Some(&columns),
-    //     None,
-    //     &inc_version,
-    //     &meta,
-    // )?; //  ---  update
-
-    // protocol.scheduler.commit(&meta)?; // --- commit
-
-    // let res = datatype::to_result(None, Some(1), None, None, None).unwrap(); // --- result
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Observed Transaction Vanishes (OTV) Write Transaction.
@@ -314,42 +289,38 @@ pub fn otv_write<'a>(
     scheduler: &'a Scheduler,
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let pk1 = Acid(Person(params.p1_id)); // keys
-    // let pk2 = Acid(Person(params.p2_id));
-    // let pk3 = Acid(Person(params.p3_id));
-    // let pk4 = Acid(Person(params.p4_id));
+    match &*database {
+        Database::Acid(_) => {
+            let offset1 = params.p1_id as usize;
+            let offset2 = params.p2_id as usize;
+            let offset3 = params.p3_id as usize;
+            let offset4 = params.p4_id as usize;
+            let guard = &epoch::pin(); // pin thread
 
-    // let keys = vec![pk1, pk2, pk3, pk4];
+            let meta = scheduler.begin(); // register
+            let version1 = scheduler.read_value(0, 1, offset1, &meta, database, guard)?;
+            let version2 = scheduler.read_value(0, 1, offset2, &meta, database, guard)?;
+            let version3 = scheduler.read_value(0, 1, offset3, &meta, database, guard)?;
+            let version4 = scheduler.read_value(0, 1, offset4, &meta, database, guard)?;
 
-    // let column = ["version"];
+            let new1 = u64::try_from(version1)? + 1;
+            let new2 = u64::try_from(version2)? + 1;
+            let new3 = u64::try_from(version3)? + 1;
+            let new4 = u64::try_from(version4)? + 1;
 
-    // let inc_version = |current: Option<Vec<Data>>,
-    //                    _params: Option<&[Data]>|
-    //  -> Result<Vec<Data>, NonFatalError> {
-    //     let current_value = u64::try_from(current.unwrap()[0].clone())?;
-    //     Ok(vec![Data::Uint(current_value + 1)])
-    // };
+            scheduler.write_value(&Data::Uint(new1), 0, 1, offset1, &meta, database, guard)?;
+            scheduler.write_value(&Data::Uint(new2), 0, 1, offset2, &meta, database, guard)?;
+            scheduler.write_value(&Data::Uint(new3), 0, 1, offset3, &meta, database, guard)?;
+            scheduler.write_value(&Data::Uint(new4), 0, 1, offset4, &meta, database, guard)?;
 
-    // let meta = protocol.scheduler.register().unwrap(); // register
+            scheduler.commit(&meta, database, guard)?; // commit
 
-    // for pk in keys {
-    //     protocol.scheduler.update(
-    //         "person",
-    //         Some("person_idx"),
-    //         &pk,
-    //         &column,
-    //         Some(&column),
-    //         None,
-    //         &inc_version,
-    //         &meta,
-    //     )?;
-    // }
+            let res = datatype::to_result(None, Some(4), None, None, None).unwrap();
 
-    // protocol.scheduler.commit(&meta)?; // commit
-
-    // let res = datatype::to_result(None, Some(4), None, None, None).unwrap();
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Observed Transaction Vanishes (OTV) Read Transaction.
@@ -361,93 +332,95 @@ pub fn otv_read<'a>(
     scheduler: &'a Scheduler,
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let pk1 = Acid(Person(params.p1_id)); // keys
-    // let pk2 = Acid(Person(params.p2_id));
-    // let pk3 = Acid(Person(params.p3_id));
-    // let pk4 = Acid(Person(params.p4_id));
-    // let keys = vec![pk1, pk2, pk3, pk4];
+    match &*database {
+        Database::Acid(_) => {
+            let offset1 = params.p1_id as usize;
+            let offset2 = params.p2_id as usize;
+            let offset3 = params.p3_id as usize;
+            let offset4 = params.p4_id as usize;
+            let guard = &epoch::pin(); // pin thread
 
-    // let column = ["version"]; // columns to read
+            let meta = scheduler.begin(); // register
+            let version1 = scheduler.read_value(0, 1, offset1, &meta, database, guard)?;
+            let version2 = scheduler.read_value(0, 1, offset2, &meta, database, guard)?;
+            let version3 = scheduler.read_value(0, 1, offset3, &meta, database, guard)?;
+            let version4 = scheduler.read_value(0, 1, offset4, &meta, database, guard)?;
+            scheduler.commit(&meta, database, guard)?; // commit
 
-    // let meta = protocol.scheduler.register().unwrap(); // register
+            let res = datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&["p1_version", "p2_version", "p3_version", "p4_version"]),
+                Some(&vec![version1, version2, version3, version4]),
+            )
+            .unwrap();
 
-    // let mut reads = vec![];
-
-    // for key in keys {
-    //     let mut read =
-    //         protocol
-    //             .scheduler
-    //             .read("person", Some("person_idx"), &key, &column, &meta)?; // read
-    //     reads.append(&mut read);
-    // }
-
-    // protocol.scheduler.commit(&meta)?; // commit
-
-    // let columns: Vec<&str> = vec!["p1_version", "p2_version", "p3_version", "p4_version"];
-    // let res = datatype::to_result(None, None, None, Some(&columns), Some(&reads)).unwrap();
-
-    //    Ok(res)
-    Err(NonFatalError::NonSerializable)
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Lost Update (LU) Write Transaction.
+///
+/// Increments the number of friends by 1.
 pub fn lu_write<'a>(
     params: LostUpdateWrite,
     scheduler: &'a Scheduler,
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let pk = Acid(Person(params.p_id)); // key
-    // let columns = ["num_friends"]; // columns
+    match &*database {
+        Database::Acid(_) => {
+            let offset = params.p_id as usize;
+            let guard = &epoch::pin(); // pin thread
 
-    // let inc_version = |current: Option<Vec<Data>>,
-    //                    _params: Option<&[Data]>|
-    //  -> Result<Vec<Data>, NonFatalError> {
-    //     let current_value = u64::try_from(current.unwrap()[0].clone())?;
-    //     Ok(vec![Data::Uint(current_value + 1)])
-    // };
+            let meta = scheduler.begin(); // register
+            let friends = scheduler.read_value(0, 2, offset, &meta, database, guard)?; // get friends
+            let new = u64::try_from(friends)? + 1;
+            let version =
+                scheduler.write_value(&Data::Uint(new), 0, 2, offset, &meta, database, guard)?; // increment
+            scheduler.commit(&meta, database, guard)?; // commit
 
-    // let meta = protocol.scheduler.register().unwrap(); // register
-
-    // protocol.scheduler.update(
-    //     "person",
-    //     Some("person_idx"),
-    //     &pk,
-    //     &columns,
-    //     Some(&columns),
-    //     None,
-    //     &inc_version,
-    //     &meta,
-    // )?; //  update
-
-    // protocol.scheduler.commit(&meta)?; // commit
-
-    // // Note; the person id is needed for the anomaly check so embedding it in the updated field as a workaround
-    // let res = datatype::to_result(None, Some(params.p_id), None, None, None).unwrap();
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            // Note; the person id is needed for the anomaly check so embedding it in the updated field as a workaround
+            let res = datatype::to_result(None, Some(params.p_id), None, None, None).unwrap();
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Lost Update (LU) Read Transaction.
+///
+/// Returns the person id and number of friends.
 pub fn lu_read<'a>(
     params: LostUpdateRead,
     scheduler: &'a Scheduler,
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let columns: Vec<&str> = vec!["p_id", "num_friends"]; // columns to read
-    // let pk = Acid(Person(params.p_id)); // pk
+    match &*database {
+        Database::Acid(_) => {
+            let offset = params.p_id as usize;
+            let guard = &epoch::pin(); // pin thread
 
-    // let meta = protocol.scheduler.register().unwrap(); // register
+            let meta = scheduler.begin(); // register
+            let pid = scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get p_id
+            let friends = scheduler.read_value(0, 2, offset, &meta, database, guard)?; // get version
+            scheduler.commit(&meta, database, guard)?; // commit
 
-    // let read = protocol
-    //     .scheduler
-    //     .read("person", Some("person_idx"), &pk, &columns, &meta)?; // read
+            let res = datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&["p_id", "num_friends"]),
+                Some(&vec![pid, friends]),
+            )
+            .unwrap();
 
-    // protocol.scheduler.commit(&meta)?; // commit
-
-    // let res = datatype::to_result(None, None, None, Some(&columns), Some(&read)).unwrap();
-
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Write Skew (G2-item) Write Transaction.
@@ -459,90 +432,69 @@ pub fn g2_item_write<'a>(
     scheduler: &'a Scheduler,
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let pk1 = Acid(Person(params.p1_id)); // key
-    // let pk2 = Acid(Person(params.p2_id));
-    // let column = ["value"]; // column
+    match &*database {
+        Database::Acid(_) => {
+            let offset1 = params.p1_id as usize;
+            let offset2 = params.p2_id as usize;
+            let guard = &epoch::pin(); // pin thread
 
-    // let meta = protocol.scheduler.register().unwrap(); // register
+            let meta = scheduler.begin(); // register
+            let bal1 = u64::try_from(scheduler.read_value(0, 3, offset1, &meta, database, guard)?)?; // get p1 balance
+            let bal2 = u64::try_from(scheduler.read_value(0, 3, offset2, &meta, database, guard)?)?; // get p2 balance
+            let sum = bal1 + bal2;
 
-    // // takes in current value of p1 and value of p2 via params
-    // let deduct =
-    //     |current: Option<Vec<Data>>, params: Option<&[Data]>| -> Result<Vec<Data>, NonFatalError> {
-    //         let current_value = i64::try_from(current.unwrap()[0].clone())?;
-    //         let other_value = i64::try_from(params.unwrap()[0].clone())?;
+            // if sum across accounts if less than 100 abort
+            if sum < 100 {
+                scheduler.abort(&meta, database, guard);
+                return Err(NonFatalError::NonSerializable);
+            }
+            // else subtract 100 from one person
+            if params.p_id_update == params.p1_id {
+                let new = bal1 - sum; // subtract 100 from p1
+                scheduler.write_value(&Data::from(sum), 0, 3, offset1, &meta, database, guard)?;
+            } else {
+                let new = bal2 - sum; // subtract 100 from p2
+                scheduler.write_value(&Data::from(sum), 0, 3, offset2, &meta, database, guard)?;
+            }
 
-    //         if current_value + other_value < 100 {
-    //             return Err(NonFatalError::NonSerializable);
-    //         }
+            scheduler.commit(&meta, database, guard)?;
 
-    //         Ok(vec![Data::Int(current_value - 100)])
-    //     };
-
-    // if params.p_id_update == params.p1_id {
-    //     let read = protocol
-    //         .scheduler
-    //         .read("person", Some("person_idx"), &pk2, &column, &meta)?;
-
-    //     protocol.scheduler.update(
-    //         "person",
-    //         Some("person_idx"),
-    //         &pk1,
-    //         &column,
-    //         Some(&column),
-    //         Some(&read),
-    //         &deduct,
-    //         &meta,
-    //     )?;
-    // } else {
-    //     let read = protocol
-    //         .scheduler
-    //         .read("person", Some("person_idx"), &pk1, &column, &meta)?;
-
-    //     protocol.scheduler.update(
-    //         "person",
-    //         Some("person_idx"),
-    //         &pk2,
-    //         &column,
-    //         Some(&column),
-    //         Some(&read),
-    //         &deduct,
-    //         &meta,
-    //     )?;
-    // }
-
-    // protocol.scheduler.commit(&meta)?; // commit
-
-    // let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Write Skew (G2-item) Read Transaction.
+///
+/// Reads the balances of two persons.
 pub fn g2_item_read<'a>(
     params: G2itemRead,
     scheduler: &'a Scheduler,
     database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let columns = ["value"]; // columns to read
-    // let pk1 = Acid(Person(params.p1_id)); // pk
-    // let pk2 = Acid(Person(params.p2_id)); // pk
+    match &*database {
+        Database::Acid(_) => {
+            let offset1 = params.p1_id as usize;
+            let offset2 = params.p2_id as usize;
+            let guard = &epoch::pin(); // pin thread
 
-    // let meta = protocol.scheduler.register().unwrap(); // register
+            let meta = scheduler.begin(); // register
+            let bal1 = scheduler.read_value(0, 3, offset1, &meta, database, guard)?; // get p1 balance
+            let bal2 = scheduler.read_value(0, 3, offset2, &meta, database, guard)?; // get p2 balance
+            scheduler.commit(&meta, database, guard)?; // commit
 
-    // let mut read1 = protocol
-    //     .scheduler
-    //     .read("person", Some("person_idx"), &pk1, &columns, &meta)?; // read
-
-    // let mut read2 = protocol
-    //     .scheduler
-    //     .read("person", Some("person_idx"), &pk2, &columns, &meta)?; // read
-
-    // protocol.scheduler.commit(&meta)?; // commit
-
-    // read1.append(&mut read2);
-
-    // let columns: Vec<&str> = vec!["p1_value", "p2_value"];
-    // let res = datatype::to_result(None, None, None, Some(&columns), Some(&read1)).unwrap();
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            let res = datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&["p1_value", "p2_value"]),
+                Some(&vec![bal1, bal2]),
+            )
+            .unwrap();
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
