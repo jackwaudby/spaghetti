@@ -136,36 +136,43 @@ fn acid_nocc_g0() {
 }
 
 #[test]
+#[should_panic]
 fn acid_nocc_g1a() {
     common::g1a("nocc");
 }
 
 #[test]
+#[should_panic]
 fn acid_nocc_g1c() {
     common::g1c("nocc");
 }
 
 #[test]
+#[should_panic]
 fn acid_nocc_imp() {
     common::imp("nocc");
 }
 
 #[test]
+#[should_panic]
 fn acid_nocc_otv() {
     common::otv("nocc");
 }
 
 #[test]
+#[should_panic]
 fn acid_nocc_fr() {
     common::fr("nocc");
 }
 
 #[test]
+#[should_panic]
 fn acid_nocc_lu() {
     common::lu("nocc");
 }
 
 #[test]
+#[should_panic]
 fn acid_nocc_g2item() {
     common::g2item("nocc");
 }
