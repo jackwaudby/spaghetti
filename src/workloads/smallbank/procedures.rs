@@ -1,5 +1,5 @@
 use crate::common::error::NonFatalError;
-use crate::scheduler::Scheduler;
+use crate::scheduler::{Scheduler, TransactionType};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
 use crate::workloads::smallbank::error::SmallBankError;
@@ -26,7 +26,7 @@ pub fn balance<'a>(
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             scheduler.read_value(1, 1, offset, &meta, database, guard)?; // get checking balance
             scheduler.read_value(2, 1, offset, &meta, database, guard)?; // get savings balance
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             Ok("ok".to_string())
         }
@@ -51,7 +51,7 @@ pub fn deposit_checking<'a>(
             let res = scheduler.read_value(1, 1, offset, &meta, database, guard)?; // get current balance
             let balance = Data::from(f64::try_from(res)? + params.value); // new balance
             scheduler.write_value(&balance, 1, 1, offset, &meta, database, guard)?; // write 1 -- update balance
-            scheduler.commit(&meta, database, guard)?;
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())
         }
@@ -80,7 +80,7 @@ pub fn transact_savings<'a>(
                 return Err(SmallBankError::InsufficientFunds.into());
             }
             scheduler.write_value(&Data::from(balance), 2, 1, offset, &meta, database, guard)?; // write 1 -- update saving balance
-            scheduler.commit(&meta, database, guard)?;
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())
         }
@@ -112,7 +112,7 @@ pub fn amalgmate<'a>(
             let res3 = scheduler.read_value(1, 1, offset2, &meta, database, guard)?; // read 5 -- current checking balance (customer2)
             let bal = sum + f64::try_from(res3)?;
             scheduler.write_value(&Data::Double(bal), 1, 1, offset2, &meta, database, guard)?;
-            scheduler.commit(&meta, database, guard)?;
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())
         }
@@ -153,7 +153,7 @@ pub fn write_check<'a>(
                 database,
                 guard,
             )?; // update checking balance
-            scheduler.commit(&meta, database, guard)?;
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())
         }
@@ -205,7 +205,7 @@ pub fn send_payment<'a>(
                 database,
                 guard,
             )?; // update cust2 checking
-            scheduler.commit(&meta, database, guard)?;
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())
         }

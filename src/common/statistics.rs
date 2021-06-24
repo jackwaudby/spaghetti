@@ -362,6 +362,16 @@ impl LocalStatistics {
                     _ => {}
                 },
 
+                OptimisticWaitHitTransactionTypes(ref mut metric) => match reason {
+                    NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
+                        OptimisedWaitHitError::Hit => metric.inc_hit(),
+                        OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+                        OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
+                    },
+                    NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                    _ => {}
+                },
+
                 _ => {}
             }
         }
@@ -529,6 +539,9 @@ impl AbortBreakdown {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
             "wh" => ProtocolAbortBreakdown::WaitHit(HitListReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
+            "owhtt" => {
+                ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(HitListReasons::new())
+            }
             "nocc" => ProtocolAbortBreakdown::NoConcurrencyControl,
             _ => unimplemented!(),
         };
@@ -566,6 +579,13 @@ impl AbortBreakdown {
             }
             OptimisticWaitHit(ref mut reasons) => {
                 if let OptimisticWaitHit(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+            OptimisticWaitHitTransactionTypes(ref mut reasons) => {
+                if let OptimisticWaitHitTransactionTypes(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -654,6 +674,7 @@ enum ProtocolAbortBreakdown {
     SerializationGraph(SerializationGraphReasons),
     WaitHit(HitListReasons),
     OptimisticWaitHit(HitListReasons),
+    OptimisticWaitHitTransactionTypes(HitListReasons),
     NoConcurrencyControl,
 }
 

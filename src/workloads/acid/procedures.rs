@@ -1,5 +1,5 @@
 use crate::common::error::NonFatalError;
-use crate::scheduler::Scheduler;
+use crate::scheduler::{Scheduler, TransactionType};
 use crate::storage::datatype::{self, Data};
 use crate::storage::Database;
 use crate::workloads::acid::paramgen::{
@@ -144,7 +144,7 @@ pub fn g1a_read<'a>(
             let meta = scheduler.begin(); // register
             let pid = scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get p_id
             let version = scheduler.read_value(0, 1, offset, &meta, database, guard)?; // get version
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
                 None,
@@ -204,7 +204,7 @@ pub fn g1c_read_write<'a>(
             let meta = scheduler.begin(); // register
             scheduler.write_value(&tid, 0, 1, offset1, &meta, database, guard)?; // set to txn id
             let version = scheduler.read_value(0, 1, offset2, &meta, database, guard)?; // read txn id
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             let res = datatype::to_result(
                 None,
@@ -238,7 +238,7 @@ pub fn imp_read<'a>(
             let read1 = scheduler.read_value(0, 1, offset, &meta, database, guard)?;
             thread::sleep(time::Duration::from_millis(params.delay)); // --- artifical delay
             let read2 = scheduler.read_value(0, 1, offset, &meta, database, guard)?;
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
                 None,
@@ -272,7 +272,7 @@ pub fn imp_write<'a>(
             let version = scheduler.read_value(0, 1, offset, &meta, database, guard)?; // get friends
             let new = u64::try_from(version)? + 1;
             scheduler.write_value(&Data::Uint(new), 0, 1, offset, &meta, database, guard)?; // increment
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
             Ok(res)
@@ -313,7 +313,7 @@ pub fn otv_write<'a>(
             scheduler.write_value(&Data::Uint(new3), 0, 1, offset3, &meta, database, guard)?;
             scheduler.write_value(&Data::Uint(new4), 0, 1, offset4, &meta, database, guard)?;
 
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             let res = datatype::to_result(None, Some(4), None, None, None).unwrap();
 
@@ -345,7 +345,7 @@ pub fn otv_read<'a>(
             let version2 = scheduler.read_value(0, 1, offset2, &meta, database, guard)?;
             let version3 = scheduler.read_value(0, 1, offset3, &meta, database, guard)?;
             let version4 = scheduler.read_value(0, 1, offset4, &meta, database, guard)?;
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
                 None,
@@ -380,7 +380,7 @@ pub fn lu_write<'a>(
             let new = u64::try_from(friends)? + 1;
             let version =
                 scheduler.write_value(&Data::Uint(new), 0, 2, offset, &meta, database, guard)?; // increment
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             // Note; the person id is needed for the anomaly check so embedding it in the updated field as a workaround
             let res = datatype::to_result(None, Some(params.p_id), None, None, None).unwrap();
@@ -406,7 +406,7 @@ pub fn lu_read<'a>(
             let meta = scheduler.begin(); // register
             let pid = scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get p_id
             let friends = scheduler.read_value(0, 2, offset, &meta, database, guard)?; // get version
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
                 None,
@@ -457,7 +457,7 @@ pub fn g2_item_write<'a>(
                 scheduler.write_value(&Data::from(sum), 0, 3, offset2, &meta, database, guard)?;
             }
 
-            scheduler.commit(&meta, database, guard)?;
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
             Ok(res)
@@ -483,7 +483,7 @@ pub fn g2_item_read<'a>(
             let meta = scheduler.begin(); // register
             let bal1 = scheduler.read_value(0, 3, offset1, &meta, database, guard)?; // get p1 balance
             let bal2 = scheduler.read_value(0, 3, offset2, &meta, database, guard)?; // get p2 balance
-            scheduler.commit(&meta, database, guard)?; // commit
+            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
                 None,

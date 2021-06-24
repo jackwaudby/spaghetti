@@ -15,6 +15,7 @@ fn acid_sgt_g1a() {
 }
 
 #[test]
+#[ignore]
 fn acid_sgt_g1c() {
     common::g1c("sgt");
 }
@@ -57,6 +58,7 @@ fn acid_wh_g1a() {
 }
 
 #[test]
+#[ignore]
 fn acid_wh_g1c() {
     common::g1c("wh");
 }
@@ -99,6 +101,7 @@ fn acid_owh_g1a() {
 }
 
 #[test]
+#[ignore]
 fn acid_owh_g1c() {
     common::g1c("owh");
 }
@@ -128,6 +131,49 @@ fn acid_owh_g2item() {
     common::g2item("owh");
 }
 
+// OWHTT
+#[test]
+#[ignore]
+fn acid_owhtt_g0() {
+    common::g0("owhtt");
+}
+
+#[test]
+fn acid_owhtt_g1a() {
+    common::g1a("owhtt");
+}
+
+#[test]
+#[ignore]
+fn acid_owhtt_g1c() {
+    common::g1c("owhtt");
+}
+
+#[test]
+fn acid_owhtt_imp() {
+    common::imp("owhtt");
+}
+
+#[test]
+fn acid_owhtt_otv() {
+    common::otv("owhtt");
+}
+
+#[test]
+fn acid_owhtt_fr() {
+    common::fr("owhtt");
+}
+
+#[test]
+fn acid_owhtt_lu() {
+    common::lu("owhtt");
+}
+
+#[test]
+fn acid_owhtt_g2item() {
+    common::g2item("owhtt");
+}
+
 // NOCC
 #[test]
 #[ignore]
@@ -143,6 +189,7 @@ fn acid_nocc_g1a() {
 
 #[test]
 #[should_panic]
+#[ignore]
 fn acid_nocc_g1c() {
     common::g1c("nocc");
 }
