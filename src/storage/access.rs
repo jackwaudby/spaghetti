@@ -12,6 +12,7 @@ pub enum TransactionId {
     SerializationGraph(usize),
     OptimisticWaitHit(usize),
     WaitHit(u64),
+    TwoPhaseLocking(u64),
 }
 
 impl fmt::Display for Access {
@@ -33,6 +34,7 @@ impl fmt::Display for TransactionId {
             SerializationGraph(txn) => write!(f, "{}", txn),
             OptimisticWaitHit(txn) => write!(f, "{}", txn),
             WaitHit(txn) => write!(f, "{}", txn),
+            TwoPhaseLocking(txn) => write!(f, "{}", txn),
         }
     }
 }

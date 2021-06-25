@@ -9,7 +9,6 @@ use crate::workloads::acid::paramgen::{
 
 use crossbeam_epoch as epoch;
 use std::convert::TryFrom;
-use std::sync::Arc;
 use std::{thread, time};
 
 /// Dirty Write (G0) TW.

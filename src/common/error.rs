@@ -1,5 +1,6 @@
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
+use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::smallbank::error::SmallBankError;
 
@@ -100,6 +101,8 @@ pub enum NonFatalError {
     WaitHitError(WaitHitError),
 
     OptimisedWaitHitError(OptimisedWaitHitError),
+
+    TwoPhaseLockingError(TwoPhaseLockingError),
 }
 
 impl fmt::Display for FatalError {
@@ -166,6 +169,7 @@ impl fmt::Display for NonFatalError {
             SerializationGraph(ref e) => write!(f, "{}", e),
             WaitHitError(ref e) => write!(f, "{}", e),
             OptimisedWaitHitError(ref e) => write!(f, "{}", e),
+            TwoPhaseLockingError(ref e) => write!(f, "{}", e),
         }
     }
 }
@@ -199,8 +203,15 @@ impl From<WaitHitError> for NonFatalError {
         NonFatalError::WaitHitError(error)
     }
 }
+
 impl From<OptimisedWaitHitError> for NonFatalError {
     fn from(error: OptimisedWaitHitError) -> Self {
         NonFatalError::OptimisedWaitHitError(error)
+    }
+}
+
+impl From<TwoPhaseLockingError> for NonFatalError {
+    fn from(error: TwoPhaseLockingError) -> Self {
+        NonFatalError::TwoPhaseLockingError(error)
     }
 }

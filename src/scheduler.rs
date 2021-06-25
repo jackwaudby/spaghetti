@@ -18,6 +18,8 @@ pub mod owhtt;
 
 pub mod sgt;
 
+pub mod tpl;
+
 pub mod nocc;
 
 #[derive(Debug)]
