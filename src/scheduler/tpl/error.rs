@@ -6,8 +6,6 @@ use std::fmt;
 pub enum TwoPhaseLockingError {
     ReadLockRequestDenied(String),
     WriteLockRequestDenied(String),
-    LockNotInTable(String),
-    LockAlreadyInTable(String),
 }
 
 impl fmt::Display for TwoPhaseLockingError {
@@ -16,8 +14,6 @@ impl fmt::Display for TwoPhaseLockingError {
         match *self {
             ReadLockRequestDenied(ref key) => write!(f, "read lock for {} denied", key),
             WriteLockRequestDenied(ref key) => write!(f, "write lock for {} denied", key),
-            LockNotInTable(ref key) => write!(f, "no lock in table for {} ", key),
-            LockAlreadyInTable(ref s) => write!(f, "no lock in table for {} ", s),
         }
     }
 }

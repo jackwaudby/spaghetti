@@ -52,7 +52,7 @@ impl<'a> Scheduler<'a> {
                 OptimisedWaitHitTransactionTypes::new(cores),
             ),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
-            "2pl" => Scheduler::TwoPhaseLocking(TwoPhaseLocking::new(cores)),
+            "tpl" => Scheduler::TwoPhaseLocking(TwoPhaseLocking::new(cores)),
             _ => panic!("Incorrect concurrency control protocol"),
         };
 

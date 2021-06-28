@@ -2,6 +2,7 @@ use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
+use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::SmallBankTransaction;
@@ -372,6 +373,19 @@ impl LocalStatistics {
                     _ => {}
                 },
 
+                TwoPhaseLocking(ref mut metric) => match reason {
+                    NonFatalError::TwoPhaseLockingError(tple) => match tple {
+                        TwoPhaseLockingError::ReadLockRequestDenied(_) => {
+                            metric.inc_read_lock_denied()
+                        }
+                        TwoPhaseLockingError::WriteLockRequestDenied(_) => {
+                            metric.inc_write_lock_denied()
+                        }
+                    },
+
+                    _ => {}
+                },
+
                 _ => {}
             }
         }
@@ -543,6 +557,7 @@ impl AbortBreakdown {
                 ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(HitListReasons::new())
             }
             "nocc" => ProtocolAbortBreakdown::NoConcurrencyControl,
+            "tpl" => ProtocolAbortBreakdown::TwoPhaseLocking(TwoPhaseLockingReasons::new()),
             _ => unimplemented!(),
         };
 
@@ -586,6 +601,13 @@ impl AbortBreakdown {
             }
             OptimisticWaitHitTransactionTypes(ref mut reasons) => {
                 if let OptimisticWaitHitTransactionTypes(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+            TwoPhaseLocking(ref mut reasons) => {
+                if let TwoPhaseLocking(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -675,6 +697,7 @@ enum ProtocolAbortBreakdown {
     WaitHit(HitListReasons),
     OptimisticWaitHit(HitListReasons),
     OptimisticWaitHitTransactionTypes(HitListReasons),
+    TwoPhaseLocking(TwoPhaseLockingReasons),
     NoConcurrencyControl,
 }
 
@@ -690,6 +713,12 @@ struct HitListReasons {
     hit: u32,
     pur_active: u32,
     pur_aborted: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct TwoPhaseLockingReasons {
+    read_lock_denied: u32,
+    write_lock_denied: u32,
 }
 
 impl SerializationGraphReasons {
@@ -744,5 +773,27 @@ impl HitListReasons {
         self.hit += other.hit;
         self.pur_aborted += other.pur_aborted;
         self.pur_active += other.pur_active;
+    }
+}
+
+impl TwoPhaseLockingReasons {
+    fn new() -> TwoPhaseLockingReasons {
+        TwoPhaseLockingReasons {
+            read_lock_denied: 0,
+            write_lock_denied: 0,
+        }
+    }
+
+    fn inc_read_lock_denied(&mut self) {
+        self.read_lock_denied += 1;
+    }
+
+    fn inc_write_lock_denied(&mut self) {
+        self.write_lock_denied += 1;
+    }
+
+    fn merge(&mut self, other: TwoPhaseLockingReasons) {
+        self.read_lock_denied += other.read_lock_denied;
+        self.write_lock_denied += other.write_lock_denied;
     }
 }
