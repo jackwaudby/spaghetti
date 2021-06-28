@@ -15,9 +15,9 @@ use std::{thread, time};
 ///
 /// Append (unique) transaction id to person pair version history.
 pub fn g0_write<'a>(
-    params: G0Write,
-    scheduler: &'a Scheduler,
-    database: &'a Database,
+    _params: G0Write,
+    _scheduler: &'a Scheduler,
+    _database: &'a Database,
 ) -> Result<String, NonFatalError> {
     // let pk_p1 = Acid(Person(params.p1_id));
     // let pk_p2 = Acid(Person(params.p2_id));
@@ -77,9 +77,9 @@ pub fn g0_write<'a>(
 ///
 /// Return the version history of person pair.
 pub fn g0_read<'a>(
-    params: G0Read,
-    scheduler: &'a Scheduler,
-    database: &'a Database,
+    _params: G0Read,
+    _scheduler: &'a Scheduler,
+    _database: &'a Database,
 ) -> Result<String, NonFatalError> {
     // let person_columns: Vec<&str> = vec!["p_id", "version_history"];
     // let knows_columns: Vec<&str> = vec!["p1_id", "p2_id", "version_history"];
@@ -377,8 +377,7 @@ pub fn lu_write<'a>(
             let meta = scheduler.begin(); // register
             let friends = scheduler.read_value(0, 2, offset, &meta, database, guard)?; // get friends
             let new = u64::try_from(friends)? + 1;
-            let version =
-                scheduler.write_value(&Data::Uint(new), 0, 2, offset, &meta, database, guard)?; // increment
+            scheduler.write_value(&Data::Uint(new), 0, 2, offset, &meta, database, guard)?; // increment
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             // Note; the person id is needed for the anomaly check so embedding it in the updated field as a workaround
@@ -450,10 +449,10 @@ pub fn g2_item_write<'a>(
             // else subtract 100 from one person
             if params.p_id_update == params.p1_id {
                 let new = bal1 - sum; // subtract 100 from p1
-                scheduler.write_value(&Data::from(sum), 0, 3, offset1, &meta, database, guard)?;
+                scheduler.write_value(&Data::from(new), 0, 3, offset1, &meta, database, guard)?;
             } else {
                 let new = bal2 - sum; // subtract 100 from p2
-                scheduler.write_value(&Data::from(sum), 0, 3, offset2, &meta, database, guard)?;
+                scheduler.write_value(&Data::from(new), 0, 3, offset2, &meta, database, guard)?;
             }
 
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;

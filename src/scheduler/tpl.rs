@@ -10,7 +10,6 @@ use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 use crate::storage::Database;
 
-use crossbeam_epoch::Guard;
 use flurry::HashMap;
 use std::cell::RefCell;
 use std::sync::{Arc, Condvar, Mutex};
@@ -24,7 +23,7 @@ pub mod lock_info;
 #[derive(Debug)]
 pub struct TwoPhaseLocking {
     id: Arc<Mutex<u64>>,
-    lock_table: HashMap<(usize, usize), LockInfo>,
+    lock_table: HashMap<(usize, usize), Mutex<LockInfo>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
 }
 
@@ -83,7 +82,6 @@ impl TwoPhaseLocking {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         let timestamp = match meta {
             TransactionId::TwoPhaseLocking(id) => id,
@@ -114,7 +112,7 @@ impl TwoPhaseLocking {
                 Ok(vals.unwrap().get_value())
             }
             LockRequest::Denied => {
-                self.abort(database, guard, meta);
+                self.abort(database, meta);
 
                 Err(TwoPhaseLockingError::WriteLockRequestDenied(format!(
                     "{:?}",
@@ -134,7 +132,6 @@ impl TwoPhaseLocking {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         let timestamp = match meta {
             TransactionId::TwoPhaseLocking(id) => id,
@@ -167,7 +164,7 @@ impl TwoPhaseLocking {
                 Ok(())
             }
             LockRequest::Denied => {
-                self.abort(database, guard, meta);
+                self.abort(database, meta);
 
                 Err(TwoPhaseLockingError::WriteLockRequestDenied(format!(
                     "{:?}",
@@ -182,7 +179,6 @@ impl TwoPhaseLocking {
     pub fn commit<'g>(
         &self,
         database: &Database,
-        guard: &'g Guard,
         meta: &TransactionId,
     ) -> Result<(), NonFatalError> {
         let timestamp = match meta {
@@ -193,7 +189,7 @@ impl TwoPhaseLocking {
         let ops = self.get_operations();
 
         // commit changes
-        for op in ops {
+        for op in &ops {
             let Operation {
                 op_type,
                 table_id,
@@ -203,8 +199,8 @@ impl TwoPhaseLocking {
             } = op;
 
             if let OperationType::Write = op_type {
-                let table = database.get_table(table_id); // get table
-                let tuple = table.get_tuple(column_id, offset).get(); // get tuple
+                let table = database.get_table(*table_id); // get table
+                let tuple = table.get_tuple(*column_id, *offset).get(); // get tuple
                 tuple.commit(); // commit; operations never fail
             }
         }
@@ -214,19 +210,14 @@ impl TwoPhaseLocking {
             let Operation {
                 table_id, offset, ..
             } = op;
-            self.release_lock(table_id, offset, *timestamp);
+            self.release_lock(table_id, offset, *timestamp).unwrap();
         }
 
         Ok(())
     }
 
     /// Abort operation.
-    pub fn abort<'g>(
-        &self,
-        database: &Database,
-        guard: &'g Guard,
-        meta: &TransactionId,
-    ) -> NonFatalError {
+    pub fn abort<'g>(&self, database: &Database, meta: &TransactionId) -> NonFatalError {
         let timestamp = match meta {
             TransactionId::TwoPhaseLocking(id) => id,
             _ => panic!("unexpected txn id"),
@@ -235,7 +226,7 @@ impl TwoPhaseLocking {
         let ops = self.get_operations();
 
         // revert changes
-        for op in ops {
+        for op in &ops {
             let Operation {
                 op_type,
                 table_id,
@@ -245,8 +236,8 @@ impl TwoPhaseLocking {
             } = op;
 
             if let OperationType::Write = op_type {
-                let table = database.get_table(table_id); // get table
-                let tuple = table.get_tuple(column_id, offset).get(); // get tuple
+                let table = database.get_table(*table_id); // get table
+                let tuple = table.get_tuple(*column_id, *offset).get(); // get tuple
                 tuple.revert(); // revert; operations never fail
             }
         }
@@ -256,7 +247,7 @@ impl TwoPhaseLocking {
             let Operation {
                 table_id, offset, ..
             } = op;
-            self.release_lock(table_id, offset, *timestamp);
+            self.release_lock(table_id, offset, *timestamp).unwrap();
         }
 
         NonFatalError::NonSerializable
@@ -275,11 +266,10 @@ impl TwoPhaseLocking {
         request_mode: LockMode,
         timestamp: u64,
     ) -> LockRequest {
-        let mref = self.lock_table.pin();
-
+        let mref = self.lock_table.pin(); // pin
         let lock_info = mref.get(&(table_id, offset)); // attempt to get lock for a key
 
-        let mut lock_info = match lock_info {
+        let guard = match lock_info {
             // lock exists in the table for this record
             Some(lock) => lock,
 
@@ -290,7 +280,7 @@ impl TwoPhaseLocking {
                 lock_info.add_entry(entry); // add entry to lock info
 
                 // attempt to insert into lock table
-                match mref.try_insert((table_id, offset), lock_info) {
+                match mref.try_insert((table_id, offset), Mutex::new(lock_info)) {
                     // inserted
                     Ok(_) => return LockRequest::Granted,
 
@@ -301,6 +291,8 @@ impl TwoPhaseLocking {
                 }
             }
         };
+
+        let mut lock_info = guard.lock().unwrap();
 
         // if lock is not free then consult the granted lock
         if !lock_info.is_free() {
@@ -340,10 +332,11 @@ impl TwoPhaseLocking {
                             }
 
                             // only wait if all waiting write requests are older
+                            let ts = lock_info.get_timestamp();
                             if lock_info.get_iter().any(|e| {
                                 e.get_timestamp() > timestamp
                                     && e.get_mode() == LockMode::Write
-                                    && e.get_timestamp() != lock_info.get_timestamp()
+                                    && e.get_timestamp() != ts
                             }) {
                                 return LockRequest::Denied;
                             }
@@ -371,10 +364,11 @@ impl TwoPhaseLocking {
                     }
 
                     // only wait if all waiting write requests are older
+                    let ts = lock_info.get_timestamp();
                     if lock_info.get_iter().any(|e| {
                         e.get_timestamp() > timestamp
                             && e.get_mode() == LockMode::Write
-                            && e.get_timestamp() != lock_info.get_timestamp()
+                            && e.get_timestamp() != ts
                     }) {
                         return LockRequest::Denied;
                     }
@@ -411,7 +405,9 @@ impl TwoPhaseLocking {
         timestamp: u64,
     ) -> Result<(), NonFatalError> {
         let mref = self.lock_table.pin();
-        let lock_info = mref.get(&(table_id, offset)).unwrap();
+        let guard = mref.get(&(table_id, offset)).unwrap();
+
+        let mut lock_info = guard.lock().unwrap();
 
         // if 1 granted lock and no waiting requests; then reset lock
         if lock_info.get_granted() == 1 && !lock_info.is_waiting() {
@@ -471,7 +467,8 @@ impl TwoPhaseLocking {
                     // no reads waiting
 
                     // set new lock information
-                    lock_info.set_timestamp(lock_info.get_list()[0].get_timestamp());
+                    let ts = lock_info.get_list()[0].get_timestamp();
+                    lock_info.set_timestamp(ts);
                     lock_info.set_mode(LockMode::Write);
                     lock_info.set_granted(1);
 
@@ -514,9 +511,8 @@ impl TwoPhaseLocking {
                             .unwrap();
 
                         lock_info.set_mode(LockMode::Write);
-                        lock_info.set_timestamp(
-                            lock_info.get_list()[next_write_entry_index].get_timestamp(),
-                        );
+                        let ts = lock_info.get_list()[next_write_entry_index].get_timestamp();
+                        lock_info.set_timestamp(ts);
                         lock_info.inc_granted();
                         if lock_info.num_waiting() as u32 == lock_info.get_granted() {
                             lock_info.set_waiting(false);

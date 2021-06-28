@@ -3,6 +3,7 @@ use crate::scheduler::nocc::NoConcurrencyControl;
 use crate::scheduler::owh::OptimisedWaitHit;
 use crate::scheduler::owhtt::OptimisedWaitHitTransactionTypes;
 use crate::scheduler::sgt::SerializationGraph;
+use crate::scheduler::tpl::TwoPhaseLocking;
 use crate::scheduler::wh::WaitHit;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
@@ -36,6 +37,7 @@ pub enum Scheduler<'a> {
     OptimisedWaitHit(OptimisedWaitHit<'a>),
     OptimisedWaitHitTransactionTypes(OptimisedWaitHitTransactionTypes<'a>),
     NoConcurrencyControl(NoConcurrencyControl),
+    TwoPhaseLocking(TwoPhaseLocking),
 }
 
 impl<'a> Scheduler<'a> {
@@ -50,6 +52,7 @@ impl<'a> Scheduler<'a> {
                 OptimisedWaitHitTransactionTypes::new(cores),
             ),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
+            "2pl" => Scheduler::TwoPhaseLocking(TwoPhaseLocking::new(cores)),
             _ => panic!("Incorrect concurrency control protocol"),
         };
 
@@ -64,6 +67,7 @@ impl<'a> Scheduler<'a> {
             OptimisedWaitHit(owh) => owh.begin(),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.begin(),
             NoConcurrencyControl(nocc) => nocc.begin(),
+            TwoPhaseLocking(tpl) => tpl.begin(),
         }
     }
 
@@ -91,6 +95,7 @@ impl<'a> Scheduler<'a> {
             NoConcurrencyControl(nocc) => {
                 nocc.read_value(table_id, column_id, offset, meta, database, guard)
             }
+            TwoPhaseLocking(tpl) => tpl.read_value(table_id, column_id, offset, meta, database),
         }
     }
 
@@ -121,6 +126,9 @@ impl<'a> Scheduler<'a> {
             NoConcurrencyControl(nocc) => {
                 nocc.write_value(value, table_id, column_id, offset, meta, database, guard)
             }
+            TwoPhaseLocking(tpl) => {
+                tpl.write_value(value, table_id, column_id, offset, meta, database)
+            }
         }
     }
 
@@ -140,6 +148,7 @@ impl<'a> Scheduler<'a> {
                 owhtt.commit(database, guard, transaction_type)
             }
             NoConcurrencyControl(nocc) => nocc.commit(database, guard),
+            TwoPhaseLocking(tpl) => tpl.commit(database, meta),
         }
     }
 
@@ -156,6 +165,7 @@ impl<'a> Scheduler<'a> {
             OptimisedWaitHit(owh) => owh.abort(database, guard),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database, guard),
             NoConcurrencyControl(nocc) => nocc.abort(database, guard),
+            TwoPhaseLocking(tpl) => tpl.abort(database, meta),
         }
     }
 }
