@@ -223,3 +223,46 @@ fn acid_nocc_lu() {
 fn acid_nocc_g2item() {
     common::g2item("nocc");
 }
+
+// 2PL
+#[test]
+#[ignore]
+fn acid_tpl_g0() {
+    common::g0("tpl");
+}
+
+#[test]
+fn acid_tpl_g1a() {
+    common::g1a("tpl");
+}
+
+#[test]
+#[ignore]
+fn acid_tpl_g1c() {
+    common::g1c("tpl");
+}
+
+#[test]
+fn acid_tpl_imp() {
+    common::imp("tpl");
+}
+
+#[test]
+fn acid_tpl_otv() {
+    common::otv("tpl");
+}
+
+#[test]
+fn acid_tpl_fr() {
+    common::fr("tpl");
+}
+
+#[test]
+fn acid_tpl_lu() {
+    common::lu("tpl");
+}
+
+#[test]
+fn acid_tpl_g2item() {
+    common::g2item("tpl");
+}
