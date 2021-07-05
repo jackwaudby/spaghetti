@@ -61,8 +61,13 @@ impl Information {
         self.granted.push(request);
         self.granted.sort();
 
-        if timestamp > self.get_group_timestamp() {
+        if self.group_timestamp.is_some() {
+            if timestamp > self.get_group_timestamp() {
+                self.group_timestamp = Some(timestamp);
+            }
+        } else {
             self.group_timestamp = Some(timestamp);
+            self.group_mode = Some(lock_mode);
         }
     }
 

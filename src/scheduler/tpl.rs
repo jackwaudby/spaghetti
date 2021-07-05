@@ -25,6 +25,7 @@ pub struct TwoPhaseLocking {
     id: Arc<Mutex<u64>>,
     lock_table: HashMap<(usize, usize), Lock>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
+    locks_held: ThreadLocal<RefCell<Option<TransactionInformation>>>,
 }
 
 #[derive(Debug)]
@@ -41,8 +42,27 @@ impl TwoPhaseLocking {
         Self {
             id: Arc::new(Mutex::new(0)),
             lock_table: HashMap::new(),
+            locks_held: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
         }
+    }
+
+    pub fn get_locks(&self) -> Vec<Operation> {
+        let mut locks_held = self.locks_held.get().unwrap().borrow_mut();
+        locks_held.as_mut().unwrap().get()
+    }
+
+    pub fn record_lock(
+        &self,
+        op_type: OperationType,
+        table_id: usize,
+        column_id: usize,
+        offset: usize,
+        prv: u64,
+    ) {
+        let mut locks_held = self.locks_held.get().unwrap().borrow_mut();
+        let res = locks_held.as_mut().unwrap();
+        res.add(op_type, table_id, column_id, offset, prv); // record operation
     }
 
     pub fn get_operations(&self) -> Vec<Operation> {
@@ -66,6 +86,11 @@ impl TwoPhaseLocking {
     pub fn begin(&self) -> TransactionId {
         *self
             .txn_info
+            .get_or(|| RefCell::new(Some(TransactionInformation::new())))
+            .borrow_mut() = Some(TransactionInformation::new());
+
+        *self
+            .locks_held
             .get_or(|| RefCell::new(Some(TransactionInformation::new())))
             .borrow_mut() = Some(TransactionInformation::new());
 
@@ -106,6 +131,7 @@ impl TwoPhaseLocking {
             }
 
             LockRequest::Granted => {
+                self.record_lock(OperationType::Read, table_id, column_id, offset, 0);
                 self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
@@ -120,6 +146,7 @@ impl TwoPhaseLocking {
                     cvar.wait(&mut waiting);
                 }
 
+                self.record_lock(OperationType::Read, table_id, column_id, offset, 0);
                 self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
@@ -162,6 +189,7 @@ impl TwoPhaseLocking {
 
         match request {
             LockRequest::AlreadyGranted => {
+                self.record(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let tuple = table.get_tuple(column_id, offset).get(); // get tuple
                 tuple.set_value(value).unwrap(); // set value
@@ -170,6 +198,7 @@ impl TwoPhaseLocking {
             }
 
             LockRequest::Granted => {
+                self.record_lock(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 self.record(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let tuple = table.get_tuple(column_id, offset).get(); // get tuple
@@ -185,6 +214,7 @@ impl TwoPhaseLocking {
                     cvar.wait(&mut waiting);
                 }
 
+                self.record_lock(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 self.record(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let tuple = table.get_tuple(column_id, offset).get(); // get tuple
@@ -218,6 +248,7 @@ impl TwoPhaseLocking {
         debug!("commit by {}", timestamp);
 
         let ops = self.get_operations();
+        let locks = self.get_locks();
 
         // commit changes
         for op in &ops {
@@ -237,7 +268,7 @@ impl TwoPhaseLocking {
         }
 
         // release locks
-        for op in ops {
+        for op in locks {
             let Operation {
                 table_id, offset, ..
             } = op;
@@ -320,31 +351,25 @@ impl TwoPhaseLocking {
 
         let mut info = lock.lock(); // get exculsive access to lock
 
-        if !info.is_free() {
+        let outcome = if !info.is_free() {
             match request_mode {
                 LockMode::Read => {
                     match info.get_mode() {
                         LockMode::Read => {
                             info.add_granted(LockMode::Read, timestamp);
-                            drop(info);
-                            return LockRequest::Granted;
+                            LockRequest::Granted
                         }
 
                         LockMode::Write => {
                             // Assumption: transactions are uniquely identifable by their assigned timestamp.
                             if info.get_group_timestamp() == timestamp {
-                                drop(info);
-                                return LockRequest::AlreadyGranted;
+                                LockRequest::AlreadyGranted
+                            } else if timestamp > info.get_group_timestamp() {
+                                LockRequest::Denied // wait-die deadlock detection: newer requests are denied
+                            } else {
+                                let pair = info.add_waiting(LockMode::Read, timestamp);
+                                LockRequest::Delay(pair)
                             }
-
-                            if timestamp > info.get_group_timestamp() {
-                                drop(info);
-                                return LockRequest::Denied; // wait-die deadlock detection: newer requests are denied
-                            }
-
-                            let pair = info.add_waiting(LockMode::Read, timestamp);
-                            drop(info);
-                            return LockRequest::Delay(pair);
                         }
                     }
                 }
@@ -353,44 +378,36 @@ impl TwoPhaseLocking {
                     match info.get_mode() {
                         LockMode::Read => {
                             if info.upgrade(timestamp) {
-                                drop(info);
-                                return LockRequest::AlreadyGranted; // upgraded from read to write lock.
+                                LockRequest::AlreadyGranted // upgraded from read to write lock
+                            } else if timestamp > info.get_group_timestamp() {
+                                LockRequest::Denied // wait-die deadlock detection: newer requests are denied
+                            } else {
+                                let pair = info.add_waiting(LockMode::Write, timestamp);
+                                LockRequest::Delay(pair)
                             }
-
-                            if timestamp > info.get_group_timestamp() {
-                                drop(info);
-                                return LockRequest::Denied; // wait-die deadlock detection: newer requests are denied
-                            }
-
-                            let pair = info.add_waiting(LockMode::Write, timestamp);
-                            drop(info);
-                            return LockRequest::Delay(pair);
                         }
                         LockMode::Write => {
                             // Assumption: transactions are uniquely identifable by their assigned timestamp.
                             if info.get_group_timestamp() == timestamp {
-                                drop(info);
-                                return LockRequest::AlreadyGranted;
-                            }
+                                LockRequest::AlreadyGranted
+                            } else if timestamp > info.get_group_timestamp() {
+                                LockRequest::Denied // wait-die deadlock detection: newer requests are denied
+                            } else {
+                                let pair = info.add_waiting(LockMode::Write, timestamp);
 
-                            if timestamp > info.get_group_timestamp() {
-                                drop(info);
-                                return LockRequest::Denied; // wait-die deadlock detection: newer requests are denied
+                                LockRequest::Delay(pair)
                             }
-
-                            let pair = info.add_waiting(LockMode::Write, timestamp);
-                            drop(info);
-                            LockRequest::Delay(pair)
                         }
                     }
                 }
             }
         } else {
-            // lock is free
             info.add_granted(LockMode::Read, timestamp);
-            drop(info);
-            return LockRequest::Granted;
-        }
+            LockRequest::Granted
+        };
+
+        drop(info);
+        outcome
     }
 
     /// Release a lock.
@@ -402,13 +419,11 @@ impl TwoPhaseLocking {
     ) -> Result<(), NonFatalError> {
         let mref = self.lock_table.pin();
         let lock_handle = mref.get(&(table_id, offset)).unwrap();
-
         let mut info = lock_handle.lock();
 
-        // If 1 granted lock and no waiting requests; then reset lock
         if info.num_granted() == 1 && !info.is_waiting() {
             info.reset();
-            return Ok(());
+            return Ok(()); // no waiting requests; reset lock
         }
 
         let request = info.remove_granted(timestamp);
@@ -427,11 +442,7 @@ impl TwoPhaseLocking {
                     "read lock released on ({},{}) by {}",
                     table_id, offset, timestamp
                 );
-                if info.num_granted() > 1 {
-                    // (i) multiple outstanding read locks
-                    // drop request
-                    // TODO: need to update lock group timestamp?
-                } else {
+                if info.num_granted() == 0 {
                     info.grant_waiting();
                 }
             }
