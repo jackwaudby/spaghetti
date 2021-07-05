@@ -10,6 +10,4 @@ pub mod parameter_generation;
 
 pub mod error;
 
-pub mod wait_manager;
-
 pub mod transaction_information;

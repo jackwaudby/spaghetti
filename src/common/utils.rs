@@ -1,14 +1,10 @@
-use crate::common::error::NonFatalError;
 use crate::common::message::{InternalResponse, Message, Outcome, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
-use crate::common::wait_manager::WaitManager;
-
 use crate::scheduler::Scheduler;
 use crate::storage::Database;
 use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
-
 use crate::workloads::{acid, smallbank};
 
 use config::Config;
@@ -17,8 +13,8 @@ use std::io::Write;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
+use tracing::info;
 use tracing::Level;
-use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub fn init_config(file: &str) -> Config {
@@ -87,8 +83,6 @@ pub fn run(
 
     let mut generator = get_transaction_generator(config); // initialise transaction generator
 
-    let mut wm = WaitManager::new();
-
     // create results file -- dir created by this point
     let mut fh;
     if log_results {
@@ -150,56 +144,18 @@ pub fn run(
             break;
         } else {
             let txn = generator.get_next(); // generate txn
-
-            let mut restart = true;
-
-            let start_latency = Instant::now();
-
-            while restart {
-                let ir = execute(txn.clone(), scheduler, database); // execute txn
-
-                let InternalResponse {
-                    transaction,
-                    outcome,
-                    ..
-                } = ir;
-
-                match outcome {
-                    Outcome::Committed { .. } => {
-                        restart = false;
-                        stats.record(transaction, outcome.clone(), restart);
-                        wm.reset();
-                        if log_results {
-                            log_result(&mut fh, outcome.clone());
-                        }
-                        debug!("complete: committed");
-                    }
-                    Outcome::Aborted { ref reason } => {
-                        if let NonFatalError::SmallBankError(_) = reason {
-                            restart = false;
-                            wm.reset();
-                            stats.record(transaction, outcome.clone(), restart);
-                            if log_results {
-                                log_result(&mut fh, outcome.clone());
-                            }
-                            debug!("complete: aborted");
-                        } else {
-                            // restart = true; // protocol abort
-                            restart = false;
-
-                            debug!("restart: {}", reason);
-                            // stats.record(transaction, outcome.clone(), restart);
-                            stats.record(transaction, outcome.clone(), true);
-
-                            // let start_wm = Instant::now();
-                            // wm.wait();
-                            // stats.stop_wait_manager(start_wm);
-                        }
-                    }
-                }
+            let start_latency = Instant::now(); // start measuring latency
+            let ir = execute(txn.clone(), scheduler, database); // execute txn
+            let InternalResponse {
+                transaction,
+                outcome,
+                ..
+            } = ir; // breakdown response
+            stats.record(transaction, outcome.clone()); // record response
+            if log_results {
+                log_result(&mut fh, outcome.clone()); // log response
             }
-
-            stats.stop_latency(start_latency);
+            stats.stop_latency(start_latency); // stop measuring latency
             completed += 1;
         }
     }

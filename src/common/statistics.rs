@@ -307,9 +307,9 @@ impl LocalStatistics {
         self.wait_manager += start.elapsed().as_nanos();
     }
 
-    pub fn record(&mut self, transaction: Transaction, outcome: Outcome, restart: bool) {
+    pub fn record(&mut self, transaction: Transaction, outcome: Outcome) {
         self.transaction_breakdown
-            .record(transaction, outcome.clone(), restart);
+            .record(transaction, outcome.clone());
 
         if let Outcome::Aborted { reason } = outcome {
             use WorkloadAbortBreakdown::*;
@@ -425,20 +425,16 @@ impl TransactionBreakdown {
         }
     }
 
-    fn record(&mut self, transaction: Transaction, outcome: Outcome, restarted: bool) {
+    fn record(&mut self, transaction: Transaction, outcome: Outcome) {
         let ind = self
             .transactions
             .iter()
             .position(|x| x.transaction == transaction)
             .unwrap();
 
-        if restarted {
-            self.transactions[ind].inc_restarted()
-        } else {
-            match outcome {
-                Outcome::Committed { .. } => self.transactions[ind].inc_committed(),
-                Outcome::Aborted { .. } => self.transactions[ind].inc_aborted(),
-            }
+        match outcome {
+            Outcome::Committed { .. } => self.transactions[ind].inc_committed(),
+            Outcome::Aborted { .. } => self.transactions[ind].inc_aborted(),
         }
 
         //  self.transactions[ind].add_latency(latency.unwrap().as_secs_f64());
@@ -506,10 +502,6 @@ impl TransactionMetrics {
     fn inc_aborted(&mut self) {
         self.completed += 1;
         self.aborted += 1;
-    }
-
-    fn inc_restarted(&mut self) {
-        self.restarted += 1;
     }
 
     // fn add_latency(&mut self, latency: f64) {

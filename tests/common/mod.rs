@@ -103,7 +103,7 @@ pub fn run_recon(
                             } = ir;
 
                             utils::log_result(&mut fh, outcome.clone()); // log result
-                            stats.record(transaction, outcome.clone(), false);
+                            stats.record(transaction, outcome.clone());
                             // record txn
                         }
                     }
@@ -128,7 +128,7 @@ pub fn run_recon(
                                 ..
                             } = ir;
                             utils::log_result(&mut fh, outcome.clone()); // log result
-                            stats.record(transaction, outcome.clone(), false);
+                            stats.record(transaction, outcome.clone());
                         }
                     }
                     "g2item" => {
@@ -156,7 +156,7 @@ pub fn run_recon(
                                 ..
                             } = ir;
                             utils::log_result(&mut fh, outcome.clone()); // log result
-                            stats.record(transaction, outcome.clone(), false);
+                            stats.record(transaction, outcome.clone());
                             // record txn
                         }
                     }
