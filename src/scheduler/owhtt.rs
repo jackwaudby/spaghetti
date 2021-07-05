@@ -1,9 +1,7 @@
 use crate::common::error::NonFatalError;
+use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::owh::transaction::{self, PredecessorUpon, Transaction, TransactionState};
-use crate::scheduler::sgt::transaction_information::{
-    Operation, OperationType, TransactionInformation,
-};
 use crate::scheduler::{Database, TransactionType};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;

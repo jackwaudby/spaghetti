@@ -1,7 +1,5 @@
 use crate::common::error::NonFatalError;
-use crate::scheduler::sgt::transaction_information::{
-    Operation, OperationType, TransactionInformation,
-};
+use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::wh::error::WaitHitError;
 use crate::scheduler::wh::shared::Shared;
 use crate::scheduler::wh::shared::TransactionOutcome;

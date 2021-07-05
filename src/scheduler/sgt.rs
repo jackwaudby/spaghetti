@@ -1,10 +1,8 @@
 use crate::common::error::NonFatalError;
+use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::sgt::node::EdgeSet;
 use crate::scheduler::sgt::node::{Edge, RwNode};
-use crate::scheduler::sgt::transaction_information::{
-    Operation, OperationType, TransactionInformation,
-};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
@@ -17,8 +15,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
 use tracing::{debug, info};
-
-pub mod transaction_information;
 
 pub mod node;
 

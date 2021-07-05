@@ -1,7 +1,5 @@
 use crate::common::error::NonFatalError;
-use crate::scheduler::sgt::transaction_information::{
-    Operation, OperationType, TransactionInformation,
-};
+use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;

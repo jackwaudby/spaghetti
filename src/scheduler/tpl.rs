@@ -1,7 +1,5 @@
 use crate::common::error::NonFatalError;
-use crate::scheduler::sgt::transaction_information::{
-    Operation, OperationType, TransactionInformation,
-};
+use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::tpl::lock_info::{Lock, LockMode};
 use crate::scheduler::tpl::locks_held::LocksHeld;
