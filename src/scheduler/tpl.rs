@@ -4,6 +4,7 @@ use crate::scheduler::sgt::transaction_information::{
 };
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::tpl::lock_info::{Lock, LockMode};
+use crate::scheduler::tpl::locks_held::LocksHeld;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
@@ -11,10 +12,12 @@ use crate::storage::Database;
 
 use flurry::HashMap;
 use parking_lot::{Condvar, Mutex};
-use std::cell::RefCell;
+use std::cell::{RefCell, RefMut};
 use std::sync::Arc;
 use thread_local::ThreadLocal;
 use tracing::{debug, info};
+
+pub mod locks_held;
 
 pub mod error;
 
@@ -25,7 +28,7 @@ pub struct TwoPhaseLocking {
     id: Arc<Mutex<u64>>,
     lock_table: HashMap<(usize, usize), Lock>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
-    locks_held: ThreadLocal<RefCell<Option<TransactionInformation>>>,
+    locks_held: ThreadLocal<RefCell<LocksHeld>>,
 }
 
 #[derive(Debug)]
@@ -47,22 +50,13 @@ impl TwoPhaseLocking {
         }
     }
 
-    pub fn get_locks(&self) -> Vec<Operation> {
-        let mut locks_held = self.locks_held.get().unwrap().borrow_mut();
-        locks_held.as_mut().unwrap().get()
+    pub fn get_locks(&self) -> RefMut<LocksHeld> {
+        self.locks_held.get().unwrap().borrow_mut()
     }
 
-    pub fn record_lock(
-        &self,
-        op_type: OperationType,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        prv: u64,
-    ) {
+    pub fn add_lock(&self, table_id: usize, offset: usize) {
         let mut locks_held = self.locks_held.get().unwrap().borrow_mut();
-        let res = locks_held.as_mut().unwrap();
-        res.add(op_type, table_id, column_id, offset, prv); // record operation
+        locks_held.add(table_id, offset);
     }
 
     pub fn get_operations(&self) -> Vec<Operation> {
@@ -91,8 +85,8 @@ impl TwoPhaseLocking {
 
         *self
             .locks_held
-            .get_or(|| RefCell::new(Some(TransactionInformation::new())))
-            .borrow_mut() = Some(TransactionInformation::new());
+            .get_or(|| RefCell::new(LocksHeld::new()))
+            .borrow_mut() = LocksHeld::new();
 
         let mut lock = self.id.lock();
         let id = *lock;
@@ -131,7 +125,7 @@ impl TwoPhaseLocking {
             }
 
             LockRequest::Granted => {
-                self.record_lock(OperationType::Read, table_id, column_id, offset, 0);
+                self.add_lock(table_id, offset);
                 self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
@@ -146,7 +140,7 @@ impl TwoPhaseLocking {
                     cvar.wait(&mut waiting);
                 }
 
-                self.record_lock(OperationType::Read, table_id, column_id, offset, 0);
+                self.add_lock(table_id, offset);
                 self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
@@ -198,7 +192,7 @@ impl TwoPhaseLocking {
             }
 
             LockRequest::Granted => {
-                self.record_lock(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
+                self.add_lock(table_id, offset); // record operation; prv is redunant here
                 self.record(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let tuple = table.get_tuple(column_id, offset).get(); // get tuple
@@ -214,7 +208,7 @@ impl TwoPhaseLocking {
                     cvar.wait(&mut waiting);
                 }
 
-                self.record_lock(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
+                self.add_lock(table_id, offset); // record operation; prv is redunant here
                 self.record(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let tuple = table.get_tuple(column_id, offset).get(); // get tuple
@@ -248,7 +242,7 @@ impl TwoPhaseLocking {
         debug!("commit by {}", timestamp);
 
         let ops = self.get_operations();
-        let locks = self.get_locks();
+        let mut locks = self.get_locks();
 
         // commit changes
         for op in &ops {
@@ -268,12 +262,12 @@ impl TwoPhaseLocking {
         }
 
         // release locks
-        for op in locks {
-            let Operation {
-                table_id, offset, ..
-            } = op;
+        for op in locks.iter() {
+            let (table_id, offset) = op.get_id();
             self.release_lock(table_id, offset, *timestamp).unwrap();
         }
+
+        locks.clear();
 
         Ok(())
     }
@@ -287,6 +281,7 @@ impl TwoPhaseLocking {
 
         debug!("abort by {}", timestamp);
         let ops = self.get_operations();
+        let mut locks = self.get_locks();
 
         // revert changes
         for op in &ops {
@@ -306,12 +301,12 @@ impl TwoPhaseLocking {
         }
 
         // release locks
-        for op in ops {
-            let Operation {
-                table_id, offset, ..
-            } = op;
+        for op in locks.iter() {
+            let (table_id, offset) = op.get_id();
             self.release_lock(table_id, offset, *timestamp).unwrap();
         }
+
+        locks.clear();
 
         NonFatalError::NonSerializable
     }
