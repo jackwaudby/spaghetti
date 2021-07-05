@@ -1,74 +1,93 @@
-use std::slice::Iter;
-use std::sync::{Arc, Condvar, Mutex};
+use parking_lot::{Condvar, Mutex, MutexGuard};
+use std::cmp::Ordering;
+use std::sync::Arc;
 
-/// Represents the locking information for a given database record.
-#[derive(Debug)]
-pub struct LockInfo {
-    /// Overall lock state.
-    /// Prevents ransactions needing to traverse all `Entry`s to determine lock status.
-    group_mode: Option<LockMode>,
-
-    /// Whether transactions are waiting for the lock.
-    waiting: bool,
-
-    /// List of transactions that have acquired the lock or are waiting for it.
-    list: Vec<Entry>,
-
-    /// Latest timestamp of transactions that hold lock, used for deadlock detection.
-    timestamp: Option<u64>,
-
-    /// Number of locks concurrently granted for this record.
-    granted: Option<u32>,
-}
-
-/// Represents an entry in the list of transactions that have requested a lock.
-///
-/// These transactions can either be waiting for the lock or be holding it.
-/// For requests that are waiting for the lock the calling thread is blocked using a `Condvar`.
-/// When a transaction releases the lock it notifies the thread to resume execution.
-#[derive(Debug)]
-pub struct Entry {
-    lock_mode: LockMode,
-    waiting: Option<Arc<(Mutex<bool>, Condvar)>>,
-    timestamp: u64,
-}
-
-/// Represents the different lock modes.
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum LockMode {
     Read,
     Write,
 }
 
-impl LockInfo {
-    pub fn new(group_mode: LockMode, timestamp: u64) -> Self {
-        Self {
-            group_mode: Some(group_mode),
-            waiting: false,
-            list: Vec::new(),
-            timestamp: Some(timestamp),
-            granted: Some(1),
+#[derive(Debug)]
+pub struct Lock(Mutex<Information>);
+
+#[derive(Debug)]
+pub struct Information {
+    group_mode: Option<LockMode>,
+    group_timestamp: Option<u64>,
+    waiting: Vec<Request>,
+    granted: Vec<Request>,
+}
+
+// Assumption: transactions only make a single request per record, hence, timestamps are unique.
+#[derive(Debug)]
+pub struct Request {
+    lock_mode: LockMode,
+    waiting: Option<Arc<(Mutex<bool>, Condvar)>>,
+    timestamp: u64,
+}
+
+impl Lock {
+    pub fn create_and_grant(group_mode: LockMode, timestamp: u64) -> Self {
+        let information = Information::create_and_grant(group_mode, timestamp);
+
+        Lock(Mutex::new(information))
+    }
+
+    pub fn lock(&self) -> MutexGuard<Information> {
+        self.0.lock()
+    }
+}
+
+impl Information {
+    pub fn create_and_grant(lock_mode: LockMode, timestamp: u64) -> Self {
+        let mut information = Information {
+            group_mode: Some(lock_mode),
+            group_timestamp: Some(timestamp),
+            waiting: Vec::new(),
+            granted: Vec::new(),
+        };
+
+        information.add_granted(lock_mode, timestamp);
+
+        debug_assert!(!information.is_free());
+        debug_assert!(!information.is_waiting());
+        debug_assert_eq!(information.num_granted(), 1);
+        debug_assert_eq!(information.num_waiting(), 0);
+
+        information
+    }
+
+    pub fn add_granted(&mut self, lock_mode: LockMode, timestamp: u64) {
+        let request = Request::new(lock_mode, None, timestamp);
+        self.granted.push(request);
+        self.granted.sort(); // timestamp (lowest/oldest request to highest/youngest request)
+
+        if timestamp < self.get_group_timestamp() {
+            self.group_timestamp = Some(timestamp); // if this granted request has lower timestamp; then update lock's group timestamp
         }
     }
 
-    pub fn remove_entry(&mut self, i: usize) -> Entry {
-        self.list.remove(i)
+    pub fn add_waiting(
+        &mut self,
+
+        lock_mode: LockMode,
+        timestamp: u64,
+    ) -> Arc<(Mutex<bool>, Condvar)> {
+        let pair = Arc::new((Mutex::new(false), Condvar::new()));
+        let res = Arc::clone(&pair);
+        let request = Request::new(lock_mode, Some(pair), timestamp);
+        self.waiting.push(request);
+        self.waiting.sort(); // timestamp (lowest/oldest request to highest/youngest request)
+        res
+    }
+
+    pub fn owned_by(&mut self) -> u64 {
+        self.get_group_timestamp()
     }
 
     pub fn is_free(&self) -> bool {
-        self.granted.is_some()
-    }
-
-    pub fn get_iter(&self) -> Iter<Entry> {
-        self.list.iter()
-    }
-
-    pub fn get_list(&self) -> &Vec<Entry> {
-        &self.list
-    }
-
-    pub fn get_mut_list(&mut self) -> &mut Vec<Entry> {
-        &mut self.list
+        self.group_mode.is_none()
     }
 
     pub fn set_mode(&mut self, mode: LockMode) {
@@ -80,62 +99,100 @@ impl LockInfo {
     }
 
     pub fn is_waiting(&self) -> bool {
-        self.waiting
-    }
-
-    pub fn set_waiting(&mut self, val: bool) {
-        self.waiting = val;
+        !self.waiting.is_empty()
     }
 
     pub fn num_waiting(&self) -> usize {
-        self.list.len()
+        self.waiting.len()
     }
 
-    pub fn inc_granted(&mut self) {
-        let held = self.granted.unwrap() + 1;
-        self.granted = Some(held);
+    pub fn num_granted(&self) -> usize {
+        self.granted.len()
     }
 
-    pub fn dec_granted(&mut self) {
-        let held = self.granted.unwrap() - 1;
-        self.granted = Some(held);
-    }
-
-    pub fn set_granted(&mut self, val: u32) {
-        self.granted = Some(val);
-    }
-
-    pub fn get_granted(&self) -> u32 {
-        self.granted.unwrap()
-    }
-
-    pub fn set_timestamp(&mut self, timestamp: u64) {
-        self.timestamp = Some(timestamp);
-    }
-
-    pub fn get_timestamp(&mut self) -> u64 {
-        self.timestamp.unwrap()
-    }
-
-    pub fn add_entry(&mut self, entry: Entry) {
-        self.list.push(entry);
+    pub fn get_group_timestamp(&mut self) -> u64 {
+        self.group_timestamp.unwrap()
     }
 
     pub fn reset(&mut self) {
         self.group_mode = None; // reset group mode
-        self.list.clear(); // remove from list
-        self.granted = Some(0); // set granted to 0
-        self.timestamp = None; // reset timestamp
+        self.group_timestamp = None; // reset timestamp
+        self.waiting.clear(); // remove from list
+        self.granted.clear(); // remove from list
+    }
+
+    pub fn remove_granted(&mut self, timestamp: u64) -> Request {
+        let index = self
+            .granted
+            .iter()
+            .position(|e| e.get_timestamp() == timestamp)
+            .unwrap();
+
+        self.granted.remove(index)
+    }
+
+    /// Grant either: (i) next n read lock requests, or, (ii) the next write lock request.
+    /// Assumption 1: waiting requests are sorted by timestamp.
+    /// Assumption 2: at least 1 waiting request.
+    pub fn grant_waiting(&mut self) {
+        let write_pos = self
+            .waiting
+            .iter()
+            .position(|request| request.get_mode() == LockMode::Write); // position of first waiting write request
+
+        match write_pos {
+            // At least waiting write request;
+            Some(write_index) => {
+                if write_index == 0 {
+                    // (i) first waiting request is a write request
+                    let write_request = self.waiting.remove(write_index); // remove from waiting list
+                    self.group_timestamp = Some(write_request.get_timestamp()); // update group timestamp
+                    self.set_mode(LockMode::Write); // update group mode
+                    let cond = write_request.get_cond(); // wake up thread
+                    let (lock, cvar) = &*cond;
+                    let mut started = lock.lock();
+                    *started = true;
+                    cvar.notify_all();
+                    self.granted.push(write_request); // add to granted
+                } else {
+                    // (ii) there are n read requests before first write request
+                    self.set_mode(LockMode::Read); // update group mode
+                    let removed: Vec<_> = self.waiting.drain(0..write_index).collect();
+                    for read_request in removed.into_iter() {
+                        self.group_timestamp = Some(read_request.get_timestamp()); // update group timestamp
+                        let cond = read_request.get_cond(); // wake up thread
+                        let (lock, cvar) = &*cond;
+                        let mut started = lock.lock();
+                        *started = true;
+                        cvar.notify_all();
+                        self.granted.push(read_request); // add to granted
+                    }
+                }
+            }
+            // Grant waiting read requests;
+            None => {
+                self.set_mode(LockMode::Read); // update group mode
+                while let Some(read_request) = self.waiting.pop() {
+                    self.group_timestamp = Some(read_request.get_timestamp()); // update group timestamp
+                    let cond = read_request.get_cond(); // wake up thread
+                    let (lock, cvar) = &*cond;
+                    let mut started = lock.lock();
+                    *started = true;
+                    cvar.notify_all();
+                    self.granted.push(read_request); // add to granted
+                }
+            }
+        }
     }
 }
 
-impl Entry {
+impl Request {
     pub fn new(
         lock_mode: LockMode,
         waiting: Option<Arc<(Mutex<bool>, Condvar)>>,
         timestamp: u64,
-    ) -> Entry {
-        Entry {
+    ) -> Self {
+        Self {
             lock_mode,
             waiting,
             timestamp,
@@ -154,3 +211,23 @@ impl Entry {
         self.timestamp
     }
 }
+
+impl Ord for Request {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.timestamp.cmp(&other.timestamp)
+    }
+}
+
+impl PartialOrd for Request {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Request {
+    fn eq(&self, other: &Self) -> bool {
+        self.timestamp == other.timestamp
+    }
+}
+
+impl Eq for Request {}

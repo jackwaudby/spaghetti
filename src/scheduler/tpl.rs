@@ -3,16 +3,16 @@ use crate::scheduler::sgt::transaction_information::{
     Operation, OperationType, TransactionInformation,
 };
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
-use crate::scheduler::tpl::lock_info::LockInfo;
-use crate::scheduler::tpl::lock_info::*;
+use crate::scheduler::tpl::lock_info::{Lock, LockMode};
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 use crate::storage::Database;
 
 use flurry::HashMap;
+use parking_lot::{Condvar, Mutex};
 use std::cell::RefCell;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::Arc;
 use thread_local::ThreadLocal;
 use tracing::info;
 
@@ -23,7 +23,7 @@ pub mod lock_info;
 #[derive(Debug)]
 pub struct TwoPhaseLocking {
     id: Arc<Mutex<u64>>,
-    lock_table: HashMap<(usize, usize), Mutex<LockInfo>>,
+    lock_table: HashMap<(usize, usize), Lock>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
 }
 
@@ -68,7 +68,7 @@ impl TwoPhaseLocking {
             .get_or(|| RefCell::new(Some(TransactionInformation::new())))
             .borrow_mut() = Some(TransactionInformation::new());
 
-        let mut lock = self.id.lock().unwrap();
+        let mut lock = self.id.lock();
         let id = *lock;
         *lock += 1;
 
@@ -100,11 +100,12 @@ impl TwoPhaseLocking {
             }
 
             LockRequest::Delay(pair) => {
-                let (lock, cvar) = &*pair;
-                let mut waiting = lock.lock().unwrap();
-                while !*waiting {
-                    waiting = cvar.wait(waiting).unwrap();
+                let &(ref lock, ref cvar) = &*pair;
+                let mut waiting = lock.lock(); // wait flag: false = asleep
+                if !*waiting {
+                    cvar.wait(&mut waiting);
                 }
+
                 self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
@@ -151,11 +152,12 @@ impl TwoPhaseLocking {
             }
 
             LockRequest::Delay(pair) => {
-                let (lock, cvar) = &*pair;
-                let mut waiting = lock.lock().unwrap();
-                while !*waiting {
-                    waiting = cvar.wait(waiting).unwrap();
+                let &(ref lock, ref cvar) = &*pair;
+                let mut waiting = lock.lock(); // wait flag: false = asleep
+                if !*waiting {
+                    cvar.wait(&mut waiting);
                 }
+
                 self.record(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
                 let tuple = table.get_tuple(column_id, offset).get(); // get tuple
@@ -254,11 +256,6 @@ impl TwoPhaseLocking {
     }
 
     /// Attempt to acquire lock.
-    ///
-    /// Takes a search key, desired lock mode, and transaction name and timestamp.
-    /// If the lock is acquired `Granted` is returned.
-    /// If the lock request is refused `Denied` is returned.
-    /// If the lock request is delayed `Delayed` is returned.
     fn request_lock(
         &self,
         table_id: usize,
@@ -267,132 +264,97 @@ impl TwoPhaseLocking {
         timestamp: u64,
     ) -> LockRequest {
         let mref = self.lock_table.pin(); // pin
-        let lock_info = mref.get(&(table_id, offset)); // attempt to get lock for a key
+        let lock_handle = mref.get(&(table_id, offset)); // handle to lock
 
-        let guard = match lock_info {
-            // lock exists in the table for this record
-            Some(lock) => lock,
+        let lock = match lock_handle {
+            Some(lock) => lock, // locks exist in the table for this record
 
-            // no lock for this record, create a new one
+            // no lock for this record in the lock table
             None => {
-                let mut lock_info = LockInfo::new(request_mode, timestamp); // create new lock information
-                let entry = Entry::new(request_mode, None, timestamp); // create new request entry
-                lock_info.add_entry(entry); // add entry to lock info
+                let lock = Lock::create_and_grant(request_mode, timestamp); // create lock and grant to this request
 
                 // attempt to insert into lock table
-                match mref.try_insert((table_id, offset), Mutex::new(lock_info)) {
-                    // inserted
-                    Ok(_) => return LockRequest::Granted,
-
-                    // lock info was concurrently created
+                match mref.try_insert((table_id, offset), lock) {
+                    Ok(_) => return LockRequest::Granted, // success
                     Err(_) => {
-                        return LockRequest::Denied;
+                        return LockRequest::Denied; // lock was concurrently created; deny
                     }
                 }
             }
         };
 
-        let mut lock_info = guard.lock().unwrap();
+        let mut info = lock.lock(); // get exculsive access to lock
 
-        // if lock is not free then consult the granted lock
-        if !lock_info.is_free() {
-            // Consult the lock's group mode.
-            //
-            // If request is a `Read` then:
-            // (a) If current lock is a `Read` then grant the lock.
-            // (b) If current lock is a `Write` then and apply deadlock detection:
-            //    (i) If lock.timestamp > request.timestamp (older) then the request waits and the calling thread waits.
-            //    (ii) If lock.timestamp < request.timestamp (younger) the requests die and then the lock is denied.
-            //
-            // If request is a `Write` then apply deadlock detection as above.
+        if !info.is_free() {
             match request_mode {
-                // requesting a read lock
                 LockMode::Read => {
-                    match lock_info.get_mode() {
-                        // current lock is read; grant lock
+                    match info.get_mode() {
                         LockMode::Read => {
-                            let entry = Entry::new(LockMode::Read, None, timestamp); // create new entry
-                            lock_info.add_entry(entry); // add to lock info
-
-                            // if this request has lower timestamp; then update lock's timestamp
-                            if timestamp < lock_info.get_timestamp() {
-                                lock_info.set_timestamp(timestamp);
-                            }
-
-                            lock_info.inc_granted(); // increment locks granted
-
-                            LockRequest::Granted
+                            info.add_granted(LockMode::Read, timestamp);
+                            drop(info);
+                            return LockRequest::Granted;
                         }
-                        //  current lock is write; apply deadlock detection then wait
+
                         LockMode::Write => {
-                            // wait-die deadlock detection
-                            // if transaction is younger than transaction holding the lock; then deny lock
-                            if lock_info.get_timestamp() < timestamp {
-                                return LockRequest::Denied;
+                            // Assumption: transactions are uniquely identifable by their assigned timestamp.
+                            if info.owned_by() == timestamp {
+                                drop(info);
+                                return LockRequest::Granted;
                             }
 
-                            // only wait if all waiting write requests are older
-                            let ts = lock_info.get_timestamp();
-                            if lock_info.get_iter().any(|e| {
-                                e.get_timestamp() > timestamp
-                                    && e.get_mode() == LockMode::Write
-                                    && e.get_timestamp() != ts
-                            }) {
-                                return LockRequest::Denied;
+                            if timestamp > info.get_group_timestamp() {
+                                drop(info);
+                                return LockRequest::Denied; // wait-die deadlock detection: newer requests are denied
                             }
 
-                            let pair = Arc::new((Mutex::new(false), Condvar::new())); // initialise condvar to sleep the waiting thread
-                            let entry =
-                                Entry::new(LockMode::Read, Some(Arc::clone(&pair)), timestamp); // create new entry for transaction request list
-                            lock_info.add_entry(entry); // add to request list
+                            let pair = info.add_waiting(LockMode::Read, timestamp);
+                            drop(info);
+                            return LockRequest::Delay(pair);
+                        }
+                    }
+                }
 
-                            if !lock_info.is_waiting() {
-                                lock_info.set_waiting(true); // set waiting transaction(s) flag on lock.
+                LockMode::Write => {
+                    match info.get_mode() {
+                        LockMode::Read => {
+                            if info.num_granted() == 1 && info.owned_by() == timestamp {
+                                info.set_mode(LockMode::Write);
+                                drop(info);
+                                return LockRequest::Granted;
                             }
 
+                            if timestamp > info.get_group_timestamp() {
+                                drop(info);
+                                return LockRequest::Denied; // wait-die deadlock detection: newer requests are denied
+                            }
+
+                            let pair = info.add_waiting(LockMode::Write, timestamp);
+                            drop(info);
+                            return LockRequest::Delay(pair);
+                        }
+                        LockMode::Write => {
+                            // Assumption: transactions are uniquely identifable by their assigned timestamp.
+                            if info.owned_by() == timestamp {
+                                drop(info);
+                                return LockRequest::Granted;
+                            }
+
+                            if timestamp > info.get_group_timestamp() {
+                                drop(info);
+                                return LockRequest::Denied; // wait-die deadlock detection: newer requests are denied
+                            }
+
+                            let pair = info.add_waiting(LockMode::Write, timestamp);
+                            drop(info);
                             LockRequest::Delay(pair)
                         }
                     }
                 }
-
-                // requesting a write lock
-                LockMode::Write => {
-                    // wait-die deadlock detection
-                    // if transaction is younger than transaction holding the lock; then deny lock
-                    if lock_info.get_timestamp() < timestamp {
-                        return LockRequest::Denied;
-                    }
-
-                    // only wait if all waiting write requests are older
-                    let ts = lock_info.get_timestamp();
-                    if lock_info.get_iter().any(|e| {
-                        e.get_timestamp() > timestamp
-                            && e.get_mode() == LockMode::Write
-                            && e.get_timestamp() != ts
-                    }) {
-                        return LockRequest::Denied;
-                    }
-
-                    let pair = Arc::new((Mutex::new(false), Condvar::new())); // initialise condvar to sleep the waiting thread
-                    let entry = Entry::new(LockMode::Write, Some(Arc::clone(&pair)), timestamp); // create new entry for transaction request list
-                    lock_info.add_entry(entry); // add to request list
-
-                    if !lock_info.is_waiting() {
-                        lock_info.set_waiting(true); // set waiting transaction(s) flag on lock
-                    }
-
-                    LockRequest::Delay(pair)
-                }
             }
         } else {
             // lock is free
-
-            lock_info.set_mode(request_mode); // set group mode to request mode
-            let entry = Entry::new(request_mode, None, timestamp); // create new entry for request
-            lock_info.add_entry(entry);
-            lock_info.set_timestamp(timestamp); // set lock timestamp
-            lock_info.inc_granted(); // increment granted
-
+            info.add_granted(LockMode::Read, timestamp);
+            drop(info);
             return LockRequest::Granted;
         }
     }
@@ -405,125 +367,30 @@ impl TwoPhaseLocking {
         timestamp: u64,
     ) -> Result<(), NonFatalError> {
         let mref = self.lock_table.pin();
-        let guard = mref.get(&(table_id, offset)).unwrap();
+        let lock_handle = mref.get(&(table_id, offset)).unwrap();
 
-        let mut lock_info = guard.lock().unwrap();
+        let mut info = lock_handle.lock();
 
-        // if 1 granted lock and no waiting requests; then reset lock
-        if lock_info.get_granted() == 1 && !lock_info.is_waiting() {
-            lock_info.reset();
+        // If 1 granted lock and no waiting requests; then reset lock
+        if info.num_granted() == 1 && !info.is_waiting() {
+            info.reset();
             return Ok(());
         }
 
-        let entry_index = lock_info
-            .get_mut_list()
-            .iter()
-            .position(|e| e.get_timestamp() == timestamp)
-            .unwrap(); // find the entry for this lock request
+        let request = info.remove_granted(timestamp);
 
-        let entry = lock_info.remove_entry(entry_index); // Remove transactions entry.
-
-        match entry.get_mode() {
-            // if record was locked with a Write lock then this is the only transaction with a lock
-            // on this record. If so,
-            // (i) Grant the next n read lock requests, or,
-            // (ii) Grant the next write lock request
+        match request.get_mode() {
             LockMode::Write => {
-                let mut read_requests = 0; // calculate waiting read requests
-
-                for e in lock_info.get_iter() {
-                    if e.get_mode() == LockMode::Write {
-                        break;
-                    }
-                    read_requests += 1; // TODO: grant all read request with timestamp less than this write request
-                }
-
-                // if some reads requests first in queue;
-                if read_requests != 0 {
-                    // wake up threads and determine new lock timestamp
-                    let mut new_lock_timestamp = 0;
-
-                    for e in lock_info.get_iter().take(read_requests) {
-                        if e.get_timestamp() > new_lock_timestamp {
-                            new_lock_timestamp = e.get_timestamp();
-                        }
-                        let cond = e.get_cond();
-                        let (lock, cvar) = &*cond;
-                        let mut started = lock.lock().unwrap(); // wake up thread
-                        *started = true;
-                        cvar.notify_all();
-                    }
-
-                    // set new lock information
-                    lock_info.set_timestamp(new_lock_timestamp); // highest read timestamp
-                    lock_info.set_mode(LockMode::Read); // group mode
-                    lock_info.set_granted(read_requests as u32); // granted n read requests
-
-                    // if all waiters have have been granted then set to false
-                    if lock_info.num_waiting() as u32 == lock_info.get_granted() {
-                        lock_info.set_waiting(false);
-                    }
-                } else {
-                    // no reads waiting
-
-                    // set new lock information
-                    let ts = lock_info.get_list()[0].get_timestamp();
-                    lock_info.set_timestamp(ts);
-                    lock_info.set_mode(LockMode::Write);
-                    lock_info.set_granted(1);
-
-                    // if all waiters have have been granted then set to false
-                    if lock_info.num_waiting() as u32 == lock_info.get_granted() {
-                        lock_info.set_waiting(false);
-                    }
-
-                    let cond = lock_info.get_list()[0].get_cond();
-                    let (lock, cvar) = &*cond;
-                    let mut started = lock.lock().unwrap();
-                    *started = true;
-                    cvar.notify_all();
-                }
+                info.grant_waiting();
             }
-            // If record was locked with a read lock then either,
-            // (i) there are n other read locks being held, or,
-            // (ii) this is the only read lock. In which case check if any write lock requests are waiting
-            // Assumption: reads requests are always granted when a read lock is held, thus none wait
+
             LockMode::Read => {
-                if lock_info.get_granted() > 1 {
-                    // removal of this lock still leaves the lock in read mode.
-
-                    // update lock information
-                    let mut new_lock_timestamp = 0;
-                    for e in lock_info.get_iter() {
-                        if e.get_timestamp() > new_lock_timestamp {
-                            new_lock_timestamp = e.get_timestamp();
-                        }
-                    }
-                    lock_info.set_timestamp(new_lock_timestamp);
-                    lock_info.dec_granted(); // decrement locks held.
+                if info.num_granted() > 1 {
+                    // (i) multiple outstanding read locks
+                    // drop request
+                    // TODO: need to update lock group timestamp?
                 } else {
-                    // 1 active read lock and some write lock waiting.
-
-                    if lock_info.is_waiting() {
-                        let next_write_entry_index = lock_info
-                            .get_iter()
-                            .position(|e| e.get_mode() == LockMode::Write)
-                            .unwrap();
-
-                        lock_info.set_mode(LockMode::Write);
-                        let ts = lock_info.get_list()[next_write_entry_index].get_timestamp();
-                        lock_info.set_timestamp(ts);
-                        lock_info.inc_granted();
-                        if lock_info.num_waiting() as u32 == lock_info.get_granted() {
-                            lock_info.set_waiting(false);
-                        }
-
-                        let cond = lock_info.get_list()[next_write_entry_index].get_cond();
-                        let (lock, cvar) = &*cond;
-                        let mut started = lock.lock().unwrap();
-                        *started = true;
-                        cvar.notify_all();
-                    }
+                    info.grant_waiting();
                 }
             }
         }
