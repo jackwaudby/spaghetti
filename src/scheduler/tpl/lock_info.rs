@@ -49,28 +49,28 @@ impl Information {
         };
 
         information.add_granted(lock_mode, timestamp);
-
-        debug_assert!(!information.is_free());
-        debug_assert!(!information.is_waiting());
-        debug_assert_eq!(information.num_granted(), 1);
-        debug_assert_eq!(information.num_waiting(), 0);
-
         information
     }
 
+    /// Add a request to the list of granted requests.
+    ///
+    /// Information maintains a list of requests sorted from lowest to highest timestamp.
+    /// Information's group mode reflects the highest timestamp.
     pub fn add_granted(&mut self, lock_mode: LockMode, timestamp: u64) {
         let request = Request::new(lock_mode, None, timestamp);
         self.granted.push(request);
-        self.granted.sort(); // timestamp (lowest/oldest request to highest/youngest request)
+        self.granted.sort();
 
-        if timestamp < self.get_group_timestamp() {
-            self.group_timestamp = Some(timestamp); // if this granted request has lower timestamp; then update lock's group timestamp
+        if timestamp > self.get_group_timestamp() {
+            self.group_timestamp = Some(timestamp);
         }
     }
 
+    /// Add a request to the list of waiting requests.
+    ///
+    /// Information maintains a list of requests sorted from lowest to highest timestamp.
     pub fn add_waiting(
         &mut self,
-
         lock_mode: LockMode,
         timestamp: u64,
     ) -> Arc<(Mutex<bool>, Condvar)> {
@@ -78,14 +78,20 @@ impl Information {
         let res = Arc::clone(&pair);
         let request = Request::new(lock_mode, Some(pair), timestamp);
         self.waiting.push(request);
-        self.waiting.sort(); // timestamp (lowest/oldest request to highest/youngest request)
+        self.waiting.sort();
         res
     }
 
-    pub fn owned_by(&mut self) -> u64 {
-        self.get_group_timestamp()
+    /// Attempt to upgrade a read lock to a write lock.
+    pub fn upgrade(&mut self, timestamp: u64) -> bool {
+        if self.num_granted() == 1 && self.get_group_timestamp() == timestamp {
+            self.set_mode(LockMode::Write);
+            return true;
+        }
+        false
     }
 
+    /// Returns true is no transaction holds the lock.
     pub fn is_free(&self) -> bool {
         self.group_mode.is_none()
     }
@@ -121,14 +127,25 @@ impl Information {
         self.granted.clear(); // remove from list
     }
 
+    /// Remove request with `timestamp` from list of granted requests.
     pub fn remove_granted(&mut self, timestamp: u64) -> Request {
         let index = self
             .granted
             .iter()
-            .position(|e| e.get_timestamp() == timestamp)
-            .unwrap();
+            .position(|e| e.get_timestamp() == timestamp);
 
-        self.granted.remove(index)
+        match index {
+            Some(index) => {
+                let removed = self.granted.remove(index);
+                // TODO: update group timestamp
+                let size = self.granted.len();
+                if size > 0 {
+                    self.group_timestamp = Some(self.granted[size - 1].get_timestamp());
+                }
+                removed
+            }
+            None => panic!("request with timestamp {} not found: {:?}", timestamp, self),
+        }
     }
 
     /// Grant either: (i) next n read lock requests, or, (ii) the next write lock request.
@@ -231,3 +248,148 @@ impl PartialEq for Request {
 }
 
 impl Eq for Request {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_tpl_information_write_waiting() {
+        let mut info = Information::create_and_grant(LockMode::Read, 3);
+
+        assert_eq!(info.get_mode(), LockMode::Read);
+        assert_eq!(info.get_group_timestamp(), 3);
+        assert_eq!(info.num_granted(), 1);
+        assert_eq!(info.num_waiting(), 0);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), false);
+
+        info.add_granted(LockMode::Read, 4);
+
+        assert_eq!(info.upgrade(4), false);
+
+        assert_eq!(info.get_mode(), LockMode::Read);
+        assert_eq!(info.get_group_timestamp(), 4);
+        assert_eq!(info.num_granted(), 2);
+        assert_eq!(info.num_waiting(), 0);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), false);
+
+        info.add_waiting(LockMode::Write, 1);
+
+        assert_eq!(info.get_mode(), LockMode::Read);
+        assert_eq!(info.get_group_timestamp(), 4);
+        assert_eq!(info.num_granted(), 2);
+        assert_eq!(info.num_waiting(), 1);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), true);
+
+        info.remove_granted(4);
+
+        assert_eq!(info.get_mode(), LockMode::Read);
+        assert_eq!(info.get_group_timestamp(), 3);
+        assert_eq!(info.num_granted(), 1);
+        assert_eq!(info.num_waiting(), 1);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), true);
+
+        assert_eq!(info.upgrade(3), true);
+
+        assert_eq!(info.get_mode(), LockMode::Write);
+        assert_eq!(info.get_group_timestamp(), 3);
+        assert_eq!(info.num_granted(), 1);
+        assert_eq!(info.num_waiting(), 1);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), true);
+
+        info.remove_granted(3);
+        info.grant_waiting();
+
+        assert_eq!(info.get_mode(), LockMode::Write);
+        assert_eq!(info.get_group_timestamp(), 1);
+        assert_eq!(info.num_granted(), 1);
+        assert_eq!(info.num_waiting(), 0);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), false);
+
+        info.reset();
+
+        assert_eq!(info.num_granted(), 0);
+        assert_eq!(info.num_waiting(), 0);
+        assert_eq!(info.is_free(), true);
+        assert_eq!(info.is_waiting(), false);
+    }
+
+    #[test]
+    fn test_tpl_information_read_waiting() {
+        let mut info = Information::create_and_grant(LockMode::Write, 10);
+
+        assert_eq!(info.get_mode(), LockMode::Write);
+        assert_eq!(info.get_group_timestamp(), 10);
+        assert_eq!(info.num_granted(), 1);
+        assert_eq!(info.num_waiting(), 0);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), false);
+
+        info.add_waiting(LockMode::Read, 2);
+        info.add_waiting(LockMode::Read, 5);
+        info.add_waiting(LockMode::Read, 3);
+        info.add_waiting(LockMode::Write, 8);
+        info.add_waiting(LockMode::Read, 9);
+
+        assert_eq!(info.get_mode(), LockMode::Write);
+        assert_eq!(info.get_group_timestamp(), 10);
+        assert_eq!(info.num_granted(), 1);
+        assert_eq!(info.num_waiting(), 5);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), true);
+
+        info.remove_granted(10);
+        info.grant_waiting();
+
+        assert_eq!(info.get_mode(), LockMode::Read);
+        assert_eq!(info.get_group_timestamp(), 5);
+        assert_eq!(info.num_granted(), 3);
+        assert_eq!(info.num_waiting(), 2);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), true);
+
+        info.remove_granted(5);
+        assert_eq!(info.upgrade(2), false);
+        info.remove_granted(2);
+
+        assert_eq!(info.get_mode(), LockMode::Read);
+        assert_eq!(info.get_group_timestamp(), 3);
+        assert_eq!(info.num_granted(), 1);
+        assert_eq!(info.num_waiting(), 2);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), true);
+
+        info.remove_granted(3);
+        info.grant_waiting();
+
+        assert_eq!(info.get_mode(), LockMode::Write);
+        assert_eq!(info.get_group_timestamp(), 8);
+        assert_eq!(info.num_granted(), 1);
+        assert_eq!(info.num_waiting(), 1);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), true);
+
+        info.remove_granted(8);
+        info.grant_waiting();
+
+        assert_eq!(info.get_mode(), LockMode::Read);
+        assert_eq!(info.get_group_timestamp(), 9);
+        assert_eq!(info.num_granted(), 1);
+        assert_eq!(info.num_waiting(), 0);
+        assert_eq!(info.is_free(), false);
+        assert_eq!(info.is_waiting(), false);
+
+        info.reset();
+
+        assert_eq!(info.num_granted(), 0);
+        assert_eq!(info.num_waiting(), 0);
+        assert_eq!(info.is_free(), true);
+        assert_eq!(info.is_waiting(), false);
+    }
+}

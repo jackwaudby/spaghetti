@@ -14,7 +14,7 @@ use parking_lot::{Condvar, Mutex};
 use std::cell::RefCell;
 use std::sync::Arc;
 use thread_local::ThreadLocal;
-use tracing::info;
+use tracing::{debug, info};
 
 pub mod error;
 
@@ -29,6 +29,7 @@ pub struct TwoPhaseLocking {
 
 #[derive(Debug)]
 enum LockRequest {
+    AlreadyGranted,
     Granted,
     Denied,
     Delay(Arc<(Mutex<bool>, Condvar)>),
@@ -72,6 +73,7 @@ impl TwoPhaseLocking {
         let id = *lock;
         *lock += 1;
 
+        debug!("start {}", id);
         TransactionId::TwoPhaseLocking(id)
     }
 
@@ -88,9 +90,21 @@ impl TwoPhaseLocking {
             _ => panic!("unexpected txn id"),
         };
 
+        debug!(
+            "read by {} on ({},{},{})",
+            timestamp, table_id, column_id, offset
+        );
+
         let request = self.request_lock(table_id, offset, LockMode::Read, *timestamp); // request read lock
 
         match request {
+            LockRequest::AlreadyGranted => {
+                let table: &Table = database.get_table(table_id); // get table
+                let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
+
+                Ok(vals.unwrap().get_value())
+            }
+
             LockRequest::Granted => {
                 self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
@@ -139,9 +153,22 @@ impl TwoPhaseLocking {
             _ => panic!("unexpected txn id"),
         };
 
+        debug!(
+            "write by {} on ({},{},{})",
+            timestamp, table_id, column_id, offset
+        );
+
         let request = self.request_lock(table_id, offset, LockMode::Write, *timestamp); // request read lock
 
         match request {
+            LockRequest::AlreadyGranted => {
+                let table: &Table = database.get_table(table_id); // get table
+                let tuple = table.get_tuple(column_id, offset).get(); // get tuple
+                tuple.set_value(value).unwrap(); // set value
+
+                Ok(())
+            }
+
             LockRequest::Granted => {
                 self.record(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
@@ -188,6 +215,8 @@ impl TwoPhaseLocking {
             _ => panic!("unexpected txn id"),
         };
 
+        debug!("commit by {}", timestamp);
+
         let ops = self.get_operations();
 
         // commit changes
@@ -225,6 +254,7 @@ impl TwoPhaseLocking {
             _ => panic!("unexpected txn id"),
         };
 
+        debug!("abort by {}", timestamp);
         let ops = self.get_operations();
 
         // revert changes
@@ -263,6 +293,11 @@ impl TwoPhaseLocking {
         request_mode: LockMode,
         timestamp: u64,
     ) -> LockRequest {
+        debug!(
+            "{:?} lock requested on ({},{}) by {}",
+            request_mode, table_id, offset, timestamp
+        );
+
         let mref = self.lock_table.pin(); // pin
         let lock_handle = mref.get(&(table_id, offset)); // handle to lock
 
@@ -297,9 +332,9 @@ impl TwoPhaseLocking {
 
                         LockMode::Write => {
                             // Assumption: transactions are uniquely identifable by their assigned timestamp.
-                            if info.owned_by() == timestamp {
+                            if info.get_group_timestamp() == timestamp {
                                 drop(info);
-                                return LockRequest::Granted;
+                                return LockRequest::AlreadyGranted;
                             }
 
                             if timestamp > info.get_group_timestamp() {
@@ -317,10 +352,9 @@ impl TwoPhaseLocking {
                 LockMode::Write => {
                     match info.get_mode() {
                         LockMode::Read => {
-                            if info.num_granted() == 1 && info.owned_by() == timestamp {
-                                info.set_mode(LockMode::Write);
+                            if info.upgrade(timestamp) {
                                 drop(info);
-                                return LockRequest::Granted;
+                                return LockRequest::AlreadyGranted; // upgraded from read to write lock.
                             }
 
                             if timestamp > info.get_group_timestamp() {
@@ -334,9 +368,9 @@ impl TwoPhaseLocking {
                         }
                         LockMode::Write => {
                             // Assumption: transactions are uniquely identifable by their assigned timestamp.
-                            if info.owned_by() == timestamp {
+                            if info.get_group_timestamp() == timestamp {
                                 drop(info);
-                                return LockRequest::Granted;
+                                return LockRequest::AlreadyGranted;
                             }
 
                             if timestamp > info.get_group_timestamp() {
@@ -381,10 +415,18 @@ impl TwoPhaseLocking {
 
         match request.get_mode() {
             LockMode::Write => {
+                debug!(
+                    "write lock released on ({},{}) by {}",
+                    table_id, offset, timestamp
+                );
                 info.grant_waiting();
             }
 
             LockMode::Read => {
+                debug!(
+                    "read lock released on ({},{}) by {}",
+                    table_id, offset, timestamp
+                );
                 if info.num_granted() > 1 {
                     // (i) multiple outstanding read locks
                     // drop request
