@@ -370,8 +370,13 @@ impl TwoPhaseLocking {
                 LockMode::Write => {
                     match info.get_mode() {
                         LockMode::Read => {
-                            if info.upgrade(timestamp) {
-                                LockRequest::AlreadyGranted // upgraded from read to write lock
+                            if info.holds_lock(timestamp) {
+                                // transaction already holds read lock
+                                if info.upgrade(timestamp) {
+                                    LockRequest::AlreadyGranted // upgraded from read to write lock
+                                } else {
+                                    LockRequest::Denied // other read locks held
+                                }
                             } else if timestamp > info.get_group_timestamp() {
                                 LockRequest::Denied // wait-die deadlock detection: newer requests are denied
                             } else {

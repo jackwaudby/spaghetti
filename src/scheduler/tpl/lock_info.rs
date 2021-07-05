@@ -96,6 +96,14 @@ impl Information {
         false
     }
 
+    /// Returns true if the transaction holds a lock
+    pub fn holds_lock(&self, timestamp: u64) -> bool {
+        self.granted
+            .iter()
+            .find(|e| e.get_timestamp() == timestamp)
+            .is_some()
+    }
+
     /// Returns true is no transaction holds the lock.
     pub fn is_free(&self) -> bool {
         self.group_mode.is_none()
