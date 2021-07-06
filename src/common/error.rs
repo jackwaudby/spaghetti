@@ -1,3 +1,4 @@
+use crate::scheduler::msgt::error::MixedSerializationGraphError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
@@ -98,6 +99,8 @@ pub enum NonFatalError {
 
     SerializationGraph(SerializationGraphError),
 
+    MixedSerializationGraph(MixedSerializationGraphError),
+
     WaitHitError(WaitHitError),
 
     OptimisedWaitHitError(OptimisedWaitHitError),
@@ -167,6 +170,7 @@ impl fmt::Display for NonFatalError {
             NonSerializable => write!(f, "non-serializable behaviour"),
             SmallBankError(ref e) => write!(f, "{}", e),
             SerializationGraph(ref e) => write!(f, "{}", e),
+            MixedSerializationGraph(ref e) => write!(f, "{}", e),
             WaitHitError(ref e) => write!(f, "{}", e),
             OptimisedWaitHitError(ref e) => write!(f, "{}", e),
             TwoPhaseLockingError(ref e) => write!(f, "{}", e),
@@ -189,6 +193,12 @@ impl error::Error for FatalError {
 impl From<SerializationGraphError> for NonFatalError {
     fn from(error: SerializationGraphError) -> Self {
         NonFatalError::SerializationGraph(error)
+    }
+}
+
+impl From<MixedSerializationGraphError> for NonFatalError {
+    fn from(error: MixedSerializationGraphError) -> Self {
+        NonFatalError::MixedSerializationGraph(error)
     }
 }
 

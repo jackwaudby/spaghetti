@@ -6,6 +6,7 @@ use crate::workloads::smallbank::error::SmallBankError;
 use crate::workloads::smallbank::paramgen::{
     Amalgamate, Balance, DepositChecking, SendPayment, TransactSaving, WriteCheck,
 };
+use crate::workloads::IsolationLevel;
 
 use crossbeam_epoch as epoch;
 use std::convert::TryFrom;
@@ -17,6 +18,7 @@ pub fn balance<'a>(
     params: Balance,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    isolation: IsolationLevel,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
@@ -41,6 +43,7 @@ pub fn deposit_checking<'a>(
     params: DepositChecking,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    isolation: IsolationLevel,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
@@ -66,6 +69,7 @@ pub fn transact_savings<'a>(
     params: TransactSaving,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    isolation: IsolationLevel,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
@@ -95,6 +99,7 @@ pub fn amalgmate<'a>(
     params: Amalgamate,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    isolation: IsolationLevel,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
@@ -127,6 +132,7 @@ pub fn write_check<'a>(
     params: WriteCheck,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    isolation: IsolationLevel,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
@@ -168,6 +174,7 @@ pub fn send_payment<'a>(
     params: SendPayment,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    isolation: IsolationLevel,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {

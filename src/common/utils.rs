@@ -177,6 +177,7 @@ pub fn execute<'a>(
         request_no,
         transaction,
         parameters,
+        isolation,
     } = txn
     {
         let res = match transaction {
@@ -232,22 +233,30 @@ pub fn execute<'a>(
                 if let Parameters::SmallBank(params) = parameters {
                     match params {
                         SmallBankTransactionProfile::Amalgamate(params) => {
-                            smallbank::procedures::amalgmate(params, scheduler, workload)
+                            smallbank::procedures::amalgmate(params, scheduler, workload, isolation)
                         }
                         SmallBankTransactionProfile::Balance(params) => {
-                            smallbank::procedures::balance(params, scheduler, workload)
+                            smallbank::procedures::balance(params, scheduler, workload, isolation)
                         }
                         SmallBankTransactionProfile::DepositChecking(params) => {
-                            smallbank::procedures::deposit_checking(params, scheduler, workload)
+                            smallbank::procedures::deposit_checking(
+                                params, scheduler, workload, isolation,
+                            )
                         }
                         SmallBankTransactionProfile::SendPayment(params) => {
-                            smallbank::procedures::send_payment(params, scheduler, workload)
+                            smallbank::procedures::send_payment(
+                                params, scheduler, workload, isolation,
+                            )
                         }
                         SmallBankTransactionProfile::TransactSaving(params) => {
-                            smallbank::procedures::transact_savings(params, scheduler, workload)
+                            smallbank::procedures::transact_savings(
+                                params, scheduler, workload, isolation,
+                            )
                         }
                         SmallBankTransactionProfile::WriteCheck(params) => {
-                            smallbank::procedures::write_check(params, scheduler, workload)
+                            smallbank::procedures::write_check(
+                                params, scheduler, workload, isolation,
+                            )
                         }
                     }
                 } else {

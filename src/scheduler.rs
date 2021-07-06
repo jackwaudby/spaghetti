@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::scheduler::msgt::MixedSerializationGraph;
 use crate::scheduler::nocc::NoConcurrencyControl;
 use crate::scheduler::owh::OptimisedWaitHit;
 use crate::scheduler::owhtt::OptimisedWaitHitTransactionTypes;
@@ -19,6 +20,8 @@ pub mod owhtt;
 
 pub mod sgt;
 
+pub mod msgt;
+
 pub mod tpl;
 
 pub mod nocc;
@@ -33,6 +36,7 @@ pub enum TransactionType {
 #[derive(Debug)]
 pub enum Scheduler<'a> {
     SerializationGraph(SerializationGraph<'a>),
+    MixedSerializationGraph(MixedSerializationGraph<'a>),
     WaitHit(WaitHit),
     OptimisedWaitHit(OptimisedWaitHit<'a>),
     OptimisedWaitHitTransactionTypes(OptimisedWaitHitTransactionTypes<'a>),
@@ -46,6 +50,7 @@ impl<'a> Scheduler<'a> {
 
         let protocol = match config.get_str("protocol")?.as_str() {
             "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
+            "msgt" => Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(cores)),
             "wh" => Scheduler::WaitHit(WaitHit::new(cores)),
             "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
             "owhtt" => Scheduler::OptimisedWaitHitTransactionTypes(
@@ -63,6 +68,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.begin(),
+            MixedSerializationGraph(sg) => sg.begin(),
             WaitHit(wh) => wh.begin(),
             OptimisedWaitHit(owh) => owh.begin(),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.begin(),
@@ -83,6 +89,9 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => {
+                sg.read_value(table_id, column_id, offset, meta, database, guard)
+            }
+            MixedSerializationGraph(sg) => {
                 sg.read_value(table_id, column_id, offset, meta, database, guard)
             }
             WaitHit(wh) => wh.read_value(table_id, column_id, offset, meta, database, guard),
@@ -114,6 +123,9 @@ impl<'a> Scheduler<'a> {
             SerializationGraph(sg) => {
                 sg.write_value(value, table_id, column_id, offset, meta, database, guard)
             }
+            MixedSerializationGraph(sg) => {
+                sg.write_value(value, table_id, column_id, offset, meta, database, guard)
+            }
             WaitHit(wh) => {
                 wh.write_value(value, table_id, column_id, offset, meta, database, guard)
             }
@@ -142,6 +154,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.commit(database, guard),
+            MixedSerializationGraph(sg) => sg.commit(database, guard),
             WaitHit(wh) => wh.commit(meta, database, guard),
             OptimisedWaitHit(owh) => owh.commit(database, guard),
             OptimisedWaitHitTransactionTypes(owhtt) => {
@@ -161,6 +174,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.abort(database, guard),
+            MixedSerializationGraph(sg) => sg.abort(database, guard),
             WaitHit(wh) => wh.abort(meta, database, guard),
             OptimisedWaitHit(owh) => owh.abort(database, guard),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database, guard),

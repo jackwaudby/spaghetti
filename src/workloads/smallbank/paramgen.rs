@@ -2,11 +2,12 @@ use crate::common::message::{Message, Parameters, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::smallbank::*;
-use serde::{Deserialize, Serialize};
-use std::fmt;
+use crate::workloads::IsolationLevel;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// SmallBank workload transaction generator.
 pub struct SmallBankGenerator {
@@ -75,10 +76,19 @@ impl Generator for SmallBankGenerator {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
+        let m: f32 = self.rng.gen();
+
+        let isolation = match m {
+            x if x < 0.2 => IsolationLevel::ReadUncommitted,
+            x if x < 0.6 => IsolationLevel::ReadCommitted,
+            _ => IsolationLevel::Serializable,
+        };
+
         Message::Request {
             request_no: self.generated,
             transaction: Transaction::SmallBank(transaction),
             parameters: Parameters::SmallBank(parameters),
+            isolation,
         }
     }
 
