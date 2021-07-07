@@ -9,6 +9,8 @@ use crate::scheduler::wh::WaitHit;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::storage::Database;
+use crate::workloads::IsolationLevel;
+
 use config::Config;
 use crossbeam_epoch::Guard;
 
@@ -64,11 +66,11 @@ impl<'a> Scheduler<'a> {
         Ok(protocol)
     }
 
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.begin(),
-            MixedSerializationGraph(sg) => sg.begin(),
+            MixedSerializationGraph(sg) => sg.begin(isolation_level),
             WaitHit(wh) => wh.begin(),
             OptimisedWaitHit(owh) => owh.begin(),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.begin(),

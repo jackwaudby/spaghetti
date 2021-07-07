@@ -1,3 +1,5 @@
+use crate::workloads::IsolationLevel;
+
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -52,6 +54,7 @@ pub struct RwNode {
     // ids
     thread_id: usize,
     thread_ctr: usize,
+    isolation_level: IsolationLevel,
     node_id: UnsafeCell<Option<usize>>,
 
     incoming: UnsafeCell<Option<EdgeSet>>,
@@ -84,10 +87,11 @@ impl RwNode {
         self.lock.write()
     }
 
-    pub fn new(thread_id: usize, thread_ctr: usize) -> Self {
+    pub fn new(thread_id: usize, thread_ctr: usize, isolation_level: IsolationLevel) -> Self {
         Self {
             thread_id,
             thread_ctr,
+            isolation_level,
             node_id: UnsafeCell::new(None),
 
             incoming: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
@@ -113,10 +117,12 @@ impl RwNode {
         thread_ctr: usize,
         incoming: EdgeSet,
         outgoing: EdgeSet,
+        isolation_level: IsolationLevel,
     ) -> Self {
         Self {
             thread_id,
             thread_ctr,
+            isolation_level,
             node_id: UnsafeCell::new(None),
 
             incoming: UnsafeCell::new(Some(incoming)),
@@ -530,103 +536,5 @@ impl fmt::Display for RwNode {
         }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn utils() {
-        let node = RwNode::new(1, 1);
-        let boxed = Box::new(node);
-        let id = to_usize(boxed);
-        let ref_node = from_usize(id);
-        let ref_id = ref_to_usize(ref_node);
-        assert_eq!(id, ref_id);
-
-        let n1 = RwNode::new(2, 1);
-        let nr1 = &n1;
-        let nr2 = nr1.clone();
-        let nr3 = &nr2;
-
-        assert_eq!(ref_to_usize(nr1), ref_to_usize(&nr2));
-        assert_eq!(ref_to_usize(nr1), ref_to_usize(nr3));
-    }
-
-    #[test]
-    fn edge() {
-        let node = RwNode::new(1, 1);
-        let boxed = Box::new(node);
-        let id = to_usize(boxed);
-
-        let e1 = Edge::ReadWrite(id);
-        let e2 = Edge::ReadWrite(id);
-        assert_eq!(e1, e2);
-
-        let e3 = Edge::WriteWrite(id);
-        assert!(e3 != e1);
-
-        let onode = RwNode::new(2, 1);
-        let oboxed = Box::new(onode);
-        let oid = to_usize(oboxed);
-
-        let e4 = Edge::ReadWrite(oid);
-        let e5 = Edge::WriteWrite(oid);
-
-        assert!(e1 != e4);
-        assert!(e1 != e5);
-        assert!(e4 != e5);
-    }
-
-    #[test]
-    fn node() {
-        let n1 = RwNode::new(1, 1);
-        let id1 = to_usize(Box::new(n1));
-        let node1 = from_usize(id1);
-
-        let n2 = RwNode::new(2, 1);
-        let id2 = to_usize(Box::new(n2));
-
-        node1.insert_incoming(Edge::ReadWrite(id2));
-        node1.insert_incoming(Edge::WriteWrite(id2));
-
-        assert_eq!(node1.is_incoming(), true);
-
-        node1.remove_incoming(&Edge::ReadWrite(id2));
-        assert_eq!(node1.is_incoming(), true);
-
-        let edge = Edge::WriteWrite(id2);
-        node1.remove_incoming(&edge);
-        assert_eq!(node1.is_incoming(), false);
-    }
-
-    #[test]
-    fn dfs() {
-        let n1 = RwNode::new(1, 1);
-        let id1 = to_usize(Box::new(n1));
-        let node1 = from_usize(id1);
-
-        let n2 = RwNode::new(2, 1);
-        let id2 = to_usize(Box::new(n2));
-        let node2 = from_usize(id2);
-
-        let n3 = RwNode::new(3, 1);
-        let id3 = to_usize(Box::new(n3));
-        let node3 = from_usize(id3);
-
-        node2.insert_incoming(Edge::WriteWrite(id1));
-
-        node3.insert_incoming(Edge::WriteWrite(id2));
-
-        node1.insert_incoming(Edge::WriteWrite(id3));
-
-        let mut res = FxHashSet::default();
-        res.insert(id1);
-        res.insert(id2);
-        res.insert(id3);
-
-        assert_eq!(node1.depth_first_search(true), res);
     }
 }

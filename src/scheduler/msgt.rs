@@ -6,6 +6,7 @@ use crate::scheduler::msgt::node::{Edge, RwNode};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
+use crate::workloads::IsolationLevel;
 
 use crossbeam_epoch::Guard;
 use parking_lot::Mutex;
@@ -81,19 +82,19 @@ impl<'a> MixedSerializationGraph<'a> {
             .add(op_type, table_id, column_id, offset, prv); // record operation
     }
 
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
 
-        let id = self.create_node(); // create node
+        let id = self.create_node(isolation_level); // create node
 
         debug!("start {} ", id);
 
         TransactionId::SerializationGraph(id)
     }
 
-    pub fn create_node(&self) -> usize {
+    pub fn create_node(&self, isolation_level: IsolationLevel) -> usize {
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
         let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
 
@@ -113,7 +114,11 @@ impl<'a> MixedSerializationGraph<'a> {
         // }
 
         let node = Box::new(RwNode::new_with_sets(
-            thread_id, thread_ctr, incoming, outgoing,
+            thread_id,
+            thread_ctr,
+            incoming,
+            outgoing,
+            isolation_level,
         )); // allocated node on the heap
         let id = node::to_usize(node);
         let nref = node::from_usize(id);
@@ -882,81 +887,5 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64) {
         if i >= 10000 {
             std::thread::yield_now();
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn no_cycle() {
-        let n1 = RwNode::new(1, 1);
-        let id1 = node::to_usize(Box::new(n1));
-        let node1 = node::from_usize(id1);
-
-        let n2 = RwNode::new(2, 1);
-        let id2 = node::to_usize(Box::new(n2));
-        let node2 = node::from_usize(id2);
-
-        node1.insert_outgoing(Edge::WriteWrite(id2));
-        node2.insert_incoming(Edge::WriteWrite(id1));
-
-        let sg = SerializationGraph::new(1);
-
-        assert_eq!(sg.cycle_check(node1), false);
-        assert_eq!(sg.cycle_check(node2), false);
-    }
-
-    #[test]
-    fn direct_cycle() {
-        let n1 = RwNode::new(1, 1);
-        let id1 = node::to_usize(Box::new(n1));
-        let node1 = node::from_usize(id1);
-
-        let n2 = RwNode::new(2, 1);
-        let id2 = node::to_usize(Box::new(n2));
-        let node2 = node::from_usize(id2);
-
-        node1.insert_outgoing(Edge::WriteWrite(id2));
-        node2.insert_incoming(Edge::WriteWrite(id1));
-
-        node1.insert_incoming(Edge::WriteWrite(id2));
-        node2.insert_outgoing(Edge::WriteWrite(id1));
-
-        let sg = SerializationGraph::new(1);
-
-        assert_eq!(sg.cycle_check(node1), true);
-        assert_eq!(sg.cycle_check(node2), true);
-    }
-
-    #[test]
-    fn trans_cycle() {
-        let n1 = RwNode::new(1, 1);
-        let id1 = node::to_usize(Box::new(n1));
-        let node1 = node::from_usize(id1);
-
-        let n2 = RwNode::new(2, 1);
-        let id2 = node::to_usize(Box::new(n2));
-        let node2 = node::from_usize(id2);
-
-        let n3 = RwNode::new(3, 1);
-        let id3 = node::to_usize(Box::new(n3));
-        let node3 = node::from_usize(id3);
-
-        node1.insert_outgoing(Edge::WriteWrite(id2));
-        node2.insert_incoming(Edge::WriteWrite(id1));
-
-        node3.insert_incoming(Edge::WriteWrite(id2));
-        node2.insert_outgoing(Edge::WriteWrite(id3));
-
-        node3.insert_outgoing(Edge::WriteWrite(id1));
-        node1.insert_incoming(Edge::WriteWrite(id3));
-
-        let sg = SerializationGraph::new(1);
-
-        assert_eq!(sg.cycle_check(node1), true);
-        assert_eq!(sg.cycle_check(node2), true);
-        assert_eq!(sg.cycle_check(node3), true);
     }
 }
