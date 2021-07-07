@@ -143,6 +143,10 @@ impl RwNode {
         }
     }
 
+    pub fn get_isolation_level(&self) -> IsolationLevel {
+        self.isolation_level
+    }
+
     /// Returns `true` if an edge from a given node exists in this node's edge set.
     pub fn incoming_edge_exists(&self, from: &Edge) -> bool {
         // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.

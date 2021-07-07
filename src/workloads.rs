@@ -4,7 +4,7 @@ pub mod smallbank;
 
 pub mod acid;
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Copy, Clone)]
 pub enum IsolationLevel {
     ReadUncommitted,
     ReadCommitted,

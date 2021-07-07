@@ -297,42 +297,50 @@ impl<'a> MixedSerializationGraph<'a> {
                         return true; // don't add same edge twice
                     } else {
                         let from_ref = node::from_usize(from_id);
-                        let from_rlock = from_ref.read(); // get shared lock on (from)
 
-                        if from_ref.is_cleaned() {
-                            drop(from_rlock);
-                            return true; // if from is cleaned then it has terminated do not insert edge
+                        match from_ref.get_isolation_level() {
+                            IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
+                                return true; // only add if from is PL3
+                            }
+                            IsolationLevel::Serializable => {
+                                let from_rlock = from_ref.read(); // get shared lock on (from)
+
+                                if from_ref.is_cleaned() {
+                                    drop(from_rlock);
+                                    return true; // if from is cleaned then it has terminated do not insert edge
+                                }
+
+                                if from_ref.is_checked() {
+                                    drop(from_rlock);
+                                    continue; // if (from) checked in process of terminating so try again
+                                }
+
+                                // assert!(!from_ref.is_checked());
+                                // assert!(!from_ref.is_cleaned());
+                                // assert!(!from_ref.is_complete());
+
+                                let this_rlock = this_ref.read(); // get shared lock on (this)
+                                debug!("inserted {}-[rw]->{}", from_id, this_id);
+                                this_ref.insert_incoming(Edge::ReadWrite(from_id));
+                                unsafe {
+                                    this_ref.inserted.get().as_mut().unwrap().push(format!(
+                                        "{}-({},{},{})",
+                                        Edge::ReadWrite(from_id),
+                                        table_id,
+                                        column_id,
+                                        offset,
+                                    ))
+                                };
+
+                                from_ref.insert_outgoing(Edge::ReadWrite(this_id));
+                                drop(from_rlock);
+                                drop(this_rlock);
+
+                                let is_cycle = self.cycle_check(this_ref); // cycle check
+
+                                return !is_cycle;
+                            }
                         }
-
-                        if from_ref.is_checked() {
-                            drop(from_rlock);
-                            continue; // if (from) checked in process of terminating so try again
-                        }
-
-                        // assert!(!from_ref.is_checked());
-                        // assert!(!from_ref.is_cleaned());
-                        // assert!(!from_ref.is_complete());
-
-                        let this_rlock = this_ref.read(); // get shared lock on (this)
-                        debug!("inserted {}-[rw]->{}", from_id, this_id);
-                        this_ref.insert_incoming(Edge::ReadWrite(from_id));
-                        unsafe {
-                            this_ref.inserted.get().as_mut().unwrap().push(format!(
-                                "{}-({},{},{})",
-                                Edge::ReadWrite(from_id),
-                                table_id,
-                                column_id,
-                                offset,
-                            ))
-                        };
-
-                        from_ref.insert_outgoing(Edge::ReadWrite(this_id));
-                        drop(from_rlock);
-                        drop(this_rlock);
-
-                        let is_cycle = self.cycle_check(this_ref); // cycle check
-
-                        return !is_cycle;
                     }
                 }
             }
@@ -392,6 +400,10 @@ impl<'a> MixedSerializationGraph<'a> {
             Edge::WriteRead(from_id) => {
                 if this_id == from_id {
                     return true; // check for self edge
+                }
+
+                if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
+                    return true; // only insert edge if PL2/PL3
                 }
 
                 let exists = this_ref.incoming_edge_exists(&from); // check if (from) --> (this) already exists
