@@ -28,7 +28,7 @@ cargo test acid -- --test-threads=1
 |   G0    |TODO                  |TODO                  |TODO                  |TODO                  |TODO                  |TODO                  |
 |   G1a   |:x:                   |:white_check_mark:    |:white_check_mark:    |:x:                   |:x:                   |:white_check_mark:    | 
 |   G1b   |:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|
-|   G1c   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |TODO                  |:x:                   |:white_check_mark:    |
+|   G1c   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:x:                   |:white_check_mark:    |
 |   IMP   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
 |   PMP   |:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:    |
 |   OTV   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
