@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
+use crate::scheduler::msgt::error::MixedSerializationGraphError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
@@ -343,6 +344,17 @@ impl LocalStatistics {
                     }
                 }
 
+                MixedSerializationGraph(ref mut metric) => {
+                    if let NonFatalError::MixedSerializationGraph(sge) = reason {
+                        match sge {
+                            MixedSerializationGraphError::CascadingAbort => {
+                                metric.inc_cascading_abort()
+                            }
+                            MixedSerializationGraphError::CycleFound => metric.inc_cycle_found(),
+                        }
+                    }
+                }
+
                 WaitHit(ref mut metric) => match reason {
                     NonFatalError::WaitHitError(owhe) => match owhe {
                         WaitHitError::TransactionInHitList(_) => metric.inc_hit(),
@@ -543,6 +555,9 @@ impl AbortBreakdown {
     fn new(protocol: &str, workload: &str) -> AbortBreakdown {
         let protocol_specific = match protocol {
             "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
+            "msgt" => {
+                ProtocolAbortBreakdown::MixedSerializationGraph(SerializationGraphReasons::new())
+            }
             "wh" => ProtocolAbortBreakdown::WaitHit(HitListReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
             "owhtt" => {
@@ -572,6 +587,13 @@ impl AbortBreakdown {
         match self.protocol_specific {
             SerializationGraph(ref mut reasons) => {
                 if let SerializationGraph(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+            MixedSerializationGraph(ref mut reasons) => {
+                if let MixedSerializationGraph(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -686,6 +708,7 @@ impl SmallBankReasons {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 enum ProtocolAbortBreakdown {
     SerializationGraph(SerializationGraphReasons),
+    MixedSerializationGraph(SerializationGraphReasons),
     WaitHit(HitListReasons),
     OptimisticWaitHit(HitListReasons),
     OptimisticWaitHitTransactionTypes(HitListReasons),

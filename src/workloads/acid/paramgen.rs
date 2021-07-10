@@ -1,6 +1,7 @@
 use crate::common::message::{Message, Parameters, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::acid::{AcidTransaction, ACID_SF_MAP};
+use crate::workloads::IsolationLevel;
 
 use math::round;
 use rand::rngs::StdRng;
@@ -59,6 +60,7 @@ impl Generator for AcidGenerator {
             request_no,
             transaction: Transaction::Acid(transaction),
             parameters: Parameters::Acid(parameters),
+            isolation: IsolationLevel::Serializable,
         }
     }
 

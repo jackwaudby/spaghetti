@@ -3,15 +3,10 @@ use crate::workloads::acid::paramgen::AcidTransactionProfile;
 use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::smallbank::SmallBankTransaction;
-// use crate::workloads::tatp::paramgen::TatpTransactionProfile;
-// use crate::workloads::tatp::TatpTransaction;
+use crate::workloads::IsolationLevel;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
-
-///////////////////////////////////////
-//// External messages ////
-///////////////////////////////////////
 
 /// Represents all messages types that can be sent in `spaghetti`.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -22,51 +17,32 @@ pub enum Message {
     /// Indicates ther server has succesfully closed the client's connection.
     ConnectionClosed,
 
-    /// TATP transaction request.
+    /// Transaction request.
     Request {
-        /// Client request no.
         request_no: u32,
-
-        /// Transaction type.
         transaction: Transaction,
-
-        /// Transaction parameters.
         parameters: Parameters,
+        isolation: IsolationLevel,
     },
 
     /// Response to a transaction request.
-    Response {
-        /// Client request no.
-        request_no: u32,
-
-        /// Transaction outcome.
-        outcome: Outcome,
-    },
+    Response { request_no: u32, outcome: Outcome },
 }
 
-/// Transaction types.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Transaction {
     Acid(AcidTransaction),
-    // Tatp(TatpTransaction)
     Tatp,
     SmallBank(SmallBankTransaction),
 }
 
-/// Transaction parameters.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Parameters {
     Acid(AcidTransactionProfile),
-    // Tatp(TatpTransactionProfile),
     Tatp,
     SmallBank(SmallBankTransactionProfile),
 }
 
-///////////////////////////////////////
-//// Internal messages /////
-///////////////////////////////////////
-
-/// Sent from the transaction manager to a write handler.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct InternalResponse {
     pub request_no: u32,
@@ -77,10 +53,7 @@ pub struct InternalResponse {
 /// Outcome of a transaction with associated value or abort reason.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Outcome {
-    /// Transaction committed.
     Committed { value: Option<String> },
-
-    /// Transaction aborted.
     Aborted { reason: NonFatalError },
 }
 
