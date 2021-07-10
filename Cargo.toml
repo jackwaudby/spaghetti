@@ -16,10 +16,6 @@ lto = true
 name = "spag"
 path = "src/bin/main.rs"
 
-[[bench]]
-name = "bsgt_bench"
-harness = false
-
 [dev-dependencies]
 criterion = "0.3"
 
