@@ -4,7 +4,7 @@ rm results.csv
 
 cargo build --release
 
-for protocol in msgt nocc sgt owh wh owhtt
+for protocol in msgt nocc sgt owh owhtt
 do
     for sf in 1 3
     do
