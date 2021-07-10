@@ -23,6 +23,11 @@ pub fn populate_tables(population: usize, database: &mut AcidDatabase) -> Result
             person.get_tuple(3, pid).get().init_value(Data::Int(80))?; // balance
             ws_flag = true;
         }
+
+        person
+            .get_tuple(4, pid)
+            .get()
+            .init_value(Data::List(vec![Data::Uint(0)]))?; // version history
     }
 
     // knows

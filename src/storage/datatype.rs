@@ -66,7 +66,19 @@ impl fmt::Display for Data {
             Data::Int(val) => write!(f, "{}", val.to_string()),
             Data::VarChar(ref val) => write!(f, "{}", val),
             Data::Double(val) => write!(f, "{}", val.to_string()),
-            Data::List(val) => write!(f, "{:?}", val),
+            Data::List(vec) => {
+                let mut res = String::new();
+
+                let size = vec.len();
+                res.push_str("[");
+                for e in vec[0..size - 1].iter() {
+                    res.push_str(&e.to_string());
+                    res.push_str(", ");
+                }
+                res.push_str(&vec[size - 1].to_string());
+                res.push_str("]");
+                write!(f, "{}", res)
+            }
             Data::Null => write!(f, "null"),
         }
     }

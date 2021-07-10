@@ -225,7 +225,7 @@ impl MixedTwoPhaseLocking {
     /// Write operation.
     pub fn write_value<'g>(
         &self,
-        value: &Data,
+        value: &mut Data,
         table_id: usize,
         column_id: usize,
         offset: usize,

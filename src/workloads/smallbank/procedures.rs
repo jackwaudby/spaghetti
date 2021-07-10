@@ -52,8 +52,8 @@ pub fn deposit_checking<'a>(
             let meta = scheduler.begin(isolation);
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             let res = scheduler.read_value(1, 1, offset, &meta, database, guard)?; // get current balance
-            let balance = Data::from(f64::try_from(res)? + params.value); // new balance
-            scheduler.write_value(&balance, 1, 1, offset, &meta, database, guard)?; // write 1 -- update balance
+            let mut balance = Data::from(f64::try_from(res)? + params.value); // new balance
+            scheduler.write_value(&mut balance, 1, 1, offset, &meta, database, guard)?; // write 1 -- update balance
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())
@@ -83,7 +83,15 @@ pub fn transact_savings<'a>(
                 scheduler.abort(&meta, database, guard);
                 return Err(SmallBankError::InsufficientFunds.into());
             }
-            scheduler.write_value(&Data::from(balance), 2, 1, offset, &meta, database, guard)?; // write 1 -- update saving balance
+            scheduler.write_value(
+                &mut Data::from(balance),
+                2,
+                1,
+                offset,
+                &meta,
+                database,
+                guard,
+            )?; // write 1 -- update saving balance
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())
@@ -110,13 +118,14 @@ pub fn amalgmate<'a>(
             scheduler.read_value(0, 0, offset1, &meta, database, guard)?; // read 1 -- get customer1 id
             let res1 = scheduler.read_value(2, 1, offset1, &meta, database, guard)?; // read 2 -- current savings balance (customer1)
             let res2 = scheduler.read_value(1, 1, offset1, &meta, database, guard)?; // read 3 -- current checking balance (customer1)
-            scheduler.write_value(&Data::Double(0.0), 2, 1, offset1, &meta, database, guard)?; // write 1 -- update saving balance (cust1)
-            scheduler.write_value(&Data::Double(0.0), 1, 1, offset1, &meta, database, guard)?; // write 2 -- update checking balance (cust1)
+            let val = &mut Data::Double(0.0);
+            scheduler.write_value(val, 2, 1, offset1, &meta, database, guard)?; // write 1 -- update saving balance (cust1)
+            scheduler.write_value(val, 1, 1, offset1, &meta, database, guard)?; // write 2 -- update checking balance (cust1)
             let sum = f64::try_from(res1)? + f64::try_from(res2)?; // amount to send
             scheduler.read_value(0, 0, offset2, &meta, database, guard)?; // read 4 -- get customer2 id
             let res3 = scheduler.read_value(1, 1, offset2, &meta, database, guard)?; // read 5 -- current checking balance (customer2)
-            let bal = sum + f64::try_from(res3)?;
-            scheduler.write_value(&Data::Double(bal), 1, 1, offset2, &meta, database, guard)?;
+            let mut bal = Data::Double(sum + f64::try_from(res3)?);
+            scheduler.write_value(&mut bal, 1, 1, offset2, &meta, database, guard)?;
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())
@@ -149,16 +158,8 @@ pub fn write_check<'a>(
             if total < amount {
                 amount += 1.0; // apply overdraft charge
             }
-            let new_check = total - amount;
-            scheduler.write_value(
-                &Data::Double(new_check),
-                1,
-                1,
-                offset,
-                &meta,
-                database,
-                guard,
-            )?; // update checking balance
+            let mut new_check = Data::Double(total - amount);
+            scheduler.write_value(&mut new_check, 1, 1, offset, &meta, database, guard)?; // update checking balance
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())
@@ -190,28 +191,14 @@ pub fn send_payment<'a>(
                 scheduler.abort(&meta, database, guard);
                 return Err(SmallBankError::InsufficientFunds.into());
             }
-            scheduler.write_value(
-                &Data::Double(checking),
-                1,
-                1,
-                offset1,
-                &meta,
-                database,
-                guard,
-            )?; // update cust1 checking balance
+            let val1 = &mut Data::Double(checking);
+            scheduler.write_value(val1, 1, 1, offset1, &meta, database, guard)?; // update cust1 checking balance
             scheduler.read_value(0, 0, offset2, &meta, database, guard)?; // get cust2 id
             let mut checking =
                 f64::try_from(scheduler.read_value(1, 1, offset2, &meta, database, guard)?)?; // get cust2 checking
             checking += params.value;
-            scheduler.write_value(
-                &Data::Double(checking),
-                1,
-                1,
-                offset2,
-                &meta,
-                database,
-                guard,
-            )?; // update cust2 checking
+            let val2 = &mut Data::Double(checking);
+            scheduler.write_value(val2, 1, 1, offset2, &meta, database, guard)?; // update cust2 checking
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
             Ok("ok".to_string())

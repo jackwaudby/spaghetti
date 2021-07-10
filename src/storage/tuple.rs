@@ -57,6 +57,7 @@ impl Internal {
 
     pub fn init_value(&mut self, value: Data) -> Result<(), NonFatalError> {
         self.current.set(value);
+
         Ok(())
     }
 
@@ -64,7 +65,7 @@ impl Internal {
         Ok(OpResult::new(Some(self.current.get())))
     }
 
-    pub fn set_value(&mut self, value: &Data) -> Result<OpResult, NonFatalError> {
+    pub fn set_value(&mut self, value: &mut Data) -> Result<OpResult, NonFatalError> {
         match self.state {
             State::Modified => Err(NonFatalError::RowDirty("TODO".to_string())),
 
@@ -72,8 +73,16 @@ impl Internal {
                 self.state = State::Modified; // set state
                 let prev = self.current.clone(); // set prev fields
                 self.prev = Some(prev);
-                self.current.set(value.clone());
 
+                if let Data::List(ref mut item) = value {
+                    if let Data::List(mut current) = self.current.clone().get() {
+                        current.append(item);
+
+                        self.current.set(Data::List(current));
+                    }
+                } else {
+                    self.current.set(value.clone());
+                }
                 Ok(OpResult::new(None))
             }
         }

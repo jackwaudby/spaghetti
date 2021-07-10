@@ -90,12 +90,10 @@ impl AcidGenerator {
     /// Select a unique person pair: (p1) -- [knows] --> (p2).
     /// Transactions are required to have a unique id.
     fn get_g0_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
-        // --- transaction id
         self.generated += 1;
         let request_no = format!("{}{}", self.thread_id + 1, self.generated);
         let transaction_id: u32 = request_no.parse().unwrap();
 
-        // --- person pair
         let mut p1_id;
         let mut p2_id;
 
@@ -111,17 +109,14 @@ impl AcidGenerator {
         }
 
         if n < 0.5 {
-            std::mem::swap(&mut p1_id, &mut p2_id)
-            // flip so they get accessed in different orders
-            // let temp = p1_id;
-            // p1_id = p2_id;
-            // p2_id = temp;
+            std::mem::swap(&mut p1_id, &mut p2_id) // randomise order
         }
 
         let payload = G0Write {
             p1_id,
             p2_id,
             transaction_id,
+            delay: self.delay,
         };
 
         (
@@ -325,6 +320,7 @@ pub struct G0Write {
     pub p1_id: u64,
     pub p2_id: u64,
     pub transaction_id: u32,
+    pub delay: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -406,8 +402,9 @@ impl fmt::Display for AcidTransactionProfile {
                     p1_id,
                     p2_id,
                     transaction_id,
+                    delay,
                 } = params;
-                write!(f, "1,{},{},{}", p1_id, p2_id, transaction_id)
+                write!(f, "1,{},{},{},{}", p1_id, p2_id, transaction_id, delay)
             }
             AcidTransactionProfile::G1aRead(params) => {
                 let G1aRead { p_id } = params;

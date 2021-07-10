@@ -44,7 +44,7 @@ impl AcidDatabase {
     pub fn new(population: usize) -> Self {
         let mut map = IntMap::default();
 
-        map.insert(0, Table::new(population, 4)); // person
+        map.insert(0, Table::new(population, 5)); // person
         map.insert(1, Table::new(population, 2)); // person_knows_person
 
         AcidDatabase(map)

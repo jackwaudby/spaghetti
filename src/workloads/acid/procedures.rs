@@ -14,119 +14,67 @@ use std::{thread, time};
 
 /// Dirty Write (G0) TW.
 ///
-/// Append (unique) transaction id to person pair version history.
+/// Append (unique) transaction id to Person pair's versionHistory.
 pub fn g0_write<'a>(
-    _params: G0Write,
-    _scheduler: &'a Scheduler,
-    _database: &'a Database,
+    params: G0Write,
+    scheduler: &'a Scheduler,
+    database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let pk_p1 = Acid(Person(params.p1_id));
-    // let pk_p2 = Acid(Person(params.p2_id));
+    match &*database {
+        Database::Acid(_) => {
+            let offset1 = params.p1_id as usize;
+            let offset2 = params.p2_id as usize;
+            let delay = params.delay;
+            let guard = &epoch::pin(); // pin thread
+            let meta = scheduler.begin(IsolationLevel::Serializable); // register
+            let val = &mut Data::List(vec![Data::Uint(params.transaction_id.into())]);
+            scheduler.write_value(val, 0, 4, offset1, &meta, database, guard)?;
+            thread::sleep(time::Duration::from_millis(delay)); // --- artifical delay
+            scheduler.write_value(val, 0, 4, offset2, &meta, database, guard)?; // TODO: check append operation
+            scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?; // commit
 
-    // // flip for knows edge; 1,0 becomes 0,1
-    // let min;
-    // let max;
-    // if params.p1_id > params.p2_id {
-    //     min = params.p2_id;
-    //     max = params.p1_id;
-    // } else {
-    //     min = params.p1_id;
-    //     max = params.p2_id;
-    // }
-    // let pk_knows = Acid(Knows(min, max));
+            let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
 
-    // let value = Data::Uint(params.transaction_id as u64);
-
-    // let meta = protocol.scheduler.register().unwrap();
-
-    // protocol.scheduler.append(
-    //     "person",
-    //     Some("person_idx"),
-    //     &pk_p1,
-    //     "version_history",
-    //     value.clone(),
-    //     &meta,
-    // )?;
-
-    // protocol.scheduler.append(
-    //     "person",
-    //     Some("person_idx"),
-    //     &pk_p2,
-    //     "version_history",
-    //     value.clone(),
-    //     &meta,
-    // )?;
-
-    // protocol.scheduler.append(
-    //     "knows",
-    //     Some("knows_idx"),
-    //     &pk_knows,
-    //     "version_history",
-    //     value.clone(),
-    //     &meta,
-    // )?;
-
-    // protocol.scheduler.commit(&meta)?; // --- commit
-
-    // let res = datatype::to_result(None, Some(3), None, None, None).unwrap();
-
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Dirty Write (G0) TR
 ///
 /// Return the version history of person pair.
 pub fn g0_read<'a>(
-    _params: G0Read,
-    _scheduler: &'a Scheduler,
-    _database: &'a Database,
+    params: G0Read,
+    scheduler: &'a Scheduler,
+    database: &'a Database,
 ) -> Result<String, NonFatalError> {
-    // let person_columns: Vec<&str> = vec!["p_id", "version_history"];
-    // let knows_columns: Vec<&str> = vec!["p1_id", "p2_id", "version_history"];
+    match &*database {
+        Database::Acid(_) => {
+            let offset1 = params.p1_id as usize;
+            let offset2 = params.p2_id as usize;
+            let guard = &epoch::pin(); // pin thread
+            let meta = scheduler.begin(IsolationLevel::Serializable); // register
+            let pid1 = scheduler.read_value(0, 0, offset1, &meta, database, guard)?; // get p_id1
+            let pid2 = scheduler.read_value(0, 0, offset2, &meta, database, guard)?; // get p_id2
 
-    // let pk_p1 = Acid(Person(params.p1_id));
-    // let pk_p2 = Acid(Person(params.p2_id));
-    // let pk_knows = Acid(Knows(params.p1_id, params.p2_id));
+            let version_history1 = scheduler.read_value(0, 4, offset1, &meta, database, guard)?; // get versionhistory1
+            let version_history2 = scheduler.read_value(0, 4, offset2, &meta, database, guard)?; // get versionhistory2
 
-    // let meta = protocol.scheduler.register().unwrap(); // --- register
+            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
-    // let mut r1 =
-    //     protocol
-    //         .scheduler
-    //         .read("person", Some("person_idx"), &pk_p1, &person_columns, &meta)?; // --- read
-
-    // let mut r2 =
-    //     protocol
-    //         .scheduler
-    //         .read("person", Some("person_idx"), &pk_p2, &person_columns, &meta)?; // --- read
-
-    // let mut r3 = protocol.scheduler.read(
-    //     "knows",
-    //     Some("person_idx"),
-    //     &pk_knows,
-    //     &knows_columns,
-    //     &meta,
-    // )?; // --- read
-
-    // protocol.scheduler.commit(&meta)?; // --- commit
-
-    // let columns: Vec<&str> = vec![
-    //     "p1_id",
-    //     "p1_version_history",
-    //     "p2_id",
-    //     "p2_version_history",
-    //     "knows_p1_id",
-    //     "knows_p2_id",
-    //     "knows_version_history",
-    // ];
-    // r1.append(&mut r2);
-    // r1.append(&mut r3);
-
-    // let res = datatype::to_result(None, None, None, Some(&columns), Some(&r1)).unwrap();
-
-    // Ok(res)
-    Err(NonFatalError::NonSerializable)
+            let res = datatype::to_result(
+                None,
+                None,
+                None,
+                Some(&["p1_id", "p1_version_history", "p2_id", "p2_version_history"]),
+                Some(&vec![pid1, version_history1, pid2, version_history2]),
+            )
+            .unwrap();
+            Ok(res)
+        }
+        _ => panic!("unexpected database"),
+    }
 }
 
 /// Aborted Read (G1a) TR
@@ -174,8 +122,8 @@ pub fn g1a_write<'a>(
             let delay = params.delay;
             let guard = &epoch::pin(); // pin thread
             let meta = scheduler.begin(IsolationLevel::Serializable); // register
-            let val = Data::Uint(params.version);
-            scheduler.write_value(&val, 0, 1, offset, &meta, database, guard)?; // set to 2
+            let val = &mut Data::Uint(params.version);
+            scheduler.write_value(val, 0, 1, offset, &meta, database, guard)?; // set to 2
             thread::sleep(time::Duration::from_millis(delay)); // --- artifical delay
             scheduler.abort(&meta, database, guard);
             Err(NonFatalError::NonSerializable)
@@ -197,12 +145,12 @@ pub fn g1c_read_write<'a>(
         Database::Acid(_) => {
             let offset1 = params.p1_id as usize;
             let offset2 = params.p2_id as usize;
-            let tid = Data::Uint(params.transaction_id as u64);
+            let mut tid = Data::Uint(params.transaction_id as u64);
 
             let guard = &epoch::pin(); // pin thread
 
             let meta = scheduler.begin(IsolationLevel::Serializable); // register
-            scheduler.write_value(&tid, 0, 1, offset1, &meta, database, guard)?; // set to txn id
+            scheduler.write_value(&mut tid, 0, 1, offset1, &meta, database, guard)?; // set to txn id
             let version = scheduler.read_value(0, 1, offset2, &meta, database, guard)?; // read txn id
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
@@ -271,7 +219,7 @@ pub fn imp_write<'a>(
             let meta = scheduler.begin(IsolationLevel::Serializable); // register
             let version = scheduler.read_value(0, 1, offset, &meta, database, guard)?; // get friends
             let new = u64::try_from(version)? + 1;
-            scheduler.write_value(&Data::Uint(new), 0, 1, offset, &meta, database, guard)?; // increment
+            scheduler.write_value(&mut Data::Uint(new), 0, 1, offset, &meta, database, guard)?; // increment
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
@@ -308,10 +256,10 @@ pub fn otv_write<'a>(
             let new3 = u64::try_from(version3)? + 1;
             let new4 = u64::try_from(version4)? + 1;
 
-            scheduler.write_value(&Data::Uint(new1), 0, 1, offset1, &meta, database, guard)?;
-            scheduler.write_value(&Data::Uint(new2), 0, 1, offset2, &meta, database, guard)?;
-            scheduler.write_value(&Data::Uint(new3), 0, 1, offset3, &meta, database, guard)?;
-            scheduler.write_value(&Data::Uint(new4), 0, 1, offset4, &meta, database, guard)?;
+            scheduler.write_value(&mut Data::Uint(new1), 0, 1, offset1, &meta, database, guard)?;
+            scheduler.write_value(&mut Data::Uint(new2), 0, 1, offset2, &meta, database, guard)?;
+            scheduler.write_value(&mut Data::Uint(new3), 0, 1, offset3, &meta, database, guard)?;
+            scheduler.write_value(&mut Data::Uint(new4), 0, 1, offset4, &meta, database, guard)?;
 
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
@@ -378,7 +326,7 @@ pub fn lu_write<'a>(
             let meta = scheduler.begin(IsolationLevel::Serializable); // register
             let friends = scheduler.read_value(0, 2, offset, &meta, database, guard)?; // get friends
             let new = u64::try_from(friends)? + 1;
-            scheduler.write_value(&Data::Uint(new), 0, 2, offset, &meta, database, guard)?; // increment
+            scheduler.write_value(&mut Data::Uint(new), 0, 2, offset, &meta, database, guard)?; // increment
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             // Note; the person id is needed for the anomaly check so embedding it in the updated field as a workaround
@@ -449,11 +397,11 @@ pub fn g2_item_write<'a>(
             }
             // else subtract 100 from one person
             if params.p_id_update == params.p1_id {
-                let new = bal1 - sum; // subtract 100 from p1
-                scheduler.write_value(&Data::from(new), 0, 3, offset1, &meta, database, guard)?;
+                let new = &mut Data::from(bal1 - sum); // subtract 100 from p1
+                scheduler.write_value(new, 0, 3, offset1, &meta, database, guard)?;
             } else {
-                let new = bal2 - sum; // subtract 100 from p2
-                scheduler.write_value(&Data::from(new), 0, 3, offset2, &meta, database, guard)?;
+                let new = &mut Data::from(bal2 - sum); // subtract 100 from p2
+                scheduler.write_value(new, 0, 3, offset2, &meta, database, guard)?;
             }
 
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;

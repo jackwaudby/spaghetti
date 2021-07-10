@@ -578,7 +578,7 @@ impl<'a> SerializationGraph<'a> {
     /// A write can executed iff there are no uncommitted writes on a record, else the operation is delayed.
     pub fn write_value<'g>(
         &self,
-        value: &Data,
+        value: &mut Data,
         table_id: usize,
         column_id: usize,
         offset: usize,

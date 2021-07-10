@@ -4,7 +4,6 @@ mod common;
 
 // SGT
 #[test]
-#[ignore]
 fn acid_sgt_g0() {
     common::g0("sgt");
 }
@@ -47,7 +46,6 @@ fn acid_sgt_g2item() {
 
 // WH
 #[test]
-#[ignore]
 fn acid_wh_g0() {
     common::g0("wh");
 }
@@ -90,7 +88,6 @@ fn acid_wh_g2item() {
 
 // OWH
 #[test]
-#[ignore]
 fn acid_owh_g0() {
     common::g0("owh");
 }
@@ -133,7 +130,6 @@ fn acid_owh_g2item() {
 
 // OWHTT
 #[test]
-#[ignore]
 fn acid_owhtt_g0() {
     common::g0("owhtt");
 }
@@ -176,7 +172,7 @@ fn acid_owhtt_g2item() {
 
 // NOCC
 #[test]
-#[ignore]
+#[should_panic]
 fn acid_nocc_g0() {
     common::g0("nocc");
 }
@@ -226,7 +222,6 @@ fn acid_nocc_g2item() {
 
 // 2PL
 #[test]
-#[ignore]
 fn acid_tpl_g0() {
     common::g0("tpl");
 }
@@ -237,7 +232,6 @@ fn acid_tpl_g1a() {
 }
 
 #[test]
-#[ignore]
 fn acid_tpl_g1c() {
     common::g1c("tpl");
 }

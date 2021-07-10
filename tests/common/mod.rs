@@ -9,6 +9,7 @@ use spaghetti::workloads::acid::paramgen::{
     AcidTransactionProfile, G0Read, G2itemRead, LostUpdateRead,
 };
 use spaghetti::workloads::acid::{AcidTransaction, ACID_SF_MAP};
+use spaghetti::workloads::IsolationLevel;
 
 use config::Config;
 use crossbeam_utils::thread;
@@ -93,6 +94,7 @@ pub fn run_recon(
                                 parameters: Parameters::Acid(AcidTransactionProfile::G0Read(
                                     payload,
                                 )),
+                                isolation: IsolationLevel::Serializable,
                             };
 
                             let ir = utils::execute(txn, scheduler, database); // execute txn
@@ -119,6 +121,7 @@ pub fn run_recon(
                                 parameters: Parameters::Acid(
                                     AcidTransactionProfile::LostUpdateRead(payload),
                                 ),
+                                isolation: IsolationLevel::Serializable,
                             };
 
                             let ir = utils::execute(txn, scheduler, database); // execute txn
@@ -147,6 +150,7 @@ pub fn run_recon(
                                 parameters: Parameters::Acid(AcidTransactionProfile::G2itemRead(
                                     payload,
                                 )),
+                                isolation: IsolationLevel::Serializable,
                             };
 
                             let ir = utils::execute(txn, scheduler, database); // execute txn
@@ -246,16 +250,12 @@ pub fn g0(protocol: &str) {
         if let Some(vals) = resp.get_values() {
             let p1vh = vals.get("p1_version_history").unwrap().clone();
             let p2vh = vals.get("p2_version_history").unwrap().clone();
-            let kvh = vals.get("knows_version_history").unwrap().clone();
 
             // TODO: implement (i)
             let x = string_to_vec64(p1vh);
             let y = string_to_vec64(p2vh);
-            let z = string_to_vec64(kvh);
 
             assert_eq!(x, y);
-            assert_eq!(y, z);
-            assert_eq!(x, z);
         }
     }
     info!("{} anomaly check complete", anomaly);
