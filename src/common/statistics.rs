@@ -173,7 +173,7 @@ impl GlobalStatistics {
 
         assert_eq!(aborted, external_aborts + internal_aborts);
 
-        let abort_rate = (external_aborts as f64 / (committed + external_aborts) as f64) * 100.0;
+        let abort_rate = (external_aborts as f64 / (committed + external_aborts) as f64);
         let throughput = committed as f64
             / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64);
         let mean = self.latency as f64 / (completed as f64) / 1000000.0;
