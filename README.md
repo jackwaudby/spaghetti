@@ -24,9 +24,10 @@ cargo build --release
 ```
 
 ## Outputs
-- Execution summary printed to console
-- `log/<workload>/` contains transaction responses on a per-thread basis
-- `results/<workload>/<protocol>-<scale_factor>.json` detailed execution summary containing: (i) abort breakdown and (ii) per-transaction type breakdown 
+1. Execution summary printed to console
+2. `results.csv`: execution summary
+3. `log/<workload>/`:  transaction responses on a per-thread basis
+4. `results/<workload>/<protocol>-<scale_factor>.json`: detailed execution summary containing: (i) abort breakdown and (ii) per-transaction type breakdown 
 
 ## ACID Test Suite
 
