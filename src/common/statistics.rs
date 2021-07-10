@@ -1,6 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Transaction};
 use crate::scheduler::msgt::error::MixedSerializationGraphError;
+use crate::scheduler::mtpl::error::MixedTwoPhaseLockingError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
@@ -168,12 +169,15 @@ impl GlobalStatistics {
             ProtocolAbortBreakdown::TwoPhaseLocking(ref reasons) => {
                 reasons.read_lock_denied + reasons.write_lock_denied
             }
+            ProtocolAbortBreakdown::MixedTwoPhaseLocking(ref reasons) => {
+                reasons.read_lock_denied + reasons.write_lock_denied
+            }
             ProtocolAbortBreakdown::NoConcurrencyControl => 0,
         }; // aborts due to system implementation
 
         assert_eq!(aborted, external_aborts + internal_aborts);
 
-        let abort_rate = (external_aborts as f64 / (committed + external_aborts) as f64);
+        let abort_rate = external_aborts as f64 / (committed + external_aborts) as f64;
         let throughput = committed as f64
             / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64);
         let mean = self.latency as f64 / (completed as f64) / 1000000.0;
@@ -363,7 +367,18 @@ impl LocalStatistics {
                             metric.inc_write_lock_denied()
                         }
                     },
+                    _ => {}
+                },
 
+                MixedTwoPhaseLocking(ref mut metric) => match reason {
+                    NonFatalError::MixedTwoPhaseLockingError(tple) => match tple {
+                        MixedTwoPhaseLockingError::ReadLockRequestDenied(_) => {
+                            metric.inc_read_lock_denied()
+                        }
+                        MixedTwoPhaseLockingError::WriteLockRequestDenied(_) => {
+                            metric.inc_write_lock_denied()
+                        }
+                    },
                     _ => {}
                 },
 
@@ -491,6 +506,7 @@ impl AbortBreakdown {
             }
             "nocc" => ProtocolAbortBreakdown::NoConcurrencyControl,
             "tpl" => ProtocolAbortBreakdown::TwoPhaseLocking(TwoPhaseLockingReasons::new()),
+            "mtpl" => ProtocolAbortBreakdown::MixedTwoPhaseLocking(TwoPhaseLockingReasons::new()),
             _ => unimplemented!(),
         };
 
@@ -553,6 +569,14 @@ impl AbortBreakdown {
                     panic!("protocol abort breakdowns do not match");
                 }
             }
+            MixedTwoPhaseLocking(ref mut reasons) => {
+                if let MixedTwoPhaseLocking(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+
             _ => {}
         }
         match self.workload_specific {
@@ -638,6 +662,7 @@ enum ProtocolAbortBreakdown {
     OptimisticWaitHit(HitListReasons),
     OptimisticWaitHitTransactionTypes(HitListReasons),
     TwoPhaseLocking(TwoPhaseLockingReasons),
+    MixedTwoPhaseLocking(TwoPhaseLockingReasons),
     NoConcurrencyControl,
 }
 

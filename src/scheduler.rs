@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::msgt::MixedSerializationGraph;
+use crate::scheduler::mtpl::MixedTwoPhaseLocking;
 use crate::scheduler::nocc::NoConcurrencyControl;
 use crate::scheduler::owh::OptimisedWaitHit;
 use crate::scheduler::owhtt::OptimisedWaitHitTransactionTypes;
@@ -26,6 +27,8 @@ pub mod msgt;
 
 pub mod tpl;
 
+pub mod mtpl;
+
 pub mod nocc;
 
 #[derive(Debug)]
@@ -44,6 +47,7 @@ pub enum Scheduler<'a> {
     OptimisedWaitHitTransactionTypes(OptimisedWaitHitTransactionTypes<'a>),
     NoConcurrencyControl(NoConcurrencyControl),
     TwoPhaseLocking(TwoPhaseLocking),
+    MixedTwoPhaseLocking(MixedTwoPhaseLocking),
 }
 
 impl<'a> Scheduler<'a> {
@@ -60,6 +64,7 @@ impl<'a> Scheduler<'a> {
             ),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
             "tpl" => Scheduler::TwoPhaseLocking(TwoPhaseLocking::new(cores)),
+            "mtpl" => Scheduler::MixedTwoPhaseLocking(MixedTwoPhaseLocking::new(cores)),
             _ => panic!("Incorrect concurrency control protocol"),
         };
 
@@ -76,6 +81,7 @@ impl<'a> Scheduler<'a> {
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.begin(),
             NoConcurrencyControl(nocc) => nocc.begin(),
             TwoPhaseLocking(tpl) => tpl.begin(),
+            MixedTwoPhaseLocking(tpl) => tpl.begin(),
         }
     }
 
@@ -107,6 +113,9 @@ impl<'a> Scheduler<'a> {
                 nocc.read_value(table_id, column_id, offset, meta, database, guard)
             }
             TwoPhaseLocking(tpl) => tpl.read_value(table_id, column_id, offset, meta, database),
+            MixedTwoPhaseLocking(tpl) => {
+                tpl.read_value(table_id, column_id, offset, meta, database)
+            }
         }
     }
 
@@ -143,6 +152,9 @@ impl<'a> Scheduler<'a> {
             TwoPhaseLocking(tpl) => {
                 tpl.write_value(value, table_id, column_id, offset, meta, database)
             }
+            MixedTwoPhaseLocking(tpl) => {
+                tpl.write_value(value, table_id, column_id, offset, meta, database)
+            }
         }
     }
 
@@ -164,6 +176,7 @@ impl<'a> Scheduler<'a> {
             }
             NoConcurrencyControl(nocc) => nocc.commit(database, guard),
             TwoPhaseLocking(tpl) => tpl.commit(database, meta),
+            MixedTwoPhaseLocking(tpl) => tpl.commit(database, meta),
         }
     }
 
@@ -182,6 +195,7 @@ impl<'a> Scheduler<'a> {
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database, guard),
             NoConcurrencyControl(nocc) => nocc.abort(database, guard),
             TwoPhaseLocking(tpl) => tpl.abort(database, meta),
+            MixedTwoPhaseLocking(tpl) => tpl.abort(database, meta),
         }
     }
 }
