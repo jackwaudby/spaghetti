@@ -81,7 +81,7 @@ impl<'a> Scheduler<'a> {
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.begin(),
             NoConcurrencyControl(nocc) => nocc.begin(),
             TwoPhaseLocking(tpl) => tpl.begin(),
-            MixedTwoPhaseLocking(tpl) => tpl.begin(),
+            MixedTwoPhaseLocking(tpl) => tpl.begin(isolation_level),
         }
     }
 

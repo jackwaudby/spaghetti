@@ -7,6 +7,7 @@ use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 use crate::storage::Database;
+use crate::workloads::IsolationLevel;
 
 use flurry::HashMap;
 use parking_lot::{Condvar, Mutex};
@@ -27,6 +28,7 @@ pub struct MixedTwoPhaseLocking {
     lock_table: HashMap<(usize, usize), Lock>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
     locks_held: ThreadLocal<RefCell<LocksHeld>>,
+    isolation_level: ThreadLocal<RefCell<IsolationLevel>>,
 }
 
 #[derive(Debug)]
@@ -45,11 +47,16 @@ impl MixedTwoPhaseLocking {
             lock_table: HashMap::new(),
             locks_held: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
+            isolation_level: ThreadLocal::new(),
         }
     }
 
     pub fn get_locks(&self) -> RefMut<LocksHeld> {
         self.locks_held.get().unwrap().borrow_mut()
+    }
+
+    pub fn get_level(&self) -> IsolationLevel {
+        *self.isolation_level.get().unwrap().borrow_mut()
     }
 
     pub fn add_lock(&self, table_id: usize, offset: usize) {
@@ -75,7 +82,7 @@ impl MixedTwoPhaseLocking {
         res.add(op_type, table_id, column_id, offset, prv); // record operation
     }
 
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self, isolation: IsolationLevel) -> TransactionId {
         *self
             .txn_info
             .get_or(|| RefCell::new(Some(TransactionInformation::new())))
@@ -85,6 +92,11 @@ impl MixedTwoPhaseLocking {
             .locks_held
             .get_or(|| RefCell::new(LocksHeld::new()))
             .borrow_mut() = LocksHeld::new();
+
+        *self
+            .isolation_level
+            .get_or(|| RefCell::new(IsolationLevel::Serializable))
+            .borrow_mut() = isolation;
 
         let mut lock = self.id.lock();
         let id = *lock;
@@ -107,52 +119,105 @@ impl MixedTwoPhaseLocking {
             _ => panic!("unexpected txn id"),
         };
 
-        debug!(
-            "read by {} on ({},{},{})",
-            timestamp, table_id, column_id, offset
-        );
-
-        let request = self.request_lock(table_id, offset, LockMode::Read, *timestamp); // request read lock
-
-        match request {
-            LockRequest::AlreadyGranted => {
+        match self.get_level() {
+            // take no read lock
+            IsolationLevel::ReadUncommitted => {
                 let table: &Table = database.get_table(table_id); // get table
                 let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
-
                 Ok(vals.unwrap().get_value())
             }
 
-            LockRequest::Granted => {
-                self.add_lock(table_id, offset);
-                self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
-                let table: &Table = database.get_table(table_id); // get table
-                let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
+            // take short duration read lock
+            IsolationLevel::ReadCommitted => {
+                let request = self.request_lock(table_id, offset, LockMode::Read, *timestamp); // request read lock
+                match request {
+                    LockRequest::AlreadyGranted => {
+                        let table: &Table = database.get_table(table_id); // get table
+                        let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
 
-                Ok(vals.unwrap().get_value())
-            }
+                        Ok(vals.unwrap().get_value())
+                    }
 
-            LockRequest::Delay(pair) => {
-                let &(ref lock, ref cvar) = &*pair;
-                let mut waiting = lock.lock(); // wait flag: false = asleep
-                if !*waiting {
-                    cvar.wait(&mut waiting);
+                    LockRequest::Granted => {
+                        let table: &Table = database.get_table(table_id); // get table
+                        let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
+                        self.release_lock(table_id, offset, *timestamp).unwrap(); // release after reading
+
+                        Ok(vals.unwrap().get_value())
+                    }
+
+                    LockRequest::Delay(pair) => {
+                        let &(ref lock, ref cvar) = &*pair;
+                        let mut waiting = lock.lock(); // wait flag: false = asleep
+                        if !*waiting {
+                            cvar.wait(&mut waiting);
+                        }
+
+                        let table: &Table = database.get_table(table_id); // get table
+                        let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
+                        self.release_lock(table_id, offset, *timestamp).unwrap(); // release after reading
+
+                        Ok(vals.unwrap().get_value())
+                    }
+
+                    LockRequest::Denied => {
+                        self.abort(database, meta);
+
+                        Err(MixedTwoPhaseLockingError::ReadLockRequestDenied(format!(
+                            "{:?}",
+                            (table_id, offset)
+                        ))
+                        .into())
+                    }
                 }
-
-                self.add_lock(table_id, offset);
-                self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
-                let table: &Table = database.get_table(table_id); // get table
-                let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
-
-                Ok(vals.unwrap().get_value())
             }
-            LockRequest::Denied => {
-                self.abort(database, meta);
 
-                Err(MixedTwoPhaseLockingError::WriteLockRequestDenied(format!(
-                    "{:?}",
-                    (table_id, offset)
-                ))
-                .into())
+            // take long duration read lock
+            IsolationLevel::Serializable => {
+                let request = self.request_lock(table_id, offset, LockMode::Read, *timestamp); // request read lock
+
+                match request {
+                    LockRequest::AlreadyGranted => {
+                        let table: &Table = database.get_table(table_id); // get table
+                        let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
+
+                        Ok(vals.unwrap().get_value())
+                    }
+
+                    LockRequest::Granted => {
+                        self.add_lock(table_id, offset);
+                        self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
+                        let table: &Table = database.get_table(table_id); // get table
+                        let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
+
+                        Ok(vals.unwrap().get_value())
+                    }
+
+                    LockRequest::Delay(pair) => {
+                        let &(ref lock, ref cvar) = &*pair;
+                        let mut waiting = lock.lock(); // wait flag: false = asleep
+                        if !*waiting {
+                            cvar.wait(&mut waiting);
+                        }
+
+                        self.add_lock(table_id, offset);
+                        self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
+                        let table: &Table = database.get_table(table_id); // get table
+                        let vals = table.get_tuple(column_id, offset).get().get_value(); // read operation
+
+                        Ok(vals.unwrap().get_value())
+                    }
+
+                    LockRequest::Denied => {
+                        self.abort(database, meta);
+
+                        Err(MixedTwoPhaseLockingError::ReadLockRequestDenied(format!(
+                            "{:?}",
+                            (table_id, offset)
+                        ))
+                        .into())
+                    }
+                }
             }
         }
     }
