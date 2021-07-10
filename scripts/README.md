@@ -1,6 +1,6 @@
-## Utilities
+# Utilities
 
-### Misc
+## Misc
 ```
 #run tests with logging
 RUST_LOG=debug cargo test -- --test-threads=1 --nocapture
@@ -8,19 +8,10 @@ RUST_LOG=debug cargo test -- --test-threads=1 --nocapture
 #run test coverage locally
 docker run --security-opt seccomp=unconfined -v "${PWD}:/volume" xd009642/tarpaulin:0.16.0
 
-#generate a flamegraph (linux only)
-cargo flamegraph -o 30-core.svg --bin=spag -- -c 30 -p sgt -t 1000000
+
 ```
 
-
-### Report Generation
-Reports are produced per workload using:
-```
-./generate-report.sh <workload>
-```
-
-
-### VM Setup
+## VM Setup
 
 Grab a fresh Ubuntu Server 18.04 image on Azure.
 Install Rust, get the spaghetti repo, and build for release.
@@ -45,7 +36,7 @@ Copy results from VM to local machine.
 scp -r -i ./ssh_keys/<key>.pem azureuser@<pubic-ip>:~/spaghetti/results ./
 ```
 
-### NFN Setup
+## NoFalseNegatives Setup
 ```
 git clone https://github.com/durner/No-False-Negatives.git &&
 wget https://github.com/oneapi-src/oneTBB/releases/download/2018/tbb2018_20170726oss_lin.tgz &&
@@ -68,8 +59,8 @@ rm -rf build && mkdir build && cd build && cmake -DCMAKE_BUILD_TYPE=Release ../ 
 ./bin/db svcc_tatp NoFalseNegatives 100 100000 4
 ```
 
-###  Profiling
-Valgrind suite:
+##  Profiling
+### Valgrind suite
 - *memcheck* is a memory error detector
 - *massif* is a heap profiler
 - *cachegrind* is a cache profiler. Simulates a machine with two levels of instruction and data caching. Also, displays branch misprediction. Note conditional branches jump to a location based on some condition, whereas indirect branches jump based on the results of previous instructions.
@@ -79,7 +70,13 @@ valgrind --tool=massif <program>
 valgrind --tool=cachegrind --branch-sim=yes <program>
 ```
 
-Perf
+### Perf
 ```
 perf stat --event task-clock,context-switches,page-faults,cycles,instructions,branches,branch-misses,cache-references,cache-misses <program> > /dev/null
+```
+
+### Flamegraph
+```
+#generate a flamegraph (linux only)
+cargo flamegraph -o 30-core.svg --bin=spag -- -c 30 -p sgt -t 1000000
 ```
