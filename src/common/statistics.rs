@@ -11,8 +11,6 @@ use crate::workloads::smallbank::SmallBankTransaction;
 use config::Config;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-//use statrs::statistics::OrderStatistics;
-//use statrs::statistics::{Max, Mean, Min};
 use std::fs::{self, OpenOptions};
 use std::path::Path;
 
@@ -25,12 +23,10 @@ pub struct GlobalStatistics {
     scale_factor: u64,
     data_generation: Option<Duration>,
     load_time: Option<Duration>,
-    warmup: u32,
     start: Option<Instant>,
     end: Option<Duration>,
     cores: u32,
     total_time: u128,
-    wait_manager: u128,
     latency: u128,
     protocol: String,
     workload: String,
@@ -44,7 +40,6 @@ impl GlobalStatistics {
         let scale_factor = config.get_int("scale_factor").unwrap() as u64;
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
-        let warmup = config.get_int("warmup").unwrap() as u32;
         let cores = config.get_int("cores").unwrap() as u32;
         let transaction_breakdown = TransactionBreakdown::new(&workload);
         let abort_breakdown = AbortBreakdown::new(&protocol, &workload);
@@ -54,17 +49,16 @@ impl GlobalStatistics {
         } else {
             anomaly = None;
         }
+
         GlobalStatistics {
             scale_factor,
             data_generation: None,
             load_time: None,
-            warmup,
             start: None,
             end: None,
             protocol,
             workload,
             total_time: 0,
-            wait_manager: 0,
             latency: 0,
             cores,
             transaction_breakdown,
@@ -91,7 +85,6 @@ impl GlobalStatistics {
 
     pub fn merge_into(&mut self, local: LocalStatistics) {
         self.total_time += local.total_time;
-        self.wait_manager += local.wait_manager;
         self.latency += local.latency;
 
         self.transaction_breakdown
@@ -100,7 +93,7 @@ impl GlobalStatistics {
     }
 
     pub fn write_to_file(&mut self) {
-        let path;
+        let path; // construct file path
         let file;
         if self.workload.as_str() == "acid" {
             path = format!(
@@ -124,125 +117,107 @@ impl GlobalStatistics {
         }
 
         if !Path::new(&path).exists() {
-            fs::create_dir_all(&path).unwrap();
+            fs::create_dir_all(&path).unwrap(); // create dir if does not exist
         }
 
-        // Remove file if already exists.
         if Path::new(&file).exists() {
-            fs::remove_file(&file).unwrap();
+            fs::remove_file(&file).unwrap(); // remove file if already exists
         }
 
-        // Create new file.
         let file = OpenOptions::new()
             .write(true)
             .append(true)
             .create(true)
             .open(&file)
-            .expect("cannot open file");
+            .expect("cannot open file"); // create new file
 
-        // Compute totals.
         let mut completed = 0;
         let mut committed = 0;
-        let mut restarted = 0;
-        let mut aborted = 0;
+        let mut aborted = 0; // total aborts
 
-        //  let mut raw_latency = vec![];
         for transaction in &mut self.transaction_breakdown.transactions {
             completed += transaction.completed;
             committed += transaction.committed;
-            restarted += transaction.restarted;
             aborted += transaction.aborted;
-
-            //   latency += transaction.latency;
-            //   transaction.calculate_latency_summary();
-            //            let mut temp = transaction.raw_latency.clone();
-            //          raw_latency.append(&mut temp);
         }
 
-        let abort_rate;
-        let throughput;
+        assert_eq!(completed, committed + aborted);
 
-        match self.abort_breakdown.workload_specific {
-            WorkloadAbortBreakdown::Tatp(ref _reason) => {
-                // applicaton_aborts = aborts - reason.row_not_found;
-                // protocol_aborts = aborts - applicaton_aborts;
-                // // missing data counts as committed
-                // let tatp_success = committed + applicaton_aborts;
-                abort_rate = 0.0; //(protocol_aborts as f64 / completed as f64) * 100.0;
-                throughput = 0.0; //tatp_success as f64 / ((self.total_time as f64 / 1000000.0) / 1000.0)
-            }
+        let internal_aborts = match self.abort_breakdown.workload_specific {
+            WorkloadAbortBreakdown::Tatp(ref _reason) => 0,
+            WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
+            WorkloadAbortBreakdown::Acid => 0,
+        }; // aborts due to integrity constraints
 
-            WorkloadAbortBreakdown::SmallBank(_) => {
-                let total = (committed + restarted) as f64;
-                abort_rate = restarted as f64 / total * 100.0;
-                throughput = committed as f64
-                    / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64)
+        let external_aborts = match self.abort_breakdown.protocol_specific {
+            ProtocolAbortBreakdown::SerializationGraph(ref reasons) => {
+                reasons.cascading_abort + reasons.cycle_found
             }
-            WorkloadAbortBreakdown::Acid => {
-                let total = (committed + restarted) as f64;
-                abort_rate = restarted as f64 / total * 100.0;
-                throughput = committed as f64
-                    / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64)
+            ProtocolAbortBreakdown::MixedSerializationGraph(ref reasons) => {
+                reasons.cascading_abort + reasons.cycle_found
             }
-        }
+            ProtocolAbortBreakdown::WaitHit(ref reasons) => {
+                reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
+            }
+            ProtocolAbortBreakdown::OptimisticWaitHit(ref reasons) => {
+                reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
+            }
+            ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(ref reasons) => {
+                reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
+            }
+            ProtocolAbortBreakdown::TwoPhaseLocking(ref reasons) => {
+                reasons.read_lock_denied + reasons.write_lock_denied
+            }
+            ProtocolAbortBreakdown::NoConcurrencyControl => 0,
+        }; // aborts due to system implementation
 
+        assert_eq!(aborted, external_aborts + internal_aborts);
+
+        let abort_rate = external_aborts as f64 / (committed + external_aborts) as f64;
+        let throughput = committed as f64
+            / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64);
         let mean = self.latency as f64 / (completed as f64) / 1000000.0;
 
-        // let min = raw_latency.min() * 1000.0;
-        // let max = raw_latency.max() * 1000.0;
-        // let mean = raw_latency.mean() * 1000.0;
-        // let pc50 = raw_latency.quantile(0.5) * 1000.0;
-        // let pc90 = raw_latency.quantile(0.9) * 1000.0;
-        // let pc95 = raw_latency.quantile(0.95) * 1000.0;
-        // let pc99 = raw_latency.quantile(0.99) * 1000.0;
-
+        // detailed execution summary
         let overview = json!({
+            "workload": self.workload,
             "sf": self.scale_factor,
             "load": self.data_generation.unwrap().as_secs(),
             "cores": self.cores,
             "protocol": self.protocol,
-            "workload": self.workload,
             "total_duration": self.end.unwrap().as_secs(),
-            "warmup": self.warmup,
             "completed": completed,
             "committed": committed,
-            "restarted": restarted,
             "aborted": aborted,
+            "internal_aborts": internal_aborts,
+            "external_aborts": external_aborts,
             "abort_rate": format!("{:.3}", abort_rate),
             "throughput": format!("{:.3}", throughput),
             "latency": mean,
-            // "min": min,
-            // "max": max,
-            // "mean": mean,
-            // "50th_percentile": pc50,
-            // "90th_percentile": pc90,
-            // "95th_percentile": pc95,
-            // "99th_percentile": pc99,
             "abort_breakdown": self.abort_breakdown,
             "transaction_breakdown": self.transaction_breakdown,
         });
-
         serde_json::to_writer_pretty(file, &overview).unwrap();
 
+        // console output
         let pr = json!({
+            "workload": self.workload,
             "sf": self.scale_factor,
             "cores": self.cores,
             "protocol": self.protocol,
-            "workload": self.workload,
-            "duration(ms)":  format!("{:.0}",self.end.unwrap().as_nanos() as f64 / 1000000.0),
             "total_time(ms)":  format!("{:.0}", (self.total_time as f64 / 1000000.0)),
             "completed": completed,
             "committed": committed,
-            "restarted": restarted,
             "aborted": aborted,
+            "internal_aborts": internal_aborts,
+            "external_aborts": external_aborts,
             "throughput": format!("{:.3}", throughput),
             "abort_rate": format!("{:.3}", abort_rate),
-            "latency(ms)": format!("{:.0}", (self.latency as f64 / 1000000.0)),
             "av_latency(ms)":format!("{:.3}", mean),
-            "wait_manager(ms)": format!("{:.0}", (self.wait_manager as f64 / 1000000.0)),
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
 
+        // results.csv
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -257,10 +232,10 @@ impl GlobalStatistics {
             &self.protocol,
             &self.workload,
             self.cores,
-            (self.total_time as f64 / 1000000.0),
+            (self.total_time as f64 / 1000000.0), // ms
             committed,
-            restarted,
-            aborted,
+            external_aborts,
+            internal_aborts,
             (self.latency as f64 / 1000000.0), // ms
         ))
         .unwrap();
@@ -271,21 +246,19 @@ impl GlobalStatistics {
 pub struct LocalStatistics {
     core_id: u32,
     total_time: u128,
-    wait_manager: u128,
     latency: u128,
     transaction_breakdown: TransactionBreakdown,
     abort_breakdown: AbortBreakdown,
 }
 
 impl LocalStatistics {
-    pub fn new(core_id: u32, workload: &str, protocol: &str) -> LocalStatistics {
+    pub fn new(core_id: u32, workload: &str, protocol: &str) -> Self {
         let transaction_breakdown = TransactionBreakdown::new(workload);
         let abort_breakdown = AbortBreakdown::new(protocol, workload);
 
         LocalStatistics {
             core_id,
             total_time: 0,
-            wait_manager: 0,
             latency: 0,
             transaction_breakdown,
             abort_breakdown,
@@ -302,10 +275,6 @@ impl LocalStatistics {
 
     pub fn stop_latency(&mut self, start: Instant) {
         self.latency += start.elapsed().as_nanos();
-    }
-
-    pub fn stop_wait_manager(&mut self, start: Instant) {
-        self.wait_manager += start.elapsed().as_nanos();
     }
 
     pub fn record(&mut self, transaction: Transaction, outcome: Outcome) {
@@ -448,8 +417,6 @@ impl TransactionBreakdown {
             Outcome::Committed { .. } => self.transactions[ind].inc_committed(),
             Outcome::Aborted { .. } => self.transactions[ind].inc_aborted(),
         }
-
-        //  self.transactions[ind].add_latency(latency.unwrap().as_secs_f64());
     }
 
     fn merge(&mut self, other: TransactionBreakdown) {
@@ -472,18 +439,7 @@ struct TransactionMetrics {
     transaction: Transaction,
     completed: u32,
     committed: u32,
-    restarted: u32,
-    aborted: u32,
-    // latency: f64,
-    // #[serde(skip_serializing)]
-    // raw_latency: Vec<f64>,
-    // min: Option<f64>,
-    // max: Option<f64>,
-    // mean: Option<f64>,
-    // pc50: Option<f64>,
-    // pc90: Option<f64>,
-    // pc95: Option<f64>,
-    // pc99: Option<f64>
+    aborted: u32, // internal and external aborts
 }
 
 impl TransactionMetrics {
@@ -492,17 +448,7 @@ impl TransactionMetrics {
             transaction,
             completed: 0,
             committed: 0,
-            restarted: 0,
             aborted: 0,
-            //       latency: 0.0,
-            // raw_latency: vec![],
-            // min: None,
-            // max: None,
-            // mean: None,
-            // pc50: None,
-            // pc90: None,
-            // pc95: None,
-            // pc99: None,
         }
     }
 
@@ -516,32 +462,12 @@ impl TransactionMetrics {
         self.aborted += 1;
     }
 
-    // fn add_latency(&mut self, latency: f64) {
-    //     self.latency += latency;
-    //     //  self.raw_latency.push(latency);
-    // }
-
-    //    fn calculate_latency_summary(&mut self) {
-    // if !self.raw_latency.is_empty() {
-    //     self.min = Some(self.raw_latency.min() * 1000.0);
-    //     self.max = Some(self.raw_latency.max() * 1000.0);
-    //     self.mean = Some(self.raw_latency.mean() * 1000.0);
-    //     self.pc50 = Some(self.raw_latency.quantile(0.5) * 1000.0);
-    //     self.pc90 = Some(self.raw_latency.quantile(0.9) * 1000.0);
-    //     self.pc95 = Some(self.raw_latency.quantile(0.95) * 1000.0);
-    //     self.pc99 = Some(self.raw_latency.quantile(0.99) * 1000.0);
-    // }
-    //  }
-
     fn merge(&mut self, other: TransactionMetrics) {
         assert!(self.transaction == other.transaction);
 
         self.completed += other.completed;
         self.committed += other.committed;
         self.aborted += other.aborted;
-        self.restarted += other.restarted;
-        //    self.latency += other.latency;
-        //      self.raw_latency.append(&mut other.raw_latency);
     }
 }
 
@@ -629,7 +555,6 @@ impl AbortBreakdown {
             }
             _ => {}
         }
-
         match self.workload_specific {
             SmallBank(ref mut reasons) => {
                 if let SmallBank(other_reasons) = other.workload_specific {
