@@ -6,12 +6,27 @@
 This framework is designed to run on many-core machines. 
 Configuration is set in `Settings.toml`.
 ```
-#build
+# build
 cargo build --release
 
-#run
+# run
 ./target/release/spag -s 1 -p sgt -t 10000 -c 1
+
+# run all
+# - runs each protocol, for each workload, for each scale factor, for 1 to 60 cores
+# - produces results.csv 
+./run.sh 
+
+# generate throughput, latency, and abort rate plots 
+# - expects: results.csv and durner_sgt.csv
+# - stored in graphics/
+./plot.sh
 ```
+
+## Outputs
+- Execution summary printed to console
+- `log/<workload>/` contains transaction responses on a per-thread basis
+- `results/<workload>/<protocol>-<scale_factor>.json` detailed execution summary containing: (i) abort breakdown and (ii) per-transaction type breakdown 
 
 ## ACID Test Suite
 
