@@ -408,8 +408,8 @@ pub fn g2_item_write<'a>(
             let guard = &epoch::pin(); // pin thread
 
             let meta = scheduler.begin(IsolationLevel::Serializable); // register
-            let bal1 = u64::try_from(scheduler.read_value(0, 3, offset1, &meta, database, guard)?)?; // get p1 balance
-            let bal2 = u64::try_from(scheduler.read_value(0, 3, offset2, &meta, database, guard)?)?; // get p2 balance
+            let bal1 = i64::try_from(scheduler.read_value(0, 3, offset1, &meta, database, guard)?)?; // get p1 balance
+            let bal2 = i64::try_from(scheduler.read_value(0, 3, offset2, &meta, database, guard)?)?; // get p2 balance
             let sum = bal1 + bal2;
 
             // if sum across accounts if less than 100 abort
@@ -421,11 +421,11 @@ pub fn g2_item_write<'a>(
             let updated;
 
             if params.p_id_update == params.p1_id {
-                let new = &mut Data::from(bal1 - sum); // subtract 100 from p1
+                let new = &mut Data::Int(bal1 - 100); // subtract 100 from p1
                 scheduler.write_value(new, 0, 3, offset1, &meta, database, guard)?;
                 updated = offset1;
             } else {
-                let new = &mut Data::from(bal2 - sum); // subtract 100 from p2
+                let new = &mut Data::Int(bal2 - 100); // subtract 100 from p2
                 scheduler.write_value(new, 0, 3, offset2, &meta, database, guard)?;
                 updated = offset2;
             }
