@@ -149,11 +149,11 @@ pub fn run(
             let InternalResponse {
                 transaction,
                 outcome,
-                ..
+                request_no,
             } = ir; // breakdown response
             stats.record(transaction, outcome.clone()); // record response
             if log_results {
-                log_result(&mut fh, outcome.clone()); // log response
+                log_result(&mut fh, outcome.clone(), request_no); // log response
             }
             stats.stop_latency(start_latency); // stop measuring latency
             completed += 1;
@@ -185,44 +185,90 @@ pub fn execute<'a>(
             Transaction::Acid(_) => {
                 if let Parameters::Acid(params) = parameters {
                     match params {
-                        AcidTransactionProfile::G0Write(params) => {
-                            acid::procedures::g0_write(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::G0Read(params) => {
-                            acid::procedures::g0_read(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::G1aRead(params) => {
-                            acid::procedures::g1a_read(params, scheduler, workload)
-                        }
+                        AcidTransactionProfile::G0Write(params) => acid::procedures::g0_write(
+                            params,
+                            scheduler,
+                            workload,
+                            request_no as u64,
+                        ),
+                        AcidTransactionProfile::G0Read(params) => acid::procedures::g0_read(
+                            params,
+                            scheduler,
+                            workload,
+                            request_no as u64,
+                        ),
+                        AcidTransactionProfile::G1aRead(params) => acid::procedures::g1a_read(
+                            params,
+                            scheduler,
+                            workload,
+                            request_no as u64,
+                        ),
                         AcidTransactionProfile::G1aWrite(params) => {
                             acid::procedures::g1a_write(params, scheduler, workload)
                         }
                         AcidTransactionProfile::G1cReadWrite(params) => {
-                            acid::procedures::g1c_read_write(params, scheduler, workload)
+                            acid::procedures::g1c_read_write(
+                                params,
+                                scheduler,
+                                workload,
+                                request_no as u64,
+                            )
                         }
-                        AcidTransactionProfile::ImpRead(params) => {
-                            acid::procedures::imp_read(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::ImpWrite(params) => {
-                            acid::procedures::imp_write(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::OtvRead(params) => {
-                            acid::procedures::otv_read(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::OtvWrite(params) => {
-                            acid::procedures::otv_write(params, scheduler, workload)
-                        }
+                        AcidTransactionProfile::ImpRead(params) => acid::procedures::imp_read(
+                            params,
+                            scheduler,
+                            workload,
+                            request_no as u64,
+                        ),
+                        AcidTransactionProfile::ImpWrite(params) => acid::procedures::imp_write(
+                            params,
+                            scheduler,
+                            workload,
+                            request_no as u64,
+                        ),
+                        AcidTransactionProfile::OtvRead(params) => acid::procedures::otv_read(
+                            params,
+                            scheduler,
+                            workload,
+                            request_no as u64,
+                        ),
+                        AcidTransactionProfile::OtvWrite(params) => acid::procedures::otv_write(
+                            params,
+                            scheduler,
+                            workload,
+                            request_no as u64,
+                        ),
                         AcidTransactionProfile::LostUpdateRead(params) => {
-                            acid::procedures::lu_read(params, scheduler, workload)
+                            acid::procedures::lu_read(
+                                params,
+                                scheduler,
+                                workload,
+                                request_no as u64,
+                            )
                         }
                         AcidTransactionProfile::LostUpdateWrite(params) => {
-                            acid::procedures::lu_write(params, scheduler, workload)
+                            acid::procedures::lu_write(
+                                params,
+                                scheduler,
+                                workload,
+                                request_no as u64,
+                            )
                         }
                         AcidTransactionProfile::G2itemRead(params) => {
-                            acid::procedures::g2_item_read(params, scheduler, workload)
+                            acid::procedures::g2_item_read(
+                                params,
+                                scheduler,
+                                workload,
+                                request_no as u64,
+                            )
                         }
                         AcidTransactionProfile::G2itemWrite(params) => {
-                            acid::procedures::g2_item_write(params, scheduler, workload)
+                            acid::procedures::g2_item_write(
+                                params,
+                                scheduler,
+                                workload,
+                                request_no as u64,
+                            )
                         }
                     }
                 } else {
@@ -307,7 +353,7 @@ pub fn get_transaction_generator(config: &Config) -> ParameterGenerator {
     }
 }
 
-pub fn log_result(fh: &mut Option<std::fs::File>, outcome: Outcome) {
+pub fn log_result(fh: &mut Option<std::fs::File>, outcome: Outcome, request_no: u32) {
     if let Some(ref mut fh) = fh {
         match outcome {
             Outcome::Committed { value } => {
@@ -316,7 +362,7 @@ pub fn log_result(fh: &mut Option<std::fs::File>, outcome: Outcome) {
             Outcome::Aborted { reason } => {
                 let x = format!("{}", reason);
                 let value = serde_json::to_string(&x).unwrap();
-                writeln!(fh, "{}", &value).unwrap();
+                writeln!(fh, "{{\"id\":{},\"aborted\":{}}}", request_no, &value).unwrap();
             }
         }
     }

@@ -19,6 +19,7 @@ pub fn g0_write<'a>(
     params: G0Write,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -27,13 +28,24 @@ pub fn g0_write<'a>(
             let delay = params.delay;
             let guard = &epoch::pin(); // pin thread
             let meta = scheduler.begin(IsolationLevel::Serializable); // register
-            let val = &mut Data::List(vec![Data::Uint(params.transaction_id.into())]);
-            scheduler.write_value(val, 0, 4, offset1, &meta, database, guard)?;
+
+            // Need to two copies as append operation uses append() which moves element out of the supplied vec
+            let val1 = &mut Data::List(vec![Data::Uint(params.transaction_id.into())]);
+            let val2 = &mut Data::List(vec![Data::Uint(params.transaction_id.into())]);
+            scheduler.write_value(val1, 0, 4, offset1, &meta, database, guard)?;
             thread::sleep(time::Duration::from_millis(delay)); // --- artifical delay
-            scheduler.write_value(val, 0, 4, offset2, &meta, database, guard)?; // TODO: check append operation
+            scheduler.write_value(val2, 0, 4, offset2, &meta, database, guard)?; // TODO: check append operation
             scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?; // commit
 
-            let res = datatype::to_result(None, Some(2), None, None, None).unwrap();
+            let res = datatype::to_result(
+                Some(request_no),
+                None,
+                Some(vec![(0, offset1), (0, offset2)]),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
 
             Ok(res)
         }
@@ -48,6 +60,7 @@ pub fn g0_read<'a>(
     params: G0Read,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -64,6 +77,7 @@ pub fn g0_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
+                Some(request_no),
                 None,
                 None,
                 None,
@@ -84,6 +98,7 @@ pub fn g1a_read<'a>(
     params: G1aRead,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -95,6 +110,7 @@ pub fn g1a_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
+                Some(request_no),
                 None,
                 None,
                 None,
@@ -140,6 +156,7 @@ pub fn g1c_read_write<'a>(
     params: G1cReadWrite,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -155,6 +172,7 @@ pub fn g1c_read_write<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             let res = datatype::to_result(
+                Some(request_no),
                 None,
                 None,
                 None,
@@ -176,6 +194,7 @@ pub fn imp_read<'a>(
     params: ImpRead,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -189,6 +208,7 @@ pub fn imp_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
+                Some(request_no),
                 None,
                 None,
                 None,
@@ -210,6 +230,7 @@ pub fn imp_write<'a>(
     params: ImpWrite,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -222,7 +243,15 @@ pub fn imp_write<'a>(
             scheduler.write_value(&mut Data::Uint(new), 0, 1, offset, &meta, database, guard)?; // increment
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
-            let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
+            let res = datatype::to_result(
+                Some(request_no),
+                None,
+                Some(vec![(0, offset)]),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
             Ok(res)
         }
         _ => panic!("unexpected database"),
@@ -236,6 +265,7 @@ pub fn otv_write<'a>(
     params: Otv,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -263,7 +293,15 @@ pub fn otv_write<'a>(
 
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
-            let res = datatype::to_result(None, Some(4), None, None, None).unwrap();
+            let res = datatype::to_result(
+                Some(request_no),
+                None,
+                Some(vec![(0, offset1), (0, offset2), (0, offset3), (0, offset4)]),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
 
             Ok(res)
         }
@@ -279,6 +317,7 @@ pub fn otv_read<'a>(
     params: Otv,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -296,6 +335,7 @@ pub fn otv_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
+                Some(request_no),
                 None,
                 None,
                 None,
@@ -317,6 +357,7 @@ pub fn lu_write<'a>(
     params: LostUpdateWrite,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -330,7 +371,17 @@ pub fn lu_write<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             // Note; the person id is needed for the anomaly check so embedding it in the updated field as a workaround
-            let res = datatype::to_result(None, Some(params.p_id), None, None, None).unwrap();
+
+            // TODO: this now breaks
+            let res = datatype::to_result(
+                Some(request_no),
+                None,
+                Some(vec![(0, params.p_id as usize)]),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
             Ok(res)
         }
         _ => panic!("unexpected database"),
@@ -344,6 +395,7 @@ pub fn lu_read<'a>(
     params: LostUpdateRead,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -356,6 +408,7 @@ pub fn lu_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
+                Some(request_no),
                 None,
                 None,
                 None,
@@ -378,6 +431,7 @@ pub fn g2_item_write<'a>(
     params: G2itemWrite,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -396,17 +450,29 @@ pub fn g2_item_write<'a>(
                 return Err(NonFatalError::NonSerializable);
             }
             // else subtract 100 from one person
+            let updated;
+
             if params.p_id_update == params.p1_id {
                 let new = &mut Data::from(bal1 - sum); // subtract 100 from p1
                 scheduler.write_value(new, 0, 3, offset1, &meta, database, guard)?;
+                updated = offset1;
             } else {
                 let new = &mut Data::from(bal2 - sum); // subtract 100 from p2
                 scheduler.write_value(new, 0, 3, offset2, &meta, database, guard)?;
+                updated = offset2;
             }
 
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
-            let res = datatype::to_result(None, Some(1), None, None, None).unwrap();
+            let res = datatype::to_result(
+                Some(request_no),
+                None,
+                Some(vec![(0, updated)]),
+                None,
+                None,
+                None,
+            )
+            .unwrap();
             Ok(res)
         }
         _ => panic!("unexpected database"),
@@ -420,6 +486,7 @@ pub fn g2_item_read<'a>(
     params: G2itemRead,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    request_no: u64,
 ) -> Result<String, NonFatalError> {
     match &*database {
         Database::Acid(_) => {
@@ -433,6 +500,7 @@ pub fn g2_item_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = datatype::to_result(
+                Some(request_no),
                 None,
                 None,
                 None,

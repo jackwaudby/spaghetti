@@ -101,10 +101,10 @@ pub fn run_recon(
                             let InternalResponse {
                                 transaction,
                                 outcome,
-                                ..
+                                request_no,
                             } = ir;
 
-                            utils::log_result(&mut fh, outcome.clone()); // log result
+                            utils::log_result(&mut fh, outcome.clone(), request_no); // log result
                             stats.record(transaction, outcome.clone());
                             // record txn
                         }
@@ -128,9 +128,9 @@ pub fn run_recon(
                             let InternalResponse {
                                 transaction,
                                 outcome,
-                                ..
+                                request_no,
                             } = ir;
-                            utils::log_result(&mut fh, outcome.clone()); // log result
+                            utils::log_result(&mut fh, outcome.clone(), request_no); // log result
                             stats.record(transaction, outcome.clone());
                         }
                     }
@@ -157,9 +157,9 @@ pub fn run_recon(
                             let InternalResponse {
                                 transaction,
                                 outcome,
-                                ..
+                                request_no,
                             } = ir;
-                            utils::log_result(&mut fh, outcome.clone()); // log result
+                            utils::log_result(&mut fh, outcome.clone(), request_no); // log result
                             stats.record(transaction, outcome.clone());
                             // record txn
                         }
@@ -487,7 +487,8 @@ pub fn lu(protocol: &str) {
 
         for line in reader.lines() {
             if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
-                if let Some(p_id) = resp.get_updated() {
+                if let Some(vec) = resp.get_updated() {
+                    let (_, p_id) = vec[0];
                     expected[p_id as usize] += 1;
                 }
             }
