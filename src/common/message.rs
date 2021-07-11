@@ -12,14 +12,14 @@ use std::collections::BTreeMap;
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Message {
     Request {
-        request_no: u32,
+        request_no: (u32, u32),
         transaction: Transaction,
         parameters: Parameters,
         isolation: IsolationLevel,
     },
 
     Response {
-        request_no: u32,
+        request_no: (u32, u32),
         transaction: Transaction,
         isolation: IsolationLevel,
         outcome: Outcome,

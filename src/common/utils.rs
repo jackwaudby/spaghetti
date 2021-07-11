@@ -81,7 +81,7 @@ pub fn run(
     let log_results = config.get_bool("log_results").unwrap();
     let mut stats = LocalStatistics::new(thread_id as u32, &w, &p);
 
-    let mut generator = get_transaction_generator(config); // initialise transaction generator
+    let mut generator = get_transaction_generator(thread_id as u32, config); // initialise transaction generator
 
     // create results file -- dir created by this point
     let mut fh;
@@ -272,7 +272,7 @@ pub fn execute<'a>(txn: Message, scheduler: &'a Scheduler, workload: &'a Databas
     }
 }
 
-pub fn get_transaction_generator(config: &Config) -> ParameterGenerator {
+pub fn get_transaction_generator(thread_id: u32, config: &Config) -> ParameterGenerator {
     let sf = config.get_int("scale_factor").unwrap() as u64;
     let set_seed = config.get_bool("set_seed").unwrap();
     let seed;
@@ -285,13 +285,13 @@ pub fn get_transaction_generator(config: &Config) -> ParameterGenerator {
     match config.get_str("workload").unwrap().as_str() {
         "smallbank" => {
             let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
-            let gen = SmallBankGenerator::new(sf, set_seed, seed, use_balance_mix);
+            let gen = SmallBankGenerator::new(thread_id, sf, set_seed, seed, use_balance_mix);
             ParameterGenerator::SmallBank(gen)
         }
         "acid" => {
             let anomaly = config.get_str("anomaly").unwrap();
             let delay = config.get_int("delay").unwrap() as u64;
-            let gen = AcidGenerator::new(sf, set_seed, seed, &anomaly, delay);
+            let gen = AcidGenerator::new(thread_id, sf, set_seed, seed, &anomaly, delay);
 
             ParameterGenerator::Acid(gen)
         }

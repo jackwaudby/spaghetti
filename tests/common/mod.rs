@@ -87,7 +87,7 @@ pub fn run_recon(
                             let payload = G0Read { p1_id, p2_id };
 
                             let txn = Message::Request {
-                                request_no: 0, // Ok as only thread executing
+                                request_no: (0, 0), // Ok as only thread executing
                                 transaction: Transaction::Acid(AcidTransaction::G0Read),
                                 parameters: Parameters::Acid(AcidTransactionProfile::G0Read(
                                     payload,
@@ -107,7 +107,7 @@ pub fn run_recon(
                             let payload = LostUpdateRead { p_id };
 
                             let txn = Message::Request {
-                                request_no: 0,
+                                request_no: (0, 0),
                                 transaction: Transaction::Acid(AcidTransaction::LostUpdateRead),
                                 parameters: Parameters::Acid(
                                     AcidTransactionProfile::LostUpdateRead(payload),
@@ -131,7 +131,7 @@ pub fn run_recon(
                             };
 
                             let txn = Message::Request {
-                                request_no: 0, // TODO
+                                request_no: (0, 0),
                                 transaction: Transaction::Acid(AcidTransaction::G2itemRead),
                                 parameters: Parameters::Acid(AcidTransactionProfile::G2itemRead(
                                     payload,

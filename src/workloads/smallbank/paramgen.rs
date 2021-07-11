@@ -11,6 +11,9 @@ use std::fmt;
 
 /// SmallBank workload transaction generator.
 pub struct SmallBankGenerator {
+    /// Thread id
+    thread_id: u32,
+
     /// Random number generator.
     rng: StdRng,
 
@@ -37,14 +40,15 @@ pub struct SmallBankGenerator {
 }
 
 impl SmallBankGenerator {
-    /// Create new `SmallBankGenerator`.
     pub fn new(
+        thread_id: u32,
         sf: u64,
         set_seed: bool,
         seed: Option<u64>,
         use_balance_mix: bool,
-    ) -> SmallBankGenerator {
+    ) -> Self {
         let rng: StdRng;
+
         if set_seed {
             rng = SeedableRng::seed_from_u64(seed.unwrap());
         } else {
@@ -58,6 +62,7 @@ impl SmallBankGenerator {
         let write_check_amount = WRITE_CHECK_AMOUNT;
 
         SmallBankGenerator {
+            thread_id,
             rng,
             generated: 0,
             accounts,
@@ -71,7 +76,6 @@ impl SmallBankGenerator {
 }
 
 impl Generator for SmallBankGenerator {
-    /// Generate a transaction request.
     fn generate(&mut self) -> Message {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
@@ -85,7 +89,7 @@ impl Generator for SmallBankGenerator {
         };
 
         Message::Request {
-            request_no: self.generated,
+            request_no: (self.thread_id, self.generated),
             transaction: Transaction::SmallBank(transaction),
             parameters: Parameters::SmallBank(parameters),
             isolation,

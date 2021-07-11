@@ -9,13 +9,8 @@ use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/////////////////////////////////////////
-/// Parameter Generator. ///
-////////////////////////////////////////
-
-/// ACID workload transaction generator.
 pub struct AcidGenerator {
-    thread_id: u64,
+    thread_id: u32,
     persons: u64,
     anomaly: String,
     delay: u64,
@@ -24,9 +19,14 @@ pub struct AcidGenerator {
 }
 
 impl AcidGenerator {
-    pub fn new(sf: u64, set_seed: bool, seed: Option<u64>, anomaly: &str, delay: u64) -> Self {
-        let handle = std::thread::current();
-        let thread_id: u64 = handle.name().unwrap().parse().unwrap();
+    pub fn new(
+        thread_id: u32,
+        sf: u64,
+        set_seed: bool,
+        seed: Option<u64>,
+        anomaly: &str,
+        delay: u64,
+    ) -> Self {
         let persons = *ACID_SF_MAP.get(&sf).unwrap();
 
         let rng: StdRng;
@@ -50,14 +50,12 @@ impl AcidGenerator {
 impl Generator for AcidGenerator {
     /// Generate a transaction request.
     fn generate(&mut self) -> Message {
+        self.generated += 1; //  increment generated counter
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
-        let request_no = format!("{}{}", self.thread_id + 1, self.generated);
-        let request_no: u32 = request_no.parse().unwrap();
-
         Message::Request {
-            request_no,
+            request_no: (self.thread_id, self.generated),
             transaction: Transaction::Acid(transaction),
             parameters: Parameters::Acid(parameters),
             isolation: IsolationLevel::Serializable,
@@ -70,7 +68,6 @@ impl Generator for AcidGenerator {
 }
 
 impl AcidGenerator {
-    /// Get a random transaction profile (type, params)
     fn get_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
         match self.anomaly.as_str() {
             "g0" => self.get_g0_params(n),
@@ -90,8 +87,7 @@ impl AcidGenerator {
     /// Select a unique person pair: (p1) -- [knows] --> (p2).
     /// Transactions are required to have a unique id.
     fn get_g0_params(&mut self, n: f32) -> (AcidTransaction, AcidTransactionProfile) {
-        self.generated += 1;
-        let request_no = format!("{}{}", self.thread_id + 1, self.generated);
+        let request_no = format!("{}{}", self.thread_id + 1, self.generated); // construct unique request no
         let transaction_id: u32 = request_no.parse().unwrap();
 
         let mut p1_id;
@@ -164,7 +160,6 @@ impl AcidGenerator {
     /// Select two different person and unique transaction id.
     fn get_g1c_params(&mut self) -> (AcidTransaction, AcidTransactionProfile) {
         // --- transaction id
-        self.generated += 1;
         let request_no = format!("{}{}", self.thread_id + 1, self.generated);
         let transaction_id: u32 = request_no.parse().unwrap();
 
