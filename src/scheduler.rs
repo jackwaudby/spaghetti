@@ -1,4 +1,4 @@
-test use crate::common::error::NonFatalError;
+use crate::common::error::NonFatalError;
 use crate::scheduler::msgt::MixedSerializationGraph;
 use crate::scheduler::mtpl::MixedTwoPhaseLocking;
 use crate::scheduler::nocc::NoConcurrencyControl;
