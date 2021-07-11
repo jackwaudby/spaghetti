@@ -55,4 +55,4 @@ cargo test acid -- --test-threads=1
 ### Comments
 * `G1b` cannot be implemented as `spaghetti` does not support multiple writes to the same object within a transaction. 
 * `PMP` cannot be implemented as `spaghetti` does not support predicate-based operations.
-* `nocc` should fail all tests.
+* `nocc` should fail all tests*.
