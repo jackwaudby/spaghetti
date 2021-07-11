@@ -91,29 +91,3 @@ impl Success {
         self.updated.as_ref()
     }
 }
-
-//   let res = serde_json::to_string(&sm).unwrap();
-
-// impl fmt::Display for Message {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         use Message::*;
-//         match *self {
-//             Response {
-//                 request_no,
-//                 ref outcome,
-//                 ..
-//             } => write!(f, "[id=\"{}\",{}]", request_no, outcome),
-//             _ => write!(f, "{:?}", self),
-//         }
-//     }
-// }
-
-// impl fmt::Display for Outcome {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         use Outcome::*;
-//         match &*self {
-//             Committed { value } => write!(f, "{}", value.as_ref().unwrap()),
-//             Aborted { reason } => write!(f, "val={{{}}}", reason),
-//         }
-//     }
-// }o

@@ -1,9 +1,7 @@
-use spaghetti::common::message::{InternalResponse, Message};
-use spaghetti::common::message::{Parameters, Transaction};
+use spaghetti::common::message::{Message, Outcome, Parameters, Transaction};
 use spaghetti::common::statistics::{GlobalStatistics, LocalStatistics};
 use spaghetti::common::utils;
 use spaghetti::scheduler::Scheduler;
-use spaghetti::storage::datatype::SuccessMessage;
 use spaghetti::storage::Database;
 use spaghetti::workloads::acid::paramgen::{
     AcidTransactionProfile, G0Read, G2itemRead, LostUpdateRead,
@@ -89,7 +87,7 @@ pub fn run_recon(
                             let payload = G0Read { p1_id, p2_id };
 
                             let txn = Message::Request {
-                                request_no: 0, // TODO
+                                request_no: 0, // Ok as only thread executing
                                 transaction: Transaction::Acid(AcidTransaction::G0Read),
                                 parameters: Parameters::Acid(AcidTransactionProfile::G0Read(
                                     payload,
@@ -97,16 +95,9 @@ pub fn run_recon(
                                 isolation: IsolationLevel::Serializable,
                             };
 
-                            let ir = utils::execute(txn, scheduler, database); // execute txn
-                            let InternalResponse {
-                                transaction,
-                                outcome,
-                                request_no,
-                            } = ir;
-
-                            utils::log_result(&mut fh, outcome.clone(), request_no); // log result
-                            stats.record(transaction, outcome.clone());
-                            // record txn
+                            let response = utils::execute(txn, scheduler, database); // execute txn
+                            utils::log_result(&mut fh, &response); // log result
+                            stats.record(&response);
                         }
                     }
                     "lu" => {
@@ -116,7 +107,7 @@ pub fn run_recon(
                             let payload = LostUpdateRead { p_id };
 
                             let txn = Message::Request {
-                                request_no: 0, // TODO
+                                request_no: 0,
                                 transaction: Transaction::Acid(AcidTransaction::LostUpdateRead),
                                 parameters: Parameters::Acid(
                                     AcidTransactionProfile::LostUpdateRead(payload),
@@ -124,14 +115,9 @@ pub fn run_recon(
                                 isolation: IsolationLevel::Serializable,
                             };
 
-                            let ir = utils::execute(txn, scheduler, database); // execute txn
-                            let InternalResponse {
-                                transaction,
-                                outcome,
-                                request_no,
-                            } = ir;
-                            utils::log_result(&mut fh, outcome.clone(), request_no); // log result
-                            stats.record(transaction, outcome.clone());
+                            let response = utils::execute(txn, scheduler, database); // execute txn
+                            utils::log_result(&mut fh, &response); // log result
+                            stats.record(&response);
                         }
                     }
                     "g2item" => {
@@ -153,15 +139,9 @@ pub fn run_recon(
                                 isolation: IsolationLevel::Serializable,
                             };
 
-                            let ir = utils::execute(txn, scheduler, database); // execute txn
-                            let InternalResponse {
-                                transaction,
-                                outcome,
-                                request_no,
-                            } = ir;
-                            utils::log_result(&mut fh, outcome.clone(), request_no); // log result
-                            stats.record(transaction, outcome.clone());
-                            // record txn
+                            let response = utils::execute(txn, scheduler, database); // execute txn
+                            utils::log_result(&mut fh, &response); // log result
+                            stats.record(&response);
                         }
                     }
                     _ => info!("No recon queries for {}", anomaly),
@@ -245,17 +225,21 @@ pub fn g0(protocol: &str) {
 
     info!("Start {} anomaly check", anomaly);
     for line in reader.lines() {
-        let resp: SuccessMessage = serde_json::from_str(&line.unwrap()).unwrap();
+        let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
 
-        if let Some(vals) = resp.get_values() {
-            let p1vh = vals.get("p1_version_history").unwrap().clone();
-            let p2vh = vals.get("p2_version_history").unwrap().clone();
+        if let Message::Response { outcome, .. } = resp {
+            if let Outcome::Committed(success) = outcome {
+                if let Some(vals) = success.get_values() {
+                    let p1vh = vals.get("p1_version_history").unwrap().clone();
+                    let p2vh = vals.get("p2_version_history").unwrap().clone();
 
-            // TODO: implement (i)
-            let x = string_to_vec64(p1vh);
-            let y = string_to_vec64(p2vh);
+                    // TODO: implement (i)
+                    let x = string_to_vec64(p1vh);
+                    let y = string_to_vec64(p2vh);
 
-            assert_eq!(x, y);
+                    assert_eq!(x, y);
+                }
+            }
         }
     }
     info!("{} anomaly check complete", anomaly);
@@ -287,15 +271,19 @@ pub fn g1a(protocol: &str) {
         let reader = BufReader::new(fh);
 
         for line in reader.lines() {
-            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
-                let version = resp
-                    .get_values()
-                    .unwrap()
-                    .get("version")
-                    .unwrap()
-                    .parse::<u64>()
-                    .unwrap();
-                assert_eq!(version, 1, "expected: {}, actual: {}", 1, version);
+            let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
+
+            if let Message::Response { outcome, .. } = resp {
+                if let Outcome::Committed(success) = outcome {
+                    let version = success
+                        .get_values()
+                        .unwrap()
+                        .get("version")
+                        .unwrap()
+                        .parse::<u64>()
+                        .unwrap();
+                    assert_eq!(version, 1, "expected: {}, actual: {}", 1, version);
+                }
             }
         }
     }
@@ -324,28 +312,32 @@ pub fn g1c(protocol: &str) {
         let reader = BufReader::new(fh);
 
         for line in reader.lines() {
-            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
-                let values = resp.get_values().unwrap(); // (transaction_id, version_id) = (version_id/tb) --wr--> (transaction_id/ta)
-                let transaction_id = values
-                    .get("transaction_id")
-                    .unwrap()
-                    .parse::<u64>()
-                    .unwrap();
-                let version_read = values.get("version").unwrap().parse::<u64>().unwrap();
+            let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
 
-                let a = match graph.node_indices().find(|i| graph[*i] == transaction_id) {
-                    Some(node_index) => node_index, // ta already exists in the graph; get index
-                    None => graph.add_node(transaction_id), // insert ta; get index
-                };
+            if let Message::Response { outcome, .. } = resp {
+                if let Outcome::Committed(success) = outcome {
+                    let values = success.get_values().unwrap(); // (transaction_id, version_id) = (version_id/tb) --wr--> (transaction_id/ta)
+                    let transaction_id = values
+                        .get("transaction_id")
+                        .unwrap()
+                        .parse::<u64>()
+                        .unwrap();
+                    let version_read = values.get("version").unwrap().parse::<u64>().unwrap();
 
-                match graph.node_indices().find(|i| graph[*i] == version_read) {
-                    Some(b) => {
-                        graph.add_edge(b, a, ()); // tb already exists; add edge
-                    }
+                    let a = match graph.node_indices().find(|i| graph[*i] == transaction_id) {
+                        Some(node_index) => node_index, // ta already exists in the graph; get index
+                        None => graph.add_node(transaction_id), // insert ta; get index
+                    };
 
-                    None => {
-                        let b = graph.add_node(version_read);
-                        graph.add_edge(b, a, ()); // insert tb; add edge
+                    match graph.node_indices().find(|i| graph[*i] == version_read) {
+                        Some(b) => {
+                            graph.add_edge(b, a, ()); // tb already exists; add edge
+                        }
+
+                        None => {
+                            let b = graph.add_node(version_read);
+                            graph.add_edge(b, a, ()); // insert tb; add edge
+                        }
                     }
                 }
             }
@@ -376,11 +368,15 @@ pub fn imp(protocol: &str) {
         info!("Checking file: {}", file);
         let reader = BufReader::new(fh);
         for line in reader.lines() {
-            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
-                if let Some(vals) = resp.get_values() {
-                    let first = vals.get("first_read").unwrap().parse::<u64>().unwrap();
-                    let second = vals.get("second_read").unwrap().parse::<u64>().unwrap();
-                    assert_eq!(first, second, "first: {}, second: {}", first, second);
+            let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
+
+            if let Message::Response { outcome, .. } = resp {
+                if let Outcome::Committed(success) = outcome {
+                    if let Some(vals) = success.get_values() {
+                        let first = vals.get("first_read").unwrap().parse::<u64>().unwrap();
+                        let second = vals.get("second_read").unwrap().parse::<u64>().unwrap();
+                        assert_eq!(first, second, "first: {}, second: {}", first, second);
+                    }
                 }
             }
         }
@@ -407,16 +403,20 @@ pub fn otv(protocol: &str) {
         info!("Checking file: {}", file);
         let reader = BufReader::new(fh);
         for line in reader.lines() {
-            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
-                if let Some(vals) = resp.get_values() {
-                    let p1 = vals.get("p1_version").unwrap().parse::<u64>().unwrap();
-                    let p2 = vals.get("p2_version").unwrap().parse::<u64>().unwrap();
-                    let p3 = vals.get("p3_version").unwrap().parse::<u64>().unwrap();
-                    let p4 = vals.get("p4_version").unwrap().parse::<u64>().unwrap();
-                    let reads = vec![p1, p2, p3, p4];
+            let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
 
-                    for i in 0..3 {
-                        assert!(reads[i] <= reads[i + 1], "{} > {}", reads[i], reads[i + 1]);
+            if let Message::Response { outcome, .. } = resp {
+                if let Outcome::Committed(success) = outcome {
+                    if let Some(vals) = success.get_values() {
+                        let p1 = vals.get("p1_version").unwrap().parse::<u64>().unwrap();
+                        let p2 = vals.get("p2_version").unwrap().parse::<u64>().unwrap();
+                        let p3 = vals.get("p3_version").unwrap().parse::<u64>().unwrap();
+                        let p4 = vals.get("p4_version").unwrap().parse::<u64>().unwrap();
+                        let reads = vec![p1, p2, p3, p4];
+
+                        for i in 0..3 {
+                            assert!(reads[i] <= reads[i + 1], "{} > {}", reads[i], reads[i + 1]);
+                        }
                     }
                 }
             }
@@ -444,17 +444,21 @@ pub fn fr(protocol: &str) {
         info!("Checking file: {}", file);
         let reader = BufReader::new(fh);
         for line in reader.lines() {
-            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
-                // get read transaction responses
-                if let Some(vals) = resp.get_values() {
-                    let p1 = vals.get("p1_version").unwrap().parse::<u64>().unwrap();
-                    let p2 = vals.get("p2_version").unwrap().parse::<u64>().unwrap();
-                    let p3 = vals.get("p3_version").unwrap().parse::<u64>().unwrap();
-                    let p4 = vals.get("p4_version").unwrap().parse::<u64>().unwrap();
-                    let reads = vec![p1, p2, p3, p4];
+            let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
 
-                    for i in 0..3 {
-                        assert!(reads[i] == reads[i + 1], "{} != {}", reads[i], reads[i + 1]);
+            if let Message::Response { outcome, .. } = resp {
+                if let Outcome::Committed(success) = outcome {
+                    // get read transaction responses
+                    if let Some(vals) = success.get_values() {
+                        let p1 = vals.get("p1_version").unwrap().parse::<u64>().unwrap();
+                        let p2 = vals.get("p2_version").unwrap().parse::<u64>().unwrap();
+                        let p3 = vals.get("p3_version").unwrap().parse::<u64>().unwrap();
+                        let p4 = vals.get("p4_version").unwrap().parse::<u64>().unwrap();
+                        let reads = vec![p1, p2, p3, p4];
+
+                        for i in 0..3 {
+                            assert!(reads[i] == reads[i + 1], "{} != {}", reads[i], reads[i + 1]);
+                        }
                     }
                 }
             }
@@ -486,10 +490,14 @@ pub fn lu(protocol: &str) {
         let reader = BufReader::new(fh);
 
         for line in reader.lines() {
-            if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
-                if let Some(vec) = resp.get_updated() {
-                    let (_, p_id) = vec[0];
-                    expected[p_id as usize] += 1;
+            let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
+
+            if let Message::Response { outcome, .. } = resp {
+                if let Outcome::Committed(success) = outcome {
+                    if let Some(vec) = success.get_updated() {
+                        let (_, p_id) = vec[0];
+                        expected[p_id as usize] += 1;
+                    }
                 }
             }
         }
@@ -500,20 +508,24 @@ pub fn lu(protocol: &str) {
     let fh = File::open(&file).unwrap();
     let reader = BufReader::new(fh);
     for line in reader.lines() {
-        if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
-            if let Some(vals) = resp.get_values() {
-                let p_id = vals.get("p_id").unwrap().parse::<u64>().unwrap() as usize;
-                let nf = vals.get("num_friends").unwrap().parse::<u64>().unwrap();
-                info!(
-                    "person {}: expected: {}, actual: {}",
-                    p_id, expected[p_id], nf
-                );
+        let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
 
-                assert_eq!(
-                    expected[p_id], nf,
-                    "expected: {}, actual: {}",
-                    expected[p_id], nf
-                );
+        if let Message::Response { outcome, .. } = resp {
+            if let Outcome::Committed(success) = outcome {
+                if let Some(vals) = success.get_values() {
+                    let p_id = vals.get("p_id").unwrap().parse::<u64>().unwrap() as usize;
+                    let nf = vals.get("num_friends").unwrap().parse::<u64>().unwrap();
+                    info!(
+                        "person {}: expected: {}, actual: {}",
+                        p_id, expected[p_id], nf
+                    );
+
+                    assert_eq!(
+                        expected[p_id], nf,
+                        "expected: {}, actual: {}",
+                        expected[p_id], nf
+                    );
+                }
             }
         }
     }
@@ -537,13 +549,17 @@ pub fn g2item(protocol: &str) {
     let reader = BufReader::new(fh);
 
     for line in reader.lines() {
-        if let Ok(resp) = serde_json::from_str::<SuccessMessage>(&line.unwrap()) {
-            // get read transaction responses
-            if let Some(vals) = resp.get_values() {
-                let p1 = vals.get("p1_value").unwrap().parse::<i64>().unwrap();
-                let p2 = vals.get("p2_value").unwrap().parse::<i64>().unwrap();
+        let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
 
-                assert!(p1 + p2 > 0, "p1: {}, p2: {}", p1, p2);
+        if let Message::Response { outcome, .. } = resp {
+            if let Outcome::Committed(success) = outcome {
+                // get read transaction responses
+                if let Some(vals) = success.get_values() {
+                    let p1 = vals.get("p1_value").unwrap().parse::<i64>().unwrap();
+                    let p2 = vals.get("p2_value").unwrap().parse::<i64>().unwrap();
+
+                    assert!(p1 + p2 > 0, "p1: {}, p2: {}", p1, p2);
+                }
             }
         }
     }

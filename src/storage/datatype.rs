@@ -1,7 +1,5 @@
 use crate::common::error::NonFatalError;
 
-use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
 use std::convert::From;
 use std::convert::TryFrom;
 use std::fmt;
