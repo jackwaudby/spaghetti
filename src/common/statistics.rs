@@ -1,5 +1,5 @@
 use crate::common::error::NonFatalError;
-use crate::common::message::{Outcome, Transaction};
+use crate::common::message::{Message, Outcome, Transaction};
 use crate::scheduler::msgt::error::MixedSerializationGraphError;
 use crate::scheduler::mtpl::error::MixedTwoPhaseLockingError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
@@ -147,8 +147,8 @@ impl GlobalStatistics {
         let internal_aborts = match self.abort_breakdown.workload_specific {
             WorkloadAbortBreakdown::Tatp(ref _reason) => 0,
             WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
-            WorkloadAbortBreakdown::Acid => 0,
-        }; // aborts due to integrity constraints
+            WorkloadAbortBreakdown::Acid(ref reasons) => reasons.non_serializable,
+        }; // aborts due to integrity constraints/manual aborts
 
         let external_aborts = match self.abort_breakdown.protocol_specific {
             ProtocolAbortBreakdown::SerializationGraph(ref reasons) => {
@@ -281,108 +281,124 @@ impl LocalStatistics {
         self.latency += start.elapsed().as_nanos();
     }
 
-    pub fn record(&mut self, transaction: Transaction, outcome: Outcome) {
-        self.transaction_breakdown
-            .record(transaction, outcome.clone());
+    pub fn record(&mut self, response: &Message) {
+        if let Message::Response {
+            transaction,
+            outcome,
+            ..
+        } = response
+        {
+            self.transaction_breakdown.record(transaction, outcome);
 
-        if let Outcome::Aborted { reason } = outcome {
-            use WorkloadAbortBreakdown::*;
-            match self.abort_breakdown.workload_specific {
-                SmallBank(ref mut metric) => {
-                    if let NonFatalError::SmallBankError(_) = reason {
-                        metric.inc_insufficient_funds();
-                    }
-                }
-                Acid => {}
-                Tatp(ref mut metric) => match reason {
-                    NonFatalError::RowNotFound(_, _) => {
-                        metric.inc_not_found();
-                    }
-                    NonFatalError::RowAlreadyExists(_, _) => {
-                        metric.inc_already_exists();
-                    }
-
-                    _ => unimplemented!(),
-                },
-            }
-
-            use ProtocolAbortBreakdown::*;
-            match self.abort_breakdown.protocol_specific {
-                SerializationGraph(ref mut metric) => {
-                    if let NonFatalError::SerializationGraph(sge) = reason {
-                        match sge {
-                            SerializationGraphError::CascadingAbort => metric.inc_cascading_abort(),
-                            SerializationGraphError::CycleFound => metric.inc_cycle_found(),
+            if let Outcome::Aborted(reason) = outcome {
+                use WorkloadAbortBreakdown::*;
+                match self.abort_breakdown.workload_specific {
+                    SmallBank(ref mut metric) => {
+                        if let NonFatalError::SmallBankError(_) = reason {
+                            metric.inc_insufficient_funds();
                         }
                     }
+
+                    Acid(ref mut metric) => {
+                        if let NonFatalError::NonSerializable = reason {
+                            metric.inc_non_serializable();
+                        }
+                    }
+
+                    Tatp(ref mut metric) => match reason {
+                        NonFatalError::RowNotFound(_, _) => {
+                            metric.inc_not_found();
+                        }
+                        NonFatalError::RowAlreadyExists(_, _) => {
+                            metric.inc_already_exists();
+                        }
+
+                        _ => unimplemented!(),
+                    },
                 }
 
-                MixedSerializationGraph(ref mut metric) => {
-                    if let NonFatalError::MixedSerializationGraph(sge) = reason {
-                        match sge {
-                            MixedSerializationGraphError::CascadingAbort => {
-                                metric.inc_cascading_abort()
+                use ProtocolAbortBreakdown::*;
+                match self.abort_breakdown.protocol_specific {
+                    SerializationGraph(ref mut metric) => {
+                        if let NonFatalError::SerializationGraph(sge) = reason {
+                            match sge {
+                                SerializationGraphError::CascadingAbort => {
+                                    metric.inc_cascading_abort()
+                                }
+                                SerializationGraphError::CycleFound => metric.inc_cycle_found(),
                             }
-                            MixedSerializationGraphError::CycleFound => metric.inc_cycle_found(),
                         }
                     }
+
+                    MixedSerializationGraph(ref mut metric) => {
+                        if let NonFatalError::MixedSerializationGraph(sge) = reason {
+                            match sge {
+                                MixedSerializationGraphError::CascadingAbort => {
+                                    metric.inc_cascading_abort()
+                                }
+                                MixedSerializationGraphError::CycleFound => {
+                                    metric.inc_cycle_found()
+                                }
+                            }
+                        }
+                    }
+
+                    WaitHit(ref mut metric) => match reason {
+                        NonFatalError::WaitHitError(owhe) => match owhe {
+                            WaitHitError::TransactionInHitList(_) => metric.inc_hit(),
+                            WaitHitError::PredecessorAborted(_) => metric.inc_pur_aborted(),
+                            WaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
+                        },
+                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                        _ => {}
+                    },
+
+                    OptimisticWaitHit(ref mut metric) => match reason {
+                        NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
+                            OptimisedWaitHitError::Hit => metric.inc_hit(),
+                            OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+                            OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
+                        },
+                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                        _ => {}
+                    },
+
+                    OptimisticWaitHitTransactionTypes(ref mut metric) => match reason {
+                        NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
+                            OptimisedWaitHitError::Hit => metric.inc_hit(),
+                            OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+                            OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
+                        },
+                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                        _ => {}
+                    },
+
+                    TwoPhaseLocking(ref mut metric) => match reason {
+                        NonFatalError::TwoPhaseLockingError(tple) => match tple {
+                            TwoPhaseLockingError::ReadLockRequestDenied(_) => {
+                                metric.inc_read_lock_denied()
+                            }
+                            TwoPhaseLockingError::WriteLockRequestDenied(_) => {
+                                metric.inc_write_lock_denied()
+                            }
+                        },
+                        _ => {}
+                    },
+
+                    MixedTwoPhaseLocking(ref mut metric) => match reason {
+                        NonFatalError::MixedTwoPhaseLockingError(tple) => match tple {
+                            MixedTwoPhaseLockingError::ReadLockRequestDenied(_) => {
+                                metric.inc_read_lock_denied()
+                            }
+                            MixedTwoPhaseLockingError::WriteLockRequestDenied(_) => {
+                                metric.inc_write_lock_denied()
+                            }
+                        },
+                        _ => {}
+                    },
+
+                    _ => {}
                 }
-
-                WaitHit(ref mut metric) => match reason {
-                    NonFatalError::WaitHitError(owhe) => match owhe {
-                        WaitHitError::TransactionInHitList(_) => metric.inc_hit(),
-                        WaitHitError::PredecessorAborted(_) => metric.inc_pur_aborted(),
-                        WaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
-                    },
-                    NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-                    _ => {}
-                },
-
-                OptimisticWaitHit(ref mut metric) => match reason {
-                    NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
-                        OptimisedWaitHitError::Hit => metric.inc_hit(),
-                        OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-                        OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
-                    },
-                    NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-                    _ => {}
-                },
-
-                OptimisticWaitHitTransactionTypes(ref mut metric) => match reason {
-                    NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
-                        OptimisedWaitHitError::Hit => metric.inc_hit(),
-                        OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-                        OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
-                    },
-                    NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-                    _ => {}
-                },
-
-                TwoPhaseLocking(ref mut metric) => match reason {
-                    NonFatalError::TwoPhaseLockingError(tple) => match tple {
-                        TwoPhaseLockingError::ReadLockRequestDenied(_) => {
-                            metric.inc_read_lock_denied()
-                        }
-                        TwoPhaseLockingError::WriteLockRequestDenied(_) => {
-                            metric.inc_write_lock_denied()
-                        }
-                    },
-                    _ => {}
-                },
-
-                MixedTwoPhaseLocking(ref mut metric) => match reason {
-                    NonFatalError::MixedTwoPhaseLockingError(tple) => match tple {
-                        MixedTwoPhaseLockingError::ReadLockRequestDenied(_) => {
-                            metric.inc_read_lock_denied()
-                        }
-                        MixedTwoPhaseLockingError::WriteLockRequestDenied(_) => {
-                            metric.inc_write_lock_denied()
-                        }
-                    },
-                    _ => {}
-                },
-
-                _ => {}
             }
         }
     }
@@ -421,11 +437,11 @@ impl TransactionBreakdown {
         }
     }
 
-    fn record(&mut self, transaction: Transaction, outcome: Outcome) {
+    fn record(&mut self, transaction: &Transaction, outcome: &Outcome) {
         let ind = self
             .transactions
             .iter()
-            .position(|x| x.transaction == transaction)
+            .position(|x| &x.transaction == transaction)
             .unwrap();
 
         match outcome {
@@ -513,7 +529,7 @@ impl AbortBreakdown {
         let workload_specific = match workload {
             "smallbank" => WorkloadAbortBreakdown::SmallBank(SmallBankReasons::new()),
             "tatp" => WorkloadAbortBreakdown::Tatp(TatpReasons::new()),
-            "acid" => WorkloadAbortBreakdown::Acid,
+            "acid" => WorkloadAbortBreakdown::Acid(AcidReasons::new()),
             _ => unimplemented!(),
         };
 
@@ -594,7 +610,13 @@ impl AbortBreakdown {
                     panic!("workload abort breakdowns do not match");
                 }
             }
-            Acid => {}
+            Acid(ref mut reasons) => {
+                if let Acid(other_reasons) = other.workload_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("workload abort breakdowns do not match");
+                }
+            }
         }
     }
 }
@@ -602,7 +624,7 @@ impl AbortBreakdown {
 enum WorkloadAbortBreakdown {
     SmallBank(SmallBankReasons),
     Tatp(TatpReasons),
-    Acid,
+    Acid(AcidReasons),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -614,6 +636,11 @@ struct TatpReasons {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct SmallBankReasons {
     insufficient_funds: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AcidReasons {
+    non_serializable: u32,
 }
 
 impl TatpReasons {
@@ -651,6 +678,22 @@ impl SmallBankReasons {
 
     fn merge(&mut self, other: SmallBankReasons) {
         self.insufficient_funds += other.insufficient_funds;
+    }
+}
+
+impl AcidReasons {
+    fn new() -> Self {
+        AcidReasons {
+            non_serializable: 0,
+        }
+    }
+
+    fn inc_non_serializable(&mut self) {
+        self.non_serializable += 1;
+    }
+
+    fn merge(&mut self, other: AcidReasons) {
+        self.non_serializable += other.non_serializable;
     }
 }
 
