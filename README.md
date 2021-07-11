@@ -12,21 +12,17 @@ cargo build --release
 ./target/release/spag -s 1 -p sgt -t 10000 -c 1
 
 # run all
-# - runs each protocol, for each workload, for each scale factor, for 1 to 60 cores
-# - produces results.csv 
 ./run.sh 
 
 # generate throughput, latency, and abort rate plots 
-# - expects: results.csv and durner_sgt.csv
-# - stored in graphics/
 ./plot.sh
 ```
 
 ## Outputs
 1. Execution summary printed to console
 2. `results.csv`: execution summary
-3. `log/<workload>/`:  transaction responses on a per-thread basis
-4. `results/<workload>/<protocol>-<scale_factor>.json`: detailed execution summary containing: (i) abort breakdown and (ii) per-transaction type breakdown 
+3. `log/`:  transaction responses
+4. `results/`: detailed execution summary containing: (i) abort breakdown and (ii) per-transaction type breakdown 
 
 ## ACID Test Suite
 
