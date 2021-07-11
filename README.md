@@ -45,7 +45,7 @@ cargo test acid -- --test-threads=1
 |   OTV   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
 |   FR    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
 |   LU    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
-|   WS    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |
+|   WS    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
 
 ### Comments
 * `G1b` cannot be implemented as `spaghetti` does not support multiple writes to the same object within a transaction. 
