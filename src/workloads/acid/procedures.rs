@@ -417,6 +417,9 @@ pub fn g2_item_write<'a>(
                 scheduler.abort(&meta, database, guard);
                 return Err(NonFatalError::NonSerializable);
             }
+
+            thread::sleep(time::Duration::from_millis(100)); // --- artifical delay
+
             // else subtract 100 from one person
             let updated;
 
