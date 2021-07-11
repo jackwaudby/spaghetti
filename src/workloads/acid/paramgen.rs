@@ -284,6 +284,7 @@ impl AcidGenerator {
             p1_id,
             p2_id,
             p_id_update,
+            delay: self.delay,
         };
 
         (
@@ -382,6 +383,7 @@ pub struct G2itemWrite {
     pub p1_id: u64,
     pub p2_id: u64,
     pub p_id_update: u64,
+    pub delay: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -461,6 +463,7 @@ impl fmt::Display for AcidTransactionProfile {
                     p1_id,
                     p2_id,
                     p_id_update,
+                    ..
                 } = params;
                 write!(f, "13,{},{},{}", p1_id, p2_id, p_id_update)
             }

@@ -405,6 +405,7 @@ pub fn g2_item_write<'a>(
         Database::Acid(_) => {
             let offset1 = params.p1_id as usize;
             let offset2 = params.p2_id as usize;
+            let delay = params.delay;
             let guard = &epoch::pin(); // pin thread
 
             let meta = scheduler.begin(IsolationLevel::Serializable); // register
@@ -418,7 +419,7 @@ pub fn g2_item_write<'a>(
                 return Err(NonFatalError::NonSerializable);
             }
 
-            thread::sleep(time::Duration::from_millis(100)); // --- artifical delay
+            thread::sleep(time::Duration::from_millis(delay)); // --- artifical delay
 
             // else subtract 100 from one person
             let updated;
