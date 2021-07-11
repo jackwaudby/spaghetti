@@ -42,13 +42,6 @@ impl Field {
     pub fn set(&mut self, data: Data) {
         self.data = data;
     }
-
-    /// Append data to list.
-    pub fn append(&mut self, data: Data) {
-        if let Data::List(ref mut list) = &mut self.data {
-            list.push(data);
-        }
-    }
 }
 
 impl fmt::Display for Field {
