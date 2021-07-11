@@ -1,7 +1,7 @@
 log = "info"
 record = true
 log_results = true
-transactions = 2000
+transactions = 10000
 delay = 0
 timeout = 1
 set_seed = false
