@@ -93,7 +93,7 @@ impl TatpGenerator {
                 if self.use_nurand {
                     s_id = helper::nurand_sid(&mut self.rng, self.subscribers, 1);
                 } else {
-                    s_id = self.rng.gen_range(1..=self.subscribers);
+                    s_id = self.rng.gen_range(0..self.subscribers);
                 }
                 let payload = GetSubscriberData { s_id };
                 (

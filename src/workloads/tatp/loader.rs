@@ -4,6 +4,7 @@ use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tatp::{self, TatpDatabase};
 use crate::Result;
 
+use rand::prelude::IteratorRandom;
 use rand::rngs::StdRng;
 use rand::Rng;
 use tracing::info;
@@ -15,93 +16,72 @@ pub fn populate_tables(
 ) -> Result<()> {
     // Subscriber
     // Included: s_id; sub_nbr; bit_1; msc_location; vlr_location
+    let sub = database.get_mut_table(0);
     for sid in 0..population {
-        let table = database.get_mut_table(0);
-
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(sid as u64)); // create pk
-        table.get_mut_exists().insert(pk, sid); // insert into exists
+        sub.get_mut_exists().insert(pk, sid); // insert into exists
 
-        table
-            .get_tuple(0, sid)
+        sub.get_tuple(0, sid)
             .get()
             .init_value(Data::Uint(sid as u64))?; // s_id
 
         let sub_nbr = tatp::helper::to_sub_nbr(sid as u64);
-        table
-            .get_tuple(1, sid)
+        sub.get_tuple(1, sid)
             .get()
             .init_value(Data::VarChar(sub_nbr))?; // sub_nbr
 
-        table
-            .get_tuple(2, sid)
+        sub.get_tuple(2, sid)
             .get()
             .init_value(Data::Uint(rng.gen_range(0..=1) as u64))?; // bit_1
 
-        table
-            .get_tuple(3, sid)
+        sub.get_tuple(3, sid)
             .get()
             .init_value(Data::Uint(rng.gen_range(1..(2 ^ 32)) as u64))?; // msc_location
 
-        table
-            .get_tuple(4, sid)
+        sub.get_tuple(4, sid)
             .get()
             .init_value(Data::Uint(rng.gen_range(1..(2 ^ 32)) as u64))?; // vlr_location
     }
 
     info!("Loaded {} rows into subscriber", population);
 
+    // Access Info
+    let ai = database.get_mut_table(1);
+    let ai_type_values = vec![1, 2, 3, 4];
+    let mut ai_offset = 0;
+    for sid in 0..population {
+        let n_ai = rng.gen_range(1..=4);
+        let sample = ai_type_values.iter().choose_multiple(rng, n_ai);
+
+        for record in 1..=n_ai {
+            let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(sid as u64, record as u64));
+            ai.get_mut_exists().insert(pk, ai_offset); // TODO
+
+            let s_id = Data::Uint(sid as u64);
+            ai.get_tuple(0, ai_offset).get().init_value(s_id)?;
+
+            let ai_type = Data::Uint(*sample[record - 1] as u64);
+            ai.get_tuple(1, ai_offset).get().init_value(ai_type)?;
+
+            let data1 = Data::Uint(rng.gen_range(0..=255));
+            ai.get_tuple(2, ai_offset).get().init_value(data1)?;
+
+            let data2 = Data::Uint(rng.gen_range(0..=255));
+            ai.get_tuple(3, ai_offset).get().init_value(data2)?;
+
+            let data3 = Data::VarChar(tatp::helper::get_data_x(3, rng));
+            ai.get_tuple(4, ai_offset).get().init_value(data3)?;
+
+            let data4 = Data::VarChar(tatp::helper::get_data_x(5, rng));
+            ai.get_tuple(5, ai_offset).get().init_value(data4)?;
+
+            ai_offset += 1;
+        }
+    }
+    info!("Loaded {} rows into access_info", ai_offset);
+
     Ok(())
 }
-
-// /// Populate the `Subscriber` table.
-// pub fn populate_subscriber_table(
-//     config: Arc<Config>,
-//     tables: &mut HashMap<String, Arc<Table>>,
-//     indexes: &mut HashMap<String, Index>,
-//     rng: &mut StdRng,
-// ) -> Result<()> {
-//     let subscriber = tables.get("subscriber").unwrap();
-//     let sub_idx = indexes.get_mut("sub_idx").unwrap();
-
-//     let protocol = config.get_str("protocol")?;
-//     let sf = config.get_int("scale_factor")? as u64;
-//     let subs = *TATP_SF_MAP.get(&sf).unwrap();
-
-//     for s_id in 1..=subs {
-//         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(s_id));
-//         let mut row = Row::new(pk.clone(), Arc::clone(&subscriber));
-
-//         row.init_value("s_id", Data::from(s_id))?;
-//         row.init_value("sub_nbr", Data::from(helper::to_sub_nbr(s_id)))?;
-//         for i in 1..=10 {
-//             row.init_value(
-//                 format!("bit_{}", i).as_str(),
-//                 Data::from(rng.gen_range(0..=1) as u64),
-//             )?;
-//             row.init_value(
-//                 format!("hex_{}", i).as_str(),
-//                 Data::from(rng.gen_range(0..=15) as u64),
-//             )?;
-//             row.init_value(
-//                 format!("byte_2_{}", i).as_str(),
-//                 Data::from(rng.gen_range(0..=255) as u64),
-//             )?;
-//         }
-//         row.init_value(
-//             "msc_location",
-//             Data::from(rng.gen_range(1..(2 ^ 32)) as u64),
-//         )?;
-//         row.init_value(
-//             "vlr_location",
-//             Data::from(rng.gen_range(1..(2 ^ 32)) as u64),
-//         )?;
-
-//         sub_idx.insert(&pk, row);
-//     }
-//     info!("Loaded {} rows into subscriber", subscriber.get_num_rows());
-
-//     Ok(())
-// }
 
 // /// Populate the `AccessInfo` table.
 // pub fn populate_access_info(
@@ -116,8 +96,6 @@ pub fn populate_tables(
 //     let protocol = config.get_str("protocol")?;
 //     let sf = config.get_int("scale_factor")? as u64;
 //     let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
-
-//     let ai_type_values = vec![1, 2, 3, 4]; // range of values for ai_type records
 
 //     for s_id in 1..=subscribers {
 //         let n_ai = rng.gen_range(1..=4); // generate number of records for a given s_id
