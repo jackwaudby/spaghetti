@@ -2,15 +2,18 @@ use crate::common::message::{Message, Parameters, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::{TatpTransaction, TATP_SF_MAP};
+use crate::workloads::IsolationLevel;
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use tracing::debug;
 
 /// TATP workload transaction generator.
 pub struct TatpGenerator {
+    /// Thread id
+    thread_id: u32,
+
     /// Subscribers in the workload.
     subscribers: u64,
 
@@ -21,23 +24,29 @@ pub struct TatpGenerator {
     use_nurand: bool,
 
     /// Number of transactions generated.
-    pub generated: u32,
+    generated: u32,
 }
 
 impl TatpGenerator {
-    /// Create new `TatpGenerator`.
-    pub fn new(sf: u64, set_seed: bool, seed: Option<u64>, use_nurand: bool) -> TatpGenerator {
-        debug!("Parameter generator set seed: {}", set_seed);
-        debug!("Non-uniform parameter generator: {}", use_nurand);
-        let subscribers = *TATP_SF_MAP.get(&sf).unwrap(); // get subscribers for sf
-        let rng: StdRng; // rng
+    pub fn new(
+        thread_id: u32,
+        sf: u64,
+        set_seed: bool,
+        seed: Option<u64>,
+        use_nurand: bool,
+    ) -> Self {
+        let rng: StdRng;
+
         if set_seed {
             rng = SeedableRng::seed_from_u64(seed.unwrap());
         } else {
             rng = SeedableRng::from_entropy();
         }
 
+        let subscribers = *TATP_SF_MAP.get(&sf).unwrap();
+
         TatpGenerator {
+            thread_id,
             subscribers,
             rng,
             generated: 0,
@@ -52,10 +61,18 @@ impl Generator for TatpGenerator {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
+        let m: f32 = self.rng.gen();
+        let isolation = match m {
+            x if x < 0.2 => IsolationLevel::ReadUncommitted,
+            x if x < 0.6 => IsolationLevel::ReadCommitted,
+            _ => IsolationLevel::Serializable,
+        };
+
         Message::Request {
-            request_no: self.generated,
+            request_no: (self.thread_id, self.generated),
             transaction: Transaction::Tatp(transaction),
             parameters: Parameters::Tatp(parameters),
+            isolation,
         }
     }
 
@@ -69,7 +86,8 @@ impl TatpGenerator {
     fn get_params(&mut self, n: f32) -> (TatpTransaction, TatpTransactionProfile) {
         self.generated += 1;
         match n {
-            x if x < 0.2 => {
+            //       x if x < 0.2 => {
+            _ => {
                 // GET_SUBSCRIBER_DATA
                 let s_id;
                 if self.use_nurand {
@@ -82,62 +100,60 @@ impl TatpGenerator {
                     TatpTransaction::GetSubscriberData,
                     TatpTransactionProfile::GetSubscriberData(payload),
                 )
-            }
-
-            x if x < 0.4 => {
-                // GET_NEW_DESTINATION
-                let s_id = self.rng.gen_range(1..=self.subscribers);
-                let sf_type = self.rng.gen_range(1..=4);
-                let start_time = helper::get_start_time(&mut self.rng);
-                let end_time = start_time + self.rng.gen_range(1..=8);
-                let payload = GetNewDestination {
-                    s_id,
-                    sf_type,
-                    start_time,
-                    end_time,
-                };
-                (
-                    TatpTransaction::GetNewDestination,
-                    TatpTransactionProfile::GetNewDestination(payload),
-                )
-            }
-            x if x < 0.6 => {
-                // GET_ACCESS_DATA
-                let s_id = self.rng.gen_range(1..=self.subscribers);
-                let ai_type = self.rng.gen_range(1..=4);
-                let payload = GetAccessData { s_id, ai_type };
-                (
-                    TatpTransaction::GetAccessData,
-                    TatpTransactionProfile::GetAccessData(payload),
-                )
-            }
-            x if x < 0.8 => {
-                // UPDATE_SUBSCRIBER_DATA
-                let s_id = self.rng.gen_range(1..=self.subscribers);
-                let sf_type = self.rng.gen_range(1..=4);
-                let bit_1 = self.rng.gen_range(0..=1);
-                let data_a = self.rng.gen_range(0..=255);
-                let payload = UpdateSubscriberData {
-                    s_id,
-                    sf_type,
-                    bit_1,
-                    data_a,
-                };
-                (
-                    TatpTransaction::UpdateSubscriberData,
-                    TatpTransactionProfile::UpdateSubscriberData(payload),
-                )
-            }
-            _ => {
-                // UPDATE_LOCATION
-                let s_id = self.rng.gen_range(1..=self.subscribers);
-                let vlr_location = self.rng.gen_range(1..(2 ^ 32));
-                let payload = UpdateLocationData { s_id, vlr_location };
-                (
-                    TatpTransaction::UpdateLocationData,
-                    TatpTransactionProfile::UpdateLocationData(payload),
-                )
-            }
+            } // x if x < 0.4 => {
+              //     // GET_NEW_DESTINATION
+              //     let s_id = self.rng.gen_range(1..=self.subscribers);
+              //     let sf_type = self.rng.gen_range(1..=4);
+              //     let start_time = helper::get_start_time(&mut self.rng);
+              //     let end_time = start_time + self.rng.gen_range(1..=8);
+              //     let payload = GetNewDestination {
+              //         s_id,
+              //         sf_type,
+              //         start_time,
+              //         end_time,
+              //     };
+              //     (
+              //         TatpTransaction::GetNewDestination,
+              //         TatpTransactionProfile::GetNewDestination(payload),
+              //     )
+              // }
+              // x if x < 0.6 => {
+              //     // GET_ACCESS_DATA
+              //     let s_id = self.rng.gen_range(1..=self.subscribers);
+              //     let ai_type = self.rng.gen_range(1..=4);
+              //     let payload = GetAccessData { s_id, ai_type };
+              //     (
+              //         TatpTransaction::GetAccessData,
+              //         TatpTransactionProfile::GetAccessData(payload),
+              //     )
+              // }
+              // x if x < 0.8 => {
+              //     // UPDATE_SUBSCRIBER_DATA
+              //     let s_id = self.rng.gen_range(1..=self.subscribers);
+              //     let sf_type = self.rng.gen_range(1..=4);
+              //     let bit_1 = self.rng.gen_range(0..=1);
+              //     let data_a = self.rng.gen_range(0..=255);
+              //     let payload = UpdateSubscriberData {
+              //         s_id,
+              //         sf_type,
+              //         bit_1,
+              //         data_a,
+              //     };
+              //     (
+              //         TatpTransaction::UpdateSubscriberData,
+              //         TatpTransactionProfile::UpdateSubscriberData(payload),
+              //     )
+              // }
+              // _ => {
+              //     // UPDATE_LOCATION
+              //     let s_id = self.rng.gen_range(1..=self.subscribers);
+              //     let vlr_location = self.rng.gen_range(1..(2 ^ 32));
+              //     let payload = UpdateLocationData { s_id, vlr_location };
+              //     (
+              //         TatpTransaction::UpdateLocationData,
+              //         TatpTransactionProfile::UpdateLocationData(payload),
+              //     )
+              // }
         }
     }
 }

@@ -4,6 +4,9 @@ use crate::workloads::acid::*;
 use crate::workloads::acid::{self, AcidDatabase};
 use crate::workloads::smallbank::*;
 use crate::workloads::smallbank::{self, SmallBankDatabase};
+use crate::workloads::tatp::keys::TatpPrimaryKey;
+use crate::workloads::tatp::*;
+use crate::workloads::tatp::{self, TatpDatabase};
 
 use config::Config;
 use rand::rngs::StdRng;
@@ -22,8 +25,15 @@ pub mod access;
 #[derive(Debug)]
 pub enum Database {
     SmallBank(SmallBankDatabase),
-    Tatp,
+    Tatp(TatpDatabase),
     Acid(AcidDatabase),
+}
+
+#[derive(Debug, Eq, Hash, PartialEq)]
+pub enum PrimaryKey {
+    SmallBank,
+    Tatp(TatpPrimaryKey),
+    Acid,
 }
 
 impl Database {
@@ -66,7 +76,19 @@ impl Database {
 
                 Ok(Database::Acid(database))
             }
-            "tatp" => unimplemented!(),
+            "tatp" => {
+                let population = *TATP_SF_MAP.get(&sf).unwrap() as usize;
+                let mut database = TatpDatabase::new(population);
+                let mut rng: StdRng = SeedableRng::from_entropy();
+
+                info!("Generate TATP SF-{}", sf);
+                tatp::loader::populate_tables(population, &mut database, &mut rng)?;
+
+                info!("Parameter generator set seed: {}", set_seed);
+                info!("Nurand: {}", config.get_bool("nurand")?); // balance mix
+
+                Ok(Database::Tatp(database))
+            }
             _ => return Err(Box::new(FatalError::IncorrectWorkload(workload))),
         }
     }
@@ -75,7 +97,7 @@ impl Database {
         match self {
             Database::SmallBank(ref db) => db.get_table(id),
             Database::Acid(ref db) => db.get_table(id),
-            Database::Tatp => unimplemented!(),
+            Database::Tatp(ref db) => db.get_table(id),
         }
     }
 }

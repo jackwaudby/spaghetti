@@ -8,6 +8,7 @@ use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::SmallBankTransaction;
+use crate::workloads::tatp::TatpTransaction;
 
 use config::Config;
 use serde::{Deserialize, Serialize};
@@ -145,7 +146,9 @@ impl GlobalStatistics {
         assert_eq!(completed, committed + aborted);
 
         let internal_aborts = match self.abort_breakdown.workload_specific {
-            WorkloadAbortBreakdown::Tatp(ref _reason) => 0,
+            WorkloadAbortBreakdown::Tatp(ref reasons) => {
+                reasons.row_already_exists + reasons.row_not_found
+            }
             WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
             WorkloadAbortBreakdown::Acid(ref reasons) => reasons.non_serializable,
         }; // aborts due to integrity constraints/manual aborts
@@ -428,6 +431,16 @@ impl TransactionBreakdown {
                 let mut transactions = vec![];
                 for transaction in AcidTransaction::iter() {
                     let metrics = TransactionMetrics::new(Transaction::Acid(transaction));
+                    transactions.push(metrics);
+                }
+                TransactionBreakdown { name, transactions }
+            }
+
+            "tatp" => {
+                let name = workload.to_string();
+                let mut transactions = vec![];
+                for transaction in TatpTransaction::iter() {
+                    let metrics = TransactionMetrics::new(Transaction::Tatp(transaction));
                     transactions.push(metrics);
                 }
                 TransactionBreakdown { name, transactions }
