@@ -87,7 +87,6 @@ pub fn populate_tables(
     let mut sf_offset = 0;
 
     // call forwarding
-
     let mut cf_offset = 0;
 
     for sid in 0..population {

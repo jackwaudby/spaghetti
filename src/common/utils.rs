@@ -181,7 +181,26 @@ pub fn execute<'a>(txn: Message, scheduler: &'a Scheduler, workload: &'a Databas
                                 params, scheduler, workload, isolation,
                             )
                         }
-                        _ => unimplemented!(),
+                        TatpTransactionProfile::GetAccessData(params) => {
+                            tatp::procedures::get_access_data(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
+                        TatpTransactionProfile::GetNewDestination(params) => {
+                            tatp::procedures::get_new_destination(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
+                        TatpTransactionProfile::UpdateLocationData(params) => {
+                            tatp::procedures::update_location(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
+                        TatpTransactionProfile::UpdateSubscriberData(params) => {
+                            tatp::procedures::update_subscriber_data(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
                     }
                 } else {
                     panic!("transaction type and parameters do not match");

@@ -1,19 +1,19 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::Success;
 use crate::scheduler::{Scheduler, TransactionType};
-//use crate::storage::datatype::Data;
+use crate::storage::datatype::Data;
 use crate::storage::Database;
 use crate::storage::PrimaryKey;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
-// use crate::workloads::tatp::paramgen::{
-//     GetAccessData, GetNewDestination, GetSubscriberData, UpdateLocationData, UpdateSubscriberData,
-// };
-use crate::workloads::tatp::paramgen::GetSubscriberData;
+use crate::workloads::tatp::paramgen::{
+    GetAccessData, GetNewDestination, GetSubscriberData, UpdateLocationData, UpdateSubscriberData,
+};
+
 use crate::workloads::IsolationLevel;
 
 use crossbeam_epoch as epoch;
 
-//use std::convert::TryFrom;
+use std::convert::TryFrom;
 
 /// GetSubscriberData transaction.
 pub fn get_subscriber_data<'a>(
@@ -27,9 +27,16 @@ pub fn get_subscriber_data<'a>(
             let guard = &epoch::pin(); // pin thread
             let meta = scheduler.begin(isolation); // register
 
-            let offset = database
+            let offset = match database
                 .get_table(0)
-                .exists(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id)))?; // find offset
+                .exists(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id)))
+            {
+                Ok(offset) => offset,
+                Err(e) => {
+                    scheduler.abort(&meta, database, guard);
+                    return Err(e);
+                }
+            };
             scheduler.read_value(0, 0, offset, &meta, database, guard)?;
             scheduler.read_value(0, 1, offset, &meta, database, guard)?;
             scheduler.read_value(0, 2, offset, &meta, database, guard)?;
@@ -43,162 +50,195 @@ pub fn get_subscriber_data<'a>(
     }
 }
 
-// /// GetNewDestination transaction.
-// pub fn get_new_destination(
-//     params: GetNewDestination,
-//     protocol: Arc<Protocol>,
-// ) -> Result<String, NonFatalError> {
-//     let sf_columns = ["s_id", "sf_type", "is_active"];
-//     let cf_columns = ["s_id", "sf_type", "start_time", "end_time", "number_x"];
+/// GetNewDestination transaction.
+pub fn get_new_destination<'a>(
+    params: GetNewDestination,
+    scheduler: &'a Scheduler,
+    database: &'a Database,
+    isolation: IsolationLevel,
+) -> Result<Success, NonFatalError> {
+    match &*database {
+        Database::Tatp(_) => {
+            let guard = &epoch::pin(); // pin thread
 
-//     let sf_pk = Tatp(SpecialFacility(params.s_id, params.sf_type.into()));
-//     let cf_pk = Tatp(CallForwarding(
-//         params.s_id,
-//         params.sf_type.into(),
-//         params.start_time.into(),
-//     ));
+            let meta = scheduler.begin(isolation); // register
 
-//     let meta = protocol.scheduler.register().unwrap();
+            let sf_offset = match database.get_table(2).exists(PrimaryKey::Tatp(
+                TatpPrimaryKey::SpecialFacility(params.s_id, params.sf_type.into()),
+            )) {
+                Ok(offset) => offset,
+                Err(e) => {
+                    scheduler.abort(&meta, database, guard);
+                    return Err(e);
+                }
+            };
 
-//     let sf_res = protocol.scheduler.read(
-//         "special_facility",
-//         Some("special_idx"),
-//         &sf_pk,
-//         &sf_columns,
-//         &meta,
-//     )?;
+            scheduler.read_value(2, 0, sf_offset, &meta, database, guard)?;
+            scheduler.read_value(2, 1, sf_offset, &meta, database, guard)?;
+            let is_active =
+                u64::try_from(scheduler.read_value(2, 2, sf_offset, &meta, database, guard)?)?;
 
-//     let is_active = i64::try_from(sf_res[2].clone()).unwrap();
+            if is_active != 1 {
+                scheduler.abort(&meta, database, guard);
+                return Err(NonFatalError::RowNotFound(
+                    "todo".to_string(),
+                    "special_facility".to_string(),
+                ));
+            }
 
-//     if is_active != 1 {
-//         protocol.scheduler.abort(&meta).unwrap();
-//         return Err(NonFatalError::RowNotFound(
-//             sf_pk.to_string(),
-//             "special_facility".to_string(),
-//         ));
-//     }
+            let cf_offset = match database.get_table(3).exists(PrimaryKey::Tatp(
+                TatpPrimaryKey::CallForwarding(
+                    params.s_id,
+                    params.sf_type.into(),
+                    params.start_time.into(),
+                ),
+            )) {
+                Ok(offset) => offset,
+                Err(e) => {
+                    scheduler.abort(&meta, database, guard);
+                    return Err(e);
+                }
+            };
 
-//     let cf_res = protocol.scheduler.read(
-//         "call_forwarding",
-//         Some("call_idx"),
-//         &cf_pk,
-//         &cf_columns,
-//         &meta,
-//     )?;
+            scheduler.read_value(3, 0, cf_offset, &meta, database, guard)?;
+            scheduler.read_value(3, 1, cf_offset, &meta, database, guard)?;
+            scheduler.read_value(3, 2, cf_offset, &meta, database, guard)?;
+            let end_time =
+                u64::try_from(scheduler.read_value(3, 3, sf_offset, &meta, database, guard)?)?;
+            scheduler.read_value(3, 4, sf_offset, &meta, database, guard)?;
 
-//     let end_time = i64::try_from(cf_res[3].clone()).unwrap();
+            if params.end_time as u64 >= end_time {
+                scheduler.abort(&meta, database, guard);
+                return Err(NonFatalError::RowNotFound(
+                    "todo".to_string(),
+                    "call_forwarding".to_string(),
+                ));
+            }
 
-//     if params.end_time as i64 >= end_time {
-//         protocol.scheduler.abort(&meta).unwrap();
-//         return Err(NonFatalError::RowNotFound(
-//             cf_pk.to_string(),
-//             "call_forwarding".to_string(),
-//         ));
-//     }
+            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?;
 
-//     protocol.scheduler.commit(&meta)?;
+            Ok(Success::new(None, None, None, None, None))
+        }
+        _ => panic!("unexpected database"),
+    }
+}
 
-//     Ok("ok".to_string())
-// }
+/// GetAccessData transaction.
+pub fn get_access_data<'a>(
+    params: GetAccessData,
+    scheduler: &'a Scheduler,
+    database: &'a Database,
+    isolation: IsolationLevel,
+) -> Result<Success, NonFatalError> {
+    match &*database {
+        Database::Tatp(_) => {
+            let guard = &epoch::pin(); // pin thread
+            let meta = scheduler.begin(isolation); // register
 
-// /// GetAccessData transaction.
-// pub fn get_access_data(
-//     params: GetAccessData,
-//     protocol: Arc<Protocol>,
-// ) -> Result<String, NonFatalError> {
-//     let columns = ["data_1", "data_2", "data_3", "data_4"];
+            let offset =
+                match database
+                    .get_table(0)
+                    .exists(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(
+                        params.s_id,
+                        params.ai_type.into(),
+                    ))) {
+                    Ok(offset) => offset,
+                    Err(e) => {
+                        scheduler.abort(&meta, database, guard);
+                        return Err(e);
+                    }
+                };
 
-//     let pk = Tatp(AccessInfo(params.s_id, params.ai_type.into()));
+            scheduler.read_value(0, 2, offset, &meta, database, guard)?;
+            scheduler.read_value(0, 3, offset, &meta, database, guard)?;
+            scheduler.read_value(0, 4, offset, &meta, database, guard)?;
+            scheduler.read_value(0, 5, offset, &meta, database, guard)?;
 
-//     let meta = protocol.scheduler.register().unwrap();
+            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?;
 
-//     protocol
-//         .scheduler
-//         .read("access_info", Some("access_idx"), &pk, &columns, &meta)?;
+            Ok(Success::new(None, None, None, None, None))
+        }
+        _ => panic!("unexpected database"),
+    }
+}
 
-//     protocol.scheduler.commit(&meta)?;
+/// Update subscriber transaction.
+pub fn update_subscriber_data<'a>(
+    params: UpdateSubscriberData,
+    scheduler: &'a Scheduler,
+    database: &'a Database,
+    isolation: IsolationLevel,
+) -> Result<Success, NonFatalError> {
+    match &*database {
+        Database::Tatp(_) => {
+            let guard = &epoch::pin(); // pin thread
+            let meta = scheduler.begin(isolation);
 
-//     Ok("ok".to_string())
-// }
+            let sub_offset = match database
+                .get_table(0)
+                .exists(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id)))
+            {
+                Ok(offset) => offset,
+                Err(e) => {
+                    scheduler.abort(&meta, database, guard);
+                    return Err(e);
+                }
+            };
 
-// /// Update subscriber transaction.
-// pub fn update_subscriber_data(
-//     params: UpdateSubscriberData,
-//     protocol: Arc<Protocol>,
-// ) -> Result<String, NonFatalError> {
-//     let pk1 = Tatp(Subscriber(params.s_id));
-//     let pk2 = Tatp(SpecialFacility(params.s_id, params.sf_type.into()));
+            let mut bit1 = Data::Uint(params.bit_1 as u64);
+            scheduler.write_value(&mut bit1, 0, 2, sub_offset, &meta, database, guard)?;
 
-//     let columns1 = ["bit_1"];
-//     let columns2 = ["data_a"];
+            let sf_offset = match database.get_table(0).exists(PrimaryKey::Tatp(
+                TatpPrimaryKey::SpecialFacility(params.s_id, params.sf_type.into()),
+            )) {
+                Ok(offset) => offset,
+                Err(e) => {
+                    scheduler.abort(&meta, database, guard);
+                    return Err(e);
+                }
+            };
 
-//     let values1 = vec![Data::Int(params.bit_1.into())];
-//     let values2 = vec![Data::Int(params.data_a.into())];
+            let mut data_a = Data::Uint(params.bit_1 as u64);
+            scheduler.write_value(&mut data_a, 2, 4, sf_offset, &meta, database, guard)?;
 
-//     let update = |_current: Option<Vec<Data>>,
-//                   params: Option<&[Data]>|
-//      -> Result<Vec<Data>, NonFatalError> {
-//         Ok(vec![params.unwrap()[0].clone().clone()])
-//     };
+            scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?;
 
-//     let meta = protocol.scheduler.register().unwrap();
+            Ok(Success::new(None, None, None, None, None))
+        }
+        _ => panic!("unexpected database"),
+    }
+}
 
-//     protocol.scheduler.update(
-//         "subscriber",
-//         Some("sub_idx"),
-//         &pk1,
-//         &columns1,
-//         None,
-//         Some(&values1),
-//         &update,
-//         &meta,
-//     )?;
+/// Update location transaction.
+pub fn update_location<'a>(
+    params: UpdateLocationData,
+    scheduler: &'a Scheduler,
+    database: &'a Database,
+    isolation: IsolationLevel,
+) -> Result<Success, NonFatalError> {
+    match &*database {
+        Database::Tatp(_) => {
+            let guard = &epoch::pin(); // pin thread
+            let meta = scheduler.begin(isolation);
 
-//     protocol.scheduler.update(
-//         "special_facility",
-//         Some("special_idx"),
-//         &pk2,
-//         &columns2,
-//         None,
-//         Some(&values2),
-//         &update,
-//         &meta,
-//     )?;
+            let offset = match database
+                .get_table(0)
+                .exists(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id)))
+            {
+                Ok(offset) => offset,
+                Err(e) => {
+                    scheduler.abort(&meta, database, guard);
+                    return Err(e);
+                }
+            };
 
-//     protocol.scheduler.commit(&meta)?;
+            let mut vlr = Data::Uint(params.vlr_location as u64);
+            scheduler.write_value(&mut vlr, 0, 4, offset, &meta, database, guard)?;
 
-//     Ok("ok".to_string())
-// }
+            scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?;
 
-// /// Update location transaction.
-// pub fn update_location(
-//     params: UpdateLocationData,
-//     protocol: Arc<Protocol>,
-// ) -> Result<String, NonFatalError> {
-//     let columns = ["vlr_location"];
-//     let pk = Tatp(Subscriber(params.s_id));
-//     let params = vec![Data::Int(params.vlr_location.into())];
-
-//     let update_vlr = |_current: Option<Vec<Data>>,
-//                       params: Option<&[Data]>|
-//      -> Result<Vec<Data>, NonFatalError> {
-//         Ok(vec![params.unwrap()[0].clone().clone()])
-//     };
-
-//     let meta = protocol.scheduler.register().unwrap();
-
-//     protocol.scheduler.update(
-//         "subscriber",
-//         Some("sub_idx"),
-//         &pk,
-//         &columns,
-//         None,
-//         Some(&params),
-//         &update_vlr,
-//         &meta,
-//     )?;
-
-//     protocol.scheduler.commit(&meta)?;
-
-//     Ok("ok".to_string())
-// }
+            Ok(Success::new(None, None, None, None, None))
+        }
+        _ => panic!("unexpected database"),
+    }
+}
