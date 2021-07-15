@@ -5,7 +5,8 @@ use crate::scheduler::Scheduler;
 use crate::storage::Database;
 use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
-use crate::workloads::{acid, smallbank};
+use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
+use crate::workloads::{acid, smallbank, tatp};
 
 use config::Config;
 use std::fs::{self, OpenOptions};
@@ -172,7 +173,39 @@ pub fn execute<'a>(txn: Message, scheduler: &'a Scheduler, workload: &'a Databas
     } = txn
     {
         let res = match transaction {
-            Transaction::Tatp => unimplemented!(),
+            Transaction::Tatp(_) => {
+                if let Parameters::Tatp(params) = parameters {
+                    match params {
+                        TatpTransactionProfile::GetSubscriberData(params) => {
+                            tatp::procedures::get_subscriber_data(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
+                        TatpTransactionProfile::GetAccessData(params) => {
+                            tatp::procedures::get_access_data(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
+                        TatpTransactionProfile::GetNewDestination(params) => {
+                            tatp::procedures::get_new_destination(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
+                        TatpTransactionProfile::UpdateLocationData(params) => {
+                            tatp::procedures::update_location(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
+                        TatpTransactionProfile::UpdateSubscriberData(params) => {
+                            tatp::procedures::update_subscriber_data(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
+                    }
+                } else {
+                    panic!("transaction type and parameters do not match");
+                }
+            }
             Transaction::Acid(_) => {
                 if let Parameters::Acid(params) = parameters {
                     match params {
@@ -294,6 +327,11 @@ pub fn get_transaction_generator(thread_id: u32, config: &Config) -> ParameterGe
             let gen = AcidGenerator::new(thread_id, sf, set_seed, seed, &anomaly, delay);
 
             ParameterGenerator::Acid(gen)
+        }
+        "tatp" => {
+            let use_nurand = config.get_bool("nurand").unwrap();
+            let gen = TatpGenerator::new(thread_id, sf, set_seed, seed, use_nurand);
+            ParameterGenerator::Tatp(gen)
         }
         _ => unimplemented!(),
     }

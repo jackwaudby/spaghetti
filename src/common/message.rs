@@ -4,6 +4,8 @@ use crate::workloads::acid::paramgen::AcidTransactionProfile;
 use crate::workloads::acid::AcidTransaction;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::smallbank::SmallBankTransaction;
+use crate::workloads::tatp::paramgen::TatpTransactionProfile;
+use crate::workloads::tatp::TatpTransaction;
 use crate::workloads::IsolationLevel;
 
 use serde::{Deserialize, Serialize};
@@ -29,14 +31,14 @@ pub enum Message {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Transaction {
     Acid(AcidTransaction),
-    Tatp,
+    Tatp(TatpTransaction),
     SmallBank(SmallBankTransaction),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Parameters {
     Acid(AcidTransactionProfile),
-    Tatp,
+    Tatp(TatpTransactionProfile),
     SmallBank(SmallBankTransactionProfile),
 }
 

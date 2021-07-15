@@ -81,7 +81,6 @@ impl Generator for SmallBankGenerator {
         let (transaction, parameters) = self.get_params(n);
 
         let m: f32 = self.rng.gen();
-
         let isolation = match m {
             x if x < 0.2 => IsolationLevel::ReadUncommitted,
             x if x < 0.6 => IsolationLevel::ReadCommitted,
@@ -96,7 +95,6 @@ impl Generator for SmallBankGenerator {
         }
     }
 
-    /// Get number of transactions generated.
     fn get_generated(&self) -> u32 {
         self.generated
     }
