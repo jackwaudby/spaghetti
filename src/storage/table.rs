@@ -1,9 +1,12 @@
 use crate::common::ds::atomic_linked_list::AtomicLinkedList;
 use crate::common::ds::locked_linked_list::LockedLinkedList;
+use crate::common::error::NonFatalError;
 use crate::storage::access::Access;
 use crate::storage::tuple::Tuple;
+use crate::storage::PrimaryKey;
 
 use nohash_hasher::IntMap;
+use rustc_hash::FxHashMap;
 use std::sync::atomic::AtomicU64;
 
 pub type Column = Vec<Tuple>;
@@ -11,6 +14,7 @@ pub type Column = Vec<Tuple>;
 #[derive(Debug)]
 pub struct Table {
     columns: IntMap<usize, Column>,
+    exists: FxHashMap<PrimaryKey, usize>,
     lsns: Vec<AtomicU64>,
     rw_tables: Vec<AtomicLinkedList<Access>>,
     locked_rw_tables: Vec<LockedLinkedList<Access>>,
@@ -18,6 +22,8 @@ pub struct Table {
 
 impl Table {
     pub fn new(population: usize, column_cnt: usize) -> Self {
+        let exists = FxHashMap::default();
+
         let mut columns = IntMap::default();
         for id in 0..column_cnt {
             let mut column = Vec::with_capacity(population);
@@ -39,6 +45,7 @@ impl Table {
 
         Table {
             columns,
+            exists,
             lsns,
             rw_tables,
             locked_rw_tables,
@@ -51,6 +58,21 @@ impl Table {
 
     pub fn get_tuple(&self, id: usize, offset: usize) -> &Tuple {
         &self.columns.get(&id).unwrap()[offset]
+    }
+
+    pub fn get_mut_exists(&mut self) -> &mut FxHashMap<PrimaryKey, usize> {
+        &mut self.exists
+    }
+
+    pub fn exists(&self, key: PrimaryKey) -> Result<usize, NonFatalError> {
+        let offset = self.exists.get(&key);
+        match offset {
+            Some(offset) => Ok(*offset),
+            None => Err(NonFatalError::RowNotFound(
+                "todo".to_string(),
+                "todo".to_string(),
+            )),
+        }
     }
 
     pub fn get_lsn(&self, offset: usize) -> &AtomicU64 {
