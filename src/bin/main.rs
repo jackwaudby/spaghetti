@@ -69,6 +69,9 @@ fn main() {
     if let Level::DEBUG = level {
         let subscriber = fmt::Subscriber::builder()
             .with_writer(non_blocking)
+            .with_max_level(level)
+            .with_thread_names(true)
+            .with_target(false)
             .finish();
 
         tracing::subscriber::set_global_default(subscriber)

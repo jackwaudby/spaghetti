@@ -167,7 +167,7 @@ impl<'a> Scheduler<'a> {
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.commit(database, guard),
+            SerializationGraph(sg) => sg.commit(meta, database, guard),
             MixedSerializationGraph(sg) => sg.commit(database, guard),
             WaitHit(wh) => wh.commit(meta, database, guard),
             OptimisedWaitHit(owh) => owh.commit(database, guard),
@@ -188,7 +188,7 @@ impl<'a> Scheduler<'a> {
     ) -> NonFatalError {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.abort(database, guard),
+            SerializationGraph(sg) => sg.abort(meta, database, guard),
             MixedSerializationGraph(sg) => sg.abort(database, guard),
             WaitHit(wh) => wh.abort(meta, database, guard),
             OptimisedWaitHit(owh) => owh.abort(database, guard),

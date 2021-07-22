@@ -13,7 +13,7 @@ use parking_lot::{Condvar, Mutex};
 use std::cell::{RefCell, RefMut};
 use std::sync::Arc;
 use thread_local::ThreadLocal;
-use tracing::{debug, info, instrument};
+use tracing::{debug, info, instrument, Span};
 
 pub mod locks_held;
 
@@ -75,6 +75,7 @@ impl TwoPhaseLocking {
         res.add(op_type, table_id, column_id, offset, prv); // record operation
     }
 
+    #[instrument(level = "debug", skip(self), fields(id))]
     pub fn begin(&self) -> TransactionId {
         *self
             .txn_info
@@ -87,13 +88,17 @@ impl TwoPhaseLocking {
             .borrow_mut() = LocksHeld::new();
 
         let mut lock = self.id.lock();
+
         let id = *lock;
         *lock += 1;
+
+        Span::current().record("id", &id);
+        debug!("Begin");
 
         TransactionId::TwoPhaseLocking(id)
     }
 
-    #[instrument(level = "debug", skip(self, meta, database))]
+    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn read_value<'g>(
         &self,
         table_id: usize,
@@ -103,7 +108,10 @@ impl TwoPhaseLocking {
         database: &Database,
     ) -> Result<Data, NonFatalError> {
         let timestamp = match meta {
-            TransactionId::TwoPhaseLocking(id) => id,
+            TransactionId::TwoPhaseLocking(id) => {
+                Span::current().record("id", &id);
+                id
+            }
             _ => panic!("unexpected txn id"),
         };
 
@@ -153,7 +161,7 @@ impl TwoPhaseLocking {
     }
 
     /// Write operation.
-    #[instrument(level = "debug", skip(self, meta, database))]
+    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn write_value<'g>(
         &self,
         value: &mut Data,
@@ -164,7 +172,10 @@ impl TwoPhaseLocking {
         database: &Database,
     ) -> Result<(), NonFatalError> {
         let timestamp = match meta {
-            TransactionId::TwoPhaseLocking(id) => id,
+            TransactionId::TwoPhaseLocking(id) => {
+                Span::current().record("id", &id);
+                id
+            }
             _ => panic!("unexpected txn id"),
         };
 
@@ -219,16 +230,17 @@ impl TwoPhaseLocking {
     }
 
     /// Commit operation.
-
-    #[instrument(level = "debug", skip(self, meta, database))]
+    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn commit<'g>(
         &self,
         database: &Database,
         meta: &TransactionId,
     ) -> Result<(), NonFatalError> {
-        debug!("Committed");
         let timestamp = match meta {
-            TransactionId::TwoPhaseLocking(id) => id,
+            TransactionId::TwoPhaseLocking(id) => {
+                Span::current().record("id", &id);
+                id
+            }
             _ => panic!("unexpected txn id"),
         };
 
@@ -260,15 +272,18 @@ impl TwoPhaseLocking {
 
         locks.clear();
 
+        debug!("Committed");
         Ok(())
     }
 
     /// Abort operation.
-    #[instrument(level = "debug", skip(self, meta, database))]
+    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn abort<'g>(&self, database: &Database, meta: &TransactionId) -> NonFatalError {
-        debug!("Aborted");
         let timestamp = match meta {
-            TransactionId::TwoPhaseLocking(id) => id,
+            TransactionId::TwoPhaseLocking(id) => {
+                Span::current().record("id", &id);
+                id
+            }
             _ => panic!("unexpected txn id"),
         };
 
@@ -300,6 +315,7 @@ impl TwoPhaseLocking {
 
         locks.clear();
 
+        debug!("Aborted");
         NonFatalError::NonSerializable
     }
 
