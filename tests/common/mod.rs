@@ -12,7 +12,7 @@ use spaghetti::workloads::IsolationLevel;
 use config::Config;
 use crossbeam_utils::thread;
 use lazy_static::lazy_static;
-use log::info;
+use pbr::MultiBar;
 use petgraph::algo;
 use petgraph::graph::Graph;
 use std::fs::{self, File, OpenOptions};
@@ -20,6 +20,7 @@ use std::io::{prelude::*, BufReader};
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::Instant;
+use tracing::info;
 
 lazy_static! {
     static ref CORES: i64 = core_affinity::get_core_ids().unwrap().len() as i64;
@@ -155,6 +156,7 @@ pub fn run_recon(
 
 pub fn run(protocol: &str, anomaly: &str) {
     let config = setup_config(protocol, anomaly); // set up config
+
     utils::create_log_dir(&config); // log transaction results
 
     let mut global_stats = GlobalStatistics::new(&config); // global stats collector
@@ -177,17 +179,25 @@ pub fn run(protocol: &str, anomaly: &str) {
         let database = &database;
         let config = &config;
 
+        let mb = MultiBar::new(); // progress bar
+
         for (thread_id, core_id) in core_ids.iter().enumerate() {
             let txc = tx.clone();
+
+            let mut p = mb.create_bar(100); // create bar
+            p.show_speed = false;
+            p.show_counter = false;
 
             s.builder()
                 .name(thread_id.to_string())
                 .spawn(move |_| {
                     core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                    utils::run(thread_id, config, scheduler, database, txc);
+                    utils::run(thread_id, config, scheduler, database, txc, p);
                 })
                 .unwrap();
         }
+
+        mb.listen();
     })
     .unwrap();
 
