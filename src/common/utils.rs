@@ -85,7 +85,7 @@ pub fn run(
     scheduler: &Scheduler,
     database: &Database,
     tx: mpsc::Sender<LocalStatistics>,
-    mut pbr: ProgressBar<Pipe>,
+    mut pbr: Option<ProgressBar<Pipe>>,
 ) {
     let timeout = config.get_int("timeout").unwrap() as u64;
     let p = config.get_str("protocol").unwrap();
@@ -157,10 +157,6 @@ pub fn run(
             tracing::info!("Timeout reached: {} minute(s)", timeout);
             break;
         } else {
-            // if completed % 1000 == 0 {
-            //     tracing::info!("thread {} compeleted {}", thread_id, completed);
-            // }
-
             let txn = generator.get_next(); // generate txn
             let start_latency = Instant::now(); // start measuring latency
             let response = execute(txn.clone(), scheduler, database); // execute txn
@@ -171,15 +167,25 @@ pub fn run(
             stats.stop_latency(start_latency); // stop measuring latency
             completed += 1;
 
-            if completed % (max_transactions / 100) == 0 {
-                pbr.inc();
+            match pbr {
+                Some(ref mut pbr) => {
+                    if completed % (max_transactions / 100) == 0 {
+                        pbr.inc();
+                    }
+                }
+                None => {}
             }
         }
     }
 
     stats.stop_worker(start_worker);
 
-    pbr.finish_print(&format!("thread {} done!", thread_id));
+    match pbr {
+        Some(ref mut pbr) => {
+            pbr.finish_print(&format!("thread {} done!", thread_id));
+        }
+        None => {}
+    }
 
     if record {
         tx.send(stats).unwrap();

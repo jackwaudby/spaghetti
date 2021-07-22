@@ -120,7 +120,7 @@ fn main() {
                 .name(thread_id.to_string())
                 .spawn(move |_| {
                     core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                    utils::run(thread_id, config, scheduler, database, txc, p);
+                    utils::run(thread_id, config, scheduler, database, txc, Some(p));
                 })
                 .unwrap();
         }
