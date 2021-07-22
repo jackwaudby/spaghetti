@@ -18,9 +18,11 @@ path = "src/bin/main.rs"
 
 [dev-dependencies]
 criterion = "0.3"
+petgraph = "0.5.1"
+test-env-log ={version = "0.2.7", features = ["trace"]}
+env_logger = "*"
 
 [dependencies]
-chashmap = "2.2.2"
 rand = "0.8.0"
 config = "0.10"
 serde = {version = "1.0.118", features = ["derive"]}
@@ -28,16 +30,12 @@ tracing = "0.1.5"
 tracing-subscriber = "0.2"
 tracing-appender = "0.1"
 clap = "3.0.0-beta.2"
-chrono = "0.4"
 lazy_static = "1.4.0"
 core_affinity = "0.5.10"
 csv = "1.1.6"
 serde_json = {version = "1.0.64", features = ["preserve_order"]}
 strum = "0.20"
 strum_macros = "0.20"
-statrs = "0.13.0"
-test-env-log ={version = "0.2.7", features = ["log","trace"]}
-petgraph = "0.5.1"
 libmath = "0.2.1"
 parking_lot = "0.11"
 nohash-hasher = "0.2.0"
