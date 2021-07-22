@@ -13,7 +13,7 @@ use parking_lot::{Condvar, Mutex};
 use std::cell::{RefCell, RefMut};
 use std::sync::Arc;
 use thread_local::ThreadLocal;
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 
 pub mod locks_held;
 
@@ -90,10 +90,10 @@ impl TwoPhaseLocking {
         let id = *lock;
         *lock += 1;
 
-        debug!("start {}", id);
         TransactionId::TwoPhaseLocking(id)
     }
 
+    #[instrument(level = "debug", skip(self, meta, database))]
     pub fn read_value<'g>(
         &self,
         table_id: usize,
@@ -107,13 +107,8 @@ impl TwoPhaseLocking {
             _ => panic!("unexpected txn id"),
         };
 
-        debug!(
-            "read by {} on ({},{},{})",
-            timestamp, table_id, column_id, offset
-        );
-
         let request = self.request_lock(table_id, offset, LockMode::Read, *timestamp); // request read lock
-
+        debug!("{:?}", request);
         match request {
             LockRequest::AlreadyGranted => {
                 let table: &Table = database.get_table(table_id); // get table
@@ -158,6 +153,7 @@ impl TwoPhaseLocking {
     }
 
     /// Write operation.
+    #[instrument(level = "debug", skip(self, meta, database))]
     pub fn write_value<'g>(
         &self,
         value: &mut Data,
@@ -172,12 +168,8 @@ impl TwoPhaseLocking {
             _ => panic!("unexpected txn id"),
         };
 
-        debug!(
-            "write by {} on ({},{},{})",
-            timestamp, table_id, column_id, offset
-        );
-
         let request = self.request_lock(table_id, offset, LockMode::Write, *timestamp); // request read lock
+        debug!("{:?}", request);
 
         match request {
             LockRequest::AlreadyGranted => {
@@ -227,17 +219,18 @@ impl TwoPhaseLocking {
     }
 
     /// Commit operation.
+
+    #[instrument(level = "debug", skip(self, meta, database))]
     pub fn commit<'g>(
         &self,
         database: &Database,
         meta: &TransactionId,
     ) -> Result<(), NonFatalError> {
+        debug!("Committed");
         let timestamp = match meta {
             TransactionId::TwoPhaseLocking(id) => id,
             _ => panic!("unexpected txn id"),
         };
-
-        debug!("commit by {}", timestamp);
 
         let ops = self.get_operations();
         let mut locks = self.get_locks();
@@ -271,13 +264,14 @@ impl TwoPhaseLocking {
     }
 
     /// Abort operation.
+    #[instrument(level = "debug", skip(self, meta, database))]
     pub fn abort<'g>(&self, database: &Database, meta: &TransactionId) -> NonFatalError {
+        debug!("Aborted");
         let timestamp = match meta {
             TransactionId::TwoPhaseLocking(id) => id,
             _ => panic!("unexpected txn id"),
         };
 
-        debug!("abort by {}", timestamp);
         let ops = self.get_operations();
         let mut locks = self.get_locks();
 
@@ -317,11 +311,6 @@ impl TwoPhaseLocking {
         request_mode: LockMode,
         timestamp: u64,
     ) -> LockRequest {
-        debug!(
-            "{:?} lock requested on ({},{}) by {}",
-            request_mode, table_id, offset, timestamp
-        );
-
         let mref = self.lock_table.pin(); // pin
         let lock_handle = mref.get(&(table_id, offset)); // handle to lock
 

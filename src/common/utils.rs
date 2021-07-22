@@ -8,6 +8,7 @@ use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransac
 use crate::workloads::{acid, smallbank};
 
 use config::Config;
+use pbr::{Pipe, ProgressBar};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -31,7 +32,18 @@ pub fn set_log_level(config: &Config) {
         "trace" => Level::TRACE,
         _ => Level::WARN,
     };
-    let subscriber = FmtSubscriber::builder().with_max_level(level).finish();
+
+    let file_appender =
+        tracing_appender::rolling::hourly("/Users/jackwaudby/Documents/spaghetti", "prefix.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    let subscriber = FmtSubscriber::builder()
+        .with_max_level(level)
+        .with_thread_names(true)
+        .with_target(false)
+        .with_writer(non_blocking)
+        .finish();
+
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 }
 
@@ -72,6 +84,7 @@ pub fn run(
     scheduler: &Scheduler,
     database: &Database,
     tx: mpsc::Sender<LocalStatistics>,
+    mut pbr: ProgressBar<Pipe>,
 ) {
     let timeout = config.get_int("timeout").unwrap() as u64;
     let p = config.get_str("protocol").unwrap();
@@ -143,6 +156,10 @@ pub fn run(
             tracing::info!("Timeout reached: {} minute(s)", timeout);
             break;
         } else {
+            // if completed % 1000 == 0 {
+            //     tracing::info!("thread {} compeleted {}", thread_id, completed);
+            // }
+
             let txn = generator.get_next(); // generate txn
             let start_latency = Instant::now(); // start measuring latency
             let response = execute(txn.clone(), scheduler, database); // execute txn
@@ -152,10 +169,16 @@ pub fn run(
             }
             stats.stop_latency(start_latency); // stop measuring latency
             completed += 1;
+
+            if completed % (max_transactions / 100) == 0 {
+                pbr.inc();
+            }
         }
     }
 
     stats.stop_worker(start_worker);
+
+    pbr.finish_print(&format!("thread {} done!", thread_id));
 
     if record {
         tx.send(stats).unwrap();

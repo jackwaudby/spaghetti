@@ -11,10 +11,12 @@ use crate::workloads::IsolationLevel;
 
 use crossbeam_epoch as epoch;
 use std::convert::TryFrom;
+use tracing::instrument;
 
 /// Balance transaction.
 ///
 /// Sum the balances of a customer's checking and savings accounts.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn balance<'a>(
     params: Balance,
     scheduler: &'a Scheduler,
@@ -40,6 +42,7 @@ pub fn balance<'a>(
 /// Deposit checking transaction
 ///
 /// Increase checking balance by X amount.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn deposit_checking<'a>(
     params: DepositChecking,
     scheduler: &'a Scheduler,
@@ -66,6 +69,7 @@ pub fn deposit_checking<'a>(
 /// TransactSavings transaction.
 ///
 /// TODO: logic as per Durner, but does not make sense.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn transact_savings<'a>(
     params: TransactSaving,
     scheduler: &'a Scheduler,
@@ -104,6 +108,7 @@ pub fn transact_savings<'a>(
 /// Amalgamate transaction.
 ///
 /// Move all the funds from one customer to another.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn amalgmate<'a>(
     params: Amalgamate,
     scheduler: &'a Scheduler,
@@ -138,6 +143,7 @@ pub fn amalgmate<'a>(
 /// Write check transaction.
 ///
 /// Write a check against an account taking funds from checking; applying overdraft charge if needed.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn write_check<'a>(
     params: WriteCheck,
     scheduler: &'a Scheduler,
@@ -172,6 +178,7 @@ pub fn write_check<'a>(
 /// Send payment transaction.
 ///
 /// Transfer money between accounts; if there is sufficient funds in the checking account.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn send_payment<'a>(
     params: SendPayment,
     scheduler: &'a Scheduler,

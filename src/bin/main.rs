@@ -5,11 +5,18 @@ use spaghetti::storage::Database;
 
 use clap::clap_app;
 use crossbeam_utils::thread;
+use pbr::MultiBar;
 use std::sync::mpsc;
 use std::time::Instant;
 use tracing::info;
+use tracing::Level;
+use tracing_subscriber::fmt;
 
 fn main() {
+    // config file
+    let mut config = utils::init_config("Settings.toml");
+
+    // command line
     let matches = clap_app!(spag =>
                             (version: "0.1.0")
                             (author: "j. waudby <j.waudby2@newcastle.ac.uk>")
@@ -22,8 +29,6 @@ fn main() {
                             (@arg LOG: -l --log +takes_value "Log level")
     )
     .get_matches();
-
-    let mut config = utils::init_config("Settings.toml");
 
     if let Some(w) = matches.value_of("WORKLOAD") {
         config.set("workload", w).unwrap();
@@ -49,7 +54,33 @@ fn main() {
         config.set("log", l).unwrap();
     }
 
-    utils::set_log_level(&config);
+    // logging
+    let level = match config.get_str("log").unwrap().as_str() {
+        "info" => Level::INFO,
+        "debug" => Level::DEBUG,
+        "trace" => Level::TRACE,
+        _ => Level::WARN,
+    };
+
+    // TODO: hack; alternative solution: https://github.com/tokio-rs/tracing/issues/597#issuecomment-814507031
+    let file_appender = tracing_appender::rolling::hourly("./log/", "debug.log");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    if let Level::DEBUG = level {
+        let subscriber = fmt::Subscriber::builder()
+            .with_writer(non_blocking)
+            .finish();
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+    } else {
+        let subscriber = fmt::Subscriber::builder().finish();
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+    };
+
+    // log directory
     utils::create_log_dir(&config);
 
     let mut global_stats = GlobalStatistics::new(&config);
@@ -73,17 +104,25 @@ fn main() {
         let database = &database;
         let config = &config;
 
+        let mb = MultiBar::new(); // progress bar
+
         for (thread_id, core_id) in core_ids[..cores].iter().enumerate() {
             let txc = tx.clone();
+
+            let mut p = mb.create_bar(100); // create bar
+            p.show_speed = false;
+            p.show_counter = false;
 
             s.builder()
                 .name(thread_id.to_string())
                 .spawn(move |_| {
                     core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                    utils::run(thread_id, config, scheduler, database, txc);
+                    utils::run(thread_id, config, scheduler, database, txc, p);
                 })
                 .unwrap();
         }
+
+        mb.listen();
     })
     .unwrap();
 
