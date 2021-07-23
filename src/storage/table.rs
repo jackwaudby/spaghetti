@@ -1,5 +1,4 @@
 use crate::common::ds::atomic_linked_list::AtomicLinkedList;
-use crate::common::ds::locked_linked_list::LockedLinkedList;
 use crate::common::error::NonFatalError;
 use crate::storage::access::Access;
 use crate::storage::tuple::Tuple;
@@ -17,7 +16,6 @@ pub struct Table {
     exists: FxHashMap<PrimaryKey, usize>,
     lsns: Vec<AtomicU64>,
     rw_tables: Vec<AtomicLinkedList<Access>>,
-    locked_rw_tables: Vec<LockedLinkedList<Access>>,
 }
 
 impl Table {
@@ -35,12 +33,10 @@ impl Table {
 
         let mut lsns = Vec::with_capacity(population);
         let mut rw_tables = Vec::with_capacity(population);
-        let mut locked_rw_tables = Vec::with_capacity(population);
 
         for _ in 0..population {
             lsns.push(AtomicU64::new(0));
             rw_tables.push(AtomicLinkedList::new());
-            locked_rw_tables.push(LockedLinkedList::new());
         }
 
         Table {
@@ -48,7 +44,6 @@ impl Table {
             exists,
             lsns,
             rw_tables,
-            locked_rw_tables,
         }
     }
 
@@ -81,9 +76,5 @@ impl Table {
 
     pub fn get_rwtable(&self, offset: usize) -> &AtomicLinkedList<Access> {
         &self.rw_tables[offset]
-    }
-
-    pub fn get_locked_rwtable(&self, offset: usize) -> &LockedLinkedList<Access> {
-        &self.locked_rw_tables[offset]
     }
 }
