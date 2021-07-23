@@ -1,7 +1,8 @@
 use crate::storage::table::Table;
 
+use arrayvec::ArrayVec;
 use lazy_static::lazy_static;
-use nohash_hasher::IntMap;
+//use nohash_hasher::IntMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum_macros::EnumIter;
@@ -37,7 +38,8 @@ pub static HOTSPOT_PERCENTAGE: f64 = 0.25;
 pub static HOTSPOT_FIXED_SIZE: u64 = 2;
 
 #[derive(Debug)]
-pub struct SmallBankDatabase(IntMap<usize, Table>);
+pub struct SmallBankDatabase(ArrayVec<Table, 3>);
+//pub struct SmallBankDatabase(IntMap<usize, Table>);
 
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum SmallBankTransaction {
@@ -51,20 +53,27 @@ pub enum SmallBankTransaction {
 
 impl SmallBankDatabase {
     pub fn new(population: usize) -> Self {
-        let mut map = IntMap::default();
+        let mut array = ArrayVec::new();
+        array.insert(0, Table::new(population, 1)); // accounts
+        array.insert(1, Table::new(population, 2)); // checking
+        array.insert(2, Table::new(population, 2)); // saving
 
-        map.insert(0, Table::new(population, 1)); // accounts
-        map.insert(1, Table::new(population, 2)); // checking
-        map.insert(2, Table::new(population, 2)); // saving
+        // let mut map = IntMap::default();
 
-        SmallBankDatabase(map)
+        // map.insert(0, Table::new(population, 1)); // accounts
+        // map.insert(1, Table::new(population, 2)); // checking
+        // map.insert(2, Table::new(population, 2)); // saving
+
+        SmallBankDatabase(array)
     }
 
     pub fn get_table(&self, id: usize) -> &Table {
-        self.0.get(&id).unwrap()
+        // self.0.get(&id).unwrap()
+        &self.0[id]
     }
 
     pub fn get_mut_table(&mut self, id: usize) -> &mut Table {
-        self.0.get_mut(&id).unwrap()
+        //        self.0.get_mut(&id).unwrap()
+        &mut self.0[id]
     }
 }
