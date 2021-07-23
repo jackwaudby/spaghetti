@@ -29,7 +29,7 @@ pub enum Database {
     Acid(AcidDatabase),
 }
 
-#[derive(Debug, Eq, Hash, PartialEq)]
+#[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone)]
 pub enum PrimaryKey {
     SmallBank,
     Tatp(TatpPrimaryKey),

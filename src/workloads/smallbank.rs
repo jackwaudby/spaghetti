@@ -1,6 +1,6 @@
+use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 
-use arrayvec::ArrayVec;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -37,7 +37,7 @@ pub static HOTSPOT_PERCENTAGE: f64 = 0.25;
 pub static HOTSPOT_FIXED_SIZE: u64 = 2;
 
 #[derive(Debug)]
-pub struct SmallBankDatabase(ArrayVec<Table, 3>);
+pub struct SmallBankDatabase([Table; 3]);
 
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum SmallBankTransaction {
@@ -51,12 +51,21 @@ pub enum SmallBankTransaction {
 
 impl SmallBankDatabase {
     pub fn new(population: usize) -> Self {
-        let mut array = ArrayVec::new();
-        array.insert(0, Table::new(population, 1)); // accounts
-        array.insert(1, Table::new(population, 2)); // checking
-        array.insert(2, Table::new(population, 2)); // saving
+        let array: [Table; 3] = [
+            Table::new(population, 1),
+            Table::new(population, 2),
+            Table::new(population, 3),
+        ];
 
         SmallBankDatabase(array)
+    }
+
+    pub fn insert_value(&mut self, table_id: usize, column_id: usize, offset: usize, value: Data) {
+        self.get_mut_table(table_id)
+            .get_tuple(column_id, offset)
+            .get()
+            .init_value(value)
+            .unwrap();
     }
 
     pub fn get_table(&self, id: usize) -> &Table {

@@ -191,7 +191,7 @@ impl GlobalStatistics {
         let overview = json!({
             "workload": self.workload,
             "sf": self.scale_factor,
-            "load": self.data_generation.unwrap().as_secs(),
+            "load": self.data_generation.unwrap().as_millis() as u64,
             "cores": self.cores,
             "protocol": self.protocol,
             "total_duration": self.end.unwrap().as_secs(),

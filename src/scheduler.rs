@@ -10,6 +10,7 @@ use crate::scheduler::wh::WaitHit;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::storage::Database;
+use crate::storage::PrimaryKey;
 use crate::workloads::IsolationLevel;
 
 use config::Config;
@@ -82,6 +83,51 @@ impl<'a> Scheduler<'a> {
             NoConcurrencyControl(nocc) => nocc.begin(),
             TwoPhaseLocking(tpl) => tpl.begin(),
             MixedTwoPhaseLocking(tpl) => tpl.begin(isolation_level),
+        }
+    }
+
+    pub fn insert_values(
+        &self,
+        table_id: usize,
+        pk: PrimaryKey,
+        values: Vec<Data>,
+        database: &Database,
+    ) -> Result<(), NonFatalError> {
+        // get handle to table
+        let table = database.get_table(table_id);
+        // lock bitmap
+        let mut guard = table.lock_table();
+        // check if pk exists
+        match table.exists(pk.clone()) {
+            Ok(_) => {
+                return Err(NonFatalError::RowAlreadyExists(
+                    "todo".to_string(),
+                    "todo".to_string(),
+                ))
+            }
+            Err(_) => {
+                // find free slot
+                let pos = guard.iter().position(|x| x == false);
+
+                match pos {
+                    Some(offset) => {
+                        // set values
+                        for (column_id, value) in values.into_iter().enumerate() {
+                            table.get_tuple(column_id, offset).get().init_value(value);
+                        }
+
+                        // mark slot as in use
+                        guard.set(offset, true);
+
+                        // add to exists
+                        // table.get_exists().pin().insert(pk, offset);
+
+                        drop(guard);
+                        Ok(())
+                    }
+                    None => panic!("no free slots"),
+                }
+            }
         }
     }
 

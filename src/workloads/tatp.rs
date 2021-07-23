@@ -1,7 +1,7 @@
+use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 
 use lazy_static::lazy_static;
-use nohash_hasher::IntMap;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum_macros::EnumIter;
@@ -31,7 +31,7 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-pub struct TatpDatabase(IntMap<usize, Table>);
+pub struct TatpDatabase([Table; 4]);
 
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum TatpTransaction {
@@ -44,23 +44,31 @@ pub enum TatpTransaction {
 
 impl TatpDatabase {
     pub fn new(population: usize) -> Self {
-        let mut map = IntMap::default();
-
         // Note; subscriber has 34 columns which are largely redunant
         // Included: s_id; sub_nbr; bit_1; msc_location; vlr_location
-        map.insert(0, Table::new(population, 5)); // subscribers
-        map.insert(1, Table::new(population * 3, 6)); // access info
-        map.insert(2, Table::new(population * 3, 6)); // special facility
-        map.insert(3, Table::new(population * 4, 5)); // call forwarding
+        let array: [Table; 4] = [
+            Table::new(population, 5),     // subscribers
+            Table::new(population * 3, 6), // access info
+            Table::new(population * 3, 6), // special facility
+            Table::new(population * 4, 5), // call forwarding
+        ];
 
-        TatpDatabase(map)
+        TatpDatabase(array)
+    }
+
+    pub fn insert_value(&mut self, table_id: usize, column_id: usize, offset: usize, value: Data) {
+        self.get_mut_table(table_id)
+            .get_tuple(column_id, offset)
+            .get()
+            .init_value(value)
+            .unwrap();
     }
 
     pub fn get_table(&self, id: usize) -> &Table {
-        self.0.get(&id).unwrap()
+        &self.0[id]
     }
 
     pub fn get_mut_table(&mut self, id: usize) -> &mut Table {
-        self.0.get_mut(&id).unwrap()
+        &mut self.0[id]
     }
 }

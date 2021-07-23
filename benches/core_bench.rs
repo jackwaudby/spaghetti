@@ -53,20 +53,27 @@ fn run(data: (Config, Scheduler, Database)) {
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("nocc 1", move |b| {
+    let mut group = c.benchmark_group("core benchmark");
+    group
+        .sample_size(500)
+        .significance_level(0.1)
+        .measurement_time(std::time::Duration::from_secs(10));
+
+    group.bench_function("nocc 1", move |b| {
         b.iter_batched(
             || setup(1, 10000),
             |data| run(data),
             BatchSize::PerIteration,
         )
     });
-    c.bench_function("nocc 4", move |b| {
+    group.bench_function("nocc 4", move |b| {
         b.iter_batched(
             || setup(4, 10000),
             |data| run(data),
             BatchSize::PerIteration,
         )
     });
+    group.finish();
 }
 
 criterion_group!(benches, criterion_benchmark);

@@ -1,4 +1,4 @@
-#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash)]
+#[derive(Debug, PartialEq, Clone, Copy, Eq, Hash, PartialOrd, Ord)]
 pub enum TatpPrimaryKey {
     /// (s_id)
     Subscriber(u64),

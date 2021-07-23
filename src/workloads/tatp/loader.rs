@@ -16,31 +16,23 @@ pub fn populate_tables(
 ) -> Result<()> {
     // Subscriber
     // Included: s_id; sub_nbr; bit_1; msc_location; vlr_location
-    let sub = database.get_mut_table(0);
+
     for sid in 0..population {
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(sid as u64)); // create pk
-        sub.get_mut_exists().insert(pk, sid); // insert into exists
+        database.get_mut_table(0).get_mut_exists().insert(pk, sid); // insert into exists
+                                                                    // database
+                                                                    //     .get_mut_table(0)
+                                                                    //     .get_mut_exists()
+                                                                    //     .pin()
+                                                                    //     .insert(pk, sid); // insert into exists
 
-        sub.get_tuple(0, sid)
-            .get()
-            .init_value(Data::Uint(sid as u64))?; // s_id
-
+        database.insert_value(0, 0, sid, Data::Uint(sid as u64)); // s_id
         let sub_nbr = tatp::helper::to_sub_nbr(sid as u64);
-        sub.get_tuple(1, sid)
-            .get()
-            .init_value(Data::VarChar(sub_nbr))?; // sub_nbr
-
-        sub.get_tuple(2, sid)
-            .get()
-            .init_value(Data::Uint(rng.gen_range(0..=1) as u64))?; // bit_1
-
-        sub.get_tuple(3, sid)
-            .get()
-            .init_value(Data::Uint(rng.gen_range(1..(2 ^ 32)) as u64))?; // msc_location
-
-        sub.get_tuple(4, sid)
-            .get()
-            .init_value(Data::Uint(rng.gen_range(1..(2 ^ 32)) as u64))?; // vlr_location
+        database.insert_value(0, 1, sid, Data::VarChar(sub_nbr)); // sub_nbr
+        database.insert_value(0, 2, sid, Data::Uint(rng.gen_range(0..=1) as u64)); // bit_1
+        database.insert_value(0, 3, sid, Data::Uint(rng.gen_range(1..(2 ^ 32)) as u64)); // msc_location
+        database.insert_value(0, 4, sid, Data::Uint(rng.gen_range(1..(2 ^ 32)) as u64));
+        // vlr_location
     }
 
     info!("Loaded {} rows into subscriber", population);
@@ -55,6 +47,7 @@ pub fn populate_tables(
 
         for record in 1..=n_ai {
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(sid as u64, record as u64));
+            // ai.get_mut_exists().pin().insert(pk, ai_offset);
             ai.get_mut_exists().insert(pk, ai_offset);
 
             let s_id = Data::Uint(sid as u64);
@@ -96,6 +89,7 @@ pub fn populate_tables(
         for record in 1..=n_sf {
             let sf = database.get_mut_table(2);
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(sid as u64, record as u64));
+            // sf.get_mut_exists().pin().insert(pk, sf_offset);
             sf.get_mut_exists().insert(pk, sf_offset);
 
             let s_id = Data::Uint(sid as u64);
@@ -131,6 +125,7 @@ pub fn populate_tables(
                         st,
                     ));
 
+                    // cf.get_mut_exists().pin().insert(pk, cf_offset);
                     cf.get_mut_exists().insert(pk, cf_offset);
                     let s_id = Data::Uint(sid as u64);
                     cf.get_tuple(0, cf_offset).get().init_value(s_id)?;

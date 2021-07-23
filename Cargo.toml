@@ -21,7 +21,7 @@ name = "core_bench"
 harness = false
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = {version="0.3", features= ["html_reports"]}
 petgraph = "0.5.1"
 test-env-log ={version = "0.2.7", features = ["trace"]}
 env_logger = "*"
@@ -52,3 +52,4 @@ flurry = "0.3.1"
 jemallocator = "0.3.0"
 pbr = "1.0.4"
 arrayvec = "0.7.1"
+bit-vec = "0.6.3"

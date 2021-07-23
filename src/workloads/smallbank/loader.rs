@@ -14,38 +14,15 @@ pub fn populate_tables(
     rng: &mut StdRng,
 ) -> Result<()> {
     for cid in 0..population {
-        // accounts
-        database
-            .get_mut_table(0)
-            .get_tuple(0, cid)
-            .get()
-            .init_value(Data::Uint(cid as u64))?;
+        database.insert_value(0, 0, cid, Data::Uint(cid as u64)); // accounts
 
-        // checking
-        let cbal = rng.gen_range(MIN_BALANCE..=MAX_BALANCE) as f64;
-        database
-            .get_mut_table(1)
-            .get_tuple(0, cid)
-            .get()
-            .init_value(Data::Uint(cid as u64))?;
-        database
-            .get_mut_table(1)
-            .get_tuple(1, cid)
-            .get()
-            .init_value(Data::Double(cbal))?;
+        let cbal = rng.gen_range(MIN_BALANCE..=MAX_BALANCE) as f64; // checking
+        database.insert_value(1, 0, cid, Data::Uint(cid as u64));
+        database.insert_value(1, 1, cid, Data::Double(cbal));
 
-        // saving
-        let sbal = rng.gen_range(MIN_BALANCE..=MAX_BALANCE) as f64;
-        database
-            .get_mut_table(2)
-            .get_tuple(0, cid)
-            .get()
-            .init_value(Data::Uint(cid as u64))?;
-        database
-            .get_mut_table(2)
-            .get_tuple(1, cid)
-            .get()
-            .init_value(Data::Double(sbal))?;
+        let sbal = rng.gen_range(MIN_BALANCE..=MAX_BALANCE) as f64; // saving
+        database.insert_value(2, 0, cid, Data::Uint(cid as u64));
+        database.insert_value(2, 1, cid, Data::Double(sbal));
     }
     info!("Loaded {} rows into account", population);
     info!("Loaded {} rows into savings", population);
