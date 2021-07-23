@@ -2,30 +2,25 @@ use config::Config;
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use crossbeam_utils::thread;
 use std::sync::mpsc;
-use std::time::Instant;
 
-use spaghetti::common::statistics::GlobalStatistics;
 use spaghetti::common::utils;
 use spaghetti::scheduler::Scheduler;
 use spaghetti::storage::Database;
 
-fn setup() -> (Scheduler<'static>, Database) {
+fn setup<'a>(cores: i64, transactions: i64) -> (Config, Scheduler<'a>, Database) {
     let mut config = utils::init_config("./Settings.toml");
-    config.set("cores", 1).unwrap();
+    config.set("cores", cores).unwrap();
+    config.set("transactions", transactions).unwrap();
     config.set("protocol", "nocc").unwrap();
 
     let database: Database = Database::new(&config).unwrap();
     let scheduler: Scheduler = Scheduler::new(&config).unwrap();
 
-    (scheduler, database)
+    (config, scheduler, database)
 }
 
-fn run(data: (Scheduler, Database)) {
-    let mut config = utils::init_config("./Settings.toml");
-    config.set("cores", 1).unwrap();
-    config.set("protocol", "nocc").unwrap();
-
-    let (scheduler, database) = data;
+fn run(data: (Config, Scheduler, Database)) {
+    let (config, scheduler, database) = data;
 
     let (tx, rx) = mpsc::channel();
 
@@ -50,17 +45,27 @@ fn run(data: (Scheduler, Database)) {
     })
     .unwrap();
 
-    // drop(tx);
+    drop(tx);
 
-    // while let Ok(local_stats) = rx.recv() {
-    //     global_stats.merge_into(local_stats);
-    // }
-    // global_stats.write_to_file();
+    while let Ok(_) = rx.recv() {
+        // Would merge with global statistics here
+    }
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("with_setup", move |b| {
-        b.iter_batched(|| setup(), |data| run(data), BatchSize::PerIteration)
+    c.bench_function("nocc 1", move |b| {
+        b.iter_batched(
+            || setup(1, 10000),
+            |data| run(data),
+            BatchSize::PerIteration,
+        )
+    });
+    c.bench_function("nocc 4", move |b| {
+        b.iter_batched(
+            || setup(4, 10000),
+            |data| run(data),
+            BatchSize::PerIteration,
+        )
     });
 }
 
