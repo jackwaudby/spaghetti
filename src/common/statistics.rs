@@ -147,7 +147,9 @@ impl GlobalStatistics {
 
         let internal_aborts = match self.abort_breakdown.workload_specific {
             WorkloadAbortBreakdown::Tatp(ref reasons) => {
-                reasons.row_already_exists + reasons.row_not_found
+                committed += reasons.row_not_found;
+                aborted -= reasons.row_not_found;
+                reasons.row_already_exists
             }
             WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
             WorkloadAbortBreakdown::Acid(ref reasons) => reasons.non_serializable,
