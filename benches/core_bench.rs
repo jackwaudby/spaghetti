@@ -1,4 +1,5 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use config::Config;
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use crossbeam_utils::thread;
 use std::sync::mpsc;
 use std::time::Instant;
@@ -8,26 +9,27 @@ use spaghetti::common::utils;
 use spaghetti::scheduler::Scheduler;
 use spaghetti::storage::Database;
 
-fn run() {
+fn setup() -> (Scheduler<'static>, Database) {
     let mut config = utils::init_config("./Settings.toml");
     config.set("cores", 1).unwrap();
     config.set("protocol", "nocc").unwrap();
 
-    utils::create_log_dir(&config); // log transaction results
+    let database: Database = Database::new(&config).unwrap();
+    let scheduler: Scheduler = Scheduler::new(&config).unwrap();
 
-    let mut global_stats = GlobalStatistics::new(&config); // global stats collector
+    (scheduler, database)
+}
+
+fn run(data: (Scheduler, Database)) {
+    let mut config = utils::init_config("./Settings.toml");
+    config.set("cores", 1).unwrap();
+    config.set("protocol", "nocc").unwrap();
+
+    let (scheduler, database) = data;
+
     let (tx, rx) = mpsc::channel();
 
-    let dg_start = Instant::now();
-    let database: Database = utils::init_database(&config); // populate database
-    let dg_end = dg_start.elapsed();
-    global_stats.set_data_generation(dg_end);
-
-    let scheduler: Scheduler = utils::init_scheduler(&config); // create scheduler
-
-    global_stats.start();
-
-    let core_ids = core_affinity::get_core_ids().unwrap(); // always use max cores available
+    let core_ids = core_affinity::get_core_ids().unwrap();
 
     thread::scope(|s| {
         let scheduler = &scheduler;
@@ -48,17 +50,18 @@ fn run() {
     })
     .unwrap();
 
-    drop(tx);
-    global_stats.end();
+    // drop(tx);
 
-    while let Ok(local_stats) = rx.recv() {
-        global_stats.merge_into(local_stats);
-    }
-    global_stats.write_to_file();
+    // while let Ok(local_stats) = rx.recv() {
+    //     global_stats.merge_into(local_stats);
+    // }
+    // global_stats.write_to_file();
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    c.bench_function("nocc", |b| b.iter(|| run()));
+    c.bench_function("with_setup", move |b| {
+        b.iter_batched(|| setup(), |data| run(data), BatchSize::PerIteration)
+    });
 }
 
 criterion_group!(benches, criterion_benchmark);
