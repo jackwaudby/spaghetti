@@ -5,7 +5,7 @@ use crate::storage::tuple::Tuple;
 use crate::storage::PrimaryKey;
 
 use bit_vec::BitVec;
-use flurry::HashMap;
+//use flurry::HashMap;
 use nohash_hasher::IntMap;
 use parking_lot::{Mutex, MutexGuard};
 use rustc_hash::FxHashMap;

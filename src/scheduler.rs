@@ -113,7 +113,11 @@ impl<'a> Scheduler<'a> {
                     Some(offset) => {
                         // set values
                         for (column_id, value) in values.into_iter().enumerate() {
-                            table.get_tuple(column_id, offset).get().init_value(value);
+                            table
+                                .get_tuple(column_id, offset)
+                                .get()
+                                .init_value(value)
+                                .unwrap();
                         }
 
                         // mark slot as in use
