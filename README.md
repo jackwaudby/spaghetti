@@ -37,8 +37,8 @@ cargo test acid -- --test-threads=1
 
 | Anomaly | SGT                  | WH                   | OWH                  | 2PL                  | NOCC*                | OWHTT                |
 |---------|----------------------|----------------------|----------------------|----------------------|----------------------|----------------------|
-|   G0    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:large_orange_diamond:|:x:                   |:white_check_mark:   |
-|   G1a   |:x:                   |:white_check_mark:    |:white_check_mark:    |:large_orange_diamond:|:x:                   |:white_check_mark:    |
+|   G0    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:   |
+|   G1a   |:x:                   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
 |   G1b   |:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|
 |   G1c   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:large_orange_diamond:|:x:                   |:white_check_mark:    |
 |   IMP   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
