@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -6,7 +8,7 @@ pub enum Access {
     Write(TransactionId),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum TransactionId {
     NoConcurrencyControl,
     SerializationGraph(usize),

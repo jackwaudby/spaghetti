@@ -38,6 +38,7 @@ pub fn g0_write<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?; // commit
 
             let res = Success::new(
+                meta,
                 None,
                 Some(vec![(0, offset1), (0, offset2)]),
                 None,
@@ -74,6 +75,7 @@ pub fn g0_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = Success::new(
+                meta,
                 None,
                 None,
                 None,
@@ -105,6 +107,7 @@ pub fn g1a_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = Success::new(
+                meta,
                 None,
                 None,
                 None,
@@ -165,6 +168,7 @@ pub fn g1c_read_write<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             let res = Success::new(
+                meta,
                 None,
                 None,
                 None,
@@ -198,6 +202,7 @@ pub fn imp_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = Success::new(
+                meta,
                 None,
                 None,
                 None,
@@ -230,7 +235,7 @@ pub fn imp_write<'a>(
             scheduler.write_value(&mut Data::Uint(new), 0, 1, offset, &meta, database, guard)?; // increment
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
-            let res = Success::new(None, Some(vec![(0, offset)]), None, None, None);
+            let res = Success::new(meta, None, Some(vec![(0, offset)]), None, None, None);
 
             Ok(res)
         }
@@ -273,6 +278,7 @@ pub fn otv_write<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?; // commit
 
             let res = Success::new(
+                meta,
                 None,
                 Some(vec![(0, offset1), (0, offset2), (0, offset3), (0, offset4)]),
                 None,
@@ -311,6 +317,7 @@ pub fn otv_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = Success::new(
+                meta,
                 None,
                 None,
                 None,
@@ -347,6 +354,7 @@ pub fn lu_write<'a>(
 
             // TODO: this now breaks
             let res = Success::new(
+                meta,
                 None,
                 Some(vec![(0, params.p_id as usize)]),
                 None,
@@ -379,6 +387,7 @@ pub fn lu_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = Success::new(
+                meta,
                 None,
                 None,
                 None,
@@ -436,7 +445,7 @@ pub fn g2_item_write<'a>(
 
             scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
 
-            let res = Success::new(None, Some(vec![(0, updated)]), None, None, None);
+            let res = Success::new(meta, None, Some(vec![(0, updated)]), None, None, None);
             Ok(res)
         }
         _ => panic!("unexpected database"),
@@ -463,6 +472,7 @@ pub fn g2_item_read<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?; // commit
 
             let res = Success::new(
+                meta,
                 None,
                 None,
                 None,

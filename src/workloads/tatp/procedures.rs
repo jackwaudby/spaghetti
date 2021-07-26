@@ -44,7 +44,7 @@ pub fn get_subscriber_data<'a>(
             scheduler.read_value(0, 4, offset, &meta, database, guard)?;
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?;
 
-            Ok(Success::new(None, None, None, None, None))
+            Ok(Success::new(meta, None, None, None, None, None))
         }
         _ => panic!("unexpected database"),
     }
@@ -117,7 +117,7 @@ pub fn get_new_destination<'a>(
 
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?;
 
-            Ok(Success::new(None, None, None, None, None))
+            Ok(Success::new(meta, None, None, None, None, None))
         }
         _ => panic!("unexpected database"),
     }
@@ -156,7 +156,7 @@ pub fn get_access_data<'a>(
 
             scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?;
 
-            Ok(Success::new(None, None, None, None, None))
+            Ok(Success::new(meta, None, None, None, None, None))
         }
         _ => panic!("unexpected database"),
     }
@@ -203,7 +203,7 @@ pub fn update_subscriber_data<'a>(
 
             scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?;
 
-            Ok(Success::new(None, None, None, None, None))
+            Ok(Success::new(meta, None, None, None, None, None))
         }
         _ => panic!("unexpected database"),
     }
@@ -237,7 +237,7 @@ pub fn update_location<'a>(
 
             scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?;
 
-            Ok(Success::new(None, None, None, None, None))
+            Ok(Success::new(meta, None, None, None, None, None))
         }
         _ => panic!("unexpected database"),
     }

@@ -1,5 +1,6 @@
 use parking_lot::{Condvar, Mutex, MutexGuard};
 use std::cmp::Ordering;
+use std::fmt;
 use std::sync::Arc;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -58,6 +59,7 @@ impl Information {
     /// Information's group mode reflects the highest timestamp.
     pub fn add_granted(&mut self, lock_mode: LockMode, timestamp: u64) {
         let request = Request::new(lock_mode, None, timestamp);
+
         self.granted.push(request);
         self.granted.sort();
 
@@ -261,6 +263,19 @@ impl PartialEq for Request {
 }
 
 impl Eq for Request {}
+
+impl fmt::Display for LockMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            LockMode::Read => {
+                write!(f, "read lock")
+            }
+            LockMode::Write => {
+                write!(f, " write lock")
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {

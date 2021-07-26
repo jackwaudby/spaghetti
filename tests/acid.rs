@@ -1,4 +1,32 @@
-use test_env_log::test;
+use once_cell::sync::OnceCell;
+use tracing::Level;
+use tracing_appender::non_blocking::WorkerGuard;
+use tracing_subscriber::fmt;
+
+struct Logger {
+    _guard: WorkerGuard,
+}
+
+static INSTANCE: OnceCell<Logger> = OnceCell::new();
+
+fn setup() -> &'static Logger {
+    INSTANCE.get_or_init(|| {
+        let file_appender = tracing_appender::rolling::hourly("./log/", "debug.log");
+        let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+        let subscriber = fmt::Subscriber::builder()
+            .with_writer(non_blocking)
+            .with_max_level(Level::DEBUG)
+            .with_thread_names(true)
+            .with_target(false)
+            .finish();
+
+        tracing::subscriber::set_global_default(subscriber)
+            .expect("setting default subscriber failed");
+
+        Logger { _guard: guard }
+    })
+}
 
 mod common;
 
@@ -223,11 +251,13 @@ fn acid_nocc_g2item() {
 // 2PL
 #[test]
 fn acid_tpl_g0() {
+    setup();
     common::g0("tpl");
 }
 
 #[test]
 fn acid_tpl_g1a() {
+    setup();
     common::g1a("tpl");
 }
 

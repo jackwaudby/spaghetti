@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::workloads::acid::paramgen::AcidTransactionProfile;
 use crate::workloads::acid::AcidTransaction;
@@ -50,6 +51,7 @@ pub enum Outcome {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Success {
+    id: TransactionId,
     created: Option<Vec<(usize, usize)>>,
     read: Option<BTreeMap<String, String>>,
     updated: Option<Vec<(usize, usize)>>,
@@ -58,6 +60,7 @@ pub struct Success {
 
 impl Success {
     pub fn new(
+        id: TransactionId,
         created: Option<Vec<(usize, usize)>>,
         updated: Option<Vec<(usize, usize)>>,
         deleted: Option<Vec<(usize, usize)>>,
@@ -78,6 +81,7 @@ impl Success {
         }
 
         Self {
+            id,
             created,
             updated,
             deleted,
