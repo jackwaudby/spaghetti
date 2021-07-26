@@ -146,7 +146,7 @@ impl TwoPhaseLocking {
                 if !*waiting {
                     cvar.wait(&mut waiting);
                 }
-
+                debug!("read lock granted");
                 self.add_lock(table_id, offset);
                 self.record(OperationType::Read, table_id, column_id, offset, 0); // record operation; prv is redunant here
                 let table: &Table = database.get_table(table_id); // get table
@@ -226,6 +226,8 @@ impl TwoPhaseLocking {
                 if !*waiting {
                     cvar.wait(&mut waiting);
                 }
+
+                debug!("write lock granted");
 
                 self.add_lock(table_id, offset); // record operation; prv is redunant here
                 self.record(OperationType::Write, table_id, column_id, offset, 0); // record operation; prv is redunant here
@@ -393,7 +395,7 @@ impl TwoPhaseLocking {
                             // Assumption: transactions are uniquely identifable by their assigned timestamp.
                             if info.get_group_timestamp() == timestamp {
                                 LockRequest::AlreadyGranted(request_mode)
-                            } else if timestamp > info.get_group_timestamp() {
+                            } else if timestamp > info.get_deadlock_detection_timestamp() {
                                 LockRequest::Denied(request_mode) // wait-die deadlock detection: newer requests are denied
                             } else {
                                 let pair = info.add_waiting(LockMode::Read, timestamp);
@@ -424,7 +426,7 @@ impl TwoPhaseLocking {
                             // Assumption: transactions are uniquely identifable by their assigned timestamp.
                             if info.get_group_timestamp() == timestamp {
                                 LockRequest::AlreadyGranted(request_mode)
-                            } else if timestamp > info.get_group_timestamp() {
+                            } else if timestamp > info.get_deadlock_detection_timestamp() {
                                 LockRequest::Denied(request_mode) // wait-die deadlock detection: newer requests are denied
                             } else {
                                 let pair = info.add_waiting(LockMode::Write, timestamp);

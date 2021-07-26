@@ -1,6 +1,7 @@
 use parking_lot::{Condvar, Mutex, MutexGuard};
 use std::cmp::Ordering;
 use std::fmt;
+
 use std::sync::Arc;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -85,7 +86,7 @@ impl Information {
         let res = Arc::clone(&pair);
         let request = Request::new(lock_mode, Some(pair), timestamp);
         self.waiting.push(request);
-        self.waiting.sort();
+        //   self.waiting.sort();
         res
     }
 
@@ -131,8 +132,21 @@ impl Information {
         self.granted.len()
     }
 
-    pub fn get_group_timestamp(&mut self) -> u64 {
+    pub fn get_group_timestamp(&self) -> u64 {
         self.group_timestamp.unwrap()
+    }
+
+    pub fn get_deadlock_detection_timestamp(&self) -> u64 {
+        // minimum of waiting transactions and lock timestamp
+        let mut min_ts = self.get_group_timestamp();
+
+        for waiting in self.waiting.iter() {
+            if waiting.get_timestamp() < min_ts {
+                min_ts = waiting.get_timestamp();
+            }
+        }
+
+        min_ts
     }
 
     pub fn reset(&mut self) {
