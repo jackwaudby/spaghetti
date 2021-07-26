@@ -390,7 +390,7 @@ mod tests {
         info.grant_waiting();
 
         assert_eq!(info.get_mode(), LockMode::Read);
-        assert_eq!(info.get_group_timestamp(), 5);
+        assert_eq!(info.get_group_timestamp(), 3);
         assert_eq!(info.num_granted(), 3);
         assert_eq!(info.num_waiting(), 2);
         assert_eq!(info.is_free(), false);
