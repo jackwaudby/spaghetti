@@ -19,12 +19,12 @@ pub fn populate_tables(
 
     for sid in 0..population {
         let pk = PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(sid as u64)); // create pk
-        database.get_mut_table(0).get_mut_exists().insert(pk, sid); // insert into exists
-                                                                    // database
-                                                                    //     .get_mut_table(0)
-                                                                    //     .get_mut_exists()
-                                                                    //     .pin()
-                                                                    //     .insert(pk, sid); // insert into exists
+
+        database
+            .get_mut_table(0)
+            .get_mut_exists()
+            .pin()
+            .insert(pk, sid); // insert into exists
 
         database.insert_value(0, 0, sid, Data::Uint(sid as u64)); // s_id
         let sub_nbr = tatp::helper::to_sub_nbr(sid as u64);
@@ -47,8 +47,7 @@ pub fn populate_tables(
 
         for record in 1..=n_ai {
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(sid as u64, record as u64));
-            // ai.get_mut_exists().pin().insert(pk, ai_offset);
-            ai.get_mut_exists().insert(pk, ai_offset);
+            ai.get_mut_exists().pin().insert(pk, ai_offset);
 
             let s_id = Data::Uint(sid as u64);
             ai.get_tuple(0, ai_offset).get().init_value(s_id)?;
@@ -89,8 +88,7 @@ pub fn populate_tables(
         for record in 1..=n_sf {
             let sf = database.get_mut_table(2);
             let pk = PrimaryKey::Tatp(TatpPrimaryKey::SpecialFacility(sid as u64, record as u64));
-            // sf.get_mut_exists().pin().insert(pk, sf_offset);
-            sf.get_mut_exists().insert(pk, sf_offset);
+            sf.get_mut_exists().pin().insert(pk, sf_offset);
 
             let s_id = Data::Uint(sid as u64);
             sf.get_tuple(0, sf_offset).get().init_value(s_id)?;
@@ -125,8 +123,8 @@ pub fn populate_tables(
                         st,
                     ));
 
-                    // cf.get_mut_exists().pin().insert(pk, cf_offset);
-                    cf.get_mut_exists().insert(pk, cf_offset);
+                    cf.get_mut_exists().pin().insert(pk, cf_offset);
+
                     let s_id = Data::Uint(sid as u64);
                     cf.get_tuple(0, cf_offset).get().init_value(s_id)?;
 

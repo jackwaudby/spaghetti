@@ -230,6 +230,11 @@ pub fn execute<'a>(txn: Message, scheduler: &'a Scheduler, workload: &'a Databas
                                 params, scheduler, workload, isolation,
                             )
                         }
+                        TatpTransactionProfile::InsertCallForwarding(params) => {
+                            tatp::procedures::insert_call_forwarding(
+                                params, scheduler, workload, isolation,
+                            )
+                        }
                     }
                 } else {
                     panic!("transaction type and parameters do not match");

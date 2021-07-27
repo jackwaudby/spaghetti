@@ -127,7 +127,7 @@ impl TatpGenerator {
                     TatpTransactionProfile::GetAccessData(payload),
                 )
             }
-            x if x < 0.86 => {
+            x if x < 0.82 => {
                 // UPDATE_SUBSCRIBER_DATA
                 let s_id = self.rng.gen_range(0..self.subscribers);
                 let sf_type = self.rng.gen_range(1..=4);
@@ -144,7 +144,7 @@ impl TatpGenerator {
                     TatpTransactionProfile::UpdateSubscriberData(payload),
                 )
             }
-            _ => {
+            x if x < 0.96 => {
                 // UPDATE_LOCATION
                 let s_id = self.rng.gen_range(0..self.subscribers);
                 let vlr_location = self.rng.gen_range(1..(2 ^ 32));
@@ -152,6 +152,25 @@ impl TatpGenerator {
                 (
                     TatpTransaction::UpdateLocationData,
                     TatpTransactionProfile::UpdateLocationData(payload),
+                )
+            }
+            _ => {
+                // INSERT CALL_FORWARDING
+                let s_id = self.rng.gen_range(1..=self.subscribers);
+                let sf_type = self.rng.gen_range(1..=4);
+                let start_time = helper::get_start_time(&mut self.rng);
+                let end_time = start_time + self.rng.gen_range(1..=8);
+                let number_x = helper::get_number_x(&mut self.rng);
+                let payload = InsertCallForwarding {
+                    s_id,
+                    sf_type,
+                    start_time,
+                    end_time,
+                    number_x,
+                };
+                (
+                    TatpTransaction::InsertCallForwarding,
+                    TatpTransactionProfile::InsertCallForwarding(payload),
                 )
             }
         }
@@ -166,6 +185,7 @@ pub enum TatpTransactionProfile {
     GetAccessData(GetAccessData),
     UpdateSubscriberData(UpdateSubscriberData),
     UpdateLocationData(UpdateLocationData),
+    InsertCallForwarding(InsertCallForwarding),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -201,6 +221,15 @@ pub struct UpdateLocationData {
     pub vlr_location: u8,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct InsertCallForwarding {
+    pub s_id: u64,
+    pub sf_type: u8,
+    pub start_time: u8,
+    pub end_time: u8,
+    pub number_x: String,
+}
+
 impl fmt::Display for TatpTransactionProfile {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &*self {
@@ -233,6 +262,20 @@ impl fmt::Display for TatpTransactionProfile {
                     data_a,
                 } = params;
                 write!(f, "4,{},{},{},{}", s_id, sf_type, bit_1, data_a)
+            }
+            TatpTransactionProfile::InsertCallForwarding(params) => {
+                let InsertCallForwarding {
+                    s_id,
+                    sf_type,
+                    start_time,
+                    end_time,
+                    number_x,
+                } = params;
+                write!(
+                    f,
+                    "5,{},{},{},{},{}",
+                    s_id, sf_type, start_time, end_time, number_x
+                )
             }
         }
     }

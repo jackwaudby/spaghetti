@@ -6,16 +6,18 @@ use crate::storage::Database;
 use crate::storage::PrimaryKey;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tatp::paramgen::{
-    GetAccessData, GetNewDestination, GetSubscriberData, UpdateLocationData, UpdateSubscriberData,
+    GetAccessData, GetNewDestination, GetSubscriberData, InsertCallForwarding, UpdateLocationData,
+    UpdateSubscriberData,
 };
 
 use crate::workloads::IsolationLevel;
 
 use crossbeam_epoch as epoch;
-
 use std::convert::TryFrom;
+use tracing::instrument;
 
 /// GetSubscriberData transaction.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn get_subscriber_data<'a>(
     params: GetSubscriberData,
     scheduler: &'a Scheduler,
@@ -51,6 +53,7 @@ pub fn get_subscriber_data<'a>(
 }
 
 /// GetNewDestination transaction.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn get_new_destination<'a>(
     params: GetNewDestination,
     scheduler: &'a Scheduler,
@@ -124,6 +127,7 @@ pub fn get_new_destination<'a>(
 }
 
 /// GetAccessData transaction.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn get_access_data<'a>(
     params: GetAccessData,
     scheduler: &'a Scheduler,
@@ -163,6 +167,7 @@ pub fn get_access_data<'a>(
 }
 
 /// Update subscriber transaction.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn update_subscriber_data<'a>(
     params: UpdateSubscriberData,
     scheduler: &'a Scheduler,
@@ -210,6 +215,7 @@ pub fn update_subscriber_data<'a>(
 }
 
 /// Update location transaction.
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn update_location<'a>(
     params: UpdateLocationData,
     scheduler: &'a Scheduler,
@@ -238,6 +244,79 @@ pub fn update_location<'a>(
             scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?;
 
             Ok(Success::new(meta, None, None, None, None, None))
+        }
+        _ => panic!("unexpected database"),
+    }
+}
+
+/// Insert call forwarding transaction
+#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
+pub fn insert_call_forwarding<'a>(
+    params: InsertCallForwarding,
+    scheduler: &'a Scheduler,
+    database: &'a Database,
+    isolation: IsolationLevel,
+) -> Result<Success, NonFatalError> {
+    match &*database {
+        Database::Tatp(_) => {
+            let guard = &epoch::pin(); // pin thread
+            let meta = scheduler.begin(isolation);
+
+            // // TODO: this is not needed params.s_id always equals the offset for a subsriber
+            // let sub_offset = match database
+            //     .get_table(0)
+            //     .exists(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id)))
+            // {
+            //     Ok(offset) => offset,
+            //     Err(e) => {
+            //         scheduler.abort(&meta, database, guard);
+            //         return Err(e);
+            //     }
+            // };
+
+            // scheduler.read_value(0, 0, sub_offset, &meta, database, guard)?; // read subsriber table
+
+            // let sf_offset = match database.get_table(2).exists(PrimaryKey::Tatp(
+            //     TatpPrimaryKey::SpecialFacility(params.s_id, params.sf_type.into()),
+            // )) {
+            //     Ok(offset) => offset,
+            //     Err(e) => {
+            //         scheduler.abort(&meta, database, guard);
+            //         return Err(e);
+            //     }
+            // };
+
+            // scheduler.read_value(2, 1, sub_offset, &meta, database, guard)?; // read special facility table
+
+            let values = vec![
+                Data::Uint(params.s_id),
+                Data::Uint(params.sf_type.into()),
+                Data::Uint(params.start_time.into()),
+                Data::Uint(params.end_time.into()),
+                Data::VarChar(params.number_x),
+            ];
+
+            let cf_offset = scheduler.insert_values(
+                3,
+                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(
+                    params.s_id,
+                    params.sf_type.into(),
+                    params.start_time.into(),
+                )),
+                values,
+                database,
+            )?;
+
+            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
+
+            Ok(Success::new(
+                meta,
+                Some(vec![(3, cf_offset)]),
+                None,
+                None,
+                None,
+                None,
+            ))
         }
         _ => panic!("unexpected database"),
     }

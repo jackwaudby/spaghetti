@@ -5,10 +5,9 @@ use crate::storage::tuple::Tuple;
 use crate::storage::PrimaryKey;
 
 use bit_vec::BitVec;
-//use flurry::HashMap;
+use flurry::HashMap;
 use nohash_hasher::IntMap;
 use parking_lot::{Mutex, MutexGuard};
-use rustc_hash::FxHashMap;
 use std::sync::atomic::AtomicU64;
 
 pub type Column = Vec<Tuple>;
@@ -16,8 +15,7 @@ pub type Column = Vec<Tuple>;
 #[derive(Debug)]
 pub struct Table {
     columns: IntMap<usize, Column>,
-    exists: FxHashMap<PrimaryKey, usize>,
-    // exists: HashMap<PrimaryKey, usize>,
+    exists: HashMap<PrimaryKey, usize>,
     inuse: Mutex<BitVec>,
     lsns: Vec<AtomicU64>,
     rw_tables: Vec<AtomicLinkedList<Access>>,
@@ -25,8 +23,7 @@ pub struct Table {
 
 impl Table {
     pub fn new(population: usize, column_cnt: usize) -> Self {
-        let exists = FxHashMap::default();
-        //   let exists = HashMap::new();
+        let exists = HashMap::new();
 
         let mut columns = IntMap::default();
         for id in 0..column_cnt {
@@ -50,7 +47,7 @@ impl Table {
         Table {
             columns,
             exists,
-            inuse: Mutex::new(BitVec::new()),
+            inuse: Mutex::new(inuse),
             lsns,
             rw_tables,
         }
@@ -61,24 +58,26 @@ impl Table {
     }
 
     pub fn get_tuple(&self, id: usize, offset: usize) -> &Tuple {
-        &self.columns.get(&id).unwrap()[offset]
+        // &self.columns.get(&id).unwrap()[offset]
+
+        match self.columns.get(&id) {
+            Some(col) => &col[offset],
+            None => panic!("column: {}, offset: {}", id, offset),
+        }
     }
 
-    // pub fn get_mut_exists(&mut self) -> &mut HashMap<PrimaryKey, usize> {
-    pub fn get_mut_exists(&mut self) -> &mut FxHashMap<PrimaryKey, usize> {
+    pub fn get_mut_exists(&mut self) -> &mut HashMap<PrimaryKey, usize> {
         &mut self.exists
     }
 
-    // pub fn get_exists(&self) -> &HashMap<PrimaryKey, usize> {
-    pub fn get_exists(&self) -> &FxHashMap<PrimaryKey, usize> {
+    pub fn get_exists(&self) -> &HashMap<PrimaryKey, usize> {
         &self.exists
     }
 
     pub fn exists(&self, key: PrimaryKey) -> Result<usize, NonFatalError> {
-        // let mref = self.exists.pin();
-        // let offset = mref.get(&key);
+        let mref = self.exists.pin();
+        let offset = mref.get(&key);
 
-        let offset = self.exists.get(&key);
         match offset {
             Some(offset) => Ok(*offset),
             None => Err(NonFatalError::RowNotFound(

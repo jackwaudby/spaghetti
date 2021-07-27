@@ -15,6 +15,7 @@ use crate::workloads::IsolationLevel;
 
 use config::Config;
 use crossbeam_epoch::Guard;
+use tracing::instrument;
 
 pub mod wh;
 
@@ -86,18 +87,18 @@ impl<'a> Scheduler<'a> {
         }
     }
 
+    /// Insert a new record into a table.
+    #[instrument(level = "debug", skip(self, values, database))]
     pub fn insert_values(
         &self,
         table_id: usize,
         pk: PrimaryKey,
         values: Vec<Data>,
         database: &Database,
-    ) -> Result<(), NonFatalError> {
-        // get handle to table
-        let table = database.get_table(table_id);
-        // lock bitmap
-        let mut guard = table.lock_table();
-        // check if pk exists
+    ) -> Result<usize, NonFatalError> {
+        let table = database.get_table(table_id); // get handle to table
+        let mut guard = table.lock_table(); // lock bitmap
+
         match table.exists(pk.clone()) {
             Ok(_) => {
                 return Err(NonFatalError::RowAlreadyExists(
@@ -106,30 +107,25 @@ impl<'a> Scheduler<'a> {
                 ))
             }
             Err(_) => {
-                // find free slot
-                let pos = guard.iter().position(|x| x == false);
+                let pos = guard.iter().position(|x| x == false); // find free slot
 
                 match pos {
                     Some(offset) => {
-                        // set values
                         for (column_id, value) in values.into_iter().enumerate() {
                             table
                                 .get_tuple(column_id, offset)
                                 .get()
                                 .init_value(value)
                                 .unwrap();
-                        }
+                        } // set values
 
-                        // mark slot as in use
-                        guard.set(offset, true);
-
-                        // add to exists
-                        // table.get_exists().pin().insert(pk, offset);
+                        guard.set(offset, true); // mark slot as in use
+                        table.get_exists().pin().insert(pk, offset); // add to index
 
                         drop(guard);
-                        Ok(())
+                        Ok(offset)
                     }
-                    None => panic!("no free slots"),
+                    None => Err(NonFatalError::NoFreeSpace),
                 }
             }
         }

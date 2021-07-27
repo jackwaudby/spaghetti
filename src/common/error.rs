@@ -80,6 +80,9 @@ pub enum NonFatalError {
     /// Row dirty.
     RowDirty(String),
 
+    /// No space in table
+    NoFreeSpace,
+
     /// Row deleted.
     RowDeleted(String, String),
 
@@ -165,6 +168,7 @@ impl fmt::Display for NonFatalError {
                 "unable to convert: type {} to type {}",
                 spaghetti_type, value
             ),
+            NoFreeSpace => write!(f, "no free space"),
             NonSerializable => write!(f, "non-serializable behaviour"),
             SmallBankError(ref e) => write!(f, "{}", e),
             SerializationGraph(ref e) => write!(f, "{}", e),

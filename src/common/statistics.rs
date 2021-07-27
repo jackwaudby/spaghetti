@@ -149,6 +149,7 @@ impl GlobalStatistics {
             WorkloadAbortBreakdown::Tatp(ref reasons) => {
                 committed += reasons.row_not_found;
                 aborted -= reasons.row_not_found;
+                aborted -= reasons.no_free_space;
                 reasons.row_already_exists
             }
             WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
@@ -316,6 +317,9 @@ impl LocalStatistics {
                         }
                         NonFatalError::RowAlreadyExists(_, _) => {
                             metric.inc_already_exists();
+                        }
+                        NonFatalError::NoFreeSpace => {
+                            metric.inc_no_free_space();
                         }
 
                         _ => unimplemented!(),
@@ -646,6 +650,7 @@ enum WorkloadAbortBreakdown {
 struct TatpReasons {
     row_already_exists: u32,
     row_not_found: u32,
+    no_free_space: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -663,7 +668,12 @@ impl TatpReasons {
         TatpReasons {
             row_already_exists: 0,
             row_not_found: 0,
+            no_free_space: 0,
         }
+    }
+
+    fn inc_no_free_space(&mut self) {
+        self.no_free_space += 1;
     }
 
     fn inc_already_exists(&mut self) {
@@ -675,6 +685,7 @@ impl TatpReasons {
     }
 
     fn merge(&mut self, other: TatpReasons) {
+        self.no_free_space += other.no_free_space;
         self.row_already_exists += other.row_already_exists;
         self.row_not_found += other.row_not_found;
     }
