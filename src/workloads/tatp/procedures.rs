@@ -35,16 +35,16 @@ pub fn get_subscriber_data<'a>(
             {
                 Ok(offset) => offset,
                 Err(e) => {
-                    scheduler.abort(&meta, database, guard);
+                    scheduler.abort(&meta, database, Some(guard));
                     return Err(e);
                 }
             };
-            scheduler.read_value(0, 0, offset, &meta, database, guard)?;
-            scheduler.read_value(0, 1, offset, &meta, database, guard)?;
-            scheduler.read_value(0, 2, offset, &meta, database, guard)?;
-            scheduler.read_value(0, 3, offset, &meta, database, guard)?;
-            scheduler.read_value(0, 4, offset, &meta, database, guard)?;
-            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?;
+            scheduler.read_value(0, 0, offset, &meta, database, Some(guard))?;
+            scheduler.read_value(0, 1, offset, &meta, database, Some(guard))?;
+            scheduler.read_value(0, 2, offset, &meta, database, Some(guard))?;
+            scheduler.read_value(0, 3, offset, &meta, database, Some(guard))?;
+            scheduler.read_value(0, 4, offset, &meta, database, Some(guard))?;
+            scheduler.commit(&meta, database, Some(guard), TransactionType::ReadOnly)?;
 
             Ok(Success::new(meta, None, None, None, None, None))
         }
@@ -71,18 +71,24 @@ pub fn get_new_destination<'a>(
             )) {
                 Ok(offset) => offset,
                 Err(e) => {
-                    scheduler.abort(&meta, database, guard);
+                    scheduler.abort(&meta, database, Some(guard));
                     return Err(e);
                 }
             };
 
-            scheduler.read_value(2, 0, sf_offset, &meta, database, guard)?;
-            scheduler.read_value(2, 1, sf_offset, &meta, database, guard)?;
-            let is_active =
-                u64::try_from(scheduler.read_value(2, 2, sf_offset, &meta, database, guard)?)?;
+            scheduler.read_value(2, 0, sf_offset, &meta, database, Some(guard))?;
+            scheduler.read_value(2, 1, sf_offset, &meta, database, Some(guard))?;
+            let is_active = u64::try_from(scheduler.read_value(
+                2,
+                2,
+                sf_offset,
+                &meta,
+                database,
+                Some(guard),
+            )?)?;
 
             if is_active != 1 {
-                scheduler.abort(&meta, database, guard);
+                scheduler.abort(&meta, database, Some(guard));
                 return Err(NonFatalError::RowNotFound(
                     "todo".to_string(),
                     "special_facility".to_string(),
@@ -98,27 +104,33 @@ pub fn get_new_destination<'a>(
             )) {
                 Ok(offset) => offset,
                 Err(e) => {
-                    scheduler.abort(&meta, database, guard);
+                    scheduler.abort(&meta, database, Some(guard));
                     return Err(e);
                 }
             };
 
-            scheduler.read_value(3, 0, cf_offset, &meta, database, guard)?;
-            scheduler.read_value(3, 1, cf_offset, &meta, database, guard)?;
-            scheduler.read_value(3, 2, cf_offset, &meta, database, guard)?;
-            let end_time =
-                u64::try_from(scheduler.read_value(3, 3, sf_offset, &meta, database, guard)?)?;
-            scheduler.read_value(3, 4, sf_offset, &meta, database, guard)?;
+            scheduler.read_value(3, 0, cf_offset, &meta, database, Some(guard))?;
+            scheduler.read_value(3, 1, cf_offset, &meta, database, Some(guard))?;
+            scheduler.read_value(3, 2, cf_offset, &meta, database, Some(guard))?;
+            let end_time = u64::try_from(scheduler.read_value(
+                3,
+                3,
+                sf_offset,
+                &meta,
+                database,
+                Some(guard),
+            )?)?;
+            scheduler.read_value(3, 4, sf_offset, &meta, database, Some(guard))?;
 
             if params.end_time as u64 >= end_time {
-                scheduler.abort(&meta, database, guard);
+                scheduler.abort(&meta, database, Some(guard));
                 return Err(NonFatalError::RowNotFound(
                     "todo".to_string(),
                     "call_forwarding".to_string(),
                 ));
             }
 
-            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?;
+            scheduler.commit(&meta, database, Some(guard), TransactionType::ReadOnly)?;
 
             Ok(Success::new(meta, None, None, None, None, None))
         }
@@ -148,17 +160,17 @@ pub fn get_access_data<'a>(
                     ))) {
                     Ok(offset) => offset,
                     Err(e) => {
-                        scheduler.abort(&meta, database, guard);
+                        scheduler.abort(&meta, database, Some(guard));
                         return Err(e);
                     }
                 };
 
-            scheduler.read_value(0, 2, offset, &meta, database, guard)?;
-            scheduler.read_value(0, 3, offset, &meta, database, guard)?;
-            scheduler.read_value(0, 4, offset, &meta, database, guard)?;
-            scheduler.read_value(0, 5, offset, &meta, database, guard)?;
+            scheduler.read_value(0, 2, offset, &meta, database, Some(guard))?;
+            scheduler.read_value(0, 3, offset, &meta, database, Some(guard))?;
+            scheduler.read_value(0, 4, offset, &meta, database, Some(guard))?;
+            scheduler.read_value(0, 5, offset, &meta, database, Some(guard))?;
 
-            scheduler.commit(&meta, database, guard, TransactionType::ReadOnly)?;
+            scheduler.commit(&meta, database, Some(guard), TransactionType::ReadOnly)?;
 
             Ok(Success::new(meta, None, None, None, None, None))
         }
@@ -185,28 +197,28 @@ pub fn update_subscriber_data<'a>(
             {
                 Ok(offset) => offset,
                 Err(e) => {
-                    scheduler.abort(&meta, database, guard);
+                    scheduler.abort(&meta, database, Some(guard));
                     return Err(e);
                 }
             };
 
             let mut bit1 = Data::Uint(params.bit_1 as u64);
-            scheduler.write_value(&mut bit1, 0, 2, sub_offset, &meta, database, guard)?;
+            scheduler.write_value(&mut bit1, 0, 2, sub_offset, &meta, database, Some(guard))?;
 
             let sf_offset = match database.get_table(0).exists(PrimaryKey::Tatp(
                 TatpPrimaryKey::SpecialFacility(params.s_id, params.sf_type.into()),
             )) {
                 Ok(offset) => offset,
                 Err(e) => {
-                    scheduler.abort(&meta, database, guard);
+                    scheduler.abort(&meta, database, Some(guard));
                     return Err(e);
                 }
             };
 
             let mut data_a = Data::Uint(params.bit_1 as u64);
-            scheduler.write_value(&mut data_a, 2, 4, sf_offset, &meta, database, guard)?;
+            scheduler.write_value(&mut data_a, 2, 4, sf_offset, &meta, database, Some(guard))?;
 
-            scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?;
+            scheduler.commit(&meta, database, Some(guard), TransactionType::WriteOnly)?;
 
             Ok(Success::new(meta, None, None, None, None, None))
         }
@@ -233,15 +245,15 @@ pub fn update_location<'a>(
             {
                 Ok(offset) => offset,
                 Err(e) => {
-                    scheduler.abort(&meta, database, guard);
+                    scheduler.abort(&meta, database, Some(guard));
                     return Err(e);
                 }
             };
 
             let mut vlr = Data::Uint(params.vlr_location as u64);
-            scheduler.write_value(&mut vlr, 0, 4, offset, &meta, database, guard)?;
+            scheduler.write_value(&mut vlr, 0, 4, offset, &meta, database, Some(guard))?;
 
-            scheduler.commit(&meta, database, guard, TransactionType::WriteOnly)?;
+            scheduler.commit(&meta, database, Some(guard), TransactionType::WriteOnly)?;
 
             Ok(Success::new(meta, None, None, None, None, None))
         }
@@ -269,24 +281,24 @@ pub fn insert_call_forwarding<'a>(
             // {
             //     Ok(offset) => offset,
             //     Err(e) => {
-            //         scheduler.abort(&meta, database, guard);
+            //         scheduler.abort(&meta, database, Some(guard));
             //         return Err(e);
             //     }
             // };
 
-            // scheduler.read_value(0, 0, sub_offset, &meta, database, guard)?; // read subsriber table
+            // scheduler.read_value(0, 0, sub_offset, &meta, database, Some(guard))?; // read subsriber table
 
             // let sf_offset = match database.get_table(2).exists(PrimaryKey::Tatp(
             //     TatpPrimaryKey::SpecialFacility(params.s_id, params.sf_type.into()),
             // )) {
             //     Ok(offset) => offset,
             //     Err(e) => {
-            //         scheduler.abort(&meta, database, guard);
+            //         scheduler.abort(&meta, database, Some(guard));
             //         return Err(e);
             //     }
             // };
 
-            // scheduler.read_value(2, 1, sub_offset, &meta, database, guard)?; // read special facility table
+            // scheduler.read_value(2, 1, sub_offset, &meta, database, Some(guard))?; // read special facility table
 
             let values = vec![
                 Data::Uint(params.s_id),
@@ -307,7 +319,7 @@ pub fn insert_call_forwarding<'a>(
                 database,
             )?;
 
-            scheduler.commit(&meta, database, guard, TransactionType::ReadWrite)?;
+            scheduler.commit(&meta, database, Some(guard), TransactionType::ReadWrite)?;
 
             Ok(Success::new(
                 meta,

@@ -138,22 +138,24 @@ impl<'a> Scheduler<'a> {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
+        guard: Option<&'g Guard>,
     ) -> Result<Data, NonFatalError> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => {
-                sg.read_value(table_id, column_id, offset, meta, database, guard)
+                sg.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
             }
             MixedSerializationGraph(sg) => {
-                sg.read_value(table_id, column_id, offset, meta, database, guard)
+                sg.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
             }
-            WaitHit(wh) => wh.read_value(table_id, column_id, offset, meta, database, guard),
+            WaitHit(wh) => {
+                wh.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
+            }
             OptimisedWaitHit(owh) => {
-                owh.read_value(table_id, column_id, offset, meta, database, guard)
+                owh.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
             }
             OptimisedWaitHitTransactionTypes(owhtt) => {
-                owhtt.read_value(table_id, column_id, offset, meta, database, guard)
+                owhtt.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
             }
             NoConcurrencyControl(nocc) => {
                 nocc.read_value(table_id, column_id, offset, meta, database)
@@ -173,25 +175,55 @@ impl<'a> Scheduler<'a> {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
+        guard: Option<&'g Guard>,
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => {
-                sg.write_value(value, table_id, column_id, offset, meta, database, guard)
-            }
-            MixedSerializationGraph(sg) => {
-                sg.write_value(value, table_id, column_id, offset, meta, database, guard)
-            }
-            WaitHit(wh) => {
-                wh.write_value(value, table_id, column_id, offset, meta, database, guard)
-            }
-            OptimisedWaitHit(owh) => {
-                owh.write_value(value, table_id, column_id, offset, meta, database, guard)
-            }
-            OptimisedWaitHitTransactionTypes(owhtt) => {
-                owhtt.write_value(value, table_id, column_id, offset, meta, database, guard)
-            }
+            SerializationGraph(sg) => sg.write_value(
+                value,
+                table_id,
+                column_id,
+                offset,
+                meta,
+                database,
+                guard.unwrap(),
+            ),
+            MixedSerializationGraph(sg) => sg.write_value(
+                value,
+                table_id,
+                column_id,
+                offset,
+                meta,
+                database,
+                guard.unwrap(),
+            ),
+            WaitHit(wh) => wh.write_value(
+                value,
+                table_id,
+                column_id,
+                offset,
+                meta,
+                database,
+                guard.unwrap(),
+            ),
+            OptimisedWaitHit(owh) => owh.write_value(
+                value,
+                table_id,
+                column_id,
+                offset,
+                meta,
+                database,
+                guard.unwrap(),
+            ),
+            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.write_value(
+                value,
+                table_id,
+                column_id,
+                offset,
+                meta,
+                database,
+                guard.unwrap(),
+            ),
             NoConcurrencyControl(nocc) => {
                 nocc.write_value(value, table_id, column_id, offset, meta, database)
             }
@@ -208,17 +240,17 @@ impl<'a> Scheduler<'a> {
         &self,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
+        guard: Option<&'g Guard>,
         transaction_type: TransactionType,
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.commit(meta, database, guard),
-            MixedSerializationGraph(sg) => sg.commit(database, guard),
+            SerializationGraph(sg) => sg.commit(meta, database, guard.unwrap()),
+            MixedSerializationGraph(sg) => sg.commit(database, guard.unwrap()),
             WaitHit(wh) => wh.commit(meta, database),
-            OptimisedWaitHit(owh) => owh.commit(database, guard),
+            OptimisedWaitHit(owh) => owh.commit(database, guard.unwrap()),
             OptimisedWaitHitTransactionTypes(owhtt) => {
-                owhtt.commit(database, guard, transaction_type)
+                owhtt.commit(database, guard.unwrap(), transaction_type)
             }
             NoConcurrencyControl(nocc) => nocc.commit(database),
             TwoPhaseLocking(tpl) => tpl.commit(database, meta),
@@ -230,15 +262,15 @@ impl<'a> Scheduler<'a> {
         &self,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
+        guard: Option<&'g Guard>,
     ) -> NonFatalError {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.abort(meta, database, guard),
-            MixedSerializationGraph(sg) => sg.abort(database, guard),
+            SerializationGraph(sg) => sg.abort(meta, database, guard.unwrap()),
+            MixedSerializationGraph(sg) => sg.abort(database, guard.unwrap()),
             WaitHit(wh) => wh.abort(meta, database),
-            OptimisedWaitHit(owh) => owh.abort(database, guard),
-            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database, guard),
+            OptimisedWaitHit(owh) => owh.abort(database, guard.unwrap()),
+            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database, guard.unwrap()),
             NoConcurrencyControl(nocc) => nocc.abort(database),
             TwoPhaseLocking(tpl) => tpl.abort(database, meta),
             MixedTwoPhaseLocking(tpl) => tpl.abort(database, meta),

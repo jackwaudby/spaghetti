@@ -26,7 +26,9 @@ pub fn balance<'a>(
     match &*database {
         Database::SmallBank(_) => {
             let offset = params.name as usize;
-            let guard = &epoch::pin(); // pin thread
+            //            let guard = &epoch::pin(); // pin thread
+            let guard = None;
+
             let meta = scheduler.begin(isolation); // register
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             scheduler.read_value(1, 1, offset, &meta, database, guard)?; // get checking balance
@@ -52,7 +54,8 @@ pub fn deposit_checking<'a>(
     match &*database {
         Database::SmallBank(_) => {
             let offset = params.name as usize;
-            let guard = &epoch::pin(); // pin thread
+            //            let guard = &epoch::pin(); // pin thread
+            let guard = None;
             let meta = scheduler.begin(isolation);
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             let res = scheduler.read_value(1, 1, offset, &meta, database, guard)?; // get current balance
@@ -79,7 +82,8 @@ pub fn transact_savings<'a>(
     match &*database {
         Database::SmallBank(_) => {
             let offset = params.name as usize;
-            let guard = &epoch::pin(); // pin thread
+            //            let guard = &epoch::pin(); // pin thread
+            let guard = None;
             let meta = scheduler.begin(isolation); // register
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             let res = scheduler.read_value(2, 1, offset, &meta, database, guard)?; // get savings balance
@@ -119,7 +123,8 @@ pub fn amalgmate<'a>(
         Database::SmallBank(_) => {
             let offset1 = params.name1 as usize;
             let offset2 = params.name2 as usize;
-            let guard = &epoch::pin(); // pin thread
+            //      let guard = &epoch::pin(); // pin thread
+            let guard = None;
             let meta = scheduler.begin(isolation); // register
             scheduler.read_value(0, 0, offset1, &meta, database, guard)?; // read 1 -- get customer1 id
             let res1 = scheduler.read_value(2, 1, offset1, &meta, database, guard)?; // read 2 -- current savings balance (customer1)
@@ -153,7 +158,8 @@ pub fn write_check<'a>(
     match &*database {
         Database::SmallBank(_) => {
             let offset = params.name as usize;
-            let guard = &epoch::pin(); // pin thread
+            //   let guard = &epoch::pin(); // pin thread
+            let guard = None;
             let meta = scheduler.begin(isolation);
             scheduler.read_value(0, 0, offset, &meta, database, guard)?; // get customer id
             let savings =
@@ -189,7 +195,10 @@ pub fn send_payment<'a>(
         Database::SmallBank(_) => {
             let offset1 = params.name1 as usize;
             let offset2 = params.name2 as usize;
-            let guard = &epoch::pin(); // pin thread
+
+            //            let guard = Some(&epoch::pin());
+            let guard = None;
+
             let meta = scheduler.begin(isolation); // register
             scheduler.read_value(0, 0, offset1, &meta, database, guard)?; // get cust1 id
             let mut checking =
