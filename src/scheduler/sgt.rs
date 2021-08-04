@@ -682,7 +682,7 @@ impl<'a> SerializationGraph<'a> {
             }
 
             // no incoming edges and no cycle so commit
-            self.tidyup(database, guard, true);
+            self.tidyup(database, true);
             this.set_committed();
             self.cleanup(this, guard);
 
@@ -713,7 +713,7 @@ impl<'a> SerializationGraph<'a> {
         let this = self.get_transaction();
         this.set_aborted();
         self.cleanup(this, guard);
-        self.tidyup(database, guard, false);
+        self.tidyup(database, false);
         this.set_complete();
 
         debug!("Aborted");
@@ -721,7 +721,7 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Tidyup rwtables and tuples
-    pub fn tidyup<'g>(&self, database: &Database, guard: &'g Guard, commit: bool) {
+    pub fn tidyup<'g>(&self, database: &Database, commit: bool) {
         let ops = self.get_operations();
 
         for op in ops {

@@ -166,7 +166,7 @@ impl WaitHit {
             // ok to have state change under feet here
             rw_table.erase(prv); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(meta, database, guard); // abort this transaction
+            self.abort(meta, database); // abort this transaction
             return Err(NonFatalError::RowDirty("todo".to_string()));
         } else {
             let snapshot = rw_table.iter(guard); // iterator over rwtable
@@ -220,7 +220,6 @@ impl WaitHit {
         &self,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         let this_id = match meta {
             TransactionId::WaitHit(id) => id,
@@ -235,18 +234,18 @@ impl WaitHit {
             if g.has_terminated(pred) {
                 if g.get_terminated_outcome(pred) == TransactionOutcome::Aborted {
                     drop(g);
-                    self.abort(meta, database, guard);
+                    self.abort(meta, database);
                     return Err(WaitHitError::PredecessorAborted(*this_id).into());
                 }
             } else {
                 drop(g);
-                self.abort(meta, database, guard);
+                self.abort(meta, database);
                 return Err(WaitHitError::PredecessorActive(*this_id).into());
             }
         }
 
         if !g.is_in_hit_list(*this_id) {
-            self.tidyup(database, guard, true);
+            self.tidyup(database, true);
 
             let puw = self.puw.get().unwrap().borrow().clone(); // TODO: avoid clone
 
@@ -259,19 +258,14 @@ impl WaitHit {
             Ok(())
         } else {
             drop(g);
-            self.abort(meta, database, guard);
+            self.abort(meta, database);
             Err(WaitHitError::TransactionInHitList(*this_id).into())
         }
     }
 
     /// Abort operation.
     /// Remove transaction from the hit list and add to the terminated list.
-    pub fn abort<'g>(
-        &self,
-        meta: &TransactionId,
-        database: &Database,
-        guard: &'g Guard,
-    ) -> NonFatalError {
+    pub fn abort<'g>(&self, meta: &TransactionId, database: &Database) -> NonFatalError {
         let this_id = match meta {
             TransactionId::WaitHit(id) => id,
             _ => panic!("unexpected txn id"),
@@ -282,13 +276,13 @@ impl WaitHit {
         g.remove_from_hit_list(*this_id);
         g.add_to_terminated_list(*this_id, TransactionOutcome::Aborted);
 
-        self.tidyup(database, guard, false);
+        self.tidyup(database, false);
 
         NonFatalError::NonSerializable // TODO: placeholder
     }
 
     /// Tidyup rwtables and tuples
-    pub fn tidyup<'g>(&self, database: &Database, guard: &'g Guard, commit: bool) {
+    pub fn tidyup<'g>(&self, database: &Database, commit: bool) {
         let ops = self.get_operations();
 
         for op in ops {

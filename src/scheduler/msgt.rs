@@ -608,12 +608,6 @@ impl<'a> MixedSerializationGraph<'a> {
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
         let mut prv;
-        // let mut attempts = 0;
-        // let mut prvs = Vec::new();
-        // let mut delays = Vec::new();
-        // let mut cs = Vec::new();
-        // let mut seen = Vec::new();
-        // let mut brw_table;
 
         loop {
             // check for cascading abort
@@ -624,11 +618,8 @@ impl<'a> MixedSerializationGraph<'a> {
 
             prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
 
-            //     prvs.push(prv);
-
             // Safety: ensures exculsive access to the record.
             unsafe { spin(prv, lsn) }; // busy wait
-                                       //  brw_table = format!("{}", rw_table);
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -637,17 +628,12 @@ impl<'a> MixedSerializationGraph<'a> {
             let mut wait = false; // flag indicating if there is an uncommitted write
             let mut cyclic = false; // flag indicating if a cycle has been found
 
-            //     let mut conflicts = Vec::new();
-            //      let mut saw = Vec::new();
-            //     saw.push(format!("attempt: {}", attempts));
             for (id, access) in snapshot {
-                //       saw.push(format!("{}-{}", id, access));
                 // only interested in accesses before this one and that are write operations.
                 if id < &prv {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
-                            //                conflicts.push(format!("{}-{}", attempts, from));
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
@@ -828,7 +814,7 @@ impl<'a> MixedSerializationGraph<'a> {
             }
 
             // no incoming edges and no cycle so commit
-            self.tidyup(database, guard, true);
+            self.tidyup(database, true);
             this.set_committed();
             self.cleanup(this, guard);
 
@@ -844,14 +830,14 @@ impl<'a> MixedSerializationGraph<'a> {
         let this = self.get_transaction();
         this.set_aborted();
         self.cleanup(this, guard);
-        self.tidyup(database, guard, false);
+        self.tidyup(database, false);
         this.set_complete();
 
         NonFatalError::NonSerializable // TODO: return the why
     }
 
     /// Tidyup rwtables and tuples
-    pub fn tidyup<'g>(&self, database: &Database, guard: &'g Guard, commit: bool) {
+    pub fn tidyup<'g>(&self, database: &Database, commit: bool) {
         let ops = self.get_operations();
 
         for op in ops {

@@ -5,7 +5,6 @@ use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 use crate::storage::Database;
 
-use crossbeam_epoch::Guard;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -41,7 +40,6 @@ impl NoConcurrencyControl {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         if let TransactionId::NoConcurrencyControl = meta {
             let table: &Table = database.get_table(table_id); // get table
@@ -83,7 +81,6 @@ impl NoConcurrencyControl {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         if let TransactionId::NoConcurrencyControl = meta {
             let table = database.get_table(table_id);
@@ -114,7 +111,7 @@ impl NoConcurrencyControl {
     }
 
     /// Commit operation.
-    pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
+    pub fn commit<'g>(&self, database: &Database) -> Result<(), NonFatalError> {
         let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
 
         for op in ops {
@@ -143,7 +140,7 @@ impl NoConcurrencyControl {
     }
 
     /// Abort operation.
-    pub fn abort<'g>(&self, database: &Database, guard: &'g Guard) -> NonFatalError {
+    pub fn abort<'g>(&self, database: &Database) -> NonFatalError {
         let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
 
         for op in ops {
