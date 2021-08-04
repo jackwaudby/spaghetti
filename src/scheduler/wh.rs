@@ -95,7 +95,7 @@ impl WaitHit {
 
         let table: &Table = database.get_table(table_id); // get table
         let rw_table = table.get_rwtable(offset); // get rwtable
-        let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
+        let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
         let lsn = table.get_lsn(offset);
 
         unsafe { spin(prv, lsn) };
@@ -153,7 +153,7 @@ impl WaitHit {
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
-        let prv = rw_table.push_front(Access::Write(meta.clone()), guard);
+        let prv = rw_table.push_front(Access::Write(meta.clone()));
 
         unsafe { spin(prv, lsn) };
 
@@ -164,7 +164,7 @@ impl WaitHit {
         // else for each read in the rwtable, add a predecessor upon write to hit list
         if dirty {
             // ok to have state change under feet here
-            rw_table.erase(prv, guard); // remove from rwtable
+            rw_table.erase(prv); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(meta, database, guard); // abort this transaction
             return Err(NonFatalError::RowDirty("todo".to_string()));
@@ -306,7 +306,7 @@ impl WaitHit {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv, guard);
+                    rwtable.erase(prv);
                 }
                 OperationType::Write => {
                     if commit {
@@ -314,7 +314,7 @@ impl WaitHit {
                     } else {
                         tuple.get().revert();
                     }
-                    rwtable.erase(prv, guard);
+                    rwtable.erase(prv);
                 }
             }
         }

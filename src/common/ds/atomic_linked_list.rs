@@ -33,7 +33,7 @@ impl<T> AtomicLinkedList<T> {
     }
 
     /// Push an element to the head of the list. Returns (all-time) position in the list.
-    pub fn push_front<'g>(&self, t: T, guard: &'g Guard) -> u64 {
+    pub fn push_front<'g>(&self, t: T) -> u64 {
         let id = self.id.fetch_add(1, SeqCst); // get node id
 
         let mut new = Owned::new(Node {
@@ -41,6 +41,8 @@ impl<T> AtomicLinkedList<T> {
             data: ManuallyDrop::new(t),
             next: ManuallyDrop::new(Atomic::null()),
         }); // create node
+
+        let guard = &epoch::pin();
 
         loop {
             let head = self.head.load(Relaxed, guard); // snapshot current
@@ -94,13 +96,19 @@ impl<T> AtomicLinkedList<T> {
         }
     }
 
-    pub fn erase<'g>(&self, id: u64, guard: &'g Guard) {
+    pub fn erase<'g>(&self, id: u64) {
+        // Safety: ensures only a single element is removed at a time.
+        // Note, element can be concurrently pushed
         let lg = self.lock.lock(); // 1 erase at a time
-        let mut left = Shared::null(); // Shared
+
+        let guard = &epoch::pin();
+
         let mut current;
         loop {
+            let mut left = Shared::null(); // Shared
             current = self.head.load(Acquire, guard); // Shared
-                                                      // traverse until current is node to be removed
+
+            // traverse until current is node to be removed
             while let Some(node) = unsafe { current.as_ref() } {
                 if *node.id == id {
                     break;
@@ -113,12 +121,9 @@ impl<T> AtomicLinkedList<T> {
                 Some(node) => node.next.load(Acquire, guard),
                 None => {
                     drop(lg);
-                    //        drop(guard);
                     return;
                 }
             };
-
-            // take ownership of current
 
             if !left.is_null() {
                 unsafe {
@@ -131,7 +136,6 @@ impl<T> AtomicLinkedList<T> {
                         Ok(_) => {
                             break;
                         }
-                        // head changed
                         Err(_) => {
                             continue;
                         }

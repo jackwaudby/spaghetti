@@ -46,7 +46,7 @@ impl NoConcurrencyControl {
         if let TransactionId::NoConcurrencyControl = meta {
             let table: &Table = database.get_table(table_id); // get table
             let rw_table = table.get_rwtable(offset); // get rwtable
-            let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
+            let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
             let lsn = table.get_lsn(offset);
 
             spin(prv, lsn);
@@ -89,7 +89,7 @@ impl NoConcurrencyControl {
             let table = database.get_table(table_id);
             let rw_table = table.get_rwtable(offset);
             let lsn = table.get_lsn(offset);
-            let prv = rw_table.push_front(Access::Write(meta.clone()), guard);
+            let prv = rw_table.push_front(Access::Write(meta.clone()));
 
             spin(prv, lsn);
 
@@ -131,10 +131,10 @@ impl NoConcurrencyControl {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
             }
         }
@@ -160,10 +160,10 @@ impl NoConcurrencyControl {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
             }
         }

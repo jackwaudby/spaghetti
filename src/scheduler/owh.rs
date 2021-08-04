@@ -99,7 +99,7 @@ impl<'a> OptimisedWaitHit<'a> {
         let transaction = self.get_transaction(); // transaction active on this thread
         let table: &Table = database.get_table(table_id); // handle to table
         let rw_table = table.get_rwtable(offset); // handle to rwtable
-        let prv = rw_table.push_front(Access::Read(meta.clone()), guard); // append access
+        let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
         let lsn = table.get_lsn(offset); // handle to lsn
         spin(prv, lsn); // delay until prv == lsn
         let snapshot = rw_table.iter(guard); // iterator over access history
@@ -150,7 +150,7 @@ impl<'a> OptimisedWaitHit<'a> {
         let transaction: &'a Transaction<'a> = self.get_transaction(); // transaction active on this thread
         let table = database.get_table(table_id); // handle to table
         let rw_table = table.get_rwtable(offset); // handle to rwtable
-        let prv = rw_table.push_front(Access::Write(meta.clone()), guard); // append access
+        let prv = rw_table.push_front(Access::Write(meta.clone())); // append access
         let lsn = table.get_lsn(offset); // handle to lsn
         spin(prv, lsn); // delay until prv == lsn
 
@@ -162,7 +162,7 @@ impl<'a> OptimisedWaitHit<'a> {
         if dirty {
             // ok to have state change under feet here
 
-            rw_table.erase(prv, guard); // remove from rwtable
+            rw_table.erase(prv); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database, guard); // abort this transaction
             return Err(NonFatalError::RowDirty("todo".to_string()));
@@ -231,12 +231,12 @@ impl<'a> OptimisedWaitHit<'a> {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
                 OperationType::Write => {
                     tuple.get().revert(); // commit
 
-                    rwtable.erase(prv, guard); // remove access
+                    rwtable.erase(prv); // remove access
                 }
             }
         }
@@ -324,11 +324,11 @@ impl<'a> OptimisedWaitHit<'a> {
 
                     match op_type {
                         OperationType::Read => {
-                            rwtable.erase(prv, guard); // remove access
+                            rwtable.erase(prv); // remove access
                         }
                         OperationType::Write => {
                             tuple.get().commit(); // commit
-                            rwtable.erase(prv, guard); // remove access
+                            rwtable.erase(prv); // remove access
                         }
                     }
                 }

@@ -533,7 +533,7 @@ impl<'a> MixedSerializationGraph<'a> {
 
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
-        let prv = rw_table.push_front(Access::Read(meta.clone()), guard);
+        let prv = rw_table.push_front(Access::Read(meta.clone()));
         let lsn = table.get_lsn(offset);
 
         // Safety: ensures exculsive access to the record.
@@ -570,7 +570,7 @@ impl<'a> MixedSerializationGraph<'a> {
         }
 
         if cyclic {
-            rw_table.erase(prv, guard); // remove from rw table
+            rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database, guard); // abort
             return Err(MixedSerializationGraphError::CycleFound.into());
@@ -622,7 +622,7 @@ impl<'a> MixedSerializationGraph<'a> {
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
             }
 
-            prv = rw_table.push_front(Access::Write(meta.clone()), guard); // get ticket
+            prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
 
             //     prvs.push(prv);
 
@@ -686,7 +686,7 @@ impl<'a> MixedSerializationGraph<'a> {
             // (i) transaction is in a cycle (cycle = T)
             // abort transaction
             if cyclic {
-                rw_table.erase(prv, guard); // remove from rw table
+                rw_table.erase(prv); // remove from rw table
                 self.abort(database, guard);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(MixedSerializationGraphError::CycleFound.into());
@@ -695,7 +695,7 @@ impl<'a> MixedSerializationGraph<'a> {
             // (ii) there is an uncommitted write (wait = T)
             // restart operation
             if wait {
-                rw_table.erase(prv, guard); // remove from rw table
+                rw_table.erase(prv); // remove from rw table
 
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                                                        //     attempts += 1;
@@ -706,7 +706,7 @@ impl<'a> MixedSerializationGraph<'a> {
             // (iii) no w-w conflicts -> clean record (both F)
             // check for cascading abort
             if self.needs_abort(this) {
-                rw_table.erase(prv, guard); // remove from rw table
+                rw_table.erase(prv); // remove from rw table
                 self.abort(database, guard);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
@@ -747,7 +747,7 @@ impl<'a> MixedSerializationGraph<'a> {
         for (id, access) in snapshot {
             // check for cascading abort
             if self.needs_abort(this) {
-                rw_table.erase(prv, guard); // remove from rw table
+                rw_table.erase(prv); // remove from rw table
 
                 self.abort(database, guard);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
@@ -778,7 +778,7 @@ impl<'a> MixedSerializationGraph<'a> {
         // (iv) transaction is in a cycle (cycle = T)
         // abort transaction
         if cyclic {
-            rw_table.erase(prv, guard); // remove from rw table
+            rw_table.erase(prv); // remove from rw table
             self.abort(database, guard);
             lsn.store(prv + 1, Ordering::Release); // update lsn
             return Err(MixedSerializationGraphError::CycleFound.into());
@@ -869,7 +869,7 @@ impl<'a> MixedSerializationGraph<'a> {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv, guard);
+                    rwtable.erase(prv);
                 }
                 OperationType::Write => {
                     if commit {
@@ -879,7 +879,7 @@ impl<'a> MixedSerializationGraph<'a> {
                     }
                     // let dirty = tuple.get().is_dirty();
                     // assert!(!dirty);
-                    rwtable.erase(prv, guard);
+                    rwtable.erase(prv);
                 }
             }
         }
