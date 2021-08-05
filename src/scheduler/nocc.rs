@@ -5,6 +5,8 @@ use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 use crate::storage::Database;
 
+use crossbeam_epoch as epoch;
+use crossbeam_epoch::Guard;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -17,6 +19,10 @@ pub struct NoConcurrencyControl {
 }
 
 impl NoConcurrencyControl {
+    thread_local! {
+        static EG: RefCell<Option<Guard>> = RefCell::new(None);
+    }
+
     pub fn new(size: usize) -> Self {
         info!("No concurrency control: {} core(s)", size);
         Self {
@@ -29,6 +35,9 @@ impl NoConcurrencyControl {
             .txn_info
             .get_or(|| RefCell::new(TransactionInformation::new()))
             .borrow_mut() = TransactionInformation::new();
+
+        let guard = epoch::pin(); // pin thread
+        NoConcurrencyControl::EG.with(|x| x.borrow_mut().replace(guard));
 
         TransactionId::NoConcurrencyControl
     }
@@ -48,6 +57,13 @@ impl NoConcurrencyControl {
             let lsn = table.get_lsn(offset);
 
             spin(prv, lsn);
+
+            let guard = &epoch::pin(); // pin thread
+            let snapshot = rw_table.iter(guard); // iterator over access history
+
+            for (id, access) in snapshot {
+                2 * 2;
+            }
 
             let vals = table
                 .get_tuple(column_id, offset)
@@ -89,6 +105,13 @@ impl NoConcurrencyControl {
             let prv = rw_table.push_front(Access::Write(meta.clone()));
 
             spin(prv, lsn);
+
+            let guard = &epoch::pin(); // pin thread
+            let snapshot = rw_table.iter(guard); // iterator over access history
+
+            for (id, access) in snapshot {
+                2 * 2;
+            }
 
             let tuple = table.get_tuple(column_id, offset).get(); // get tuple
             tuple.set_value(value).unwrap(); // set value
@@ -135,7 +158,10 @@ impl NoConcurrencyControl {
                 }
             }
         }
-
+        NoConcurrencyControl::EG.with(|x| {
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
         Ok(())
     }
 
@@ -163,6 +189,11 @@ impl NoConcurrencyControl {
                     rwtable.erase(prv); // remove access
                 }
             }
+
+            NoConcurrencyControl::EG.with(|x| {
+                let guard = x.borrow_mut().take();
+                drop(guard)
+            });
         }
 
         NonFatalError::NonSerializable
