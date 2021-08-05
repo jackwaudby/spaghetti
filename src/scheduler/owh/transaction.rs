@@ -150,3 +150,9 @@ impl<'a> fmt::Display for Transaction<'a> {
         Ok(())
     }
 }
+
+impl<'a> Drop for Transaction<'a> {
+    fn drop(&mut self) {
+        // println!("DROPPED");
+    }
+}

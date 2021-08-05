@@ -22,12 +22,10 @@ pub mod transaction;
 pub struct OptimisedWaitHit<'a> {
     transaction: ThreadLocal<RefCell<Option<&'a Transaction<'a>>>>,
     transaction_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
-    //    epoch_guard: ThreadLocal<RefCell<Option<Guard>>>,
 }
 
 impl<'a> OptimisedWaitHit<'a> {
     thread_local! {
-        // Could add pub to make it public to whatever Foo already is public to.
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
     }
 
@@ -91,6 +89,7 @@ impl<'a> OptimisedWaitHit<'a> {
             .borrow_mut()
             .replace(tref); // replace local transaction reference
 
+        assert!(!epoch::is_pinned());
         let guard = epoch::pin(); // pin thread
 
         OptimisedWaitHit::EG.with(|x| x.borrow_mut().replace(guard));
@@ -351,6 +350,9 @@ impl<'a> OptimisedWaitHit<'a> {
                 let this_usize = this_ptr as usize;
                 let boxed_node = transaction::to_box(this_usize);
 
+                // drop(boxed_node);
+
+                //assert!(epoch::is_pinned());
                 OptimisedWaitHit::EG.with(|x| unsafe {
                     x.borrow().as_ref().unwrap().defer_unchecked(move || {
                         drop(boxed_node);
@@ -358,6 +360,8 @@ impl<'a> OptimisedWaitHit<'a> {
                     let guard = x.borrow_mut().take();
                     drop(guard)
                 });
+
+                assert!(!epoch::is_pinned());
 
                 Ok(())
             }

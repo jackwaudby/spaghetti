@@ -9,6 +9,7 @@ use crate::storage::table::Table;
 use crate::storage::Database;
 
 use crossbeam_epoch as epoch;
+use crossbeam_epoch::Guard;
 use rustc_hash::FxHashSet;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -28,6 +29,10 @@ pub struct WaitHit {
 }
 
 impl WaitHit {
+    thread_local! {
+        static EG: RefCell<Option<Guard>> = RefCell::new(None);
+    }
+
     pub fn new(size: usize) -> Self {
         info!("Initialise wait hit with {} thread(s)", size);
 
@@ -74,6 +79,10 @@ impl WaitHit {
             .clear(); // clear puw  lists
 
         let id = self.shared.get_id(); // get txn id
+
+        let guard = epoch::pin(); // pin thread
+
+        WaitHit::EG.with(|x| x.borrow_mut().replace(guard));
 
         TransactionId::WaitHit(id)
     }
@@ -310,6 +319,11 @@ impl WaitHit {
                     rwtable.erase(prv);
                 }
             }
+
+            WaitHit::EG.with(|x| {
+                let guard = x.borrow_mut().take();
+                drop(guard)
+            });
         }
     }
 }
