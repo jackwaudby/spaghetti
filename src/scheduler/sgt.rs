@@ -7,6 +7,7 @@ use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
 
+use crossbeam_epoch as epoch;
 use crossbeam_epoch::Guard;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -31,6 +32,10 @@ pub struct SerializationGraph<'a> {
 }
 
 impl<'a> SerializationGraph<'a> {
+    thread_local! {
+        static EG: RefCell<Option<Guard>> = RefCell::new(None);
+    }
+
     pub fn new(size: usize) -> Self {
         info!("Initialise serialization graph with {} thread(s)", size);
 
@@ -118,7 +123,7 @@ impl<'a> SerializationGraph<'a> {
 
     /// Cleanup node.
     /// When this method is called the outcome of the transaction is known.
-    pub fn cleanup<'g>(&self, this: &'a RwNode, guard: &'g Guard) {
+    pub fn cleanup(&self, this: &'a RwNode) {
         // Assumption: read/writes can still be found, thus, edges can still be detected.
         // A node's cleaned flag acts as a barrier for edge insertion.
         let this_wlock = this.write(); // get write lock
@@ -195,11 +200,20 @@ impl<'a> SerializationGraph<'a> {
         let this_usize = this_ptr as usize;
         let boxed_node = node::to_box(this_usize);
 
-        unsafe {
-            guard.defer_unchecked(move || {
+        let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
+
+        SerializationGraph::EG.with(|x| unsafe {
+            x.borrow().as_ref().unwrap().defer_unchecked(move || {
                 drop(boxed_node);
             });
-        }
+
+            if cnt % 128 == 0 {
+                x.borrow().as_ref().unwrap().flush();
+            }
+
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
     }
 
     /// Insert an incoming edge into (this) node from (from) node, followed by a cycle check.
@@ -398,6 +412,10 @@ impl<'a> SerializationGraph<'a> {
 
         let id = self.create_node(); // create node
 
+        let guard = epoch::pin(); // pin thread
+
+        SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
+
         Span::current().record("id", &id);
         debug!("Begin");
 
@@ -405,15 +423,14 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Read operation.
-    #[instrument(level = "debug", skip(self, meta, database, guard), fields(id))]
-    pub fn read_value<'g>(
+    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
+    pub fn read_value(
         &self,
         table_id: usize,
         column_id: usize,
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         match meta {
             TransactionId::SerializationGraph(id) => {
@@ -425,7 +442,7 @@ impl<'a> SerializationGraph<'a> {
         let this = self.get_transaction();
 
         if this.is_cascading_abort() {
-            self.abort(meta, database, guard);
+            self.abort(meta, database);
             return Err(SerializationGraphError::CascadingAbort.into());
         }
 
@@ -439,6 +456,7 @@ impl<'a> SerializationGraph<'a> {
 
         // On acquiring the 'lock' on the record can be clean or dirty.
         // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
+        let guard = &epoch::pin(); // pin thread
         let snapshot = rw_table.iter(guard);
 
         let mut cyclic = false;
@@ -464,7 +482,7 @@ impl<'a> SerializationGraph<'a> {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(meta, database, guard); // abort
+            self.abort(meta, database); // abort
             return Err(SerializationGraphError::CycleFound.into());
         }
 
@@ -486,8 +504,8 @@ impl<'a> SerializationGraph<'a> {
     /// Write operation.
     ///
     /// A write is executed iff there are no uncommitted writes on a record, else the operation is delayed.
-    #[instrument(level = "debug", skip(self, meta, database, guard), fields(id))]
-    pub fn write_value<'g>(
+    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
+    pub fn write_value(
         &self,
         value: &mut Data,
         table_id: usize,
@@ -495,7 +513,6 @@ impl<'a> SerializationGraph<'a> {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         match meta {
             TransactionId::SerializationGraph(id) => {
@@ -513,7 +530,7 @@ impl<'a> SerializationGraph<'a> {
         loop {
             // check for cascading abort
             if self.needs_abort(this) {
-                self.abort(meta, database, guard);
+                self.abort(meta, database);
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
@@ -524,6 +541,7 @@ impl<'a> SerializationGraph<'a> {
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
+            let guard = &epoch::pin(); // pin thread
             let snapshot = rw_table.iter(guard);
 
             let mut wait = false; // flag indicating if there is an uncommitted write
@@ -561,7 +579,7 @@ impl<'a> SerializationGraph<'a> {
             // abort transaction
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
-                self.abort(meta, database, guard);
+                self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(SerializationGraphError::CycleFound.into());
             }
@@ -578,7 +596,7 @@ impl<'a> SerializationGraph<'a> {
             // check for cascading abort
             if self.needs_abort(this) {
                 rw_table.erase(prv); // remove from rw table
-                self.abort(meta, database, guard);
+                self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
@@ -587,6 +605,7 @@ impl<'a> SerializationGraph<'a> {
         }
 
         // Now handle R-W conflicts
+        let guard = &epoch::pin(); // pin thread
         let snapshot = rw_table.iter(guard);
 
         let mut cyclic = false;
@@ -597,7 +616,7 @@ impl<'a> SerializationGraph<'a> {
             if self.needs_abort(this) {
                 rw_table.erase(prv); // remove from rw table
 
-                self.abort(meta, database, guard);
+                self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
@@ -621,7 +640,7 @@ impl<'a> SerializationGraph<'a> {
         // abort transaction
         if cyclic {
             rw_table.erase(prv); // remove from rw table
-            self.abort(meta, database, guard);
+            self.abort(meta, database);
             lsn.store(prv + 1, Ordering::Release); // update lsn
             return Err(SerializationGraphError::CycleFound.into());
         }
@@ -638,13 +657,8 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Commit operation.
-    #[instrument(level = "debug", skip(self, meta, database, guard), fields(id))]
-    pub fn commit<'g>(
-        &self,
-        meta: &TransactionId,
-        database: &Database,
-        guard: &'g Guard,
-    ) -> Result<(), NonFatalError> {
+    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
+    pub fn commit(&self, meta: &TransactionId, database: &Database) -> Result<(), NonFatalError> {
         match meta {
             TransactionId::SerializationGraph(id) => {
                 Span::current().record("id", &id);
@@ -656,7 +670,7 @@ impl<'a> SerializationGraph<'a> {
 
         loop {
             if self.needs_abort(&this) {
-                self.abort(meta, database, guard);
+                self.abort(meta, database);
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
@@ -684,7 +698,7 @@ impl<'a> SerializationGraph<'a> {
             // no incoming edges and no cycle so commit
             self.tidyup(database, true);
             this.set_committed();
-            self.cleanup(this, guard);
+            self.cleanup(this);
 
             break;
         }
@@ -696,13 +710,8 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Abort operation.
-    #[instrument(level = "debug", skip(self, meta, database, guard), fields(id))]
-    pub fn abort<'g>(
-        &self,
-        meta: &TransactionId,
-        database: &Database,
-        guard: &'g Guard,
-    ) -> NonFatalError {
+    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
+    pub fn abort(&self, meta: &TransactionId, database: &Database) -> NonFatalError {
         match meta {
             TransactionId::SerializationGraph(id) => {
                 Span::current().record("id", &id);
@@ -712,7 +721,7 @@ impl<'a> SerializationGraph<'a> {
 
         let this = self.get_transaction();
         this.set_aborted();
-        self.cleanup(this, guard);
+        self.cleanup(this);
         self.tidyup(database, false);
         this.set_complete();
 
@@ -721,7 +730,7 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Tidyup rwtables and tuples
-    pub fn tidyup<'g>(&self, database: &Database, commit: bool) {
+    pub fn tidyup(&self, database: &Database, commit: bool) {
         let ops = self.get_operations();
 
         for op in ops {

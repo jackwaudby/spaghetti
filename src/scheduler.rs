@@ -14,7 +14,6 @@ use crate::storage::PrimaryKey;
 use crate::workloads::IsolationLevel;
 
 use config::Config;
-use crossbeam_epoch::Guard;
 use tracing::instrument;
 
 pub mod wh;
@@ -131,27 +130,24 @@ impl<'a> Scheduler<'a> {
         }
     }
 
-    pub fn read_value<'g>(
+    pub fn read_value(
         &self,
         table_id: usize,
         column_id: usize,
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: Option<&'g Guard>,
     ) -> Result<Data, NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => {
-                sg.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
-            }
+            SerializationGraph(sg) => sg.read_value(table_id, column_id, offset, meta, database),
             MixedSerializationGraph(sg) => {
-                sg.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
+                sg.read_value(table_id, column_id, offset, meta, database)
             }
             WaitHit(wh) => wh.read_value(table_id, column_id, offset, meta, database),
             OptimisedWaitHit(owh) => owh.read_value(table_id, column_id, offset, meta, database),
             OptimisedWaitHitTransactionTypes(owhtt) => {
-                owhtt.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
+                owhtt.read_value(table_id, column_id, offset, meta, database)
             }
             NoConcurrencyControl(nocc) => {
                 nocc.read_value(table_id, column_id, offset, meta, database)
@@ -163,7 +159,7 @@ impl<'a> Scheduler<'a> {
         }
     }
 
-    pub fn write_value<'g>(
+    pub fn write_value(
         &self,
         value: &mut Data,
         table_id: usize,
@@ -171,41 +167,22 @@ impl<'a> Scheduler<'a> {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: Option<&'g Guard>,
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.write_value(
-                value,
-                table_id,
-                column_id,
-                offset,
-                meta,
-                database,
-                guard.unwrap(),
-            ),
-            MixedSerializationGraph(sg) => sg.write_value(
-                value,
-                table_id,
-                column_id,
-                offset,
-                meta,
-                database,
-                guard.unwrap(),
-            ),
+            SerializationGraph(sg) => {
+                sg.write_value(value, table_id, column_id, offset, meta, database)
+            }
+            MixedSerializationGraph(sg) => {
+                sg.write_value(value, table_id, column_id, offset, meta, database)
+            }
             WaitHit(wh) => wh.write_value(value, table_id, column_id, offset, meta, database),
             OptimisedWaitHit(owh) => {
                 owh.write_value(value, table_id, column_id, offset, meta, database)
             }
-            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.write_value(
-                value,
-                table_id,
-                column_id,
-                offset,
-                meta,
-                database,
-                guard.unwrap(),
-            ),
+            OptimisedWaitHitTransactionTypes(owhtt) => {
+                owhtt.write_value(value, table_id, column_id, offset, meta, database)
+            }
             NoConcurrencyControl(nocc) => {
                 nocc.write_value(value, table_id, column_id, offset, meta, database)
             }
@@ -218,41 +195,33 @@ impl<'a> Scheduler<'a> {
         }
     }
 
-    pub fn commit<'g>(
+    pub fn commit(
         &self,
         meta: &TransactionId,
         database: &Database,
-        guard: Option<&'g Guard>,
         transaction_type: TransactionType,
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.commit(meta, database, guard.unwrap()),
-            MixedSerializationGraph(sg) => sg.commit(database, guard.unwrap()),
+            SerializationGraph(sg) => sg.commit(meta, database),
+            MixedSerializationGraph(sg) => sg.commit(database),
             WaitHit(wh) => wh.commit(meta, database),
             OptimisedWaitHit(owh) => owh.commit(database),
-            OptimisedWaitHitTransactionTypes(owhtt) => {
-                owhtt.commit(database, guard.unwrap(), transaction_type)
-            }
+            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.commit(database, transaction_type),
             NoConcurrencyControl(nocc) => nocc.commit(database),
             TwoPhaseLocking(tpl) => tpl.commit(database, meta),
             MixedTwoPhaseLocking(tpl) => tpl.commit(database, meta),
         }
     }
 
-    pub fn abort<'g>(
-        &self,
-        meta: &TransactionId,
-        database: &Database,
-        guard: Option<&'g Guard>,
-    ) -> NonFatalError {
+    pub fn abort(&self, meta: &TransactionId, database: &Database) -> NonFatalError {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.abort(meta, database, guard.unwrap()),
-            MixedSerializationGraph(sg) => sg.abort(database, guard.unwrap()),
+            SerializationGraph(sg) => sg.abort(meta, database),
+            MixedSerializationGraph(sg) => sg.abort(database),
             WaitHit(wh) => wh.abort(meta, database),
             OptimisedWaitHit(owh) => owh.abort(database),
-            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database, guard.unwrap()),
+            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database),
             NoConcurrencyControl(nocc) => nocc.abort(database),
             TwoPhaseLocking(tpl) => tpl.abort(database, meta),
             MixedTwoPhaseLocking(tpl) => tpl.abort(database, meta),

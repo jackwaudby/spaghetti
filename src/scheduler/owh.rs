@@ -104,7 +104,7 @@ impl<'a> OptimisedWaitHit<'a> {
         TransactionId::OptimisticWaitHit(id)
     }
 
-    pub fn read_value<'g>(
+    pub fn read_value(
         &self,
         table_id: usize,
         column_id: usize,
@@ -158,7 +158,7 @@ impl<'a> OptimisedWaitHit<'a> {
         Ok(vals)
     }
 
-    pub fn write_value<'g>(
+    pub fn write_value(
         &self,
         value: &mut Data,
         table_id: usize,
@@ -181,15 +181,14 @@ impl<'a> OptimisedWaitHit<'a> {
         // else for each read in the rwtable, add a predecessor upon write to hit list
         if dirty {
             // ok to have state change under feet here
-
             rw_table.erase(prv); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database); // abort this transaction
             return Err(NonFatalError::RowDirty("todo".to_string()));
         } else {
             let guard = &epoch::pin(); // pin thread
-
             let snapshot = rw_table.iter(guard); // iterator over rwtable
+
             for (id, access) in snapshot {
                 if id < &prv {
                     match access {
@@ -232,7 +231,7 @@ impl<'a> OptimisedWaitHit<'a> {
         }
     }
 
-    pub fn abort<'g>(&self, database: &Database) -> NonFatalError {
+    pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = self.get_transaction();
         let ops = self.get_operations();
 
