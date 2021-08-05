@@ -205,7 +205,6 @@ pub fn send_payment<'a>(
                 f64::try_from(scheduler.read_value(1, 1, offset1, &meta, database, guard)?)?; // get cust1 checking
             checking -= params.value;
             if checking < 0.0 {
-                assert!(epoch::is_pinned());
                 scheduler.abort(&meta, database, guard);
                 return Err(SmallBankError::InsufficientFunds.into());
             }
