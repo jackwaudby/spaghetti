@@ -148,9 +148,7 @@ impl<'a> Scheduler<'a> {
             MixedSerializationGraph(sg) => {
                 sg.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
             }
-            WaitHit(wh) => {
-                wh.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
-            }
+            WaitHit(wh) => wh.read_value(table_id, column_id, offset, meta, database),
             OptimisedWaitHit(owh) => {
                 owh.read_value(table_id, column_id, offset, meta, database, guard.unwrap())
             }
@@ -197,15 +195,7 @@ impl<'a> Scheduler<'a> {
                 database,
                 guard.unwrap(),
             ),
-            WaitHit(wh) => wh.write_value(
-                value,
-                table_id,
-                column_id,
-                offset,
-                meta,
-                database,
-                guard.unwrap(),
-            ),
+            WaitHit(wh) => wh.write_value(value, table_id, column_id, offset, meta, database),
             OptimisedWaitHit(owh) => owh.write_value(
                 value,
                 table_id,

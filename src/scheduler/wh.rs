@@ -8,7 +8,7 @@ use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 use crate::storage::Database;
 
-use crossbeam_epoch::Guard;
+use crossbeam_epoch as epoch;
 use rustc_hash::FxHashSet;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -61,20 +61,19 @@ impl WaitHit {
         *self
             .txn_info
             .get_or(|| RefCell::new(Some(TransactionInformation::new())))
-            .borrow_mut() = Some(TransactionInformation::new()); // clear txn information
+            .borrow_mut() = Some(TransactionInformation::new()); // clear txn info
 
-        // clear predecessor lists
         self.pur
             .get_or(|| RefCell::new(FxHashSet::default()))
             .borrow_mut()
-            .clear();
+            .clear(); // clear pur lists
+
         self.puw
             .get_or(|| RefCell::new(FxHashSet::default()))
             .borrow_mut()
-            .clear();
+            .clear(); // clear puw  lists
 
-        // get id
-        let id = self.shared.get_id();
+        let id = self.shared.get_id(); // get txn id
 
         TransactionId::WaitHit(id)
     }
@@ -86,7 +85,6 @@ impl WaitHit {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         let this_id = match meta {
             TransactionId::WaitHit(id) => id,
@@ -100,6 +98,7 @@ impl WaitHit {
 
         unsafe { spin(prv, lsn) };
 
+        let guard = &epoch::pin(); // pin thread
         let snapshot = rw_table.iter(guard); // iterator over access history
 
         // for each write in the rwtable, add a predecessor upon read to wait list
@@ -143,7 +142,6 @@ impl WaitHit {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         let this_id = match meta {
             TransactionId::WaitHit(id) => id,
@@ -169,6 +167,7 @@ impl WaitHit {
             self.abort(meta, database); // abort this transaction
             return Err(NonFatalError::RowDirty("todo".to_string()));
         } else {
+            let guard = &epoch::pin(); // pin thread
             let snapshot = rw_table.iter(guard); // iterator over rwtable
 
             for (id, access) in snapshot {
