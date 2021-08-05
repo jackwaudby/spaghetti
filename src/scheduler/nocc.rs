@@ -190,7 +190,12 @@ impl NoConcurrencyControl {
                 }
             }
 
-            NoConcurrencyControl::EG.with(|x| {
+            let dummy = String::from("dummy");
+
+            NoConcurrencyControl::EG.with(|x| unsafe {
+                x.borrow().as_ref().unwrap().defer_unchecked(move || {
+                    drop(dummy);
+                });
                 let guard = x.borrow_mut().take();
                 drop(guard)
             });
