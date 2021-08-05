@@ -36,8 +36,13 @@ impl NoConcurrencyControl {
             .get_or(|| RefCell::new(TransactionInformation::new()))
             .borrow_mut() = TransactionInformation::new();
 
+        assert!(!epoch::is_pinned());
         let guard = epoch::pin(); // pin thread
+        assert!(epoch::is_pinned());
+
         NoConcurrencyControl::EG.with(|x| x.borrow_mut().replace(guard));
+
+        assert!(epoch::is_pinned());
 
         TransactionId::NoConcurrencyControl
     }
@@ -158,7 +163,14 @@ impl NoConcurrencyControl {
                 }
             }
         }
-        NoConcurrencyControl::EG.with(|x| {
+
+        let dummy = String::from("dummy");
+
+        assert!(epoch::is_pinned());
+        NoConcurrencyControl::EG.with(|x| unsafe {
+            x.borrow().as_ref().unwrap().defer_unchecked(move || {
+                drop(dummy);
+            });
             let guard = x.borrow_mut().take();
             drop(guard)
         });
@@ -169,6 +181,7 @@ impl NoConcurrencyControl {
     pub fn abort<'g>(&self, database: &Database) -> NonFatalError {
         let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
 
+        assert!(epoch::is_pinned());
         for op in ops {
             let Operation {
                 op_type,
@@ -189,17 +202,18 @@ impl NoConcurrencyControl {
                     rwtable.erase(prv); // remove access
                 }
             }
-
-            let dummy = String::from("dummy");
-
-            NoConcurrencyControl::EG.with(|x| unsafe {
-                x.borrow().as_ref().unwrap().defer_unchecked(move || {
-                    drop(dummy);
-                });
-                let guard = x.borrow_mut().take();
-                drop(guard)
-            });
         }
+
+        let dummy = String::from("dummy");
+
+        assert!(epoch::is_pinned());
+        NoConcurrencyControl::EG.with(|x| unsafe {
+            x.borrow().as_ref().unwrap().defer_unchecked(move || {
+                drop(dummy);
+            });
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
 
         NonFatalError::NonSerializable
     }

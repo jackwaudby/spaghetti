@@ -110,7 +110,9 @@ impl<'a> OptimisedWaitHit<'a> {
         let rw_table = table.get_rwtable(offset); // handle to rwtable
         let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
         let lsn = table.get_lsn(offset); // handle to lsn
+
         spin(prv, lsn); // delay until prv == lsn
+
         let guard = &epoch::pin(); // pin thread
         let snapshot = rw_table.iter(guard); // iterator over access history
 
@@ -141,7 +143,9 @@ impl<'a> OptimisedWaitHit<'a> {
             .get_value()
             .unwrap()
             .get_value(); // read value
+
         self.record_operation(OperationType::Read, table_id, column_id, offset, prv); // record operation
+
         lsn.store(prv + 1, Ordering::Release); // update lsn
 
         Ok(vals)
