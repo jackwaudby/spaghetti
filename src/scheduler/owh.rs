@@ -7,6 +7,7 @@ use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 
+use crossbeam_epoch as epoch;
 use crossbeam_epoch::Guard;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,9 +22,15 @@ pub mod transaction;
 pub struct OptimisedWaitHit<'a> {
     transaction: ThreadLocal<RefCell<Option<&'a Transaction<'a>>>>,
     transaction_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
+    //    epoch_guard: ThreadLocal<RefCell<Option<Guard>>>,
 }
 
 impl<'a> OptimisedWaitHit<'a> {
+    thread_local! {
+        // Could add pub to make it public to whatever Foo already is public to.
+        static EG: RefCell<Option<Guard>> = RefCell::new(None);
+    }
+
     pub fn new(size: usize) -> Self {
         info!("Initialise optimised wait hit with {} thread(s)", size);
 
@@ -84,6 +91,10 @@ impl<'a> OptimisedWaitHit<'a> {
             .borrow_mut()
             .replace(tref); // replace local transaction reference
 
+        let guard = epoch::pin(); // pin thread
+
+        OptimisedWaitHit::EG.with(|x| x.borrow_mut().replace(guard));
+
         TransactionId::OptimisticWaitHit(id)
     }
 
@@ -94,7 +105,6 @@ impl<'a> OptimisedWaitHit<'a> {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         let transaction = self.get_transaction(); // transaction active on this thread
         let table: &Table = database.get_table(table_id); // handle to table
@@ -102,6 +112,7 @@ impl<'a> OptimisedWaitHit<'a> {
         let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
         let lsn = table.get_lsn(offset); // handle to lsn
         spin(prv, lsn); // delay until prv == lsn
+        let guard = &epoch::pin(); // pin thread
         let snapshot = rw_table.iter(guard); // iterator over access history
 
         // for each write in the rwtable, add a predecessor upon read to wait list
@@ -145,7 +156,6 @@ impl<'a> OptimisedWaitHit<'a> {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         let transaction: &'a Transaction<'a> = self.get_transaction(); // transaction active on this thread
         let table = database.get_table(table_id); // handle to table
@@ -164,9 +174,11 @@ impl<'a> OptimisedWaitHit<'a> {
 
             rw_table.erase(prv); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(database, guard); // abort this transaction
+            self.abort(database); // abort this transaction
             return Err(NonFatalError::RowDirty("todo".to_string()));
         } else {
+            let guard = &epoch::pin(); // pin thread
+
             let snapshot = rw_table.iter(guard); // iterator over rwtable
             for (id, access) in snapshot {
                 if id < &prv {
@@ -210,7 +222,7 @@ impl<'a> OptimisedWaitHit<'a> {
         }
     }
 
-    pub fn abort<'g>(&self, database: &Database, guard: &'g Guard) -> NonFatalError {
+    pub fn abort<'g>(&self, database: &Database) -> NonFatalError {
         let this = self.get_transaction();
         let ops = self.get_operations();
 
@@ -245,22 +257,24 @@ impl<'a> OptimisedWaitHit<'a> {
         let this_usize = this_ptr as usize;
         let boxed_node = transaction::to_box(this_usize);
 
-        unsafe {
-            guard.defer_unchecked(move || {
+        OptimisedWaitHit::EG.with(|x| unsafe {
+            x.borrow().as_ref().unwrap().defer_unchecked(move || {
                 drop(boxed_node);
             });
-        }
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
 
         NonFatalError::NonSerializable // placeholder
     }
 
     /// Commit a transaction.
-    pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
+    pub fn commit<'g>(&self, database: &Database) -> Result<(), NonFatalError> {
         let transaction = self.get_transaction();
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database, guard);
+            self.abort(database);
             return Err(OptimisedWaitHitError::Hit.into());
         }
 
@@ -275,7 +289,7 @@ impl<'a> OptimisedWaitHit<'a> {
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database, guard);
+            self.abort(database);
             return Err(OptimisedWaitHitError::Hit.into());
         }
 
@@ -285,11 +299,11 @@ impl<'a> OptimisedWaitHit<'a> {
             // if active or aborted then abort
             match predecessor.get_state() {
                 TransactionState::Active => {
-                    self.abort(database, guard);
+                    self.abort(database);
                     return Err(OptimisedWaitHitError::PredecessorActive.into());
                 }
                 TransactionState::Aborted => {
-                    self.abort(database, guard);
+                    self.abort(database);
                     return Err(OptimisedWaitHitError::PredecessorAborted.into());
                 }
                 TransactionState::Committed => {}
@@ -298,7 +312,7 @@ impl<'a> OptimisedWaitHit<'a> {
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database, guard);
+            self.abort(database);
             return Err(OptimisedWaitHitError::Hit.into());
         }
 
@@ -337,16 +351,18 @@ impl<'a> OptimisedWaitHit<'a> {
                 let this_usize = this_ptr as usize;
                 let boxed_node = transaction::to_box(this_usize);
 
-                unsafe {
-                    guard.defer_unchecked(move || {
+                OptimisedWaitHit::EG.with(|x| unsafe {
+                    x.borrow().as_ref().unwrap().defer_unchecked(move || {
                         drop(boxed_node);
                     });
-                }
+                    let guard = x.borrow_mut().take();
+                    drop(guard)
+                });
 
                 Ok(())
             }
             Err(e) => {
-                self.abort(database, guard);
+                self.abort(database);
                 Err(e)
             }
         }
