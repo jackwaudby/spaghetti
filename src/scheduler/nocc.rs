@@ -5,8 +5,6 @@ use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 use crate::storage::Database;
 
-use crossbeam_epoch as epoch;
-use crossbeam_epoch::Guard;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -15,43 +13,31 @@ use tracing::info;
 
 #[derive(Debug)]
 pub struct NoConcurrencyControl {
-    txn_ctr: ThreadLocal<RefCell<u64>>,
     txn_info: ThreadLocal<RefCell<TransactionInformation>>,
 }
 
 impl NoConcurrencyControl {
-    thread_local! {
-        static EG: RefCell<Option<Guard>> = RefCell::new(None);
-    }
-
+    /// Create a scheduler with no concurrency control mechanism.
     pub fn new(size: usize) -> Self {
         info!("No concurrency control: {} core(s)", size);
+
         Self {
             txn_info: ThreadLocal::new(),
-            txn_ctr: ThreadLocal::new(),
         }
     }
 
+    /// Begin a transaction.
     pub fn begin(&self) -> TransactionId {
-        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1;
-
         *self
             .txn_info
             .get_or(|| RefCell::new(TransactionInformation::new()))
             .borrow_mut() = TransactionInformation::new();
 
-        assert!(!epoch::is_pinned());
-        let guard = epoch::pin(); // pin thread
-        assert!(epoch::is_pinned());
-
-        NoConcurrencyControl::EG.with(|x| x.borrow_mut().replace(guard));
-
-        assert!(epoch::is_pinned());
-
         TransactionId::NoConcurrencyControl
     }
 
-    pub fn read_value<'g>(
+    /// Read a value in a column at some offset.
+    pub fn read_value(
         &self,
         table_id: usize,
         column_id: usize,
@@ -59,46 +45,33 @@ impl NoConcurrencyControl {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
-        if let TransactionId::NoConcurrencyControl = meta {
-            let table: &Table = database.get_table(table_id); // get table
-            let rw_table = table.get_rwtable(offset); // get rwtable
-            let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
-            let lsn = table.get_lsn(offset);
+        let table: &Table = database.get_table(table_id);
+        let rw_table = table.get_rwtable(offset);
+        let prv = rw_table.push_front(Access::Read(meta.clone()));
+        let lsn = table.get_lsn(offset);
 
-            spin(prv, lsn);
+        spin(prv, lsn);
 
-            let guard = &epoch::pin(); // pin thread
-            let snapshot = rw_table.iter(guard); // iterator over access history
+        let tuple = table.get_tuple(column_id, offset).get();
+        let value = tuple.get_value().unwrap().get_value();
 
-            for (id, access) in snapshot {
-                2 * 2;
-            }
+        lsn.store(prv + 1, Ordering::Release);
 
-            let vals = table
-                .get_tuple(column_id, offset)
-                .get()
-                .get_value()
-                .unwrap()
-                .get_value(); // read
+        self.txn_info.get().unwrap().borrow_mut().add(
+            OperationType::Read,
+            table_id,
+            column_id,
+            offset,
+            prv,
+        );
 
-            lsn.store(prv + 1, Ordering::Release); // update lsn
-
-            self.txn_info.get().unwrap().borrow_mut().add(
-                OperationType::Read,
-                table_id,
-                column_id,
-                offset,
-                prv,
-            ); // record operation
-
-            Ok(vals)
-        } else {
-            panic!("unexpected transaction info");
-        }
+        Ok(value)
     }
 
-    /// Write operation.
-    pub fn write_value<'g>(
+    /// Write a value in a column at some offset.
+    ///
+    /// Note, operations effects are committed immediately.
+    pub fn write_value(
         &self,
         value: &mut Data,
         table_id: usize,
@@ -107,92 +80,34 @@ impl NoConcurrencyControl {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        if let TransactionId::NoConcurrencyControl = meta {
-            let table = database.get_table(table_id);
-            let rw_table = table.get_rwtable(offset);
-            let lsn = table.get_lsn(offset);
-            let prv = rw_table.push_front(Access::Write(meta.clone()));
+        let table = database.get_table(table_id);
+        let rw_table = table.get_rwtable(offset);
+        let lsn = table.get_lsn(offset);
+        let prv = rw_table.push_front(Access::Write(meta.clone()));
 
-            spin(prv, lsn);
+        spin(prv, lsn);
 
-            let guard = &epoch::pin(); // pin thread
-            let snapshot = rw_table.iter(guard); // iterator over access history
+        let tuple = table.get_tuple(column_id, offset).get();
+        tuple.set_value(value).unwrap();
+        tuple.commit();
 
-            for (id, access) in snapshot {
-                2 * 2;
-            }
+        lsn.store(prv + 1, Ordering::Release);
 
-            let tuple = table.get_tuple(column_id, offset).get(); // get tuple
-            tuple.set_value(value).unwrap(); // set value
-            tuple.commit(); // commit; operations never fail
+        self.txn_info.get().unwrap().borrow_mut().add(
+            OperationType::Write,
+            table_id,
+            column_id,
+            offset,
+            prv,
+        );
 
-            lsn.store(prv + 1, Ordering::Release); // update lsn
-
-            self.txn_info.get().unwrap().borrow_mut().add(
-                OperationType::Write,
-                table_id,
-                column_id,
-                offset,
-                prv,
-            ); // record operation
-
-            Ok(())
-        } else {
-            panic!("unexpected transaction info");
-        }
-    }
-
-    /// Commit operation.
-    pub fn commit<'g>(&self, database: &Database) -> Result<(), NonFatalError> {
-        let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
-
-        for op in ops {
-            let Operation {
-                op_type,
-                table_id,
-                offset,
-                prv,
-                ..
-            } = op;
-
-            let table = database.get_table(table_id);
-            let rwtable = table.get_rwtable(offset);
-
-            match op_type {
-                OperationType::Read => {
-                    rwtable.erase(prv); // remove access
-                }
-                OperationType::Write => {
-                    rwtable.erase(prv); // remove access
-                }
-            }
-        }
-
-        let dummy = String::from("dummy");
-
-        assert!(epoch::is_pinned());
-        NoConcurrencyControl::EG.with(|x| unsafe {
-            x.borrow().as_ref().unwrap().defer_unchecked(move || {
-                drop(dummy);
-            });
-
-            let txn = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut();
-
-            if txn % 10 == 0 {
-                x.borrow().as_ref().unwrap().flush();
-            }
-
-            let guard = x.borrow_mut().take();
-            drop(guard)
-        });
         Ok(())
     }
 
-    /// Abort operation.
-    pub fn abort<'g>(&self, database: &Database) -> NonFatalError {
-        let ops = self.txn_info.get().unwrap().borrow_mut().get(); // get operations
+    /// Remove accesses from access history.
+    fn tidy_up(&self, database: &Database) {
+        let ops = self.txn_info.get().unwrap().borrow_mut().get();
 
-        assert!(epoch::is_pinned());
         for op in ops {
             let Operation {
                 op_type,
@@ -207,38 +122,34 @@ impl NoConcurrencyControl {
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv);
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv); // remove access
+                    rwtable.erase(prv);
                 }
             }
         }
+    }
 
-        let dummy = String::from("dummy");
+    /// Commit a transaction.
+    pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
+        self.tidy_up(database);
 
-        assert!(epoch::is_pinned());
-        NoConcurrencyControl::EG.with(|x| unsafe {
-            x.borrow().as_ref().unwrap().defer_unchecked(move || {
-                drop(dummy);
-            });
+        Ok(())
+    }
 
-            let txn = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut();
-
-            if txn % 10 == 0 {
-                x.borrow().as_ref().unwrap().flush();
-            }
-
-            let guard = x.borrow_mut().take();
-            drop(guard);
-        });
+    /// Abort a transaction.
+    pub fn abort(&self, database: &Database) -> NonFatalError {
+        self.tidy_up(database);
 
         NonFatalError::NonSerializable
     }
 }
 
+/// Busy wait until operation ticket matches row ticket.
 fn spin(prv: u64, lsn: &AtomicU64) {
     let mut i = 0;
+
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
         if i >= 10000 {
