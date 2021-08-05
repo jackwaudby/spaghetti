@@ -15,6 +15,7 @@ use tracing::info;
 
 #[derive(Debug)]
 pub struct NoConcurrencyControl {
+    txn_ctr: ThreadLocal<RefCell<u64>>,
     txn_info: ThreadLocal<RefCell<TransactionInformation>>,
 }
 
@@ -27,10 +28,13 @@ impl NoConcurrencyControl {
         info!("No concurrency control: {} core(s)", size);
         Self {
             txn_info: ThreadLocal::new(),
+            txn_ctr: ThreadLocal::new(),
         }
     }
 
     pub fn begin(&self) -> TransactionId {
+        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1;
+
         *self
             .txn_info
             .get_or(|| RefCell::new(TransactionInformation::new()))
@@ -171,6 +175,13 @@ impl NoConcurrencyControl {
             x.borrow().as_ref().unwrap().defer_unchecked(move || {
                 drop(dummy);
             });
+
+            let txn = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut();
+
+            if txn % 10 == 0 {
+                x.borrow().as_ref().unwrap().flush();
+            }
+
             let guard = x.borrow_mut().take();
             drop(guard)
         });
@@ -211,8 +222,15 @@ impl NoConcurrencyControl {
             x.borrow().as_ref().unwrap().defer_unchecked(move || {
                 drop(dummy);
             });
+
+            let txn = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut();
+
+            if txn % 10 == 0 {
+                x.borrow().as_ref().unwrap().flush();
+            }
+
             let guard = x.borrow_mut().take();
-            drop(guard)
+            drop(guard);
         });
 
         NonFatalError::NonSerializable
