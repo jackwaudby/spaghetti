@@ -207,7 +207,7 @@ impl<'a> SerializationGraph<'a> {
                 drop(boxed_node);
             });
 
-            if cnt % 128 == 0 {
+            if cnt % 64 == 0 {
                 x.borrow().as_ref().unwrap().flush();
             }
 
