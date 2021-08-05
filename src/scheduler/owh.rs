@@ -22,6 +22,7 @@ pub mod transaction;
 pub struct OptimisedWaitHit<'a> {
     transaction: ThreadLocal<RefCell<Option<&'a Transaction<'a>>>>,
     transaction_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
+    transaction_cnt: ThreadLocal<RefCell<u64>>,
 }
 
 impl<'a> OptimisedWaitHit<'a> {
@@ -29,15 +30,18 @@ impl<'a> OptimisedWaitHit<'a> {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
     }
 
+    /// Create a new optimised wait hit scheduler.
     pub fn new(size: usize) -> Self {
         info!("Initialise optimised wait hit with {} thread(s)", size);
 
         Self {
             transaction: ThreadLocal::new(),
             transaction_info: ThreadLocal::new(),
+            transaction_cnt: ThreadLocal::new(),
         }
     }
 
+    /// Get a shared reference to the transaction currently executing.
     pub fn get_transaction(&self) -> &'a Transaction<'a> {
         self.transaction
             .get()
@@ -48,6 +52,7 @@ impl<'a> OptimisedWaitHit<'a> {
             .clone()
     }
 
+    /// Record an operation.
     pub fn record_operation(
         &self,
         op_type: OperationType,
@@ -62,9 +67,10 @@ impl<'a> OptimisedWaitHit<'a> {
             .borrow_mut()
             .as_mut()
             .unwrap()
-            .add(op_type, table_id, column_id, offset, prv); // record operation
+            .add(op_type, table_id, column_id, offset, prv);
     }
 
+    /// Get operations.
     pub fn get_operations(&self) -> Vec<Operation> {
         self.transaction_info
             .get()
@@ -81,6 +87,8 @@ impl<'a> OptimisedWaitHit<'a> {
             .get_or(|| RefCell::new(None))
             .borrow_mut() = Some(TransactionInformation::new()); // reset txn info
 
+        *self.transaction_cnt.get_or(|| RefCell::new(0)).borrow_mut() += 1;
+
         let transaction = Box::new(Transaction::new()); // create transaction on heap
         let id = transaction::to_usize(transaction); // get id
         let tref = transaction::from_usize(id); // convert to reference
@@ -89,7 +97,6 @@ impl<'a> OptimisedWaitHit<'a> {
             .borrow_mut()
             .replace(tref); // replace local transaction reference
 
-        assert!(!epoch::is_pinned());
         let guard = epoch::pin(); // pin thread
 
         OptimisedWaitHit::EG.with(|x| x.borrow_mut().replace(guard));
@@ -260,10 +267,17 @@ impl<'a> OptimisedWaitHit<'a> {
         let this_usize = this_ptr as usize;
         let boxed_node = transaction::to_box(this_usize);
 
+        let cnt = *self.transaction_cnt.get_or(|| RefCell::new(0)).borrow();
+
         OptimisedWaitHit::EG.with(|x| unsafe {
             x.borrow().as_ref().unwrap().defer_unchecked(move || {
                 drop(boxed_node);
             });
+
+            if cnt % 128 == 0 {
+                x.borrow().as_ref().unwrap().flush();
+            }
+
             let guard = x.borrow_mut().take();
             drop(guard)
         });
@@ -354,18 +368,20 @@ impl<'a> OptimisedWaitHit<'a> {
                 let this_usize = this_ptr as usize;
                 let boxed_node = transaction::to_box(this_usize);
 
-                // drop(boxed_node);
+                let cnt = *self.transaction_cnt.get_or(|| RefCell::new(0)).borrow();
 
-                //assert!(epoch::is_pinned());
                 OptimisedWaitHit::EG.with(|x| unsafe {
                     x.borrow().as_ref().unwrap().defer_unchecked(move || {
                         drop(boxed_node);
                     });
+
+                    if cnt % 128 == 0 {
+                        x.borrow().as_ref().unwrap().flush();
+                    }
+
                     let guard = x.borrow_mut().take();
                     drop(guard)
                 });
-
-                assert!(!epoch::is_pinned());
 
                 Ok(())
             }
