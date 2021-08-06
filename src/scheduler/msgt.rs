@@ -8,6 +8,7 @@ use crate::storage::datatype::Data;
 use crate::storage::Database;
 use crate::workloads::IsolationLevel;
 
+use crossbeam_epoch as epoch;
 use crossbeam_epoch::Guard;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -32,6 +33,10 @@ pub struct MixedSerializationGraph<'a> {
 }
 
 impl<'a> MixedSerializationGraph<'a> {
+    thread_local! {
+        static EG: RefCell<Option<Guard>> = RefCell::new(None);
+    }
+
     pub fn new(size: usize) -> Self {
         info!("Initialise serialization graph with {} thread(s)", size);
 
@@ -91,6 +96,10 @@ impl<'a> MixedSerializationGraph<'a> {
 
         debug!("start {} ", id);
 
+        let guard = epoch::pin(); // pin thread
+
+        MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
+
         TransactionId::SerializationGraph(id)
     }
 
@@ -136,7 +145,7 @@ impl<'a> MixedSerializationGraph<'a> {
     /// Cleanup node.
     /// When this method is called the outcome of the transaction is known.
     ///
-    pub fn cleanup<'g>(&self, this: &'a RwNode, guard: &'g Guard) {
+    pub fn cleanup(&self, this: &'a RwNode) {
         // Assert: node must be committed or aborted, but not both.
         // assert!(
         //     (this.is_committed() && !this.is_aborted())
@@ -267,11 +276,20 @@ impl<'a> MixedSerializationGraph<'a> {
         let this_usize = this_ptr as usize;
         let boxed_node = node::to_box(this_usize);
 
-        unsafe {
-            guard.defer_unchecked(move || {
+        let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
+
+        MixedSerializationGraph::EG.with(|x| unsafe {
+            x.borrow().as_ref().unwrap().defer_unchecked(move || {
                 drop(boxed_node);
             });
-        }
+
+            if cnt % 128 == 0 {
+                x.borrow().as_ref().unwrap().flush();
+            }
+
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
     }
 
     /// Insert an incoming edge into (this) node from (from) node, followed by a cycle check.
@@ -515,19 +533,18 @@ impl<'a> MixedSerializationGraph<'a> {
         aborted || cascading_abort
     }
 
-    pub fn read_value<'g>(
+    pub fn read_value(
         &self,
         table_id: usize,
         column_id: usize,
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         let this = self.get_transaction();
 
         if this.is_cascading_abort() {
-            self.abort(database, guard);
+            self.abort(database);
             return Err(MixedSerializationGraphError::CascadingAbort.into());
         }
 
@@ -541,6 +558,8 @@ impl<'a> MixedSerializationGraph<'a> {
 
         // On acquiring the 'lock' on the record can be clean or dirty.
         // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
+        let guard = &epoch::pin(); // pin thread
+
         let snapshot = rw_table.iter(guard);
 
         let mut cyclic = false;
@@ -572,7 +591,7 @@ impl<'a> MixedSerializationGraph<'a> {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(database, guard); // abort
+            self.abort(database); // abort
             return Err(MixedSerializationGraphError::CycleFound.into());
         }
 
@@ -593,7 +612,7 @@ impl<'a> MixedSerializationGraph<'a> {
     /// Write operation.
     ///
     /// A write can executed iff there are no uncommitted writes on a record, else the operation is delayed.
-    pub fn write_value<'g>(
+    pub fn write_value(
         &self,
         value: &mut Data,
         table_id: usize,
@@ -601,7 +620,6 @@ impl<'a> MixedSerializationGraph<'a> {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         let this = self.get_transaction();
         let table = database.get_table(table_id);
@@ -612,7 +630,7 @@ impl<'a> MixedSerializationGraph<'a> {
         loop {
             // check for cascading abort
             if self.needs_abort(this) {
-                self.abort(database, guard);
+                self.abort(database);
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
             }
 
@@ -623,6 +641,7 @@ impl<'a> MixedSerializationGraph<'a> {
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
+            let guard = &epoch::pin(); // pin thread
             let snapshot = rw_table.iter(guard);
 
             let mut wait = false; // flag indicating if there is an uncommitted write
@@ -673,7 +692,7 @@ impl<'a> MixedSerializationGraph<'a> {
             // abort transaction
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
-                self.abort(database, guard);
+                self.abort(database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(MixedSerializationGraphError::CycleFound.into());
             }
@@ -682,10 +701,8 @@ impl<'a> MixedSerializationGraph<'a> {
             // restart operation
             if wait {
                 rw_table.erase(prv); // remove from rw table
-
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                                                       //     attempts += 1;
-                                                       //   delays.push(wait);
+
                 continue;
             }
 
@@ -693,38 +710,16 @@ impl<'a> MixedSerializationGraph<'a> {
             // check for cascading abort
             if self.needs_abort(this) {
                 rw_table.erase(prv); // remove from rw table
-                self.abort(database, guard);
+                self.abort(database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
             }
 
-            //     attempts += 1;
-            //   delays.push(wait);
             break;
         }
 
-        // let tuple = table.get_tuple(column_id, offset); // handle to tuple
-        // let dirty = tuple.get().is_dirty();
-        // assert: there must be not an uncommitted write, the record must be clean.
-        // assert_eq!(
-        //     dirty, false,
-        //     "\ntuple: ({},{},{}) \nstate: {:?} \nwriting node :{} \nattempts made: {} \nrwtable: {} \nprvs: {:?} \ndelays: {:?} \nconflicts: {:?} \ntuple_state: {}",
-        //     table_id,column_id,offset,  this, attempts, rw_table, prvs, delays, cs, tuple
-        // );
-
-        // assert_eq!(
-        //     dirty, false,
-        //     "\ntuple: ({},{},{}) \nwriting node :{} \nattempts made: {} \n this prv: {}\nconflicts: {:?} \nrwtable: {} \nseen: {:?} \nbeforerwtable: {}",
-        //     table_id, column_id, offset, this, attempts, prv, cs, rw_table, seen,brw_table
-        // );
-
-        // assert_eq!(
-        //     dirty, false,
-        //     "\ntuple: ({},{},{}) \nnode :{} \nattempts: {} \nrwtable: {:?}",
-        //     table_id, column_id, offset, this, attempts, rw_table
-        // );
-
         // Now, handle R-W conflicts
+        let guard = &epoch::pin(); // pin thread
         let snapshot = rw_table.iter(guard);
 
         let mut cyclic = false;
@@ -735,7 +730,7 @@ impl<'a> MixedSerializationGraph<'a> {
             if self.needs_abort(this) {
                 rw_table.erase(prv); // remove from rw table
 
-                self.abort(database, guard);
+                self.abort(database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
             }
@@ -765,7 +760,7 @@ impl<'a> MixedSerializationGraph<'a> {
         // abort transaction
         if cyclic {
             rw_table.erase(prv); // remove from rw table
-            self.abort(database, guard);
+            self.abort(database);
             lsn.store(prv + 1, Ordering::Release); // update lsn
             return Err(MixedSerializationGraphError::CycleFound.into());
         }
@@ -783,12 +778,12 @@ impl<'a> MixedSerializationGraph<'a> {
     }
 
     /// Commit operation.
-    pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
+    pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
         let this = self.get_transaction();
 
         loop {
             if self.needs_abort(&this) {
-                self.abort(database, guard);
+                self.abort(database);
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
             }
 
@@ -816,7 +811,7 @@ impl<'a> MixedSerializationGraph<'a> {
             // no incoming edges and no cycle so commit
             self.tidyup(database, true);
             this.set_committed();
-            self.cleanup(this, guard);
+            self.cleanup(this);
 
             break;
         }
@@ -826,10 +821,10 @@ impl<'a> MixedSerializationGraph<'a> {
     }
 
     /// Abort operation.
-    pub fn abort<'g>(&self, database: &Database, guard: &'g Guard) -> NonFatalError {
+    pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = self.get_transaction();
         this.set_aborted();
-        self.cleanup(this, guard);
+        self.cleanup(this);
         self.tidyup(database, false);
         this.set_complete();
 
@@ -837,7 +832,7 @@ impl<'a> MixedSerializationGraph<'a> {
     }
 
     /// Tidyup rwtables and tuples
-    pub fn tidyup<'g>(&self, database: &Database, commit: bool) {
+    pub fn tidyup(&self, database: &Database, commit: bool) {
         let ops = self.get_operations();
 
         for op in ops {

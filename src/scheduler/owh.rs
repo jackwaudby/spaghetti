@@ -7,6 +7,7 @@ use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 
+use crossbeam_epoch as epoch;
 use crossbeam_epoch::Guard;
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -21,18 +22,26 @@ pub mod transaction;
 pub struct OptimisedWaitHit<'a> {
     transaction: ThreadLocal<RefCell<Option<&'a Transaction<'a>>>>,
     transaction_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
+    transaction_cnt: ThreadLocal<RefCell<u64>>,
 }
 
 impl<'a> OptimisedWaitHit<'a> {
+    thread_local! {
+        static EG: RefCell<Option<Guard>> = RefCell::new(None);
+    }
+
+    /// Create a new optimised wait hit scheduler.
     pub fn new(size: usize) -> Self {
         info!("Initialise optimised wait hit with {} thread(s)", size);
 
         Self {
             transaction: ThreadLocal::new(),
             transaction_info: ThreadLocal::new(),
+            transaction_cnt: ThreadLocal::new(),
         }
     }
 
+    /// Get a shared reference to the transaction currently executing.
     pub fn get_transaction(&self) -> &'a Transaction<'a> {
         self.transaction
             .get()
@@ -43,6 +52,7 @@ impl<'a> OptimisedWaitHit<'a> {
             .clone()
     }
 
+    /// Record an operation.
     pub fn record_operation(
         &self,
         op_type: OperationType,
@@ -57,9 +67,10 @@ impl<'a> OptimisedWaitHit<'a> {
             .borrow_mut()
             .as_mut()
             .unwrap()
-            .add(op_type, table_id, column_id, offset, prv); // record operation
+            .add(op_type, table_id, column_id, offset, prv);
     }
 
+    /// Get operations.
     pub fn get_operations(&self) -> Vec<Operation> {
         self.transaction_info
             .get()
@@ -76,6 +87,8 @@ impl<'a> OptimisedWaitHit<'a> {
             .get_or(|| RefCell::new(None))
             .borrow_mut() = Some(TransactionInformation::new()); // reset txn info
 
+        *self.transaction_cnt.get_or(|| RefCell::new(0)).borrow_mut() += 1;
+
         let transaction = Box::new(Transaction::new()); // create transaction on heap
         let id = transaction::to_usize(transaction); // get id
         let tref = transaction::from_usize(id); // convert to reference
@@ -84,24 +97,30 @@ impl<'a> OptimisedWaitHit<'a> {
             .borrow_mut()
             .replace(tref); // replace local transaction reference
 
+        let guard = epoch::pin(); // pin thread
+
+        OptimisedWaitHit::EG.with(|x| x.borrow_mut().replace(guard));
+
         TransactionId::OptimisticWaitHit(id)
     }
 
-    pub fn read_value<'g>(
+    pub fn read_value(
         &self,
         table_id: usize,
         column_id: usize,
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<Data, NonFatalError> {
         let transaction = self.get_transaction(); // transaction active on this thread
         let table: &Table = database.get_table(table_id); // handle to table
         let rw_table = table.get_rwtable(offset); // handle to rwtable
         let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
         let lsn = table.get_lsn(offset); // handle to lsn
+
         spin(prv, lsn); // delay until prv == lsn
+
+        let guard = &epoch::pin(); // pin thread
         let snapshot = rw_table.iter(guard); // iterator over access history
 
         // for each write in the rwtable, add a predecessor upon read to wait list
@@ -131,13 +150,15 @@ impl<'a> OptimisedWaitHit<'a> {
             .get_value()
             .unwrap()
             .get_value(); // read value
+
         self.record_operation(OperationType::Read, table_id, column_id, offset, prv); // record operation
+
         lsn.store(prv + 1, Ordering::Release); // update lsn
 
         Ok(vals)
     }
 
-    pub fn write_value<'g>(
+    pub fn write_value(
         &self,
         value: &mut Data,
         table_id: usize,
@@ -145,7 +166,6 @@ impl<'a> OptimisedWaitHit<'a> {
         offset: usize,
         meta: &TransactionId,
         database: &Database,
-        guard: &'g Guard,
     ) -> Result<(), NonFatalError> {
         let transaction: &'a Transaction<'a> = self.get_transaction(); // transaction active on this thread
         let table = database.get_table(table_id); // handle to table
@@ -161,13 +181,14 @@ impl<'a> OptimisedWaitHit<'a> {
         // else for each read in the rwtable, add a predecessor upon write to hit list
         if dirty {
             // ok to have state change under feet here
-
             rw_table.erase(prv); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(database, guard); // abort this transaction
+            self.abort(database); // abort this transaction
             return Err(NonFatalError::RowDirty("todo".to_string()));
         } else {
+            let guard = &epoch::pin(); // pin thread
             let snapshot = rw_table.iter(guard); // iterator over rwtable
+
             for (id, access) in snapshot {
                 if id < &prv {
                     match access {
@@ -210,7 +231,7 @@ impl<'a> OptimisedWaitHit<'a> {
         }
     }
 
-    pub fn abort<'g>(&self, database: &Database, guard: &'g Guard) -> NonFatalError {
+    pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = self.get_transaction();
         let ops = self.get_operations();
 
@@ -245,22 +266,31 @@ impl<'a> OptimisedWaitHit<'a> {
         let this_usize = this_ptr as usize;
         let boxed_node = transaction::to_box(this_usize);
 
-        unsafe {
-            guard.defer_unchecked(move || {
+        let cnt = *self.transaction_cnt.get_or(|| RefCell::new(0)).borrow();
+
+        OptimisedWaitHit::EG.with(|x| unsafe {
+            x.borrow().as_ref().unwrap().defer_unchecked(move || {
                 drop(boxed_node);
             });
-        }
+
+            if cnt % 128 == 0 {
+                x.borrow().as_ref().unwrap().flush();
+            }
+
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
 
         NonFatalError::NonSerializable // placeholder
     }
 
     /// Commit a transaction.
-    pub fn commit<'g>(&self, database: &Database, guard: &'g Guard) -> Result<(), NonFatalError> {
+    pub fn commit<'g>(&self, database: &Database) -> Result<(), NonFatalError> {
         let transaction = self.get_transaction();
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database, guard);
+            self.abort(database);
             return Err(OptimisedWaitHitError::Hit.into());
         }
 
@@ -275,7 +305,7 @@ impl<'a> OptimisedWaitHit<'a> {
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database, guard);
+            self.abort(database);
             return Err(OptimisedWaitHitError::Hit.into());
         }
 
@@ -285,11 +315,11 @@ impl<'a> OptimisedWaitHit<'a> {
             // if active or aborted then abort
             match predecessor.get_state() {
                 TransactionState::Active => {
-                    self.abort(database, guard);
+                    self.abort(database);
                     return Err(OptimisedWaitHitError::PredecessorActive.into());
                 }
                 TransactionState::Aborted => {
-                    self.abort(database, guard);
+                    self.abort(database);
                     return Err(OptimisedWaitHitError::PredecessorAborted.into());
                 }
                 TransactionState::Committed => {}
@@ -298,7 +328,7 @@ impl<'a> OptimisedWaitHit<'a> {
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database, guard);
+            self.abort(database);
             return Err(OptimisedWaitHitError::Hit.into());
         }
 
@@ -337,16 +367,25 @@ impl<'a> OptimisedWaitHit<'a> {
                 let this_usize = this_ptr as usize;
                 let boxed_node = transaction::to_box(this_usize);
 
-                unsafe {
-                    guard.defer_unchecked(move || {
+                let cnt = *self.transaction_cnt.get_or(|| RefCell::new(0)).borrow();
+
+                OptimisedWaitHit::EG.with(|x| unsafe {
+                    x.borrow().as_ref().unwrap().defer_unchecked(move || {
                         drop(boxed_node);
                     });
-                }
+
+                    if cnt % 128 == 0 {
+                        x.borrow().as_ref().unwrap().flush();
+                    }
+
+                    let guard = x.borrow_mut().take();
+                    drop(guard)
+                });
 
                 Ok(())
             }
             Err(e) => {
-                self.abort(database, guard);
+                self.abort(database);
                 Err(e)
             }
         }
