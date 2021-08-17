@@ -766,20 +766,20 @@ impl<'a> SerializationGraph<'a> {
 
             match op_type {
                 OperationType::Read => {
-                    if commit {
-                        vh.update_state(TransactionState::Committed);
-                    } else {
-                        vh.update_state(TransactionState::Aborted);
-                    }
+                    // if commit {
+                    //     vh.update_state(TransactionState::Committed);
+                    // } else {
+                    //     vh.update_state(TransactionState::Aborted);
+                    // }
                     rwtable.erase(prv);
                 }
                 OperationType::Write => {
                     if commit {
                         tuple.get().commit();
-                        vh.update_state(TransactionState::Committed);
+                        // vh.update_state(TransactionState::Committed);
                     } else {
                         tuple.get().revert();
-                        vh.update_state(TransactionState::Aborted);
+                        // vh.update_state(TransactionState::Aborted);
                     }
 
                     rwtable.erase(prv);
