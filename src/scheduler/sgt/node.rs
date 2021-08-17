@@ -185,7 +185,12 @@ impl RwNode {
     /// Remove an edge from this node's incoming edge set.
     pub fn remove_incoming(&self, from: &Edge) {
         // Assert: should not be attempting to remove an incoming edge from a transaction that has terminated.
-        assert!(!self.is_complete(), "{}", self);
+        assert!(
+            !self.is_complete(),
+            "attempting to remove incoming from {} to {}",
+            from,
+            self
+        );
 
         // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.
         let incoming = unsafe { self.incoming.get().as_ref() };
