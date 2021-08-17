@@ -665,7 +665,7 @@ impl<'a> SerializationGraph<'a> {
 
         if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
-                "Attempting to write over uncommitted value: {:?}",
+                "Attempting to write over uncommitted value: {}",
                 table.get_version_history(offset)
             ); // Assert: never write to an uncommitted value.
         }
