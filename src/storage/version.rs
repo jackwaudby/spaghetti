@@ -60,6 +60,7 @@ impl Version {
 
 impl fmt::Display for VersionHistory {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", &self.data.get())
+        let dat = &mut *self.data.get();
+        write!(f, "{:?}", dat)
     }
 }
