@@ -9,11 +9,11 @@ Configuration is set in `Settings.toml`.
 # build
 cargo build --release
 
-# run
+# single run
 ./target/release/spag -s 1 -p sgt -t 10000 -c 1
 
 # run all
-./run.sh
+./run.sh <txns per core>
 
 # generate throughput, latency, and abort rate plots
 ./plot.sh
