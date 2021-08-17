@@ -455,6 +455,8 @@ impl<'a> SerializationGraph<'a> {
         };
 
         let this = self.get_transaction();
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+        assert_eq!(thread_id as usize, this.thread_id);
 
         if this.is_cascading_abort() {
             self.abort(meta, database);
@@ -543,6 +545,10 @@ impl<'a> SerializationGraph<'a> {
         };
 
         let this = self.get_transaction();
+
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+        assert_eq!(thread_id as usize, this.thread_id);
+
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
@@ -669,7 +675,7 @@ impl<'a> SerializationGraph<'a> {
             panic!(
                 "{} attempting to write over uncommitted value: {}",
                 meta.clone(),
-                table.get_version_history(offset)
+                table.get_version_history(offset),
             ); // Assert: never write to an uncommitted value.
         }
 
@@ -692,6 +698,8 @@ impl<'a> SerializationGraph<'a> {
         //        debug!("begin commit");
 
         let this = self.get_transaction();
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+        assert_eq!(thread_id as usize, this.thread_id);
 
         loop {
             if this.is_cascading_abort() || this.is_aborted() {
@@ -746,6 +754,10 @@ impl<'a> SerializationGraph<'a> {
         //        debug!("begin abort");
 
         let this = self.get_transaction();
+
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+        assert_eq!(thread_id as usize, this.thread_id);
+
         this.set_aborted();
         self.cleanup(this);
         self.tidyup(database, false);

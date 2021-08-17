@@ -50,7 +50,7 @@ pub enum Edge {
 #[derive(Debug)]
 pub struct RwNode {
     // ids
-    thread_id: usize,
+    pub thread_id: usize,
     thread_ctr: usize,
     node_id: UnsafeCell<Option<usize>>,
 
