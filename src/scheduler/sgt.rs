@@ -323,12 +323,13 @@ impl<'a> SerializationGraph<'a> {
                     } else {
                         let from_ref = node::from_usize(from_id);
 
+                        let from_rlock = from_ref.read(); // get shared lock on (from)
+
                         if from_ref.is_aborted() || from_ref.is_cascading_abort() {
                             this_ref.set_cascading_abort();
+                            drop(from_rlock);
                             return false; // then cascadingly abort (this)
                         }
-
-                        let from_rlock = from_ref.read(); // get shared lock on (from)
 
                         if from_ref.is_cleaned() {
                             drop(from_rlock);
