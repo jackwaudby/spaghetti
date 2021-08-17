@@ -432,7 +432,7 @@ impl<'a> SerializationGraph<'a> {
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
         Span::current().record("id", &id);
-        debug!("Begin");
+        //        debug!("Begin");
 
         TransactionId::SerializationGraph(id)
     }
@@ -518,7 +518,7 @@ impl<'a> SerializationGraph<'a> {
 
         self.record(OperationType::Read, table_id, column_id, offset, prv); // record operation
 
-        debug!("Read Succeeded");
+        //        debug!("Read Succeeded");
         Ok(vals)
     }
 
@@ -598,7 +598,7 @@ impl<'a> SerializationGraph<'a> {
             // (i) transaction is in a cycle (cycle = T)
             // abort transaction
             if cyclic {
-                debug!("write failed: cycle found");
+                //                debug!("write failed: cycle found");
                 rw_table.erase(prv); // remove from rw table
                 self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
@@ -610,14 +610,14 @@ impl<'a> SerializationGraph<'a> {
             if wait {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                debug!("uncommitted write: retry operation");
+                                                       //                debug!("uncommitted write: retry operation");
                 continue;
             }
 
             // (iii) no w-w conflicts -> clean record (both F)
             // check for cascading abort
             if self.needs_abort(this) {
-                debug!("write failed: cascading abort");
+                //                debug!("write failed: cascading abort");
                 rw_table.erase(prv); // remove from rw table
                 self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
@@ -676,7 +676,7 @@ impl<'a> SerializationGraph<'a> {
         lsn.store(prv + 1, Ordering::Release); // update lsn, giving next operation access.
         self.record(OperationType::Write, table_id, column_id, offset, prv); // record operation
 
-        debug!("write succeeded");
+        //        debug!("write succeeded");
         Ok(())
     }
 
@@ -689,13 +689,13 @@ impl<'a> SerializationGraph<'a> {
             }
             _ => panic!("unexpected txn id"),
         };
-        debug!("begin commit");
+        //        debug!("begin commit");
 
         let this = self.get_transaction();
 
         loop {
             if this.is_cascading_abort() || this.is_aborted() {
-                debug!("commit failed: cascading abort");
+                //                debug!("commit failed: cascading abort");
                 self.abort(meta, database);
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
@@ -709,12 +709,12 @@ impl<'a> SerializationGraph<'a> {
                 this.set_checked(false); // if incoming then flip back to unchecked
                 let is_cycle = self.cycle_check(&this); // cycle check
                 if is_cycle {
-                    debug!("commit failed: cycle found");
+                    //                    debug!("commit failed: cycle found");
                     this.set_aborted(); // cycle so abort (this)
                 }
                 continue;
             }
-            debug!("commit successful: no incoming edges");
+            //            debug!("commit successful: no incoming edges");
 
             // no incoming edges and no cycle so commit
             self.tidyup(database, true);
@@ -730,7 +730,7 @@ impl<'a> SerializationGraph<'a> {
             panic!("should have aborted or committed");
         }
 
-        debug!("committed");
+        //        debug!("committed");
         Ok(())
     }
 
@@ -743,7 +743,7 @@ impl<'a> SerializationGraph<'a> {
             }
             _ => panic!("unexpected txn id"),
         };
-        debug!("begin abort");
+        //        debug!("begin abort");
 
         let this = self.get_transaction();
         this.set_aborted();
@@ -751,7 +751,7 @@ impl<'a> SerializationGraph<'a> {
         self.tidyup(database, false);
         this.set_complete();
 
-        debug!("aborted");
+        //        debug!("aborted");
         NonFatalError::NonSerializable // TODO: return the why
     }
 
@@ -796,7 +796,7 @@ impl<'a> SerializationGraph<'a> {
                 }
             }
         }
-        debug!("changes committed/reverted: {}", commit);
+        //        debug!("changes committed/reverted: {}", commit);
     }
 }
 
