@@ -663,7 +663,7 @@ impl<'a> SerializationGraph<'a> {
             TransactionState::Active,
         );
 
-        if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
+        if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
                 "{} attempting to write over uncommitted value: {}",
                 meta.clone(),
@@ -724,6 +724,10 @@ impl<'a> SerializationGraph<'a> {
 
         this.set_complete();
 
+        if this.is_committed() || this.is_aborted() {
+            panic!("should have aborted or committed");
+        }
+
         debug!("committed");
         Ok(())
     }
@@ -766,7 +770,7 @@ impl<'a> SerializationGraph<'a> {
             let table = database.get_table(table_id);
             let rwtable = table.get_rwtable(offset);
             let tuple = table.get_tuple(column_id, offset);
-            let vh = table.get_version_history(offset);
+            // let vh = table.get_version_history(offset);b
 
             match op_type {
                 OperationType::Read => {

@@ -53,7 +53,7 @@ impl VersionHistory {
 }
 
 impl Version {
-    pub fn new(tid: TransactionId, optype: OperationType, state: TransactionState) -> Self {
+    pub fn new(tid: TransactionId, optype: OperationType, _state: TransactionState) -> Self {
         Self { tid, optype }
     }
 }
