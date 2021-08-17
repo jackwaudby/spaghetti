@@ -67,7 +67,7 @@ impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "(id:{},type:{},tstate:{})",
+            "({},type:{},tstate:{})",
             self.tid, self.optype, self.state
         )
     }

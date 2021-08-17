@@ -35,7 +35,7 @@ impl fmt::Display for TransactionId {
             SerializationGraph(ref_id, thread_id, thread_ctr) => {
                 write!(
                     f,
-                    "ref id:{}, thread id: {}, thread ctr: {}",
+                    "ref id:{},thread id:{},thread ctr:{}",
                     ref_id, thread_id, thread_ctr
                 )
             }
