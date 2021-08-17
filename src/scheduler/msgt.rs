@@ -100,7 +100,7 @@ impl<'a> MixedSerializationGraph<'a> {
 
         MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
-        TransactionId::SerializationGraph(id)
+        TransactionId::SerializationGraph(id, 1, 1)
     }
 
     pub fn create_node(&self, isolation_level: IsolationLevel) -> usize {
@@ -570,7 +570,7 @@ impl<'a> MixedSerializationGraph<'a> {
                 match access {
                     // W-R conflict
                     Access::Write(from) => {
-                        if let TransactionId::SerializationGraph(from_id) = from {
+                        if let TransactionId::SerializationGraph(from_id, _, _) = from {
                             if !self.insert_and_check(
                                 this,
                                 Edge::WriteRead(*from_id),
@@ -653,7 +653,7 @@ impl<'a> MixedSerializationGraph<'a> {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
-                            if let TransactionId::SerializationGraph(from_addr) = from {
+                            if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
                                 // check if write access is uncommitted
@@ -738,7 +738,7 @@ impl<'a> MixedSerializationGraph<'a> {
             if id < &prv {
                 match access {
                     Access::Read(from) => {
-                        if let TransactionId::SerializationGraph(from_addr) = from {
+                        if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                             if !self.insert_and_check(
                                 this,
                                 Edge::ReadWrite(*from_addr),

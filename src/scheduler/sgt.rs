@@ -92,7 +92,7 @@ impl<'a> SerializationGraph<'a> {
     }
 
     /// Create a node in the graph.
-    pub fn create_node(&self) -> usize {
+    pub fn create_node(&self) -> (usize, usize, usize) {
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
         let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
@@ -125,7 +125,7 @@ impl<'a> SerializationGraph<'a> {
             .borrow_mut()
             .replace(nref); // replace local node reference
 
-        id
+        (id, thread_id, thread_ctr)
     }
 
     /// Cleanup node after committed or aborted.
@@ -425,16 +425,16 @@ impl<'a> SerializationGraph<'a> {
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
 
-        let id = self.create_node(); // create node
+        let (ref_id, thread_id, thread_ctr) = self.create_node(); // create node
 
         let guard = epoch::pin(); // pin thread
 
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
-        Span::current().record("id", &id);
+        Span::current().record("id", &ref_id);
         //        debug!("Begin");
 
-        TransactionId::SerializationGraph(id)
+        TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
 
     /// Read operation.
@@ -448,7 +448,7 @@ impl<'a> SerializationGraph<'a> {
         database: &Database,
     ) -> Result<Data, NonFatalError> {
         match meta {
-            TransactionId::SerializationGraph(id) => {
+            TransactionId::SerializationGraph(id, _, _) => {
                 Span::current().record("id", &id);
             }
             _ => panic!("unexpected txn id"),
@@ -484,7 +484,7 @@ impl<'a> SerializationGraph<'a> {
                 match access {
                     // W-R conflict
                     Access::Write(from) => {
-                        if let TransactionId::SerializationGraph(from_id) = from {
+                        if let TransactionId::SerializationGraph(from_id, _, _) = from {
                             if !self.insert_and_check(this, Edge::WriteRead(*from_id)) {
                                 cyclic = true;
                                 break;
@@ -532,7 +532,7 @@ impl<'a> SerializationGraph<'a> {
         database: &Database,
     ) -> Result<(), NonFatalError> {
         match meta {
-            TransactionId::SerializationGraph(id) => {
+            TransactionId::SerializationGraph(id, _, _) => {
                 Span::current().record("id", &id);
             }
             _ => panic!("unexpected txn id"),
@@ -572,7 +572,7 @@ impl<'a> SerializationGraph<'a> {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
-                            if let TransactionId::SerializationGraph(from_addr) = from {
+                            if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                                 let from = node::from_usize(*from_addr); // convert to ptr
 
                                 // check if write access is uncommitted
@@ -638,7 +638,7 @@ impl<'a> SerializationGraph<'a> {
             if id < &prv {
                 match access {
                     Access::Read(from) => {
-                        if let TransactionId::SerializationGraph(from_addr) = from {
+                        if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                             if !self.insert_and_check(this, Edge::ReadWrite(*from_addr)) {
                                 cyclic = true;
                                 break;
@@ -687,7 +687,7 @@ impl<'a> SerializationGraph<'a> {
     #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn commit(&self, meta: &TransactionId, database: &Database) -> Result<(), NonFatalError> {
         match meta {
-            TransactionId::SerializationGraph(id) => {
+            TransactionId::SerializationGraph(id, _, _) => {
                 Span::current().record("id", &id);
             }
             _ => panic!("unexpected txn id"),
@@ -743,7 +743,7 @@ impl<'a> SerializationGraph<'a> {
     #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn abort(&self, meta: &TransactionId, database: &Database) -> NonFatalError {
         match meta {
-            TransactionId::SerializationGraph(id) => {
+            TransactionId::SerializationGraph(id, _, _) => {
                 Span::current().record("id", &id);
             }
             _ => panic!("unexpected txn id"),

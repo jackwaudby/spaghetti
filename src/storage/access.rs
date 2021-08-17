@@ -10,7 +10,7 @@ pub enum Access {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum TransactionId {
     NoConcurrencyControl,
-    SerializationGraph(usize),
+    SerializationGraph(usize, usize, usize),
     OptimisticWaitHit(usize),
     WaitHit(u64),
     TwoPhaseLocking(u64),
@@ -32,7 +32,13 @@ impl fmt::Display for TransactionId {
 
         match &self {
             NoConcurrencyControl => write!(f, "no id"),
-            SerializationGraph(txn) => write!(f, "{}", txn),
+            SerializationGraph(ref_id, thread_id, thread_ctr) => {
+                write!(
+                    f,
+                    "ref id:{}, thread id: {}, thread ctr: {}",
+                    ref_id, thread_id, thread_ctr
+                )
+            }
             OptimisticWaitHit(txn) => write!(f, "{}", txn),
             WaitHit(txn) => write!(f, "{}", txn),
             TwoPhaseLocking(txn) => write!(f, "{}", txn),
