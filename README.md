@@ -9,11 +9,11 @@ Configuration is set in `Settings.toml`.
 # build
 cargo build --release
 
-# run
+# single run
 ./target/release/spag -s 1 -p sgt -t 10000 -c 1
 
 # run all
-./run.sh
+./run.sh <txns per core>
 
 # generate throughput, latency, and abort rate plots
 ./plot.sh
@@ -38,7 +38,7 @@ cargo test acid -- --test-threads=1
 | Anomaly | SGT                  | WH                   | OWH                  | 2PL                  | NOCC*                | OWHTT                |
 |---------|----------------------|----------------------|----------------------|----------------------|----------------------|----------------------|
 |   G0    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:   |
-|   G1a   |:x:                   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
+|   G1a   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
 |   G1b   |:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|:large_orange_diamond:|
 |   G1c   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
 |   IMP   |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:white_check_mark:    |:x:                   |:white_check_mark:    |
