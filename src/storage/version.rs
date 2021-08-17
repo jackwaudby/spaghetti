@@ -58,12 +58,29 @@ impl Version {
     }
 }
 
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
 impl fmt::Display for VersionHistory {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         unsafe {
             let dat = &mut *self.data.get();
+            // print most 10 recent entries
 
-            write!(f, "{:?}", dat)
+            let mut comma_separated = String::new();
+
+            let si = dat.len();
+
+            for entry in &dat[si - 10..si - 1] {
+                comma_separated.push_str(&entry.to_string());
+                comma_separated.push_str(", ");
+            }
+
+            comma_separated.push_str(&dat[si - 1].to_string());
+            write!(f, "{}", comma_separated)
         }
     }
 }
