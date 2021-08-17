@@ -60,7 +60,7 @@ impl Version {
 
 impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}", self)
+        write!(f, "({},{})", self.tid, self.optype)
     }
 }
 
@@ -76,7 +76,7 @@ impl fmt::Display for VersionHistory {
 
             for entry in &dat[si - 10..si - 1] {
                 comma_separated.push_str(&entry.to_string());
-                comma_separated.push_str(", ");
+                comma_separated.push_str(", \n");
             }
 
             comma_separated.push_str(&dat[si - 1].to_string());

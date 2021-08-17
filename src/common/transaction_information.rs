@@ -1,3 +1,5 @@
+use std::fmt;
+
 #[derive(Debug)]
 pub struct TransactionInformation {
     operations: Option<Vec<Operation>>,
@@ -64,6 +66,16 @@ impl Operation {
             column_id,
             offset,
             prv,
+        }
+    }
+}
+
+impl fmt::Display for OperationType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use OperationType::*;
+        match &self {
+            Read => write!(f, "read"),
+            Write => write!(f, "write"),
         }
     }
 }
