@@ -16,7 +16,7 @@ pub struct VersionHistory {
 pub struct Version {
     tid: TransactionId,
     optype: OperationType,
-    state: TransactionState,
+    //    state: TransactionState,
 }
 
 #[derive(Debug)]
@@ -43,18 +43,18 @@ impl VersionHistory {
         }
     }
 
-    pub fn update_state(&self, state: TransactionState) {
-        unsafe {
-            let s = *self.size.get();
-            let dat = &mut *self.data.get();
-            dat[s - 1].state = state;
-        }
-    }
+    // pub fn update_state(&self, state: TransactionState) {
+    //     unsafe {
+    //         let s = *self.size.get();
+    //         let dat = &mut *self.data.get();
+    //         dat[s - 1].state = state;
+    //     }
+    // }
 }
 
 impl Version {
     pub fn new(tid: TransactionId, optype: OperationType, state: TransactionState) -> Self {
-        Self { tid, optype, state }
+        Self { tid, optype }
     }
 }
 
