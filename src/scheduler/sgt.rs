@@ -724,7 +724,7 @@ impl<'a> SerializationGraph<'a> {
 
         this.set_complete();
 
-        if this.is_committed() || this.is_aborted() {
+        if !this.is_committed() && !this.is_aborted() {
             panic!("should have aborted or committed");
         }
 
