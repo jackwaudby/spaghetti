@@ -503,12 +503,6 @@ impl<'a> SerializationGraph<'a> {
             return Err(SerializationGraphError::CycleFound.into());
         }
 
-        table.get_version_history(offset).add_version(
-            meta.clone(),
-            OperationType::Read,
-            TransactionState::Active,
-        );
-
         let vals = table
             .get_tuple(column_id, offset)
             .get()
@@ -673,8 +667,11 @@ impl<'a> SerializationGraph<'a> {
 
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
-                "{} attempting to write over uncommitted value: {}",
+                "{} attempting to write over uncommitted value on ({},{},{}): {}",
                 meta.clone(),
+                table_id,
+                column_id,
+                offset,
                 table.get_version_history(offset),
             ); // Assert: never write to an uncommitted value.
         }
@@ -725,7 +722,7 @@ impl<'a> SerializationGraph<'a> {
             //            debug!("commit successful: no incoming edges");
 
             // no incoming edges and no cycle so commit
-            self.tidyup(database, true);
+            self.tidyup(meta, database, true);
             this.set_committed();
             self.cleanup(this);
 
@@ -760,7 +757,7 @@ impl<'a> SerializationGraph<'a> {
 
         this.set_aborted();
         self.cleanup(this);
-        self.tidyup(database, false);
+        self.tidyup(meta, database, false);
         this.set_complete();
 
         //        debug!("aborted");
@@ -769,7 +766,7 @@ impl<'a> SerializationGraph<'a> {
 
     /// Tidyup rwtables and tuples
     #[instrument(level = "debug", skip(self, database, commit))]
-    pub fn tidyup(&self, database: &Database, commit: bool) {
+    pub fn tidyup(&self, meta: &TransactionId, database: &Database, commit: bool) {
         let ops = self.get_operations();
 
         for op in ops {
@@ -784,24 +781,19 @@ impl<'a> SerializationGraph<'a> {
             let table = database.get_table(table_id);
             let rwtable = table.get_rwtable(offset);
             let tuple = table.get_tuple(column_id, offset);
-            // let vh = table.get_version_history(offset);b
+            let vh = table.get_version_history(offset);
 
             match op_type {
                 OperationType::Read => {
-                    // if commit {
-                    //     vh.update_state(TransactionState::Committed);
-                    // } else {
-                    //     vh.update_state(TransactionState::Aborted);
-                    // }
                     rwtable.erase(prv);
                 }
                 OperationType::Write => {
                     if commit {
                         tuple.get().commit();
-                        // vh.update_state(TransactionState::Committed);
+                        vh.update_state(meta.clone(), TransactionState::Committed);
                     } else {
                         tuple.get().revert();
-                        // vh.update_state(TransactionState::Aborted);
+                        vh.update_state(meta.clone(), TransactionState::Aborted);
                     }
 
                     rwtable.erase(prv);

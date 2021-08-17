@@ -16,7 +16,7 @@ pub struct VersionHistory {
 pub struct Version {
     tid: TransactionId,
     optype: OperationType,
-    //    state: TransactionState,
+    state: TransactionState,
 }
 
 #[derive(Debug)]
@@ -43,24 +43,32 @@ impl VersionHistory {
         }
     }
 
-    // pub fn update_state(&self, state: TransactionState) {
-    //     unsafe {
-    //         let s = *self.size.get();
-    //         let dat = &mut *self.data.get();
-    //         dat[s - 1].state = state;
-    //     }
-    // }
+    pub fn update_state(&self, tid: TransactionId, state: TransactionState) {
+        unsafe {
+            let dat = &mut *self.data.get();
+
+            let index = dat.iter().position(|r| r.tid == tid).unwrap();
+
+            dat[index].state = state;
+
+            //            dat[s - 1].state = state;
+        }
+    }
 }
 
 impl Version {
-    pub fn new(tid: TransactionId, optype: OperationType, _state: TransactionState) -> Self {
-        Self { tid, optype }
+    pub fn new(tid: TransactionId, optype: OperationType, state: TransactionState) -> Self {
+        Self { tid, optype, state }
     }
 }
 
 impl fmt::Display for Version {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(id:{}, type:{})", self.tid, self.optype)
+        write!(
+            f,
+            "(id:{},type:{},tstate:{})",
+            self.tid, self.optype, self.state
+        )
     }
 }
 
@@ -75,7 +83,7 @@ impl fmt::Display for VersionHistory {
             let si = dat.len();
 
             comma_separated.push_str("\n");
-            comma_separated.push_str("version history");
+            comma_separated.push_str("version history:");
             comma_separated.push_str("\n");
 
             for (i, entry) in dat[si - 5..si].iter().rev().enumerate() {
@@ -84,6 +92,17 @@ impl fmt::Display for VersionHistory {
             }
 
             write!(f, "{}", comma_separated)
+        }
+    }
+}
+
+impl fmt::Display for TransactionState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use TransactionState::*;
+        match &self {
+            Aborted => write!(f, "aborted"),
+            Committed => write!(f, "committed"),
+            Active => write!(f, "active"),
         }
     }
 }
