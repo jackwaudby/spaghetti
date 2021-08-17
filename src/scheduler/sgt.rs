@@ -118,6 +118,8 @@ impl<'a> SerializationGraph<'a> {
 
         nref.set_id(id);
 
+        assert!(!nref.is_complete());
+
         self.this_node
             .get_or(|| RefCell::new(None))
             .borrow_mut()
