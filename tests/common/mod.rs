@@ -268,35 +268,45 @@ fn string_to_vec64(mut s: String) -> Vec<u64> {
 /// # Anomaly check
 ///
 /// Transactions write version = 2 but then abort. Each read should return version=1. Otherwise, a G1a anomaly has occurred.
-pub fn g1a(protocol: &str) {
+pub fn g1a(protocol: &'static str) {
     let anomaly = "g1a";
     run(protocol, anomaly);
 
     info!("Starting {} anomaly check", anomaly);
+    let mut handles = vec![];
+
     for i in 0..*CORES {
-        let file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, i);
-        let fh = File::open(&file).unwrap();
-        info!("Checking file: {}", file);
+        let handle = std::thread::spawn(move || {
+            let file = format!("./log/acid/{}/{}/thread-{}.json", protocol, anomaly, i);
+            let fh = File::open(&file).unwrap();
+            info!("Checking file: {}", file);
 
-        let reader = BufReader::new(fh);
+            let reader = BufReader::new(fh);
 
-        for line in reader.lines() {
-            let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
+            for line in reader.lines() {
+                let resp: Message = serde_json::from_str(&line.unwrap()).unwrap();
 
-            if let Message::Response { outcome, .. } = resp {
-                if let Outcome::Committed(success) = outcome {
-                    let version = success
-                        .get_values()
-                        .unwrap()
-                        .get("version")
-                        .unwrap()
-                        .parse::<u64>()
-                        .unwrap();
-                    assert_eq!(version, 1, "expected: {}, actual: {}", 1, version);
+                if let Message::Response { outcome, .. } = resp {
+                    if let Outcome::Committed(success) = outcome {
+                        let version = success
+                            .get_values()
+                            .unwrap()
+                            .get("version")
+                            .unwrap()
+                            .parse::<u64>()
+                            .unwrap();
+                        assert_eq!(version, 1, "expected: {}, actual: {}", 1, version);
+                    }
                 }
             }
-        }
+        });
+        handles.push(handle);
     }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
     info!("{} anomaly check complete", anomaly);
 }
 
