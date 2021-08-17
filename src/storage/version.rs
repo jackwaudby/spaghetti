@@ -83,11 +83,13 @@ impl fmt::Display for VersionHistory {
 
             let si = dat.len();
 
+            let start = if si < 5 { 0 } else { si - 5 };
+
             comma_separated.push_str("\n");
             comma_separated.push_str("version history:");
             comma_separated.push_str("\n");
 
-            for (i, entry) in dat[0..si].iter().rev().enumerate() {
+            for (i, entry) in dat[start..si].iter().rev().enumerate() {
                 comma_separated.push_str(&format!("{}: {}", i, &entry.to_string()));
                 comma_separated.push_str("\n");
             }
