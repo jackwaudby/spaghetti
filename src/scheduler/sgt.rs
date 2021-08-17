@@ -672,7 +672,7 @@ impl<'a> SerializationGraph<'a> {
                 table_id,
                 column_id,
                 offset,
-                table.get_version_history(offset),
+                database
             ); // Assert: never write to an uncommitted value.
         }
 
