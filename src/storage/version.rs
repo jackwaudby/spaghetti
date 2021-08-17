@@ -86,7 +86,7 @@ impl fmt::Display for VersionHistory {
             comma_separated.push_str("version history:");
             comma_separated.push_str("\n");
 
-            for (i, entry) in dat[si - 5..si].iter().rev().enumerate() {
+            for (i, entry) in dat[si - 30..si].iter().rev().enumerate() {
                 comma_separated.push_str(&format!("{}: {}", i, &entry.to_string()));
                 comma_separated.push_str("\n");
             }
