@@ -63,13 +63,6 @@ pub struct RwNode {
     checked: AtomicBool,
     complete: AtomicBool,
     lock: RwLock<u32>,
-
-    // For debugging purposes.
-    pub inserted: UnsafeCell<Vec<String>>,
-    pub removed: UnsafeCell<Vec<Edge>>,
-    pub skipped: UnsafeCell<Vec<Edge>>,
-    pub outgoing_cleaned: UnsafeCell<Vec<Edge>>,
-    pub outgoing_clone: UnsafeCell<Option<FxHashSet<Edge>>>,
 }
 
 unsafe impl<'a> Send for RwNode {}
@@ -92,7 +85,7 @@ impl RwNode {
 
             incoming: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
             outgoing: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
-            inserted: UnsafeCell::new(Vec::new()),
+
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
@@ -100,11 +93,6 @@ impl RwNode {
             checked: AtomicBool::new(false),
             complete: AtomicBool::new(false),
             lock: RwLock::new(0),
-
-            outgoing_clone: UnsafeCell::new(None),
-            removed: UnsafeCell::new(Vec::new()),
-            skipped: UnsafeCell::new(Vec::new()),
-            outgoing_cleaned: UnsafeCell::new(Vec::new()),
         }
     }
 
@@ -121,7 +109,7 @@ impl RwNode {
 
             incoming: UnsafeCell::new(Some(incoming)),
             outgoing: UnsafeCell::new(Some(outgoing)),
-            inserted: UnsafeCell::new(Vec::new()),
+
             committed: AtomicBool::new(false),
             cascading_abort: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
@@ -129,11 +117,6 @@ impl RwNode {
             checked: AtomicBool::new(false),
             complete: AtomicBool::new(false),
             lock: RwLock::new(0),
-
-            outgoing_clone: UnsafeCell::new(None),
-            removed: UnsafeCell::new(Vec::new()),
-            skipped: UnsafeCell::new(Vec::new()),
-            outgoing_cleaned: UnsafeCell::new(Vec::new()),
         }
     }
 
@@ -458,26 +441,6 @@ impl fmt::Display for RwNode {
         writeln!(f, "actual ref id: {}", id).unwrap();
         writeln!(f, "incoming: {}", self.print_edges(true)).unwrap();
         writeln!(f, "outgoing: {}", self.print_edges(false)).unwrap();
-        writeln!(f, "inserted: {:?}", unsafe {
-            self.inserted.get().as_mut().unwrap()
-        })
-        .unwrap();
-        writeln!(f, "removed: {:?}", unsafe {
-            self.removed.get().as_mut().unwrap()
-        })
-        .unwrap();
-        writeln!(f, "skipped: {:?}", unsafe {
-            self.skipped.get().as_mut().unwrap()
-        })
-        .unwrap();
-        writeln!(f, "outgoing_cleaned: {:?}", unsafe {
-            self.outgoing_cleaned.get().as_mut().unwrap()
-        })
-        .unwrap();
-        writeln!(f, "outgoing_clone: {:?}", unsafe {
-            self.outgoing_clone.get().as_mut().unwrap()
-        })
-        .unwrap();
 
         writeln!(
             f,
@@ -503,22 +466,7 @@ impl fmt::Display for RwNode {
 
             writeln!(f, "incoming: {}", n.print_edges(true)).unwrap();
             writeln!(f, "outgoing: {}", n.print_edges(false)).unwrap();
-            writeln!(f, "removed: {:?}", unsafe {
-                n.removed.get().as_mut().unwrap()
-            })
-            .unwrap();
-            writeln!(f, "skipped: {:?}", unsafe {
-                n.skipped.get().as_mut().unwrap()
-            })
-            .unwrap();
-            writeln!(f, "outgoing_cleaned: {:?}", unsafe {
-                n.outgoing_cleaned.get().as_mut().unwrap()
-            })
-            .unwrap();
-            writeln!(f, "outgoing_clone: {:?}", unsafe {
-                n.outgoing_clone.get().as_mut().unwrap()
-            })
-            .unwrap();
+
             writeln!(
                 f,
                 "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}, complete: {:?}",

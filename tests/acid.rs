@@ -38,6 +38,7 @@ fn acid_sgt_g0() {
 
 #[test]
 fn acid_sgt_g1a() {
+    //    setup();
     common::g1a("sgt");
 }
 
