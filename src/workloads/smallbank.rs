@@ -4,6 +4,7 @@ use crate::storage::table::Table;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 use strum_macros::EnumIter;
 
 pub mod loader;
@@ -74,5 +75,18 @@ impl SmallBankDatabase {
 
     pub fn get_mut_table(&mut self, id: usize) -> &mut Table {
         &mut self.0[id]
+    }
+}
+
+impl fmt::Display for SmallBankDatabase {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // print each version history for each row for each table
+
+        for (i, table) in self.0.iter().enumerate() {
+            write!(f, "table {}:\n", i).unwrap();
+            write!(f, "{}", table).unwrap();
+        }
+
+        Ok(())
     }
 }

@@ -106,7 +106,12 @@ impl Database {
 
 impl fmt::Display for Database {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "TODO").unwrap();
+        use Database::*;
+        match &self {
+            SmallBank(db) => write!(f, "{}", db).unwrap(),
+            _ => write!(f, "TODO").unwrap(),
+        };
+
         Ok(())
     }
 }

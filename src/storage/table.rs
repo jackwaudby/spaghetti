@@ -9,6 +9,7 @@ use bit_vec::BitVec;
 use flurry::HashMap;
 use nohash_hasher::IntMap;
 use parking_lot::{Mutex, MutexGuard};
+use std::fmt;
 use std::sync::atomic::AtomicU64;
 
 pub type Column = Vec<Tuple>;
@@ -107,5 +108,17 @@ impl Table {
 
     pub fn lock_table(&self) -> MutexGuard<BitVec> {
         self.inuse.lock()
+    }
+}
+
+impl fmt::Display for Table {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // print each version history
+        for (i, vh) in self.history.iter().enumerate() {
+            write!(f, "row {}:\n", i).unwrap();
+            write!(f, "{}", vh).unwrap();
+        }
+
+        Ok(())
     }
 }

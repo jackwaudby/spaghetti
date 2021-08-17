@@ -77,7 +77,7 @@ impl fmt::Display for VersionHistory {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         unsafe {
             let dat = &mut *self.data.get();
-            // print most 5 recent entries
+            // print most 10 recent entries
 
             let mut comma_separated = String::new();
 
@@ -87,7 +87,7 @@ impl fmt::Display for VersionHistory {
             comma_separated.push_str("version history:");
             comma_separated.push_str("\n");
 
-            for (i, entry) in dat[0..si].iter().rev().enumerate() {
+            for (i, entry) in dat[si - 10..si].iter().rev().enumerate() {
                 comma_separated.push_str(&format!("{}: {}", i, &entry.to_string()));
                 comma_separated.push_str("\n");
             }

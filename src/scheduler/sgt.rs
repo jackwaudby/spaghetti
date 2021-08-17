@@ -432,7 +432,7 @@ impl<'a> SerializationGraph<'a> {
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
         Span::current().record("id", &ref_id);
-        //        debug!("Begin");
+        debug!("Begin");
 
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
