@@ -2,6 +2,7 @@ use crate::common::ds::atomic_linked_list::AtomicLinkedList;
 use crate::common::error::NonFatalError;
 use crate::storage::access::Access;
 use crate::storage::tuple::Tuple;
+use crate::storage::version::VersionHistory;
 use crate::storage::PrimaryKey;
 
 use bit_vec::BitVec;
@@ -19,6 +20,7 @@ pub struct Table {
     inuse: Mutex<BitVec>,
     lsns: Vec<AtomicU64>,
     rw_tables: Vec<AtomicLinkedList<Access>>,
+    history: Vec<VersionHistory>,
 }
 
 impl Table {
@@ -36,12 +38,15 @@ impl Table {
 
         let mut lsns = Vec::with_capacity(population);
         let mut rw_tables = Vec::with_capacity(population);
+        let mut history = Vec::with_capacity(population);
+
         let mut inuse = BitVec::new();
 
         for _ in 0..population {
             lsns.push(AtomicU64::new(0));
             rw_tables.push(AtomicLinkedList::new());
             inuse.push(false);
+            history.push(VersionHistory::new());
         }
 
         Table {
@@ -50,6 +55,7 @@ impl Table {
             inuse: Mutex::new(inuse),
             lsns,
             rw_tables,
+            history,
         }
     }
 
@@ -64,6 +70,10 @@ impl Table {
             Some(col) => &col[offset],
             None => panic!("column: {}, offset: {}", id, offset),
         }
+    }
+
+    pub fn get_version_history(&self, offset: usize) -> &VersionHistory {
+        &self.history[offset]
     }
 
     pub fn get_mut_exists(&mut self) -> &mut HashMap<PrimaryKey, usize> {

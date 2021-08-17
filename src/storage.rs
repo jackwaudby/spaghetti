@@ -22,6 +22,8 @@ pub mod table;
 
 pub mod access;
 
+pub mod version;
+
 #[derive(Debug)]
 pub enum Database {
     SmallBank(SmallBankDatabase),

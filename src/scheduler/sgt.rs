@@ -5,6 +5,7 @@ use crate::scheduler::sgt::node::EdgeSet;
 use crate::scheduler::sgt::node::{Edge, RwNode};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
+use crate::storage::version::TransactionState;
 use crate::storage::Database;
 
 use crossbeam_epoch as epoch;
@@ -498,6 +499,12 @@ impl<'a> SerializationGraph<'a> {
             return Err(SerializationGraphError::CycleFound.into());
         }
 
+        table.get_version_history(offset).add_version(
+            meta.clone(),
+            OperationType::Read,
+            TransactionState::Active,
+        );
+
         let vals = table
             .get_tuple(column_id, offset)
             .get()
@@ -541,17 +548,13 @@ impl<'a> SerializationGraph<'a> {
 
         loop {
             if self.needs_abort(this) {
-                debug!("write failed: cascading abort");
                 self.abort(meta, database);
                 return Err(SerializationGraphError::CascadingAbort.into()); // check for cascading abort
             }
 
             prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
 
-            //   debug!("waiting for access");
-            // Safety: ensures exculsive access to the record.
-            unsafe { spin(prv, lsn) }; // busy wait
-                                       //            debug!("access granted");
+            unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -581,6 +584,7 @@ impl<'a> SerializationGraph<'a> {
                                     wait = true; // retry operation
                                     break;
                                 } else {
+                                    // from is complete
                                 }
                             }
                         }
@@ -628,17 +632,7 @@ impl<'a> SerializationGraph<'a> {
 
         let mut cyclic = false;
 
-        // only interested in accesses before this one and that are read operations.
         for (id, access) in snapshot {
-            // check for cascading abort
-            if self.needs_abort(this) {
-                rw_table.erase(prv); // remove from rw table
-
-                self.abort(meta, database);
-                lsn.store(prv + 1, Ordering::Release); // update lsn
-                return Err(SerializationGraphError::CascadingAbort.into());
-            }
-
             if id < &prv {
                 match access {
                     Access::Read(from) => {
@@ -663,8 +657,14 @@ impl<'a> SerializationGraph<'a> {
             return Err(SerializationGraphError::CycleFound.into());
         }
 
+        table.get_version_history(offset).add_version(
+            meta.clone(),
+            OperationType::Write,
+            TransactionState::Active,
+        );
+
         if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
-            panic!("{}", e); // Assert: never write to an uncommitted value.
+            panic!("{:?}", table.get_version_history(offset)); // Assert: never write to an uncommitted value.
         }
 
         lsn.store(prv + 1, Ordering::Release); // update lsn, giving next operation access.
@@ -762,16 +762,24 @@ impl<'a> SerializationGraph<'a> {
             let table = database.get_table(table_id);
             let rwtable = table.get_rwtable(offset);
             let tuple = table.get_tuple(column_id, offset);
+            let vh = table.get_version_history(offset);
 
             match op_type {
                 OperationType::Read => {
+                    if commit {
+                        vh.update_state(TransactionState::Committed);
+                    } else {
+                        vh.update_state(TransactionState::Aborted);
+                    }
                     rwtable.erase(prv);
                 }
                 OperationType::Write => {
                     if commit {
                         tuple.get().commit();
+                        vh.update_state(TransactionState::Committed);
                     } else {
                         tuple.get().revert();
+                        vh.update_state(TransactionState::Aborted);
                     }
 
                     rwtable.erase(prv);
