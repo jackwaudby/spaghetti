@@ -60,7 +60,10 @@ impl Version {
 
 impl fmt::Display for VersionHistory {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let dat = &mut *self.data.get();
-        write!(f, "{:?}", dat)
+        unsafe {
+            let dat = &mut *self.data.get();
+
+            write!(f, "{:?}", dat)
+        }
     }
 }
