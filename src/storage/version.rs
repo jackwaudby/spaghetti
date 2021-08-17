@@ -2,6 +2,7 @@ use crate::common::transaction_information::OperationType;
 use crate::storage::access::TransactionId;
 
 use std::cell::UnsafeCell;
+use std::fmt;
 
 unsafe impl Sync for VersionHistory {}
 
@@ -54,5 +55,11 @@ impl VersionHistory {
 impl Version {
     pub fn new(tid: TransactionId, optype: OperationType, state: TransactionState) -> Self {
         Self { tid, optype, state }
+    }
+}
+
+impl fmt::Display for VersionHistory {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", &self.data.get())
     }
 }

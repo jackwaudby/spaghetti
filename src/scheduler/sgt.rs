@@ -664,7 +664,10 @@ impl<'a> SerializationGraph<'a> {
         );
 
         if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
-            panic!("{:?}", table.get_version_history(offset)); // Assert: never write to an uncommitted value.
+            panic!(
+                "Attempting to write over uncommitted value: {:?}",
+                table.get_version_history(offset)
+            ); // Assert: never write to an uncommitted value.
         }
 
         lsn.store(prv + 1, Ordering::Release); // update lsn, giving next operation access.
