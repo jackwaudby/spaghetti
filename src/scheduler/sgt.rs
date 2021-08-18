@@ -224,9 +224,19 @@ impl SerializationGraph {
 
         let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
+
         let id = ptr as usize; // get id
+
         unsafe { (*ptr).set_id(id) }; // set id on node
         SerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
+
+        let this = unsafe { &*self.get_transaction() };
+
+        assert_eq!(this.is_aborted(), false);
+        assert_eq!(this.is_committed(), false);
+        assert_eq!(this.is_complete(), false);
+        assert_eq!(this.is_cleaned(), false);
+        assert_eq!(this.is_checked(), false);
 
         (id, thread_id, thread_ctr)
     }
@@ -249,6 +259,13 @@ impl SerializationGraph {
         };
 
         let this = unsafe { &*self.get_transaction() };
+
+        assert_eq!(this.is_aborted(), false);
+        assert_eq!(this.is_committed(), false);
+        assert_eq!(this.is_complete(), false);
+        assert_eq!(this.is_cleaned(), false);
+        assert_eq!(this.is_checked(), false);
+
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
         assert_eq!(thread_id as usize, this.thread_id);
 
@@ -333,6 +350,13 @@ impl SerializationGraph {
         };
 
         let this = self.get_transaction();
+
+        let node = unsafe { &*self.get_transaction() };
+        assert_eq!(node.is_aborted(), false);
+        assert_eq!(node.is_committed(), false);
+        assert_eq!(node.is_complete(), false);
+        assert_eq!(node.is_cleaned(), false);
+        assert_eq!(node.is_checked(), false);
 
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
         assert_eq!(thread_id as usize, unsafe { (*this).thread_id });
@@ -525,7 +549,7 @@ impl SerializationGraph {
             break;
         }
 
-        this.set_complete();
+        // this.set_complete();-
 
         if !this.is_committed() && !this.is_aborted() {
             panic!("should have aborted or committed");
@@ -554,7 +578,7 @@ impl SerializationGraph {
         this.set_aborted();
         self.cleanup(database);
         self.tidyup(meta, database, false);
-        this.set_complete();
+        // this.set_complete();
 
         //        debug!("aborted");
         NonFatalError::NonSerializable // TODO: return the why
