@@ -499,7 +499,6 @@ impl SerializationGraph {
         lsn.store(prv + 1, Ordering::Release); // update lsn, giving next operation access.
         self.record(OperationType::Write, table_id, column_id, offset, prv); // record operation
 
-        //        debug!("write succeeded");
         Ok(())
     }
 
@@ -545,13 +544,10 @@ impl SerializationGraph {
             break;
         }
 
-        this.set_complete();
-
         if !this.is_committed() && !this.is_aborted() {
             panic!("should have aborted or committed");
         }
 
-        //        debug!("committed");
         Ok(())
     }
 
@@ -574,7 +570,6 @@ impl SerializationGraph {
         this.set_aborted();
         self.cleanup(database);
         self.tidyup(meta, database, false);
-        this.set_complete();
 
         //        debug!("aborted");
         NonFatalError::NonSerializable // TODO: return the why
