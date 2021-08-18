@@ -1,3 +1,4 @@
+use crate::common::error::NonFatalError;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -183,14 +184,17 @@ impl RwNode {
     }
 
     /// Remove an edge from this node's incoming edge set.
-    pub fn remove_incoming(&self, from: &Edge) {
+    pub fn remove_incoming(&self, from: &Edge) -> Result<(), NonFatalError> {
         // Assert: should not be attempting to remove an incoming edge from a transaction that has terminated.
-        assert!(
-            !self.is_complete(),
-            "attempting to remove incoming from {} to {}",
-            from,
-            self
-        );
+        if self.is_complete() {
+            return Err(NonFatalError::NonSerializable);
+        }
+        // assert!(
+        //     !self.is_complete(),
+        //     "attempting to remove incoming from {} to {}",
+        //     from,
+        //     self
+        // );
 
         // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.
         let incoming = unsafe { self.incoming.get().as_ref() };
@@ -206,6 +210,8 @@ impl RwNode {
             },
             None => panic!("check unsafe"),
         }
+
+        Ok(())
     }
 
     /// Insert an outgoing edge from a node.

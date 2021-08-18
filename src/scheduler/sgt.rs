@@ -161,7 +161,9 @@ impl SerializationGraph {
                     // If active then the node will not be cleaned and edge must be removed.
                     // Else, the node is cleaned and must have aborted.
                     if !that.is_cleaned() {
-                        that.remove_incoming(&Edge::ReadWrite(this_id)); // remove incoming from this node
+                        if let Err(_) = that.remove_incoming(&Edge::ReadWrite(this_id)) {
+                            panic!("attempting to remove incoming from {} to {}", this, that);
+                        }
                     }
 
                     drop(that_rlock); // Release read lock.
@@ -178,7 +180,9 @@ impl SerializationGraph {
                     } else {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteWrite(this_id));
+                            if let Err(_) = that.remove_incoming(&Edge::WriteWrite(this_id)) {
+                                panic!("attempting to remove incoming from {} to {}", this, that);
+                            }
                         }
                         drop(that_rlock);
                     }
@@ -195,7 +199,9 @@ impl SerializationGraph {
                     } else {
                         let that_rlock = that.read(); // get read lock on outgoing edge
                         if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteRead(this_id));
+                            if let Err(_) = that.remove_incoming(&Edge::WriteRead(this_id)) {
+                                panic!("attempting to remove incoming from {} to {}", this, that);
+                            }
                         }
                         drop(that_rlock);
                     }
