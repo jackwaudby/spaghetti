@@ -6,32 +6,32 @@ use std::cell::UnsafeCell;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub fn from_usize<'a>(address: usize) -> &'a RwNode {
-    // Safety: finding an address in some access history implies the corresponding node is either:
-    // (i) pinned on another thread, so it is save to give out reference to it.
-    // (ii) scheduled for deletion by another thread, again we can safely give out a reference, as it won't be destroyed
-    // until after this thread is unpinned.
-    unsafe { &*(address as *const RwNode) }
-}
+// pub fn from_usize<'a>(address: usize) -> &'a RwNode {
+//     // Safety: finding an address in some access history implies the corresponding node is either:
+//     // (i) pinned on another thread, so it is save to give out reference to it.
+//     // (ii) scheduled for deletion by another thread, again we can safely give out a reference, as it won't be destroyed
+//     // until after this thread is unpinned.
+//     unsafe { &*(address as *const RwNode) }
+// }
 
-pub fn to_usize(node: Box<RwNode>) -> usize {
-    let raw: *mut RwNode = Box::into_raw(node);
-    raw as usize
-}
+// pub fn to_usize(node: Box<RwNode>) -> usize {
+//     let raw: *mut RwNode = Box::into_raw(node);
+//     raw as usize
+// }
 
-pub fn to_box(address: usize) -> Box<RwNode> {
-    // Safety: a node is owned by a single thread, so this method is only called once in order to pass the node to the
-    // epoch based garbage collector.
-    unsafe {
-        let raw = address as *mut RwNode;
-        Box::from_raw(raw)
-    }
-}
+// pub fn to_box(address: usize) -> Box<RwNode> {
+//     // Safety: a node is owned by a single thread, so this method is only called once in order to pass the node to the
+//     // epoch based garbage collector.
+//     unsafe {
+//         let raw = address as *mut RwNode;
+//         Box::from_raw(raw)
+//     }
+// }
 
-pub fn ref_to_usize<'a>(node: &'a RwNode) -> usize {
-    let ptr: *const RwNode = node;
-    ptr as usize
-}
+// pub fn ref_to_usize<'a>(node: &'a RwNode) -> usize {
+//     let ptr: *const RwNode = node;
+//     ptr as usize
+// }
 
 pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 
@@ -369,46 +369,46 @@ impl RwNode {
         res
     }
 
-    pub fn depth_first_search(&self, incoming: bool) -> FxHashSet<usize> {
-        let mut visited = FxHashSet::default(); // nodes that have been visited
-        let mut stack = Vec::new(); // nodes left to visit
+    // pub fn depth_first_search(&self, incoming: bool) -> FxHashSet<usize> {
+    //     let mut visited = FxHashSet::default(); // nodes that have been visited
+    //     let mut stack = Vec::new(); // nodes left to visit
 
-        let edges;
-        if incoming {
-            edges = self.get_incoming(); // start nodes to visit
-        } else {
-            edges = self.get_outgoing(); // start nodes to visit
-        }
+    //     let edges;
+    //     if incoming {
+    //         edges = self.get_incoming(); // start nodes to visit
+    //     } else {
+    //         edges = self.get_outgoing(); // start nodes to visit
+    //     }
 
-        let mut inc = edges.into_iter().collect();
-        stack.append(&mut inc); // push to stack
+    //     let mut inc = edges.into_iter().collect();
+    //     stack.append(&mut inc); // push to stack
 
-        while let Some(edge) = stack.pop() {
-            let current = match edge {
-                Edge::ReadWrite(node) => node,
-                Edge::WriteWrite(node) => node,
-                Edge::WriteRead(node) => node,
-            };
+    //     while let Some(edge) = stack.pop() {
+    //         let current = match edge {
+    //             Edge::ReadWrite(node) => node,
+    //             Edge::WriteWrite(node) => node,
+    //             Edge::WriteRead(node) => node,
+    //         };
 
-            if visited.contains(&current) {
-                continue; // already visited
-            }
+    //         if visited.contains(&current) {
+    //             continue; // already visited
+    //         }
 
-            visited.insert(current);
+    //         visited.insert(current);
 
-            let current_ref = from_usize(current);
-            let edges;
-            if incoming {
-                edges = current_ref.get_incoming(); // start nodes to visit
-            } else {
-                edges = current_ref.get_outgoing(); // start nodes to visit
-            }
+    //         let current_ref = from_usize(current);
+    //         let edges;
+    //         if incoming {
+    //             edges = current_ref.get_incoming(); // start nodes to visit
+    //         } else {
+    //             edges = current_ref.get_outgoing(); // start nodes to visit
+    //         }
 
-            let mut inc = edges.into_iter().collect();
-            stack.append(&mut inc);
-        }
-        visited
-    }
+    //         let mut inc = edges.into_iter().collect();
+    //         stack.append(&mut inc);
+    //     }
+    //     visited
+    // }
 }
 
 impl fmt::Display for Edge {
@@ -425,12 +425,12 @@ impl fmt::Display for Edge {
 
 impl fmt::Display for RwNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let mut nodes_in = self.depth_first_search(true); // nodes found from incoming edges
-                                                          //  let mut nodes_out = self.depth_first_search(false); // nodes found from incoming edges
+        // let mut nodes_in = self.depth_first_search(true); // nodes found from incoming edges
+        //  let mut nodes_out = self.depth_first_search(false); // nodes found from incoming edges
 
         let ptr: *const RwNode = self;
         let id = ptr as usize;
-        nodes_in.remove(&id);
+        // nodes_in.remove(&id);
         //     nodes_out.remove(&id);
 
         //     let nodes: FxHashSet<_> = nodes_in.union(&nodes_out).collect();
@@ -456,31 +456,31 @@ impl fmt::Display for RwNode {
         writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
         writeln!(f).unwrap();
 
-        for node in nodes_in.iter() {
-            let n = from_usize(*node);
+        // for node in nodes_in.iter() {
+        //     let n = from_usize(*node);
 
-            writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
-            writeln!(f).unwrap();
-            writeln!(f, "thread id: {:?}", n.thread_id).unwrap();
-            writeln!(f, "thread ctr: {:?}", n.thread_ctr).unwrap();
-            writeln!(f, "expected ref id: {:?}", unsafe {
-                n.node_id.get().as_ref().unwrap()
-            })
-            .unwrap();
-            writeln!(f, "actual ref id: {}", node).unwrap();
+        //     writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
+        //     writeln!(f).unwrap();
+        //     writeln!(f, "thread id: {:?}", n.thread_id).unwrap();
+        //     writeln!(f, "thread ctr: {:?}", n.thread_ctr).unwrap();
+        //     writeln!(f, "expected ref id: {:?}", unsafe {
+        //         n.node_id.get().as_ref().unwrap()
+        //     })
+        //     .unwrap();
+        //     writeln!(f, "actual ref id: {}", node).unwrap();
 
-            writeln!(f, "incoming: {}", n.print_edges(true)).unwrap();
-            writeln!(f, "outgoing: {}", n.print_edges(false)).unwrap();
+        //     writeln!(f, "incoming: {}", n.print_edges(true)).unwrap();
+        //     writeln!(f, "outgoing: {}", n.print_edges(false)).unwrap();
 
-            writeln!(
-                f,
-                "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}, complete: {:?}",
-                n.committed, n.cascading_abort, n.aborted, n.cleaned, n.checked, n.complete
-            )
-            .unwrap();
-            writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
-            writeln!(f).unwrap();
-        }
+        //     writeln!(
+        //         f,
+        //         "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}, complete: {:?}",
+        //         n.committed, n.cascading_abort, n.aborted, n.cleaned, n.checked, n.complete
+        //     )
+        //     .unwrap();
+        //     writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
+        //     writeln!(f).unwrap();
+        // }
 
         Ok(())
     }
