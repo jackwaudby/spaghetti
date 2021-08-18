@@ -130,7 +130,7 @@ impl SerializationGraph {
 
     /// Cleanup node after committed or aborted.
     #[instrument(level = "debug", skip(self))]
-    pub fn cleanup(&self) {
+    pub fn cleanup(&self, db: &Database) {
         let this = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
@@ -162,7 +162,10 @@ impl SerializationGraph {
                     // Else, the node is cleaned and must have aborted.
                     if !that.is_cleaned() {
                         if let Err(_) = that.remove_incoming(&Edge::ReadWrite(this_id)) {
-                            panic!("attempting to remove incoming from {} to {}", this, that);
+                            panic!(
+                                "attempting to remove incoming from {} to {}\n db: {}",
+                                this, that, db
+                            );
                         }
                     }
 
@@ -181,7 +184,10 @@ impl SerializationGraph {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
                             if let Err(_) = that.remove_incoming(&Edge::WriteWrite(this_id)) {
-                                panic!("attempting to remove incoming from {} to {}", this, that);
+                                panic!(
+                                    "attempting to remove incoming from {} to {}\n db: {}",
+                                    this, that, db
+                                );
                             }
                         }
                         drop(that_rlock);
@@ -200,7 +206,10 @@ impl SerializationGraph {
                         let that_rlock = that.read(); // get read lock on outgoing edge
                         if !that.is_cleaned() {
                             if let Err(_) = that.remove_incoming(&Edge::WriteRead(this_id)) {
-                                panic!("attempting to remove incoming from {} to {}", this, that);
+                                panic!(
+                                    "attempting to remove incoming from {} to {}\n db: {}",
+                                    this, that, db
+                                );
                             }
                         }
                         drop(that_rlock);
@@ -754,7 +763,7 @@ impl SerializationGraph {
             // no incoming edges and no cycle so commit
             self.tidyup(meta, database, true);
             this.set_committed();
-            self.cleanup();
+            self.cleanup(database);
 
             break;
         }
@@ -786,7 +795,7 @@ impl SerializationGraph {
         assert_eq!(thread_id as usize, this.thread_id);
 
         this.set_aborted();
-        self.cleanup();
+        self.cleanup(database);
         self.tidyup(meta, database, false);
         this.set_complete();
 
