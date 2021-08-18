@@ -4,7 +4,6 @@ use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::sgt::node::{Edge, Node};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
-use crate::storage::version::TransactionState;
 use crate::storage::Database;
 
 use crossbeam_epoch as epoch;
@@ -82,12 +81,6 @@ impl SerializationGraph {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
-        assert_eq!(this_ref.is_aborted(), false);
-        assert_eq!(this_ref.is_committed(), false);
-        assert_eq!(this_ref.is_complete(), false);
-        assert_eq!(this_ref.is_cleaned(), false);
-        assert_eq!(this_ref.is_checked(), false);
-
         // prepare
         let (from_id, rw, out_edge) = match from {
             Edge::ReadWrite(from_id) => (from_id, true, Edge::ReadWrite(this_id)),
@@ -133,7 +126,6 @@ impl SerializationGraph {
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
 
-        // let start_id = node::ref_to_usize(this);
         let mut visited = self
             .visited
             .get_or(|| RefCell::new(FxHashSet::default()))
@@ -169,7 +161,6 @@ impl SerializationGraph {
 
             let current = unsafe { &*(current as *const Node) };
 
-            // let current = node::from_usize(current);
             let rlock = current.read();
             let val1 =
                 !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
@@ -215,28 +206,19 @@ impl SerializationGraph {
 
     pub fn create_node(&self) -> (usize, usize, usize) {
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+
         let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
+
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new());
 
         let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
-
         let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
-
         let id = ptr as usize; // get id
-
         unsafe { (*ptr).set_id(id) }; // set id on node
         SerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
-
-        let this = unsafe { &*self.get_transaction() };
-
-        // assert_eq!(this.is_aborted(), false);
-        // assert_eq!(this.is_committed(), false);
-        // assert_eq!(this.is_complete(), false);
-        // assert_eq!(this.is_cleaned(), false);
-        // assert_eq!(this.is_checked(), false);
 
         (id, thread_id, thread_ctr)
     }
@@ -259,15 +241,6 @@ impl SerializationGraph {
         };
 
         let this = unsafe { &*self.get_transaction() };
-
-        // assert_eq!(this.is_aborted(), false);
-        // assert_eq!(this.is_committed(), false);
-        // assert_eq!(this.is_complete(), false);
-        // assert_eq!(this.is_cleaned(), false);
-        // assert_eq!(this.is_checked(), false);
-
-        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-        assert_eq!(thread_id as usize, this.thread_id);
 
         if this.is_cascading_abort() {
             self.abort(meta, database);
@@ -325,7 +298,6 @@ impl SerializationGraph {
 
         self.record(OperationType::Read, table_id, column_id, offset, prv); // record operation
 
-        //        debug!("Read Succeeded");
         Ok(vals)
     }
 
@@ -348,18 +320,6 @@ impl SerializationGraph {
             }
             _ => panic!("unexpected txn id"),
         };
-
-        let this = self.get_transaction();
-
-        let node = unsafe { &*self.get_transaction() };
-        // assert_eq!(node.is_aborted(), false);
-        // assert_eq!(node.is_committed(), false);
-        // assert_eq!(node.is_complete(), false);
-        // assert_eq!(node.is_cleaned(), false);
-        // assert_eq!(node.is_checked(), false);
-
-        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-        assert_eq!(thread_id as usize, unsafe { (*this).thread_id });
 
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
@@ -393,8 +353,6 @@ impl SerializationGraph {
                             if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
-                                //  let from = node::from_usize(*from_addr); // convert to ptr
-
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
@@ -421,7 +379,6 @@ impl SerializationGraph {
             // (i) transaction is in a cycle (cycle = T)
             // abort transaction
             if cyclic {
-                //                debug!("write failed: cycle found");
                 rw_table.erase(prv); // remove from rw table
                 self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
@@ -433,14 +390,13 @@ impl SerializationGraph {
             if wait {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                                                       //                debug!("uncommitted write: retry operation");
+
                 continue;
             }
 
             // (iii) no w-w conflicts -> clean record (both F)
             // check for cascading abort
             if self.needs_abort() {
-                //                debug!("write failed: cascading abort");
                 rw_table.erase(prv); // remove from rw table
                 self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
@@ -482,12 +438,6 @@ impl SerializationGraph {
             return Err(SerializationGraphError::CycleFound.into());
         }
 
-        // table.get_version_history(offset).add_version(
-        //     meta.clone(),
-        //     OperationType::Write,
-        //     TransactionState::Active,
-        // );
-
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
                 "{} attempting to write over uncommitted value on ({},{},{}): {}",
@@ -516,8 +466,6 @@ impl SerializationGraph {
         };
 
         let this = unsafe { &*self.get_transaction() };
-        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-        assert_eq!(thread_id as usize, this.thread_id);
 
         loop {
             if this.is_cascading_abort() || this.is_aborted() {
@@ -547,10 +495,6 @@ impl SerializationGraph {
             break;
         }
 
-        if !this.is_committed() && !this.is_aborted() {
-            panic!("should have aborted or committed");
-        }
-
         Ok(())
     }
 
@@ -563,18 +507,12 @@ impl SerializationGraph {
             }
             _ => panic!("unexpected txn id"),
         };
-        //        debug!("begin abort");
 
         let this = unsafe { &*self.get_transaction() };
-
-        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-        assert_eq!(thread_id as usize, this.thread_id);
-
         this.set_aborted();
         self.cleanup(database);
         self.tidyup(meta, database, false);
 
-        //        debug!("aborted");
         NonFatalError::NonSerializable // TODO: return the why
     }
 
@@ -680,7 +618,6 @@ impl SerializationGraph {
             let table = database.get_table(table_id);
             let rwtable = table.get_rwtable(offset);
             let tuple = table.get_tuple(column_id, offset);
-            let vh = table.get_version_history(offset);
 
             match op_type {
                 OperationType::Read => {
@@ -689,17 +626,14 @@ impl SerializationGraph {
                 OperationType::Write => {
                     if commit {
                         tuple.get().commit();
-                        // vh.update_state(meta.clone(), TransactionState::Committed);
                     } else {
                         tuple.get().revert();
-                        // vh.update_state(meta.clone(), TransactionState::Aborted);
                     }
 
                     rwtable.erase(prv);
                 }
             }
         }
-        //        debug!("changes committed/reverted: {}", commit);
     }
 }
 

@@ -98,12 +98,6 @@ impl Node {
 
     /// Insert an incoming edge: (from) --> (this)
     pub fn insert_incoming(&self, from: Edge) {
-        assert_eq!(self.is_aborted(), false);
-        assert_eq!(self.is_committed(), false);
-        assert_eq!(self.is_complete(), false);
-        assert_eq!(self.is_cleaned(), false);
-        assert_eq!(self.is_checked(), false);
-
         let incoming_edges = unsafe { self.incoming.get().as_ref() };
 
         match incoming_edges {

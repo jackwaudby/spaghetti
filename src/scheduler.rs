@@ -42,7 +42,7 @@ pub enum TransactionType {
 #[derive(Debug)]
 pub enum Scheduler<'a> {
     SerializationGraph(SerializationGraph),
-    MixedSerializationGraph(MixedSerializationGraph<'a>),
+    MixedSerializationGraph(MixedSerializationGraph),
     WaitHit(WaitHit),
     OptimisedWaitHit(OptimisedWaitHit<'a>),
     OptimisedWaitHitTransactionTypes(OptimisedWaitHitTransactionTypes<'a>),
