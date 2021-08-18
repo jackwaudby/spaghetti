@@ -82,6 +82,12 @@ impl SerializationGraph {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
+        assert_eq!(this_ref.is_aborted(), false);
+        assert_eq!(this_ref.is_committed(), false);
+        assert_eq!(this_ref.is_complete(), false);
+        assert_eq!(this_ref.is_cleaned(), false);
+        assert_eq!(this_ref.is_checked(), false);
+
         // prepare
         let (from_id, rw, out_edge) = match from {
             Edge::ReadWrite(from_id) => (from_id, true, Edge::ReadWrite(this_id)),
