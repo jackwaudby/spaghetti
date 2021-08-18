@@ -229,19 +229,21 @@ impl SerializationGraph {
         // recycled.push(outgoing);
 
         let this = self.get_transaction();
-        let boxed_node = unsafe { Box::from_raw(this) };
+        // let boxed_node = unsafe { Box::from_raw(this) };
         // let this_ptr: *const RwNode = this;
         // let this_usize = this_ptr as usize;
         // let boxed_node = node::to_box(this_usize);
 
-        if boxed_node.is_cascading_abort() && boxed_node.is_committed() {
-            panic!("transaction should have aborted");
-        }
+        // if boxed_node.is_cascading_abort() && boxed_node.is_committed() {
+        //     panic!("transaction should have aborted");
+        // }
 
         let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
 
         SerializationGraph::EG.with(|x| unsafe {
             x.borrow().as_ref().unwrap().defer_unchecked(move || {
+                let boxed_node = Box::from_raw(this);
+
                 drop(boxed_node);
             });
 
