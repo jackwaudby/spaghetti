@@ -695,10 +695,10 @@ impl SerializationGraph {
                 OperationType::Write => {
                     if commit {
                         tuple.get().commit();
-                        vh.update_state(meta.clone(), TransactionState::Committed);
+                        // vh.update_state(meta.clone(), TransactionState::Committed);
                     } else {
                         tuple.get().revert();
-                        vh.update_state(meta.clone(), TransactionState::Aborted);
+                        // vh.update_state(meta.clone(), TransactionState::Aborted);
                     }
 
                     rwtable.erase(prv);
