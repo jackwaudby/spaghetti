@@ -396,7 +396,7 @@ impl SerializationGraph {
                                 //  let from = node::from_usize(*from_addr); // convert to ptr
 
                                 // check if write access is uncommitted
-                                if !from.is_complete() {
+                                if !from.is_committed() {
                                     // if not in cycle then wait
                                     if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
                                         cyclic = true;
