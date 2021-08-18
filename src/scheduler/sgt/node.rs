@@ -25,12 +25,12 @@ pub struct Node {
     node_id: UnsafeCell<Option<usize>>,
     incoming: UnsafeCell<Option<EdgeSet>>,
     outgoing: UnsafeCell<Option<EdgeSet>>,
+    complete: AtomicBool,
     committed: AtomicBool,
     cascading: AtomicBool,
     aborted: AtomicBool,
     cleaned: AtomicBool,
     checked: AtomicBool,
-    complete: AtomicBool,
     lock: RwLock<u32>,
 }
 
@@ -98,13 +98,11 @@ impl Node {
 
     /// Insert an incoming edge: (from) --> (this)
     pub fn insert_incoming(&self, from: Edge) {
-        assert!(
-            !self.is_aborted()
-                && !self.is_committed()
-                && !self.is_complete()
-                && !self.is_cleaned()
-                && !self.is_checked()
-        ); // Assert: transaction must be in execution phase
+        assert_eq!(this_ref.is_aborted(), false);
+        assert_eq!(this_ref.is_committed(), false);
+        assert_eq!(this_ref.is_complete(), false);
+        assert_eq!(this_ref.is_cleaned(), false);
+        assert_eq!(this_ref.is_checked(), false);
 
         let incoming_edges = unsafe { self.incoming.get().as_ref() };
 
