@@ -407,6 +407,9 @@ impl SerializationGraph {
                                     break;
                                 } else {
                                     // from is complete
+                                    if table.get_tuple(column_id, offset).get().is_dirty() {
+                                        wait = true; // retry operation TODO: hack
+                                    }
                                 }
                             }
                         }
