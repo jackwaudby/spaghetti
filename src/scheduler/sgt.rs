@@ -232,11 +232,11 @@ impl SerializationGraph {
 
         let this = unsafe { &*self.get_transaction() };
 
-        assert_eq!(this.is_aborted(), false);
-        assert_eq!(this.is_committed(), false);
-        assert_eq!(this.is_complete(), false);
-        assert_eq!(this.is_cleaned(), false);
-        assert_eq!(this.is_checked(), false);
+        // assert_eq!(this.is_aborted(), false);
+        // assert_eq!(this.is_committed(), false);
+        // assert_eq!(this.is_complete(), false);
+        // assert_eq!(this.is_cleaned(), false);
+        // assert_eq!(this.is_checked(), false);
 
         (id, thread_id, thread_ctr)
     }
@@ -260,11 +260,11 @@ impl SerializationGraph {
 
         let this = unsafe { &*self.get_transaction() };
 
-        assert_eq!(this.is_aborted(), false);
-        assert_eq!(this.is_committed(), false);
-        assert_eq!(this.is_complete(), false);
-        assert_eq!(this.is_cleaned(), false);
-        assert_eq!(this.is_checked(), false);
+        // assert_eq!(this.is_aborted(), false);
+        // assert_eq!(this.is_committed(), false);
+        // assert_eq!(this.is_complete(), false);
+        // assert_eq!(this.is_cleaned(), false);
+        // assert_eq!(this.is_checked(), false);
 
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
         assert_eq!(thread_id as usize, this.thread_id);
@@ -352,11 +352,11 @@ impl SerializationGraph {
         let this = self.get_transaction();
 
         let node = unsafe { &*self.get_transaction() };
-        assert_eq!(node.is_aborted(), false);
-        assert_eq!(node.is_committed(), false);
-        assert_eq!(node.is_complete(), false);
-        assert_eq!(node.is_cleaned(), false);
-        assert_eq!(node.is_checked(), false);
+        // assert_eq!(node.is_aborted(), false);
+        // assert_eq!(node.is_committed(), false);
+        // assert_eq!(node.is_complete(), false);
+        // assert_eq!(node.is_cleaned(), false);
+        // assert_eq!(node.is_checked(), false);
 
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
         assert_eq!(thread_id as usize, unsafe { (*this).thread_id });
@@ -512,7 +512,6 @@ impl SerializationGraph {
             }
             _ => panic!("unexpected txn id"),
         };
-        //        debug!("begin commit");
 
         let this = unsafe { &*self.get_transaction() };
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
@@ -520,7 +519,6 @@ impl SerializationGraph {
 
         loop {
             if this.is_cascading_abort() || this.is_aborted() {
-                //                debug!("commit failed: cascading abort");
                 self.abort(meta, database);
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
@@ -534,12 +532,10 @@ impl SerializationGraph {
                 this.set_checked(false); // if incoming then flip back to unchecked
                 let is_cycle = self.cycle_check(); // cycle check
                 if is_cycle {
-                    //                    debug!("commit failed: cycle found");
                     this.set_aborted(); // cycle so abort (this)
                 }
                 continue;
             }
-            //            debug!("commit successful: no incoming edges");
 
             // no incoming edges and no cycle so commit
             self.tidyup(meta, database, true);
