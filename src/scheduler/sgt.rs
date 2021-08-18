@@ -479,11 +479,11 @@ impl SerializationGraph {
             return Err(SerializationGraphError::CycleFound.into());
         }
 
-        table.get_version_history(offset).add_version(
-            meta.clone(),
-            OperationType::Write,
-            TransactionState::Active,
-        );
+        // table.get_version_history(offset).add_version(
+        //     meta.clone(),
+        //     OperationType::Write,
+        //     TransactionState::Active,
+        // );
 
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
