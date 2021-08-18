@@ -1,8 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::sgt::error::SerializationGraphError;
-use crate::scheduler::sgt::node::EdgeSet;
-use crate::scheduler::sgt::node::{Edge, RwNode};
+use crate::scheduler::sgt::node::{Edge, Node};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::version::TransactionState;
@@ -25,7 +24,6 @@ pub mod error;
 #[derive(Debug)]
 pub struct SerializationGraph {
     txn_ctr: ThreadLocal<RefCell<usize>>,
-    recycled: ThreadLocal<RefCell<Vec<EdgeSet>>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
     stack: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
@@ -34,27 +32,24 @@ pub struct SerializationGraph {
 impl SerializationGraph {
     thread_local! {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
-        static NODE: RefCell<Option<*mut RwNode>> = RefCell::new(None);
+        static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
     }
 
-    /// Initialise a serialization graph scheduler.
     pub fn new(size: usize) -> Self {
         info!("Initialise serialization graph with {} thread(s)", size);
 
         Self {
             txn_ctr: ThreadLocal::new(),
-            recycled: ThreadLocal::new(),
             visited: ThreadLocal::new(),
             stack: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
         }
     }
 
-    pub fn get_transaction(&self) -> *mut RwNode {
+    pub fn get_transaction(&self) -> *mut Node {
         SerializationGraph::NODE.with(|x| *x.borrow().as_ref().unwrap())
     }
 
-    /// Returns the operations successfully executed by the transaction currently executing on this thread.
     pub fn get_operations(&self) -> Vec<Operation> {
         self.txn_info
             .get()
@@ -65,7 +60,6 @@ impl SerializationGraph {
             .get()
     }
 
-    /// Record an operation.
     pub fn record(
         &self,
         op_type: OperationType,
@@ -83,312 +77,49 @@ impl SerializationGraph {
             .add(op_type, table_id, column_id, offset, prv);
     }
 
-    /// Create a node in the graph.
-    pub fn create_node(&self) -> (usize, usize, usize) {
-        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-        let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
-        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
-            Some(TransactionInformation::new());
-
-        let mut _recycled = self.recycled.get_or(|| RefCell::new(vec![])).borrow_mut(); // TODO
-
-        let incoming;
-        let outgoing;
-        // if recycled.is_empty() {
-        incoming = Mutex::new(FxHashSet::default());
-        outgoing = Mutex::new(FxHashSet::default());
-        // } else {
-        //     incoming = recycled.pop().unwrap();
-        //     outgoing = recycled.pop().unwrap();
-        // }
-
-        let node = Box::new(RwNode::new_with_sets(
-            thread_id, thread_ctr, incoming, outgoing,
-        ));
-
-        let ptr: *mut RwNode = Box::into_raw(node);
-        let id = ptr as usize;
-
-        // let id = node::to_usize(node);
-        //  let nref = node::from_usize(id);
-
-        unsafe { (*ptr).set_id(id) };
-
-        SerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr));
-
-        // nref.set_id(id);
-
-        // assert!(!nref.is_complete());
-
-        // self.this_node
-        //     .get_or(|| RefCell::new(None))
-        //     .borrow_mut()
-        //     .replace(ptr); // replace local node reference
-
-        (id, thread_id, thread_ctr)
-    }
-
-    /// Cleanup node after committed or aborted.
-    #[instrument(level = "debug", skip(self))]
-    pub fn cleanup(&self, db: &Database) {
-        let this = unsafe { &*self.get_transaction() };
-        let this_id = self.get_transaction() as usize;
-
-        // Assumption: read/writes can still be found, thus, edges can still be detected.
-        // A node's cleaned flag acts as a barrier for edge insertion.
-        let this_wlock = this.write(); // get write lock
-        this.set_cleaned(); // set as cleaned
-        drop(this_wlock); // drop write lock
-
-        let outgoing = this.take_outgoing(); // remove edge sets
-        let incoming = this.take_incoming();
-
-        let mut g = outgoing.lock(); // lock on outgoing edge set
-
-        // let this_id = node::ref_to_usize(this); // node id
-        let outgoing_set = g.iter(); // iterator over outgoing edge set
-
-        for edge in outgoing_set {
-            match edge {
-                // (this) -[rw]-> (that)
-                Edge::ReadWrite(that_id) => {
-                    // Get read lock on outgoing node - prevents node from committing.
-
-                    let that = unsafe { &*(*that_id as *const RwNode) };
-
-                    let that_rlock = that.read();
-
-                    // If active then the node will not be cleaned and edge must be removed.
-                    // Else, the node is cleaned and must have aborted.
-                    if !that.is_cleaned() {
-                        if let Err(_) = that.remove_incoming(&Edge::ReadWrite(this_id)) {
-                            panic!(
-                                "attempting to remove incoming from {} to {}\n db: {}",
-                                this, that, db
-                            );
-                        }
-                    }
-
-                    drop(that_rlock); // Release read lock.
-                }
-                // (this) -[ww]-> (that)
-                Edge::WriteWrite(that_id) => {
-                    // Get read lock on outgoing node - prevents node from committing.
-                    let that = unsafe { &*(*that_id as *const RwNode) };
-
-                    // If this node aborted then the outgoing node must also abort.
-                    // Else, this node is committed.
-                    if this.is_aborted() {
-                        that.set_cascading_abort();
-                    } else {
-                        let that_rlock = that.read();
-                        if !that.is_cleaned() {
-                            if let Err(_) = that.remove_incoming(&Edge::WriteWrite(this_id)) {
-                                panic!(
-                                    "attempting to remove incoming from {} to {}\n db: {}",
-                                    this, that, db
-                                );
-                            }
-                        }
-                        drop(that_rlock);
-                    }
-                }
-                Edge::WriteRead(that) => {
-                    let that = unsafe { &*(*that as *const RwNode) };
-
-                    // let that = node::from_usize(*that);
-                    if this.is_aborted() {
-                        if that.is_committed() {
-                            panic!("outgoing incorrectly committed");
-                        }
-                        that.set_cascading_abort(); // if this node is aborted and not rw; cascade abort on that node
-                    } else {
-                        let that_rlock = that.read(); // get read lock on outgoing edge
-                        if !that.is_cleaned() {
-                            if let Err(_) = that.remove_incoming(&Edge::WriteRead(this_id)) {
-                                panic!(
-                                    "attempting to remove incoming from {} to {}\n db: {}",
-                                    this, that, db
-                                );
-                            }
-                        }
-                        drop(that_rlock);
-                    }
-                }
-            }
-        }
-        g.clear();
-        drop(g);
-
-        if this.is_aborted() {
-            incoming.lock().clear();
-        }
-
-        let mut recycled = self.recycled.get_or(|| RefCell::new(vec![])).borrow_mut();
-        recycled.push(incoming);
-        // recycled.push(outgoing);
-
-        let this = self.get_transaction();
-        // let boxed_node = unsafe { Box::from_raw(this) };
-        // let this_ptr: *const RwNode = this;
-        // let this_usize = this_ptr as usize;
-        // let boxed_node = node::to_box(this_usize);
-
-        // if boxed_node.is_cascading_abort() && boxed_node.is_committed() {
-        //     panic!("transaction should have aborted");
-        // }
-
-        let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
-
-        SerializationGraph::EG.with(|x| unsafe {
-            x.borrow().as_ref().unwrap().defer_unchecked(move || {
-                let boxed_node = Box::from_raw(this);
-
-                drop(boxed_node);
-            });
-
-            if cnt % 64 == 0 {
-                x.borrow().as_ref().unwrap().flush();
-            }
-
-            let guard = x.borrow_mut().take();
-            drop(guard)
-        });
-    }
-
-    /// Insert an incoming edge into (this) node from (from) node, followed by a cycle check.
+    /// Insert an edge: (from) --> (this)
     pub fn insert_and_check(&self, from: Edge) -> bool {
         let this_ref = unsafe { &*self.get_transaction() };
-
         let this_id = self.get_transaction() as usize;
 
-        // let this_id = node::ref_to_usize(this_ref); // id of this node
+        // prepare
+        let (from_id, rw, out_edge) = match from {
+            Edge::ReadWrite(from_id) => (from_id, true, Edge::ReadWrite(this_id)),
+            Edge::WriteRead(from_id) => (from_id, false, Edge::WriteRead(this_id)),
+            Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
+        };
 
-        match from {
-            Edge::ReadWrite(from_id) => {
-                if this_id == from_id {
-                    return true; // check for self edge
-                }
+        if this_id == from_id {
+            return true; // check for (this) --> (this)
+        }
 
-                let exists = this_ref.incoming_edge_exists(&from); // check if (from) --> (this) already exists
-                loop {
-                    if exists {
-                        return true; // don't add same edge twice
-                    } else {
-                        let from_ref = unsafe { &*(from_id as *const RwNode) };
+        loop {
+            if this_ref.incoming_edge_exists(&from) {
+                return true; // check if (from) --> (this) already exists
+            };
 
-                        let from_rlock = from_ref.read(); // get shared lock on (from)
-
-                        if from_ref.is_cleaned() {
-                            drop(from_rlock);
-                            return true; // if from is cleaned then it has terminated do not insert edge
-                        }
-
-                        if from_ref.is_checked() {
-                            drop(from_rlock);
-                            continue; // if (from) checked in process of terminating so try again
-                        }
-
-                        let this_rlock = this_ref.read(); // get shared lock on (this)
-
-                        this_ref.insert_incoming(Edge::ReadWrite(from_id));
-                        from_ref.insert_outgoing(Edge::ReadWrite(this_id));
-                        drop(from_rlock);
-                        drop(this_rlock);
-
-                        let is_cycle = self.cycle_check(); // cycle check
-
-                        return !is_cycle;
-                    }
-                }
-            }
-            Edge::WriteWrite(from_id) => {
-                if this_id == from_id {
-                    return true; // check for self edge
-                }
-
-                let exists = this_ref.incoming_edge_exists(&from); // check if (from) --> (this) already exists
-                loop {
-                    if exists {
-                        return true; // don't add same edge twice
-                    } else {
-                        let from_ref = unsafe { &*(from_id as *const RwNode) };
-
-                        if from_ref.is_aborted() || from_ref.is_cascading_abort() {
-                            this_ref.set_cascading_abort();
-                            return false; // then cascadingly abort (this)
-                        }
-
-                        let from_rlock = from_ref.read(); // get shared lock on (from)
-
-                        if from_ref.is_cleaned() {
-                            drop(from_rlock);
-                            return true; // if from is cleaned then it has terminated do not insert edge
-                        }
-
-                        if from_ref.is_checked() {
-                            drop(from_rlock);
-                            continue; // if (from) checked in process of terminating so try again
-                        }
-
-                        let this_rlock = this_ref.read(); // get shared lock on (this)
-                        this_ref.insert_incoming(Edge::WriteWrite(from_id));
-                        from_ref.insert_outgoing(Edge::WriteWrite(this_id));
-
-                        drop(from_rlock);
-                        drop(this_rlock);
-
-                        let is_cycle = self.cycle_check(); // cycle check
-
-                        return !is_cycle;
-                    }
-                }
+            let from_ref = unsafe { &*(from_id as *const Node) };
+            if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
+                this_ref.set_cascading_abort();
+                return false; // cascadingly abort (this)
             }
 
-            Edge::WriteRead(from_id) => {
-                if this_id == from_id {
-                    return true; // check for self edge
-                }
-
-                let exists = this_ref.incoming_edge_exists(&from); // check if (from) --> (this) already exists
-                loop {
-                    if exists {
-                        return true; // don't add same edge twice
-                    } else {
-                        // let from_ref = node::from_usize(from_id);
-                        let from_ref = unsafe { &*(from_id as *const RwNode) };
-
-                        let from_rlock = from_ref.read(); // get shared lock on (from)
-
-                        if from_ref.is_aborted() || from_ref.is_cascading_abort() {
-                            this_ref.set_cascading_abort();
-                            drop(from_rlock);
-                            return false; // then cascadingly abort (this)
-                        }
-
-                        if from_ref.is_cleaned() {
-                            drop(from_rlock);
-                            return true; // if from is cleaned then it has terminated do not insert edge
-                        }
-
-                        if from_ref.is_checked() {
-                            drop(from_rlock);
-                            continue; // if (from) checked in process of terminating so try again
-                        }
-
-                        let this_rlock = this_ref.read(); // get shared lock on (this)
-                        this_ref.insert_incoming(Edge::WriteRead(from_id));
-                        from_ref.insert_outgoing(Edge::WriteRead(this_id));
-
-                        drop(from_rlock);
-                        drop(this_rlock);
-
-                        let is_cycle = self.cycle_check(); // cycle check
-
-                        return !is_cycle;
-                    }
-                }
+            let from_rlock = from_ref.read();
+            if from_ref.is_cleaned() {
+                drop(from_rlock);
+                return true; // if from is cleaned then it has terminated do not insert edge
             }
+
+            if from_ref.is_checked() {
+                drop(from_rlock);
+                continue; // if (from) checked in process of terminating so try again
+            }
+
+            from_ref.insert_outgoing(out_edge); // (from)
+            this_ref.insert_incoming(from); // (to)
+            drop(from_rlock);
+            let is_cycle = self.cycle_check(); // cycle check
+            return !is_cycle;
         }
     }
 
@@ -430,7 +161,7 @@ impl SerializationGraph {
 
             visited.insert(current);
 
-            let current = unsafe { &*(current as *const RwNode) };
+            let current = unsafe { &*(current as *const Node) };
 
             // let current = node::from_usize(current);
             let rlock = current.read();
@@ -474,6 +205,24 @@ impl SerializationGraph {
         debug!("Begin");
 
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
+    }
+
+    pub fn create_node(&self) -> (usize, usize, usize) {
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+        let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
+        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
+            Some(TransactionInformation::new());
+
+        let incoming = Mutex::new(FxHashSet::default());
+        let outgoing = Mutex::new(FxHashSet::default());
+
+        let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing)); // allocate node
+        let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
+        let id = ptr as usize; // get id
+        unsafe { (*ptr).set_id(id) }; // set id on node
+        SerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
+
+        (id, thread_id, thread_ctr)
     }
 
     /// Read operation.
@@ -612,7 +361,7 @@ impl SerializationGraph {
                         // W-W conflict
                         Access::Write(from) => {
                             if let TransactionId::SerializationGraph(from_addr, _, _) = from {
-                                let from = unsafe { &*(*from_addr as *const RwNode) };
+                                let from = unsafe { &*(*from_addr as *const Node) };
 
                                 //  let from = node::from_usize(*from_addr); // convert to ptr
 
@@ -751,7 +500,7 @@ impl SerializationGraph {
             drop(this_wlock);
 
             // no lock taken as only outgoing edges can be added from here
-            if this.is_incoming() {
+            if this.has_incoming() {
                 this.set_checked(false); // if incoming then flip back to unchecked
                 let is_cycle = self.cycle_check(); // cycle check
                 if is_cycle {
@@ -803,6 +552,91 @@ impl SerializationGraph {
 
         //        debug!("aborted");
         NonFatalError::NonSerializable // TODO: return the why
+    }
+
+    /// Cleanup node after committed or aborted.
+    #[instrument(level = "debug", skip(self))]
+    pub fn cleanup(&self, db: &Database) {
+        let this = unsafe { &*self.get_transaction() }; // shared reference to node
+        let this_id = self.get_transaction() as usize; // node id
+
+        // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)
+        let this_wlock = this.write();
+        this.set_cleaned(); // cleaned acts as a barrier for edge insertion.
+        drop(this_wlock);
+
+        // remove edge sets:
+        // - no incoming edges will be added as this node is terminating: (from) --> (this)
+        // - no outgoing edges will be added from this node due to cleaned flag: (this) --> (to)
+        let outgoing = this.take_outgoing();
+        let incoming = this.take_incoming();
+
+        let mut g = outgoing.lock(); // lock on outgoing edge set
+        let outgoing_set = g.iter(); // iterator over outgoing edge set
+
+        for edge in outgoing_set {
+            match edge {
+                // (this) -[rw]-> (to)
+                Edge::ReadWrite(that_id) => {
+                    let that = unsafe { &*(*that_id as *const Node) };
+                    let that_rlock = that.read(); // prevent (to) from committing
+                    if !that.is_cleaned() {
+                        that.remove_incoming(&Edge::ReadWrite(this_id)); // if (to) is not cleaned remove incoming edge
+                    }
+                    drop(that_rlock);
+                }
+
+                // (this) -[ww]-> (to)
+                Edge::WriteWrite(that_id) => {
+                    let that = unsafe { &*(*that_id as *const Node) };
+                    if this.is_aborted() {
+                        that.set_cascading_abort();
+                    } else {
+                        let that_rlock = that.read();
+                        if !that.is_cleaned() {
+                            that.remove_incoming(&Edge::WriteWrite(this_id));
+                        }
+                        drop(that_rlock);
+                    }
+                }
+                // (this) -[wr]-> (to)
+                Edge::WriteRead(that) => {
+                    let that = unsafe { &*(*that as *const Node) };
+                    if this.is_aborted() {
+                        that.set_cascading_abort();
+                    } else {
+                        let that_rlock = that.read();
+                        if !that.is_cleaned() {
+                            that.remove_incoming(&Edge::WriteRead(this_id));
+                        }
+                        drop(that_rlock);
+                    }
+                }
+            }
+        }
+        g.clear(); // clear (this) outgoing
+        drop(g);
+
+        if this.is_aborted() {
+            incoming.lock().clear();
+        }
+
+        let this = self.get_transaction();
+        let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
+
+        SerializationGraph::EG.with(|x| unsafe {
+            x.borrow().as_ref().unwrap().defer_unchecked(move || {
+                let boxed_node = Box::from_raw(this); // garbage collect
+                drop(boxed_node);
+            });
+
+            if cnt % 64 == 0 {
+                x.borrow().as_ref().unwrap().flush();
+            }
+
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
     }
 
     /// Tidyup rwtables and tuples
@@ -862,11 +696,11 @@ mod tests {
 
     #[test]
     fn no_cycle() {
-        let n1 = RwNode::new(1, 1);
+        let n1 = Node::new(1, 1);
         let id1 = node::to_usize(Box::new(n1));
         let node1 = node::from_usize(id1);
 
-        let n2 = RwNode::new(2, 1);
+        let n2 = Node::new(2, 1);
         let id2 = node::to_usize(Box::new(n2));
         let node2 = node::from_usize(id2);
 
@@ -881,11 +715,11 @@ mod tests {
 
     #[test]
     fn direct_cycle() {
-        let n1 = RwNode::new(1, 1);
+        let n1 = Node::new(1, 1);
         let id1 = node::to_usize(Box::new(n1));
         let node1 = node::from_usize(id1);
 
-        let n2 = RwNode::new(2, 1);
+        let n2 = Node::new(2, 1);
         let id2 = node::to_usize(Box::new(n2));
         let node2 = node::from_usize(id2);
 
@@ -903,15 +737,15 @@ mod tests {
 
     #[test]
     fn trans_cycle() {
-        let n1 = RwNode::new(1, 1);
+        let n1 = Node::new(1, 1);
         let id1 = node::to_usize(Box::new(n1));
         let node1 = node::from_usize(id1);
 
-        let n2 = RwNode::new(2, 1);
+        let n2 = Node::new(2, 1);
         let id2 = node::to_usize(Box::new(n2));
         let node2 = node::from_usize(id2);
 
-        let n3 = RwNode::new(3, 1);
+        let n3 = Node::new(3, 1);
         let id3 = node::to_usize(Box::new(n3));
         let node3 = node::from_usize(id3);
 

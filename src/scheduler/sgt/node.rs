@@ -1,4 +1,3 @@
-use crate::common::error::NonFatalError;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -7,58 +6,27 @@ use std::cell::UnsafeCell;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-// pub fn from_usize<'a>(address: usize) -> &'a RwNode {
-//     // Safety: finding an address in some access history implies the corresponding node is either:
-//     // (i) pinned on another thread, so it is save to give out reference to it.
-//     // (ii) scheduled for deletion by another thread, again we can safely give out a reference, as it won't be destroyed
-//     // until after this thread is unpinned.
-//     unsafe { &*(address as *const RwNode) }
-// }
-
-// pub fn to_usize(node: Box<RwNode>) -> usize {
-//     let raw: *mut RwNode = Box::into_raw(node);
-//     raw as usize
-// }
-
-// pub fn to_box(address: usize) -> Box<RwNode> {
-//     // Safety: a node is owned by a single thread, so this method is only called once in order to pass the node to the
-//     // epoch based garbage collector.
-//     unsafe {
-//         let raw = address as *mut RwNode;
-//         Box::from_raw(raw)
-//     }
-// }
-
-// pub fn ref_to_usize<'a>(node: &'a RwNode) -> usize {
-//     let ptr: *const RwNode = node;
-//     ptr as usize
-// }
+unsafe impl<'a> Send for Node {}
+unsafe impl<'a> Sync for Node {}
 
 pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 
-/// Represents an edge to/from a node.
-/// Specifically, it captures the type of conflict, the conflicting node, and the tuple the conflict occurred on.
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 pub enum Edge {
-    // (node id, table id, column id, offset)
     ReadWrite(usize),
     WriteWrite(usize),
     WriteRead(usize),
 }
 
-/// A `RwNode` is pinned to a single thread, referred to as the 'owning' thread.
-/// This thread is responsible for creating the node and scheduling it for deletion.
 #[derive(Debug)]
-pub struct RwNode {
-    // ids
+pub struct Node {
     pub thread_id: usize,
     thread_ctr: usize,
     node_id: UnsafeCell<Option<usize>>,
-
     incoming: UnsafeCell<Option<EdgeSet>>,
     outgoing: UnsafeCell<Option<EdgeSet>>,
     committed: AtomicBool,
-    cascading_abort: AtomicBool,
+    cascading: AtomicBool,
     aborted: AtomicBool,
     cleaned: AtomicBool,
     checked: AtomicBool,
@@ -66,10 +34,7 @@ pub struct RwNode {
     lock: RwLock<u32>,
 }
 
-unsafe impl<'a> Send for RwNode {}
-unsafe impl<'a> Sync for RwNode {}
-
-impl RwNode {
+impl Node {
     pub fn read(&self) -> RwLockReadGuard<u32> {
         self.lock.read()
     }
@@ -78,41 +43,15 @@ impl RwNode {
         self.lock.write()
     }
 
-    pub fn new(thread_id: usize, thread_ctr: usize) -> Self {
+    pub fn new(thread_id: usize, thread_ctr: usize, incoming: EdgeSet, outgoing: EdgeSet) -> Self {
         Self {
             thread_id,
             thread_ctr,
             node_id: UnsafeCell::new(None),
-
-            incoming: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
-            outgoing: UnsafeCell::new(Some(Mutex::new(FxHashSet::default()))),
-
-            committed: AtomicBool::new(false),
-            cascading_abort: AtomicBool::new(false),
-            aborted: AtomicBool::new(false),
-            cleaned: AtomicBool::new(false),
-            checked: AtomicBool::new(false),
-            complete: AtomicBool::new(false),
-            lock: RwLock::new(0),
-        }
-    }
-
-    pub fn new_with_sets(
-        thread_id: usize,
-        thread_ctr: usize,
-        incoming: EdgeSet,
-        outgoing: EdgeSet,
-    ) -> Self {
-        Self {
-            thread_id,
-            thread_ctr,
-            node_id: UnsafeCell::new(None),
-
             incoming: UnsafeCell::new(Some(incoming)),
             outgoing: UnsafeCell::new(Some(outgoing)),
-
             committed: AtomicBool::new(false),
-            cascading_abort: AtomicBool::new(false),
+            cascading: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
@@ -121,13 +60,11 @@ impl RwNode {
         }
     }
 
-    /// Returns `true` if an edge from a given node exists in this node's edge set.
+    /// Returns `true` if an edge from a given node already exists in this node's incoming edge set.
     pub fn incoming_edge_exists(&self, from: &Edge) -> bool {
-        // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.
-        // Additonally, this method is only called by the same single thread.
-        let incoming = unsafe { self.incoming.get().as_ref() };
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
 
-        match incoming {
+        match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let guard = edges.lock();
@@ -135,19 +72,17 @@ impl RwNode {
                     drop(guard);
                     exists
                 }
-                None => panic!("incoming edge set already cleaned"),
+                None => panic!("incoming edge set removed"),
             },
             None => panic!("check unsafe"),
         }
     }
 
     /// Returns `true` if the node has at least 1 incoming edge.
-    pub fn is_incoming(&self) -> bool {
-        // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.
-        // Additonally, this method is only called by the same single thread during the check_committed() operation.
-        let incoming = unsafe { self.incoming.get().as_ref() };
+    pub fn has_incoming(&self) -> bool {
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
 
-        match incoming {
+        match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let guard = edges.lock();
@@ -155,71 +90,59 @@ impl RwNode {
                     drop(guard);
                     !res
                 }
-                None => panic!("incoming edge set already cleaned"),
+                None => panic!("incoming edge set removed"),
             },
             None => panic!("check unsafe"),
         }
     }
 
-    /// Insert an incoming edge from a node.
+    /// Insert an incoming edge: (from) --> (this)
     pub fn insert_incoming(&self, from: Edge) {
-        // Assert: should not be attempting to insert an edge is transaction has terminated.
-        assert!(!self.is_aborted());
-        assert!(!self.is_committed());
+        assert!(
+            !self.is_aborted()
+                && !self.is_committed()
+                && !self.is_complete()
+                && !self.is_cleaned()
+                && !self.is_checked()
+        ); // Assert: transaction must be in execution phase
 
-        // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.
-        let incoming = unsafe { self.incoming.get().as_ref() };
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
 
-        match incoming {
+        match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let mut guard = edges.lock();
                     guard.insert(from);
                     drop(guard);
                 }
-                None => panic!("incoming edge set already cleaned"),
+                None => panic!("incoming edge set removed"),
             },
             None => panic!("check unsafe"),
         }
     }
 
     /// Remove an edge from this node's incoming edge set.
-    pub fn remove_incoming(&self, from: &Edge) -> Result<(), NonFatalError> {
-        // Assert: should not be attempting to remove an incoming edge from a transaction that has terminated.
-        if self.is_complete() {
-            return Err(NonFatalError::NonSerializable);
-        }
-        // assert!(
-        //     !self.is_complete(),
-        //     "attempting to remove incoming from {} to {}",
-        //     from,
-        //     self
-        // );
+    pub fn remove_incoming(&self, from: &Edge) {
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
 
-        // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.
-        let incoming = unsafe { self.incoming.get().as_ref() };
-
-        match incoming {
+        match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let mut guard = edges.lock();
                     assert_eq!(guard.remove(from), true);
                     drop(guard);
                 }
-                None => panic!("incoming edge set already cleaned"),
+                None => panic!("incoming edge set removed"),
             },
             None => panic!("check unsafe"),
         }
-
-        Ok(())
     }
 
-    /// Insert an outgoing edge from a node.
+    /// Insert an outgoing edge: (this) --> (to)
     pub fn insert_outgoing(&self, to: Edge) {
-        // Safety: the incoming edge field is only mutated by a single thread during the cleanup() operation.
-        let outgoing = unsafe { self.outgoing.get().as_ref() };
+        let outgoing_edges = unsafe { self.outgoing.get().as_ref() };
 
-        match outgoing {
+        match outgoing_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let mut guard = edges.lock();
@@ -297,11 +220,11 @@ impl RwNode {
     }
 
     pub fn is_cascading_abort(&self) -> bool {
-        self.cascading_abort.load(Ordering::Acquire)
+        self.cascading.load(Ordering::Acquire)
     }
 
     pub fn set_cascading_abort(&self) {
-        self.cascading_abort.store(true, Ordering::Release);
+        self.cascading.store(true, Ordering::Release);
     }
 
     pub fn is_committed(&self) -> bool {
@@ -429,12 +352,12 @@ impl fmt::Display for Edge {
     }
 }
 
-impl fmt::Display for RwNode {
+impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // let mut nodes_in = self.depth_first_search(true); // nodes found from incoming edges
         //  let mut nodes_out = self.depth_first_search(false); // nodes found from incoming edges
 
-        let ptr: *const RwNode = self;
+        let ptr: *const Node = self;
         let id = ptr as usize;
         // nodes_in.remove(&id);
         //     nodes_out.remove(&id);
@@ -456,7 +379,7 @@ impl fmt::Display for RwNode {
         writeln!(
             f,
             "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}, complete: {:?}",
-            self.committed, self.cascading_abort, self.aborted, self.cleaned, self.checked, self.complete
+            self.committed, self.cascading, self.aborted, self.cleaned, self.checked, self.complete
         )
         .unwrap();
         writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
@@ -498,14 +421,14 @@ mod tests {
 
     #[test]
     fn utils() {
-        let node = RwNode::new(1, 1);
+        let node = Node::new(1, 1);
         let boxed = Box::new(node);
         let id = to_usize(boxed);
         let ref_node = from_usize(id);
         let ref_id = ref_to_usize(ref_node);
         assert_eq!(id, ref_id);
 
-        let n1 = RwNode::new(2, 1);
+        let n1 = Node::new(2, 1);
         let nr1 = &n1;
         let nr2 = nr1.clone();
         let nr3 = &nr2;
@@ -516,7 +439,7 @@ mod tests {
 
     #[test]
     fn edge() {
-        let node = RwNode::new(1, 1);
+        let node = Node::new(1, 1);
         let boxed = Box::new(node);
         let id = to_usize(boxed);
 
@@ -527,7 +450,7 @@ mod tests {
         let e3 = Edge::WriteWrite(id);
         assert!(e3 != e1);
 
-        let onode = RwNode::new(2, 1);
+        let onode = Node::new(2, 1);
         let oboxed = Box::new(onode);
         let oid = to_usize(oboxed);
 
@@ -541,11 +464,11 @@ mod tests {
 
     #[test]
     fn node() {
-        let n1 = RwNode::new(1, 1);
+        let n1 = Node::new(1, 1);
         let id1 = to_usize(Box::new(n1));
         let node1 = from_usize(id1);
 
-        let n2 = RwNode::new(2, 1);
+        let n2 = Node::new(2, 1);
         let id2 = to_usize(Box::new(n2));
 
         node1.insert_incoming(Edge::ReadWrite(id2));
@@ -563,15 +486,15 @@ mod tests {
 
     #[test]
     fn dfs() {
-        let n1 = RwNode::new(1, 1);
+        let n1 = Node::new(1, 1);
         let id1 = to_usize(Box::new(n1));
         let node1 = from_usize(id1);
 
-        let n2 = RwNode::new(2, 1);
+        let n2 = Node::new(2, 1);
         let id2 = to_usize(Box::new(n2));
         let node2 = from_usize(id2);
 
-        let n3 = RwNode::new(3, 1);
+        let n3 = Node::new(3, 1);
         let id3 = to_usize(Box::new(n3));
         let node3 = from_usize(id3);
 
