@@ -1,7 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::msgt::error::MixedSerializationGraphError;
-use crate::scheduler::msgt::node::{Edge, Node};
+use crate::scheduler::msgt::node::{Edge, Incoming, Node};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
@@ -33,6 +33,7 @@ impl MixedSerializationGraph {
     thread_local! {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
         static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
+        static EARLY: RefCell<Vec<*mut Node>> = RefCell::new(Vec::new());
     }
 
     pub fn new(size: usize) -> Self {
@@ -448,13 +449,19 @@ impl MixedSerializationGraph {
             this.set_checked(true);
             drop(this_wlock);
 
-            if this.has_incoming() {
-                this.set_checked(false);
-                let is_cycle = self.cycle_check();
-                if is_cycle {
-                    this.set_aborted();
+            match this.has_incoming() {
+                Incoming::SomeRelevant => {
+                    this.set_checked(false);
+                    let is_cycle = self.cycle_check();
+                    if is_cycle {
+                        this.set_aborted();
+                    }
+                    continue;
                 }
-                continue;
+                Incoming::SomeNotRelevant | Incoming::None => {
+                    let node = self.get_transaction();
+                    MixedSerializationGraph::EARLY.with(|x| x.borrow_mut().push(node));
+                }
             }
 
             self.tidyup(database, true);
@@ -470,13 +477,105 @@ impl MixedSerializationGraph {
     pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = unsafe { &*self.get_transaction() };
         this.set_aborted();
-        self.cleanup();
+        self.abort_cleanup();
         self.tidyup(database, false);
 
         NonFatalError::NonSerializable // TODO: return the why
     }
 
     pub fn cleanup(&self) {
+        // let this = unsafe { &*self.get_transaction() };
+        // let this_id = self.get_transaction() as usize;
+
+        MixedSerializationGraph::EARLY.with(|x| {
+            let mut lcl = x.borrow_mut();
+
+            let mut i = 0;
+            while i < lcl.len() {
+                if let Incoming::None = unsafe { (*lcl[i]).has_incoming() } {
+                    let ptr = lcl.remove(i);
+                    let this = unsafe { &*ptr };
+                    let this_id = ptr as usize;
+
+                    let this_wlock = this.write();
+                    this.set_cleaned();
+                    drop(this_wlock);
+
+                    let outgoing = this.take_outgoing(); // remove edge sets
+                    let incoming = this.take_incoming();
+
+                    let mut g = outgoing.lock(); // lock on outgoing edge set
+                    let outgoing_set = g.iter(); // iterator over outgoing edge set
+
+                    for edge in outgoing_set {
+                        match edge {
+                            Edge::ReadWrite(that_id) => {
+                                let that = unsafe { &*(*that_id as *const Node) };
+                                let that_rlock = that.read();
+                                if !that.is_cleaned() {
+                                    that.remove_incoming(&Edge::ReadWrite(this_id));
+                                }
+                                drop(that_rlock);
+                            }
+
+                            Edge::WriteWrite(that_id) => {
+                                let that = unsafe { &*(*that_id as *const Node) };
+                                if this.is_aborted() {
+                                    that.set_cascading_abort();
+                                } else {
+                                    let that_rlock = that.read();
+                                    if !that.is_cleaned() {
+                                        that.remove_incoming(&Edge::WriteWrite(this_id));
+                                    }
+                                    drop(that_rlock);
+                                }
+                            }
+
+                            Edge::WriteRead(that) => {
+                                let that = unsafe { &*(*that as *const Node) };
+                                if this.is_aborted() {
+                                    that.set_cascading_abort();
+                                } else {
+                                    let that_rlock = that.read();
+                                    if !that.is_cleaned() {
+                                        that.remove_incoming(&Edge::WriteRead(this_id));
+                                    }
+                                    drop(that_rlock);
+                                }
+                            }
+                        }
+                    }
+                    g.clear();
+                    drop(g);
+
+                    if this.is_aborted() {
+                        incoming.lock().clear();
+                    }
+
+                    let this = self.get_transaction();
+                    let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
+
+                    MixedSerializationGraph::EG.with(|x| unsafe {
+                        x.borrow().as_ref().unwrap().defer_unchecked(move || {
+                            let boxed_node = Box::from_raw(this);
+                            drop(boxed_node);
+                        });
+
+                        if cnt % 64 == 0 {
+                            x.borrow().as_ref().unwrap().flush();
+                        }
+
+                        let guard = x.borrow_mut().take();
+                        drop(guard)
+                    });
+                } else {
+                    i += 1;
+                }
+            }
+        });
+    }
+
+    pub fn abort_cleanup(&self) {
         let this = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 

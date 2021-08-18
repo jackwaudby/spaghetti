@@ -36,6 +36,12 @@ pub struct Node {
     lock: RwLock<u32>,
 }
 
+pub enum Incoming {
+    None,
+    SomeRelevant,
+    SomeNotRelevant,
+}
+
 impl Node {
     pub fn read(&self) -> RwLockReadGuard<u32> {
         self.lock.read()
@@ -89,16 +95,39 @@ impl Node {
         }
     }
 
-    pub fn has_incoming(&self) -> bool {
+    pub fn has_incoming(&self) -> Incoming {
         let incoming = unsafe { self.incoming.get().as_ref() };
 
         match incoming {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let guard = edges.lock();
-                    let res = guard.is_empty();
-                    drop(guard);
-                    !res
+
+                    if guard.is_empty() {
+                        drop(guard);
+                        Incoming::None
+                    } else {
+                        match self.isolation_level {
+                            IsolationLevel::ReadUncommitted => {
+                                if guard.iter().any(|x| variant_eq(x, &Edge::WriteWrite(0))) {
+                                    Incoming::SomeRelevant
+                                } else {
+                                    Incoming::SomeNotRelevant
+                                }
+                            }
+                            IsolationLevel::ReadCommitted => {
+                                if guard.iter().any(|x| {
+                                    variant_eq(x, &Edge::WriteWrite(0))
+                                        || variant_eq(x, &Edge::WriteRead(0))
+                                }) {
+                                    Incoming::SomeRelevant
+                                } else {
+                                    Incoming::SomeNotRelevant
+                                }
+                            }
+                            IsolationLevel::Serializable => Incoming::SomeRelevant,
+                        }
+                    }
                 }
                 None => panic!("incoming edge set already cleaned"),
             },
@@ -245,6 +274,10 @@ impl Node {
     pub fn set_cleaned(&self) {
         self.cleaned.store(true, Ordering::Release);
     }
+}
+
+fn variant_eq(a: &Edge, b: &Edge) -> bool {
+    std::mem::discriminant(a) == std::mem::discriminant(b)
 }
 
 impl fmt::Display for Edge {
