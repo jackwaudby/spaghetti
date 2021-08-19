@@ -384,10 +384,10 @@ impl MixedSerializationGraph {
                                     wait = true;
                                     break;
                                 } else {
-                                    if table.get_tuple(column_id, offset).get().is_dirty() {
-                                        debug!("tuple dirty");
-                                        wait = true; // TODO: hack
-                                    }
+                                    // if table.get_tuple(column_id, offset).get().is_dirty() {
+                                    //     debug!("tuple dirty");
+                                    //     wait = true; // TODO: hack
+                                    // }
                                 }
                             }
                         }
