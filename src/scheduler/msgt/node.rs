@@ -96,41 +96,58 @@ impl Node {
         }
     }
 
-    pub fn has_incoming(&self) -> Incoming {
-        let incoming = unsafe { self.incoming.get().as_ref() };
+    // pub fn has_incoming(&self) -> Incoming {
+    //     let incoming = unsafe { self.incoming.get().as_ref() };
 
-        match incoming {
+    //     match incoming {
+    //         Some(edge_set) => match edge_set {
+    //             Some(edges) => {
+    //                 let guard = edges.lock();
+
+    //                 if guard.is_empty() {
+    //                     drop(guard);
+    //                     Incoming::None
+    //                 } else {
+    //                     match self.isolation_level {
+    //                         IsolationLevel::ReadUncommitted => {
+    //                             if guard.iter().any(|x| variant_eq(x, &Edge::WriteWrite(0))) {
+    //                                 Incoming::SomeRelevant
+    //                             } else {
+    //                                 Incoming::SomeNotRelevant
+    //                             }
+    //                         }
+    //                         IsolationLevel::ReadCommitted => {
+    //                             if guard.iter().any(|x| {
+    //                                 variant_eq(x, &Edge::WriteWrite(0))
+    //                                     || variant_eq(x, &Edge::WriteRead(0))
+    //                             }) {
+    //                                 Incoming::SomeRelevant
+    //                             } else {
+    //                                 Incoming::SomeNotRelevant
+    //                             }
+    //                         }
+    //                         IsolationLevel::Serializable => Incoming::SomeRelevant,
+    //                     }
+    //                 }
+    //             }
+    //             None => panic!("incoming edge set already cleaned"),
+    //         },
+    //         None => panic!("check unsafe"),
+    //     }
+    // }
+
+    pub fn has_incoming(&self) -> bool {
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
+
+        match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let guard = edges.lock();
-
-                    if guard.is_empty() {
-                        drop(guard);
-                        Incoming::None
-                    } else {
-                        match self.isolation_level {
-                            IsolationLevel::ReadUncommitted => {
-                                if guard.iter().any(|x| variant_eq(x, &Edge::WriteWrite(0))) {
-                                    Incoming::SomeRelevant
-                                } else {
-                                    Incoming::SomeNotRelevant
-                                }
-                            }
-                            IsolationLevel::ReadCommitted => {
-                                if guard.iter().any(|x| {
-                                    variant_eq(x, &Edge::WriteWrite(0))
-                                        || variant_eq(x, &Edge::WriteRead(0))
-                                }) {
-                                    Incoming::SomeRelevant
-                                } else {
-                                    Incoming::SomeNotRelevant
-                                }
-                            }
-                            IsolationLevel::Serializable => Incoming::SomeRelevant,
-                        }
-                    }
+                    let res = guard.is_empty();
+                    drop(guard);
+                    !res
                 }
-                None => panic!("incoming edge set already cleaned"),
+                None => panic!("incoming edge set removed"),
             },
             None => panic!("check unsafe"),
         }
@@ -277,9 +294,9 @@ impl Node {
     }
 }
 
-fn variant_eq(a: &Edge, b: &Edge) -> bool {
-    std::mem::discriminant(a) == std::mem::discriminant(b)
-}
+// fn variant_eq(a: &Edge, b: &Edge) -> bool {
+//     std::mem::discriminant(a) == std::mem::discriminant(b)
+// }
 
 impl fmt::Display for Edge {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
