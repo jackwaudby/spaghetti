@@ -7,6 +7,7 @@ use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::acid::AcidTransaction;
+use crate::workloads::dummy::DummyTransaction;
 use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::TatpTransaction;
 
@@ -154,6 +155,7 @@ impl GlobalStatistics {
             }
             WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
             WorkloadAbortBreakdown::Acid(ref reasons) => reasons.non_serializable,
+            WorkloadAbortBreakdown::Dummy(ref reasons) => reasons.non_serializable,
         }; // aborts due to integrity constraints/manual aborts
 
         let external_aborts = match self.abort_breakdown.protocol_specific {
@@ -311,6 +313,12 @@ impl LocalStatistics {
                         }
                     }
 
+                    Dummy(ref mut metric) => {
+                        if let NonFatalError::NonSerializable = reason {
+                            metric.inc_non_serializable();
+                        }
+                    }
+
                     Tatp(ref mut metric) => match reason {
                         NonFatalError::RowNotFound(_, _) => {
                             metric.inc_not_found();
@@ -442,6 +450,16 @@ impl TransactionBreakdown {
                 TransactionBreakdown { name, transactions }
             }
 
+            "dummy" => {
+                let name = workload.to_string();
+                let mut transactions = vec![];
+                for transaction in DummyTransaction::iter() {
+                    let metrics = TransactionMetrics::new(Transaction::Dummy(transaction));
+                    transactions.push(metrics);
+                }
+                TransactionBreakdown { name, transactions }
+            }
+
             "tatp" => {
                 let name = workload.to_string();
                 let mut transactions = vec![];
@@ -549,6 +567,7 @@ impl AbortBreakdown {
             "smallbank" => WorkloadAbortBreakdown::SmallBank(SmallBankReasons::new()),
             "tatp" => WorkloadAbortBreakdown::Tatp(TatpReasons::new()),
             "acid" => WorkloadAbortBreakdown::Acid(AcidReasons::new()),
+            "dummy" => WorkloadAbortBreakdown::Dummy(DummyReasons::new()),
             _ => unimplemented!(),
         };
 
@@ -636,6 +655,13 @@ impl AbortBreakdown {
                     panic!("workload abort breakdowns do not match");
                 }
             }
+            Dummy(ref mut reasons) => {
+                if let Dummy(other_reasons) = other.workload_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("workload abort breakdowns do not match");
+                }
+            }
         }
     }
 }
@@ -644,6 +670,7 @@ enum WorkloadAbortBreakdown {
     SmallBank(SmallBankReasons),
     Tatp(TatpReasons),
     Acid(AcidReasons),
+    Dummy(DummyReasons),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -660,6 +687,11 @@ struct SmallBankReasons {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct AcidReasons {
+    non_serializable: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct DummyReasons {
     non_serializable: u32,
 }
 
@@ -719,6 +751,22 @@ impl AcidReasons {
     }
 
     fn merge(&mut self, other: AcidReasons) {
+        self.non_serializable += other.non_serializable;
+    }
+}
+
+impl DummyReasons {
+    fn new() -> Self {
+        Self {
+            non_serializable: 0,
+        }
+    }
+
+    fn inc_non_serializable(&mut self) {
+        self.non_serializable += 1;
+    }
+
+    fn merge(&mut self, other: DummyReasons) {
         self.non_serializable += other.non_serializable;
     }
 }

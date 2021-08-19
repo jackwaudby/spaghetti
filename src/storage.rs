@@ -2,6 +2,8 @@ use crate::common::error::FatalError;
 use crate::storage::table::Table;
 use crate::workloads::acid::*;
 use crate::workloads::acid::{self, AcidDatabase};
+use crate::workloads::dummy::*;
+use crate::workloads::dummy::{self, DummyDatabase};
 use crate::workloads::smallbank::*;
 use crate::workloads::smallbank::{self, SmallBankDatabase};
 use crate::workloads::tatp::keys::TatpPrimaryKey;
@@ -26,6 +28,7 @@ pub mod version;
 
 #[derive(Debug)]
 pub enum Database {
+    Dummy(DummyDatabase),
     SmallBank(SmallBankDatabase),
     Tatp(TatpDatabase),
     Acid(AcidDatabase),
@@ -78,6 +81,17 @@ impl Database {
 
                 Ok(Database::Acid(database))
             }
+            "dummy" => {
+                let population = *DUMMY_SF_MAP.get(&sf).unwrap() as usize; // population size
+                let mut database = DummyDatabase::new(population); // create database
+                let mut rng: StdRng = SeedableRng::from_entropy();
+
+                info!("Generate dummy db SF-{}", sf);
+                dummy::loader::populate_tables(population, &mut database, &mut rng)?; // generate data
+                info!("Parameter generator set seed: {}", set_seed);
+
+                Ok(Database::Dummy(database))
+            }
             "tatp" => {
                 let population = *TATP_SF_MAP.get(&sf).unwrap() as usize;
                 let mut database = TatpDatabase::new(population);
@@ -100,6 +114,7 @@ impl Database {
             Database::SmallBank(ref db) => db.get_table(id),
             Database::Acid(ref db) => db.get_table(id),
             Database::Tatp(ref db) => db.get_table(id),
+            Database::Dummy(ref db) => db.get_table(id),
         }
     }
 }

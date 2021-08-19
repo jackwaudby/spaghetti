@@ -3,6 +3,8 @@ use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::workloads::acid::paramgen::AcidTransactionProfile;
 use crate::workloads::acid::AcidTransaction;
+use crate::workloads::dummy::paramgen::DummyTransactionProfile;
+use crate::workloads::dummy::DummyTransaction;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::paramgen::TatpTransactionProfile;
@@ -31,6 +33,7 @@ pub enum Message {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Transaction {
+    Dummy(DummyTransaction),
     Acid(AcidTransaction),
     Tatp(TatpTransaction),
     SmallBank(SmallBankTransaction),
@@ -38,6 +41,7 @@ pub enum Transaction {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Parameters {
+    Dummy(DummyTransactionProfile),
     Acid(AcidTransactionProfile),
     Tatp(TatpTransactionProfile),
     SmallBank(SmallBankTransactionProfile),

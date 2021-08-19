@@ -4,9 +4,10 @@ use crate::common::statistics::LocalStatistics;
 use crate::scheduler::Scheduler;
 use crate::storage::Database;
 use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
+use crate::workloads::dummy::paramgen::{DummyGenerator, DummyTransactionProfile};
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
 use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
-use crate::workloads::{acid, smallbank, tatp};
+use crate::workloads::{acid, dummy, smallbank, tatp};
 
 use config::Config;
 use pbr::{Pipe, ProgressBar};
@@ -240,6 +241,30 @@ pub fn execute<'a>(txn: Message, scheduler: &'a Scheduler, workload: &'a Databas
                     panic!("transaction type and parameters do not match");
                 }
             }
+            Transaction::Dummy(_) => {
+                if let Parameters::Dummy(params) = parameters {
+                    match params {
+                        DummyTransactionProfile::Read(_params) => {
+                            unimplemented!()
+                            // tatp::procedures::get_subscriber_data(
+                            //     params, scheduler, workload, isolation,
+                            // )
+                        }
+                        DummyTransactionProfile::ReadWrite(_params) => {
+                            unimplemented!()
+                            // tatp::procedures::get_subscriber_data(
+                            //     params, scheduler, workload, isolation,
+                            // )
+                        }
+                        DummyTransactionProfile::Write(params) => {
+                            dummy::procedures::write_only(params, scheduler, workload)
+                        }
+                    }
+                } else {
+                    panic!("transaction type and parameters do not match");
+                }
+            }
+
             Transaction::Acid(_) => {
                 if let Parameters::Acid(params) = parameters {
                     match params {
@@ -361,6 +386,11 @@ pub fn get_transaction_generator(thread_id: u32, config: &Config) -> ParameterGe
             let gen = AcidGenerator::new(thread_id, sf, set_seed, seed, &anomaly, delay);
 
             ParameterGenerator::Acid(gen)
+        }
+        "dummy" => {
+            let gen = DummyGenerator::new(thread_id, sf, set_seed, seed);
+
+            ParameterGenerator::Dummy(gen)
         }
         "tatp" => {
             let use_nurand = config.get_bool("nurand").unwrap();
