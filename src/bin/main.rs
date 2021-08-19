@@ -100,7 +100,7 @@ fn main() {
     global_stats.start();
 
     let cores = config.get_int("cores").unwrap() as usize;
-    let core_ids = core_affinity::get_core_ids().unwrap();
+    // let core_ids = core_affinity::get_core_ids().unwrap();
 
     thread::scope(|s| {
         let scheduler = &scheduler;
@@ -109,7 +109,8 @@ fn main() {
 
         let mb = MultiBar::new(); // progress bar
 
-        for (thread_id, core_id) in core_ids[..cores].iter().enumerate() {
+        // for (thread_id, core_id) in core_ids[..cores].iter().enumerate() {
+        for thread_id in 0..cores {
             let txc = tx.clone();
 
             let mut p = mb.create_bar(100); // create bar
@@ -119,7 +120,7 @@ fn main() {
             s.builder()
                 .name(thread_id.to_string())
                 .spawn(move |_| {
-                    core_affinity::set_for_current(*core_id); // pin thread to cpu core
+                    // core_affinity::set_for_current(*core_id); // pin thread to cpu core
                     utils::run(thread_id, config, scheduler, database, txc, Some(p));
                 })
                 .unwrap();
