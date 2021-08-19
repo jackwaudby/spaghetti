@@ -32,6 +32,7 @@ pub struct DummyDatabase([Table; 1]);
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum DummyTransaction {
     Write,
+    WriteAbort,
     Read,
     ReadWrite,
 }

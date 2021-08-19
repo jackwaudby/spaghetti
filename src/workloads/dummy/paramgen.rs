@@ -63,9 +63,10 @@ impl Generator for DummyGenerator {
 }
 
 impl DummyGenerator {
-    fn get_params(&mut self, _n: f32) -> (DummyTransaction, DummyTransactionProfile) {
+    fn get_params(&mut self, n: f32) -> (DummyTransaction, DummyTransactionProfile) {
         self.generated += 1;
-        self.write_only()
+
+        self.write_only(n)
     }
 
     pub fn get_offset(&mut self) -> usize {
@@ -76,7 +77,7 @@ impl DummyGenerator {
         self.rng.gen_range(0..=100)
     }
 
-    fn write_only(&mut self) -> (DummyTransaction, DummyTransactionProfile) {
+    fn write_only(&mut self, n: f32) -> (DummyTransaction, DummyTransactionProfile) {
         let mut offset1 = self.get_offset();
         let offset2 = self.get_offset();
 
@@ -95,10 +96,17 @@ impl DummyGenerator {
             value,
         };
 
-        (
-            DummyTransaction::Write,
-            DummyTransactionProfile::Write(payload),
-        )
+        if n < 0.5 {
+            (
+                DummyTransaction::Write,
+                DummyTransactionProfile::Write(payload),
+            )
+        } else {
+            (
+                DummyTransaction::WriteAbort,
+                DummyTransactionProfile::WriteAbort(payload),
+            )
+        }
     }
 }
 
@@ -106,6 +114,7 @@ impl DummyGenerator {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum DummyTransactionProfile {
     Write(Write),
+    WriteAbort(Write),
     Read(Read),
     ReadWrite(ReadWrite),
 }
@@ -137,6 +146,14 @@ impl fmt::Display for DummyTransactionProfile {
                 write!(f, "0,{}", offset)
             }
             DummyTransactionProfile::Write(params) => {
+                let Write {
+                    offset1,
+                    offset2,
+                    value,
+                } = params;
+                write!(f, "1,{},{},{}", offset1, offset2, value)
+            }
+            DummyTransactionProfile::WriteAbort(params) => {
                 let Write {
                     offset1,
                     offset2,

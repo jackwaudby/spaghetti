@@ -38,3 +38,26 @@ pub fn write_only<'a>(
         _ => panic!("unexpected database"),
     }
 }
+
+pub fn write_only_abort<'a>(
+    params: Write,
+    scheduler: &'a Scheduler,
+    database: &'a Database,
+) -> Result<Success, NonFatalError> {
+    match &*database {
+        Database::Dummy(_) => {
+            let offset1 = params.offset1;
+            let offset2 = params.offset2;
+            let val = &mut Data::Uint(params.value);
+
+            let meta = scheduler.begin(IsolationLevel::Serializable);
+
+            scheduler.write_value(val, 0, 0, offset1, &meta, database)?;
+            scheduler.write_value(val, 0, 0, offset2, &meta, database)?;
+
+            scheduler.abort(&meta, database);
+            Err(NonFatalError::NonSerializable)
+        }
+        _ => panic!("unexpected database"),
+    }
+}

@@ -259,6 +259,10 @@ pub fn execute<'a>(txn: Message, scheduler: &'a Scheduler, workload: &'a Databas
                         DummyTransactionProfile::Write(params) => {
                             dummy::procedures::write_only(params, scheduler, workload)
                         }
+
+                        DummyTransactionProfile::WriteAbort(params) => {
+                            dummy::procedures::write_only_abort(params, scheduler, workload)
+                        }
                     }
                 } else {
                     panic!("transaction type and parameters do not match");
