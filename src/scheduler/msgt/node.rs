@@ -36,6 +36,7 @@ pub struct Node {
     lock: RwLock<u32>,
 }
 
+#[derive(Debug)]
 pub enum Incoming {
     None,
     SomeRelevant,

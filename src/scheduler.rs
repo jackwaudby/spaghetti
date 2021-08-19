@@ -204,7 +204,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.commit(meta, database),
-            MixedSerializationGraph(sg) => sg.commit(database),
+            MixedSerializationGraph(sg) => sg.commit(meta, database),
             WaitHit(wh) => wh.commit(meta, database),
             OptimisedWaitHit(owh) => owh.commit(database),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.commit(database, transaction_type),
@@ -218,7 +218,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.abort(meta, database),
-            MixedSerializationGraph(sg) => sg.abort(database),
+            MixedSerializationGraph(sg) => sg.abort(meta, database),
             WaitHit(wh) => wh.abort(meta, database),
             OptimisedWaitHit(owh) => owh.abort(database),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database),

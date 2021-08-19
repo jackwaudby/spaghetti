@@ -206,12 +206,7 @@ impl SerializationGraph {
 
     pub fn create_node(&self) -> (usize, usize, usize) {
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-
         let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
-
-        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
-            Some(TransactionInformation::new());
-
         let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
         let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing)); // allocate node
@@ -380,8 +375,8 @@ impl SerializationGraph {
             // abort transaction
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
-                self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
+                self.abort(meta, database);
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
@@ -433,8 +428,9 @@ impl SerializationGraph {
         // abort transaction
         if cyclic {
             rw_table.erase(prv); // remove from rw table
-            self.abort(meta, database);
             lsn.store(prv + 1, Ordering::Release); // update lsn
+            self.abort(meta, database);
+
             return Err(SerializationGraphError::CycleFound.into());
         }
 
