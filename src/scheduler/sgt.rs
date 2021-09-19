@@ -601,30 +601,46 @@ impl SerializationGraph {
     pub fn tidyup(&self, meta: &TransactionId, database: &Database, commit: bool) {
         let ops = self.get_operations();
 
-        for op in ops {
+        // commit and revert state
+        for op in &ops {
             let Operation {
                 op_type,
                 table_id,
                 column_id,
                 offset,
+                ..
+            } = op;
+
+            let table = database.get_table(*table_id);
+            let tuple = table.get_tuple(*column_id, *offset);
+
+            if let OperationType::Write = op_type {
+                if commit {
+                    tuple.get().commit();
+                } else {
+                    tuple.get().revert();
+                }
+            }
+        }
+
+        // remove accesses
+        for op in ops {
+            let Operation {
+                op_type,
+                table_id,
+                offset,
                 prv,
+                ..
             } = op;
 
             let table = database.get_table(table_id);
             let rwtable = table.get_rwtable(offset);
-            let tuple = table.get_tuple(column_id, offset);
 
             match op_type {
                 OperationType::Read => {
                     rwtable.erase(prv);
                 }
                 OperationType::Write => {
-                    if commit {
-                        tuple.get().commit();
-                    } else {
-                        tuple.get().revert();
-                    }
-
                     rwtable.erase(prv);
                 }
             }
