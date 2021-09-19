@@ -7,8 +7,6 @@ RUST_LOG=debug cargo test -- --test-threads=1 --nocapture
 
 #run test coverage locally
 docker run --security-opt seccomp=unconfined -v "${PWD}:/volume" xd009642/tarpaulin:0.16.0
-
-
 ```
 
 ## VM Setup
@@ -77,6 +75,9 @@ perf stat --event task-clock,context-switches,page-faults,cycles,instructions,br
 
 ### Flamegraph
 ```
+#enable perf for use by unprivileged users
+echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
+
 #generate a flamegraph (linux only)
 cargo flamegraph -o 30-core.svg --bin=spag -- -c 30 -p sgt -t 1000000
 ```
