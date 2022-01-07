@@ -96,7 +96,7 @@ impl DummyGenerator {
             value,
         };
 
-        if n < 0.5 {
+        if n < 1.0 {
             (
                 DummyTransaction::Write,
                 DummyTransactionProfile::Write(payload),
