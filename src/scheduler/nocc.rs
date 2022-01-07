@@ -89,7 +89,7 @@ impl NoConcurrencyControl {
 
         let tuple = table.get_tuple(column_id, offset).get();
         tuple.set_value(value).unwrap();
-        tuple.commit();
+        // tuple.commit();
 
         // lsn.store(prv + 1, Ordering::Release);
 
