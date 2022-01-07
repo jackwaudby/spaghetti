@@ -54,8 +54,13 @@ impl MixedSerializationGraph {
     }
 
     pub fn get_operations(&self) -> Vec<Operation> {
-        let ti = self.txn_info.get().unwrap();
-        ti.borrow_mut().as_mut().unwrap().get()
+        self.txn_info
+            .get()
+            .unwrap()
+            .borrow_mut()
+            .as_mut()
+            .unwrap()
+            .get()
     }
 
     pub fn record(
@@ -66,11 +71,13 @@ impl MixedSerializationGraph {
         offset: usize,
         prv: u64,
     ) {
-        let ti = self.txn_info.get().unwrap();
-        ti.borrow_mut()
+        self.txn_info
+            .get()
+            .unwrap()
+            .borrow_mut()
             .as_mut()
             .unwrap()
-            .add(op_type, table_id, column_id, offset, prv); // record operation
+            .add(op_type, table_id, column_id, offset, prv);
     }
 
     pub fn insert_and_check(&self, from: Edge) -> bool {
@@ -325,6 +332,156 @@ impl MixedSerializationGraph {
         Ok(vals)
     }
 
+    // #[instrument(level = "debug", skip(self, meta, database), fields(id))]
+    // pub fn write_value(
+    //     &self,
+    //     value: &mut Data,
+    //     table_id: usize,
+    //     column_id: usize,
+    //     offset: usize,
+    //     meta: &TransactionId,
+    //     database: &Database,
+    // ) -> Result<(), NonFatalError> {
+    //     match meta {
+    //         TransactionId::SerializationGraph(id, _, _) => {
+    //             Span::current().record("id", &id);
+    //         }
+    //         _ => panic!("unexpected txn id"),
+    //     };
+
+    //     let table = database.get_table(table_id);
+    //     let rw_table = table.get_rwtable(offset);
+    //     let lsn = table.get_lsn(offset);
+    //     let mut prv;
+
+    //     let mut attempts = 0;
+    //     loop {
+    //         if self.needs_abort() {
+    //             self.abort(meta, database);
+    //             return Err(MixedSerializationGraphError::CascadingAbort.into());
+    //         }
+
+    //         prv = rw_table.push_front(Access::Write(meta.clone()));
+
+    //         unsafe { spin(prv, lsn) };
+
+    //         let guard = &epoch::pin();
+    //         let snapshot = rw_table.iter(guard);
+
+    //         let mut wait = false;
+    //         let mut cyclic = false;
+
+    //         for (id, access) in snapshot {
+    //             if id < &prv {
+    //                 match access {
+    //                     // W-W conflict
+    //                     Access::Write(from) => {
+    //                         if let TransactionId::SerializationGraph(from_addr, _, _) = from {
+    //                             let from = unsafe { &*(*from_addr as *const Node) };
+    //                             if !from.is_committed() {
+    //                                 if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
+    //                                     cyclic = true;
+    //                                     break;
+    //                                 }
+    //                                 debug!("predecessor: {} not committed", from_addr);
+    //                                 attempts += 1;
+    //                                 if attempts > 10000 {
+    //                                     panic!("attempted to write 10000x");
+    //                                 }
+    //                                 wait = true;
+    //                                 break;
+    //                             } else {
+    //                                 // if table.get_tuple(column_id, offset).get().is_dirty() {
+    //                                 //     debug!("tuple dirty");
+    //                                 //     wait = true; // TODO: hack
+    //                                 // }
+    //                             }
+    //                         }
+    //                     }
+    //                     Access::Read(_) => {}
+    //                 }
+    //             }
+    //         }
+
+    //         if cyclic {
+    //             rw_table.erase(prv); // remove from rw table
+    //             self.abort(meta, database);
+    //             lsn.store(prv + 1, Ordering::Release); // update lsn
+    //             return Err(MixedSerializationGraphError::CycleFound.into());
+    //         }
+
+    //         // (ii) there is an uncommitted write (wait = T)
+    //         // restart operation
+    //         if wait {
+    //             rw_table.erase(prv); // remove from rw table
+    //             lsn.store(prv + 1, Ordering::Release); // update lsn
+    //             continue;
+    //         }
+
+    //         // (iii) no w-w conflicts -> clean record (both F)
+    //         // check for cascading abort
+    //         if self.needs_abort() {
+    //             rw_table.erase(prv); // remove from rw table
+    //             self.abort(meta, database);
+    //             lsn.store(prv + 1, Ordering::Release); // update lsn
+    //             return Err(MixedSerializationGraphError::CascadingAbort.into());
+    //         }
+
+    //         break;
+    //     }
+
+    //     // Now, handle R-W conflicts
+    //     let guard = &epoch::pin(); // pin thread
+    //     let snapshot = rw_table.iter(guard);
+
+    //     let mut cyclic = false;
+
+    //     for (id, access) in snapshot {
+    //         if self.needs_abort() {
+    //             rw_table.erase(prv); // remove from rw table
+
+    //             self.abort(meta, database);
+    //             lsn.store(prv + 1, Ordering::Release); // update lsn
+    //             return Err(MixedSerializationGraphError::CascadingAbort.into());
+    //         }
+
+    //         if id < &prv {
+    //             match access {
+    //                 Access::Read(from) => {
+    //                     if let TransactionId::SerializationGraph(from_addr, _, _) = from {
+    //                         if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
+    //                             cyclic = true;
+    //                             break;
+    //                         }
+    //                     }
+    //                 }
+    //                 Access::Write(_) => {}
+    //             }
+    //         }
+    //     }
+
+    //     // (iv) transaction is in a cycle (cycle = T)
+    //     // abort transaction
+    //     if cyclic {
+    //         rw_table.erase(prv); // remove from rw table
+    //         self.abort(meta, database);
+    //         lsn.store(prv + 1, Ordering::Release); // update lsn
+    //         return Err(MixedSerializationGraphError::CycleFound.into());
+    //     }
+
+    //     if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
+    //         panic!("{}", e);
+    //     }
+
+    //     lsn.store(prv + 1, Ordering::Release);
+    //     self.record(OperationType::Write, table_id, column_id, offset, prv); // record operation
+
+    //     Ok(())
+    // }
+
+    /// Write operation.
+    ///
+    /// A write is executed iff there are no uncommitted writes on a record, else the operation is delayed.
     #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn write_value(
         &self,
@@ -347,46 +504,48 @@ impl MixedSerializationGraph {
         let lsn = table.get_lsn(offset);
         let mut prv;
 
-        let mut attempts = 0;
         loop {
             if self.needs_abort() {
                 self.abort(meta, database);
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
+                // check for cascading abort
             }
 
-            prv = rw_table.push_front(Access::Write(meta.clone()));
+            prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
 
-            unsafe { spin(prv, lsn) };
+            unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
 
-            let guard = &epoch::pin();
+            // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
+            // In this case the operation is restarted after a cycle check.
+            let guard = &epoch::pin(); // pin thread
             let snapshot = rw_table.iter(guard);
 
-            let mut wait = false;
-            let mut cyclic = false;
+            let mut wait = false; // flag indicating if there is an uncommitted write
+            let mut cyclic = false; // flag indicating if a cycle has been found
 
             for (id, access) in snapshot {
+                // only interested in accesses before this one and that are write operations.
                 if id < &prv {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
                             if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };
+
+                                // check if write access is uncommitted
                                 if !from.is_committed() {
+                                    // if not in cycle then wait
                                     if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
                                         cyclic = true;
-                                        break;
+                                        break; // no reason to check other accesses
                                     }
-                                    debug!("predecessor: {} not committed", from_addr);
-                                    attempts += 1;
-                                    if attempts > 10000 {
-                                        panic!("attempted to write 10000x");
-                                    }
-                                    wait = true;
+
+                                    wait = true; // retry operation
                                     break;
                                 } else {
+                                    // from is complete
                                     // if table.get_tuple(column_id, offset).get().is_dirty() {
-                                    //     debug!("tuple dirty");
-                                    //     wait = true; // TODO: hack
+                                    //     wait = true; // retry operation TODO: hack
                                     // }
                                 }
                             }
@@ -396,10 +555,12 @@ impl MixedSerializationGraph {
                 }
             }
 
+            // (i) transaction is in a cycle (cycle = T)
+            // abort transaction
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
-                self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
+                self.abort(meta, database);
                 return Err(MixedSerializationGraphError::CycleFound.into());
             }
 
@@ -408,6 +569,7 @@ impl MixedSerializationGraph {
             if wait {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
+
                 continue;
             }
 
@@ -417,27 +579,20 @@ impl MixedSerializationGraph {
                 rw_table.erase(prv); // remove from rw table
                 self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
+
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
             }
 
             break;
         }
 
-        // Now, handle R-W conflicts
+        // Now handle R-W conflicts
         let guard = &epoch::pin(); // pin thread
         let snapshot = rw_table.iter(guard);
 
         let mut cyclic = false;
 
         for (id, access) in snapshot {
-            if self.needs_abort() {
-                rw_table.erase(prv); // remove from rw table
-
-                self.abort(meta, database);
-                lsn.store(prv + 1, Ordering::Release); // update lsn
-                return Err(MixedSerializationGraphError::CascadingAbort.into());
-            }
-
             if id < &prv {
                 match access {
                     Access::Read(from) => {
@@ -457,16 +612,23 @@ impl MixedSerializationGraph {
         // abort transaction
         if cyclic {
             rw_table.erase(prv); // remove from rw table
-            self.abort(meta, database);
             lsn.store(prv + 1, Ordering::Release); // update lsn
+            self.abort(meta, database);
+
             return Err(MixedSerializationGraphError::CycleFound.into());
         }
 
-        if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
-            panic!("{}", e);
+        if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
+            panic!(
+                "{} attempting to write over uncommitted value on ({},{},{})",
+                meta.clone(),
+                table_id,
+                column_id,
+                offset,
+            ); // Assert: never write to an uncommitted value.
         }
 
-        lsn.store(prv + 1, Ordering::Release);
+        lsn.store(prv + 1, Ordering::Release); // update lsn, giving next operation access.
         self.record(OperationType::Write, table_id, column_id, offset, prv); // record operation
 
         Ok(())
