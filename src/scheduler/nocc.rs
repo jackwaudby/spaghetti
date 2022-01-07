@@ -83,7 +83,7 @@ impl NoConcurrencyControl {
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
-        // let prv = rw_table.push_front(Access::Write(meta.clone()));
+        let prv = rw_table.push_front(Access::Write(meta.clone()));
 
         // spin(prv, lsn);
 
@@ -93,13 +93,13 @@ impl NoConcurrencyControl {
 
         // lsn.store(prv + 1, Ordering::Release);
 
-        // self.txn_info.get().unwrap().borrow_mut().add(
-        //     OperationType::Write,
-        //     table_id,
-        //     column_id,
-        //     offset,
-        //     prv,
-        // );
+        self.txn_info.get().unwrap().borrow_mut().add(
+            OperationType::Write,
+            table_id,
+            column_id,
+            offset,
+            prv,
+        );
 
         Ok(())
     }
