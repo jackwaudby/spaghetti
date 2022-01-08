@@ -122,10 +122,10 @@ impl NoConcurrencyControl {
 
             match op_type {
                 OperationType::Read => {
-                    // rwtable.erase(prv);
+                    rwtable.erase(prv);
                 }
                 OperationType::Write => {
-                    // rwtable.erase(prv);
+                    rwtable.erase(prv);
                 }
             }
         }
