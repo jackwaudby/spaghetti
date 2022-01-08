@@ -4,6 +4,7 @@ library(readr)
 library(dplyr)
 
 waudby <- read_csv(file = './results.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
+waudby
 durner <- read_delim(file = './durner_sgt.csv', delim = ";",col_names = F)
 #durner_2pl <- read_delim(file = './durner_2pl.csv', delim = ";",col_names = F)
 #durner = durner[,c(1,2,3,5,8,9,11,10,15,18)]
@@ -44,15 +45,38 @@ ggplot(data=sf3, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=w
 
 ggsave(paste0("./graphics/thpt_sf3.png"))
 
-# ggplot(data=sf1, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=protocol)) +
+ggplot(data=sf1, aes(x=cores, y=errors/(commits+errors), group=workload, colour=workload)) +
+  geom_line() +
+  ylab("abort rate") +
+  ggtitle(paste0("sf1 - 100 rows")) +
+  theme_bw()
+
+ggsave("./graphics/error_sf1.png")
+
+ggplot(data=sf3, aes(x=cores, y=errors/(commits+errors), group=workload, colour=workload)) +
+  geom_line() +
+  ylab("abort rate") +
+  ggtitle(paste0("sf3 - 10000 rows")) +
+  theme_bw()
+
+ggsave("./graphics/error_sf3.png")
+
+# ggplot(data=sf1, aes(x=cores, y=commits+errors, group=workload, colour=workload)) +
 #   geom_line() +
 #   ylab("abort rate") +
-#   ggtitle("SmallBank - High Contention (100 accounts)") +
-#   theme_bw() 
+#   ggtitle(paste0("sf1 - 100 rows")) +
+#   theme_bw()
 # 
-# ggsave("./graphics/smallbank_abort_high.png")
+# ggsave("./graphics/complete_sf1.png")
+
+# ggplot(data=sf1, aes(x=cores, y=aborts/(commits+aborts), group=workload, colour=workload)) +
+#   geom_line() +
+#   ylab("abort rate") +
+#   ggtitle(paste0("sf1 - 100 rows")) +
+#   theme_bw()
 # 
-# 
+# ggsave("./graphics/abort_sf1.png")
+
 # ggplot(data=sf3, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=protocol)) +
 #   geom_line() +
 #   ylab("abort rate") +
