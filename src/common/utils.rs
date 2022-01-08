@@ -95,7 +95,6 @@ pub fn run(
     let record = config.get_bool("record").unwrap();
     let log_results = config.get_bool("log_results").unwrap();
     let mut stats = LocalStatistics::new(thread_id as u32, &w, &p);
-
     let mut generator = get_transaction_generator(thread_id as u32, config); // initialise transaction generator
 
     // create results file -- dir created by this point
@@ -181,12 +180,12 @@ pub fn run(
 
     stats.stop_worker(start_worker);
 
-    match pbr {
-        Some(ref mut pbr) => {
-            pbr.finish_print(&format!("thread {} done!", thread_id));
-        }
-        None => {}
-    }
+    // match pbr {
+    //     Some(ref mut pbr) => {
+    //         pbr.finish_print(&format!("thread {} done!", thread_id));
+    //     }
+    //     None => {}
+    // }
 
     if record {
         tx.send(stats).unwrap();

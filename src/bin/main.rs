@@ -107,25 +107,26 @@ fn main() {
         let database = &database;
         let config = &config;
 
-        let mb = MultiBar::new(); // progress bar
+        // let mb = MultiBar::new(); // progress bar
 
         for (thread_id, core_id) in core_ids[..cores].iter().enumerate() {
             let txc = tx.clone();
 
-            let mut p = mb.create_bar(100); // create bar
-            p.show_speed = false;
-            p.show_counter = false;
+            // let mut p = mb.create_bar(100); // create bar
+            // p.show_speed = false;
+            // p.show_counter = false;
 
             s.builder()
                 .name(thread_id.to_string())
                 .spawn(move |_| {
                     core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                    utils::run(thread_id, config, scheduler, database, txc, Some(p));
+                                                              // utils::run(thread_id, config, scheduler, database, txc, Some(p));
+                    utils::run(thread_id, config, scheduler, database, txc, None);
                 })
                 .unwrap();
         }
 
-        mb.listen();
+        // mb.listen();
     })
     .unwrap();
 
