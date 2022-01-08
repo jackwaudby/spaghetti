@@ -41,38 +41,38 @@ ggplot(data=sf3, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=p
 
 ggsave("./graphics/smallbank_thpt_low.png")
 
-ggplot(data=sf1, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=protocol)) +
-  geom_line() +
-  ylab("abort rate") +
-  ggtitle("SmallBank - High Contention (100 accounts)") +
-  theme_bw() 
-
-ggsave("./graphics/smallbank_abort_high.png")
-
-
-ggplot(data=sf3, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=protocol)) +
-  geom_line() +
-  ylab("abort rate") +
-  ggtitle("SmallBank - Low Contention (10000 accounts)") +
-  theme_bw() 
-
-ggsave("./graphics/smallbank_abort_low.png")
+# ggplot(data=sf1, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=protocol)) +
+#   geom_line() +
+#   ylab("abort rate") +
+#   ggtitle("SmallBank - High Contention (100 accounts)") +
+#   theme_bw() 
+# 
+# ggsave("./graphics/smallbank_abort_high.png")
+# 
+# 
+# ggplot(data=sf3, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=protocol)) +
+#   geom_line() +
+#   ylab("abort rate") +
+#   ggtitle("SmallBank - Low Contention (10000 accounts)") +
+#   theme_bw() 
+# 
+# ggsave("./graphics/smallbank_abort_low.png")
 
 
 # Durner: txn time + latency/completed
-ggplot(data=sf1, aes(x=cores, y=total_latency/(commits+aborts+errors), group=protocol, colour=protocol)) +
-  geom_line() +
-  ylab("av latency (ms)") +
-  ggtitle("SmallBank - High Contention (100 accounts)") +
-  theme_bw() 
-
-ggsave("./graphics/smallbank_lat_high.png")
-
-
-ggplot(data=sf3, aes(x=cores, y=total_latency/(commits+aborts+errors), group=protocol, colour=protocol)) +
-  geom_line() +
-  ylab("av latency (ms)") +
-  ggtitle("SmallBank - Low Contention (10000 accounts)") +
-  theme_bw() 
-
-ggsave("./graphics/smallbank_lat_low.png")
+# ggplot(data=sf1, aes(x=cores, y=total_latency/(commits+aborts+errors), group=protocol, colour=protocol)) +
+#   geom_line() +
+#   ylab("av latency (ms)") +
+#   ggtitle("SmallBank - High Contention (100 accounts)") +
+#   theme_bw() 
+# 
+# ggsave("./graphics/smallbank_lat_high.png")
+# 
+# 
+# ggplot(data=sf3, aes(x=cores, y=total_latency/(commits+aborts+errors), group=protocol, colour=protocol)) +
+#   geom_line() +
+#   ylab("av latency (ms)") +
+#   ggtitle("SmallBank - Low Contention (10000 accounts)") +
+#   theme_bw() 
+# 
+# ggsave("./graphics/smallbank_lat_low.png")
