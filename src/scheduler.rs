@@ -10,11 +10,9 @@ use crate::scheduler::wh::WaitHit;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::storage::Database;
-use crate::storage::PrimaryKey;
 use crate::workloads::IsolationLevel;
 
 use config::Config;
-use tracing::instrument;
 
 pub mod wh;
 
@@ -83,50 +81,6 @@ impl<'a> Scheduler<'a> {
             NoConcurrencyControl(nocc) => nocc.begin(),
             TwoPhaseLocking(tpl) => tpl.begin(),
             MixedTwoPhaseLocking(tpl) => tpl.begin(isolation_level),
-        }
-    }
-
-    /// Insert a new record into a table.
-    #[instrument(level = "debug", skip(self, values, database))]
-    pub fn insert_values(
-        &self,
-        table_id: usize,
-        pk: PrimaryKey,
-        values: Vec<Data>,
-        database: &Database,
-    ) -> Result<usize, NonFatalError> {
-        let table = database.get_table(table_id); // get handle to table
-        let mut guard = table.lock_table(); // lock bitmap
-
-        match table.exists(pk.clone()) {
-            Ok(_) => {
-                return Err(NonFatalError::RowAlreadyExists(
-                    "todo".to_string(),
-                    "todo".to_string(),
-                ))
-            }
-            Err(_) => {
-                let pos = guard.iter().position(|x| x == false); // find free slot
-
-                match pos {
-                    Some(offset) => {
-                        for (column_id, value) in values.into_iter().enumerate() {
-                            table
-                                .get_tuple(column_id, offset)
-                                .get()
-                                .init_value(value)
-                                .unwrap();
-                        } // set values
-
-                        guard.set(offset, true); // mark slot as in use
-                        table.get_exists().pin().insert(pk, offset); // add to index
-
-                        drop(guard);
-                        Ok(offset)
-                    }
-                    None => Err(NonFatalError::NoFreeSpace),
-                }
-            }
         }
     }
 
