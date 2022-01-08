@@ -1,6 +1,7 @@
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
 // use spin::Mutex;
-use parking_lot::Mutex;
+// use parking_lot::Mutex;
+use std::sync::Mutex;
 
 use std::fmt;
 use std::fmt::Debug;
