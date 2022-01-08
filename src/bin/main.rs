@@ -5,7 +5,7 @@ use spaghetti::storage::Database;
 
 use clap::clap_app;
 use crossbeam_utils::thread;
-use pbr::MultiBar;
+// use pbr::MultiBar;
 use std::sync::mpsc;
 use std::time::Instant;
 use tracing::info;

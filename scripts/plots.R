@@ -28,7 +28,7 @@ sf3 = dat %>% filter((sf == 3) | (sf == 10000))
 ggplot(data=sf1, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=protocol, colour=protocol)) +
   geom_line() +
   ylab("thpt (million/s)") +
-  ggtitle(paste0(dat$workload[1]," - 100 rows")) +
+  ggtitle(paste0(dat$workload[1]," - sf1")) +
   theme_bw() 
 
 ggsave(paste0("./graphics/",dat$workload[1],"_thpt_sf1.png"))
@@ -36,7 +36,7 @@ ggsave(paste0("./graphics/",dat$workload[1],"_thpt_sf1.png"))
 ggplot(data=sf3, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=protocol, colour=protocol)) +
   geom_line() +
   ylab("thpt (million/s)") +
-  ggtitle(paste0(dat$workload," - 10000 rows")) +
+  ggtitle(paste0(dat$workload," - sf3")) +
   theme_bw() 
 
 ggsave(paste0("./graphics/",dat$workload[1],"_thpt_sf3.png"))
