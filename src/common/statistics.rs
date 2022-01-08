@@ -151,7 +151,7 @@ impl GlobalStatistics {
                 // committed += reasons.row_not_found; TODO: undo for actual
                 // aborted -= reasons.row_not_found;
                 aborted -= reasons.no_free_space;
-                reasons.row_already_exists
+                reasons.row_already_exists + reasons.row_not_found
             }
             WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
             WorkloadAbortBreakdown::Acid(ref reasons) => reasons.non_serializable,
