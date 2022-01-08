@@ -6,8 +6,7 @@ use crate::storage::Database;
 use crate::storage::PrimaryKey;
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tatp::paramgen::{
-    GetAccessData, GetNewDestination, GetSubscriberData, InsertCallForwarding, UpdateLocationData,
-    UpdateSubscriberData,
+    GetAccessData, GetNewDestination, GetSubscriberData, UpdateLocationData, UpdateSubscriberData,
 };
 use crate::workloads::IsolationLevel;
 
@@ -234,78 +233,6 @@ pub fn update_location<'a>(
             scheduler.commit(&meta, database, TransactionType::WriteOnly)?;
 
             Ok(Success::new(meta, None, None, None, None, None))
-        }
-        _ => panic!("unexpected database"),
-    }
-}
-
-/// Insert call forwarding transaction
-#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
-pub fn insert_call_forwarding<'a>(
-    params: InsertCallForwarding,
-    scheduler: &'a Scheduler,
-    database: &'a Database,
-    isolation: IsolationLevel,
-) -> Result<Success, NonFatalError> {
-    match &*database {
-        Database::Tatp(_) => {
-            let meta = scheduler.begin(isolation);
-
-            // // TODO: this is not needed params.s_id always equals the offset for a subsriber
-            // let sub_offset = match database
-            //     .get_table(0)
-            //     .exists(PrimaryKey::Tatp(TatpPrimaryKey::Subscriber(params.s_id)))
-            // {
-            //     Ok(offset) => offset,
-            //     Err(e) => {
-            //         scheduler.abort(&meta, database);
-            //         return Err(e);
-            //     }
-            // };
-
-            // scheduler.read_value(0, 0, sub_offset, &meta, database)?; // read subsriber table
-
-            // let sf_offset = match database.get_table(2).exists(PrimaryKey::Tatp(
-            //     TatpPrimaryKey::SpecialFacility(params.s_id, params.sf_type.into()),
-            // )) {
-            //     Ok(offset) => offset,
-            //     Err(e) => {
-            //         scheduler.abort(&meta, database);
-            //         return Err(e);
-            //     }
-            // };
-
-            // scheduler.read_value(2, 1, sub_offset, &meta, database)?; // read special facility table
-
-            let values = vec![
-                Data::Uint(params.s_id),
-                Data::Uint(params.sf_type.into()),
-                Data::Uint(params.start_time.into()),
-                Data::Uint(params.end_time.into()),
-                Data::VarChar(params.number_x),
-            ];
-
-            let cf_offset = scheduler.insert_values(
-                3,
-                PrimaryKey::Tatp(TatpPrimaryKey::CallForwarding(
-                    params.s_id,
-                    params.sf_type.into(),
-                    params.start_time.into(),
-                )),
-                values,
-                database,
-            )?;
-
-            scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
-
-            Ok(Success::new(
-                meta,
-                Some(vec![(3, cf_offset)]),
-                None,
-                None,
-                None,
-                None,
-            ))
         }
         _ => panic!("unexpected database"),
     }

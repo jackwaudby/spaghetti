@@ -2,13 +2,10 @@ use crate::common::ds::atomic_linked_list::AtomicLinkedList;
 use crate::common::error::NonFatalError;
 use crate::storage::access::Access;
 use crate::storage::tuple::Tuple;
-use crate::storage::version::VersionHistory;
 use crate::storage::PrimaryKey;
 
-use bit_vec::BitVec;
-use flurry::HashMap;
 use nohash_hasher::IntMap;
-use parking_lot::{Mutex, MutexGuard};
+use rustc_hash::FxHashMap;
 use std::fmt;
 use std::sync::atomic::AtomicU64;
 
@@ -17,16 +14,14 @@ pub type Column = Vec<Tuple>;
 #[derive(Debug)]
 pub struct Table {
     columns: IntMap<usize, Column>,
-    exists: HashMap<PrimaryKey, usize>,
-    inuse: Mutex<BitVec>,
+    exists: FxHashMap<PrimaryKey, usize>,
     lsns: Vec<AtomicU64>,
     rw_tables: Vec<AtomicLinkedList<Access>>,
-    history: Vec<VersionHistory>,
 }
 
 impl Table {
     pub fn new(population: usize, column_cnt: usize) -> Self {
-        let exists = HashMap::new();
+        let exists = FxHashMap::default();
 
         let mut columns = IntMap::default();
         for id in 0..column_cnt {
@@ -39,24 +34,17 @@ impl Table {
 
         let mut lsns = Vec::with_capacity(population);
         let mut rw_tables = Vec::with_capacity(population);
-        let mut history = Vec::with_capacity(population);
-
-        let mut inuse = BitVec::new();
 
         for _ in 0..population {
             lsns.push(AtomicU64::new(0));
             rw_tables.push(AtomicLinkedList::new());
-            inuse.push(false);
-            history.push(VersionHistory::new());
         }
 
         Table {
             columns,
             exists,
-            inuse: Mutex::new(inuse),
             lsns,
             rw_tables,
-            history,
         }
     }
 
@@ -65,29 +53,23 @@ impl Table {
     }
 
     pub fn get_tuple(&self, id: usize, offset: usize) -> &Tuple {
-        // &self.columns.get(&id).unwrap()[offset]
-
         match self.columns.get(&id) {
             Some(col) => &col[offset],
             None => panic!("column: {}, offset: {}", id, offset),
         }
     }
 
-    pub fn get_version_history(&self, offset: usize) -> &VersionHistory {
-        &self.history[offset]
-    }
-
-    pub fn get_mut_exists(&mut self) -> &mut HashMap<PrimaryKey, usize> {
+    // TODO: is needed?
+    pub fn get_mut_exists(&mut self) -> &mut FxHashMap<PrimaryKey, usize> {
         &mut self.exists
     }
 
-    pub fn get_exists(&self) -> &HashMap<PrimaryKey, usize> {
+    pub fn get_exists(&self) -> &FxHashMap<PrimaryKey, usize> {
         &self.exists
     }
 
     pub fn exists(&self, key: PrimaryKey) -> Result<usize, NonFatalError> {
-        let mref = self.exists.pin();
-        let offset = mref.get(&key);
+        let offset = self.exists.get(&key);
 
         match offset {
             Some(offset) => Ok(*offset),
@@ -105,19 +87,11 @@ impl Table {
     pub fn get_rwtable(&self, offset: usize) -> &AtomicLinkedList<Access> {
         &self.rw_tables[offset]
     }
-
-    pub fn lock_table(&self) -> MutexGuard<BitVec> {
-        self.inuse.lock()
-    }
 }
 
 impl fmt::Display for Table {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // print each version history
-        for (i, vh) in self.history.iter().enumerate() {
-            write!(f, "row {}:\n", i).unwrap();
-            write!(f, "{}", vh).unwrap();
-        }
+        write!(f, "TODO").unwrap();
 
         Ok(())
     }
