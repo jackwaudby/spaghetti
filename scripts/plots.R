@@ -25,21 +25,24 @@ sf3 = dat %>% filter((sf == 3) | (sf == 10000))
 #sf3 = sf3 %>% filter(cores <= 40)
 
 
-ggplot(data=sf1, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=protocol, colour=protocol)) +
+ggplot(data=sf1, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=workload, colour=workload)) +
   geom_line() +
   ylab("thpt (million/s)") +
-  ggtitle(paste0(dat$workload[1]," - sf1")) +
+  # ggtitle(paste0(dat$workload[1]," - sf1")) +
+  ggtitle(paste0("sf1 - 100 rows")) +
   theme_bw() 
 
-ggsave(paste0("./graphics/",dat$workload[1],"_thpt_sf1.png"))
+# ggsave(paste0("./graphics/",dat$workload[1],"_thpt_sf1.png"))
+ggsave(paste0("./graphics/thpt_sf1.png"))
 
-ggplot(data=sf3, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=protocol, colour=protocol)) +
+ggplot(data=sf3, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=workload, colour=workload)) +
   geom_line() +
   ylab("thpt (million/s)") +
-  ggtitle(paste0(dat$workload," - sf3")) +
-  theme_bw() 
+  # ggtitle(paste0(dat$workload," - sf3")) +
+  ggtitle(paste0("sf3 - 10000 rows")) +
+  theme_bw()
 
-ggsave(paste0("./graphics/",dat$workload[1],"_thpt_sf3.png"))
+ggsave(paste0("./graphics/thpt_sf3.png"))
 
 # ggplot(data=sf1, aes(x=cores, y=aborts/(commits+aborts), group=protocol, colour=protocol)) +
 #   geom_line() +

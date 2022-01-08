@@ -148,8 +148,8 @@ impl GlobalStatistics {
 
         let internal_aborts = match self.abort_breakdown.workload_specific {
             WorkloadAbortBreakdown::Tatp(ref reasons) => {
-                committed += reasons.row_not_found;
-                aborted -= reasons.row_not_found;
+                // committed += reasons.row_not_found; TODO: undo for actual
+                // aborted -= reasons.row_not_found;
                 aborted -= reasons.no_free_space;
                 reasons.row_already_exists
             }
