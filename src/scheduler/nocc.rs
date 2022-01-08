@@ -85,13 +85,13 @@ impl NoConcurrencyControl {
         let lsn = table.get_lsn(offset);
         let prv = rw_table.push_front(Access::Write(meta.clone()));
 
-        // spin(prv, lsn);
+        spin(prv, lsn);
 
         let tuple = table.get_tuple(column_id, offset).get();
-        // tuple.set_value(value).unwrap();
-        // tuple.commit();
+        tuple.set_value(value).unwrap();
+        tuple.commit();
 
-        // lsn.store(prv + 1, Ordering::Release);
+        lsn.store(prv + 1, Ordering::Release);
 
         self.txn_info.get().unwrap().borrow_mut().add(
             OperationType::Write,
