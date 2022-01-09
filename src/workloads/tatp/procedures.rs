@@ -132,7 +132,7 @@ pub fn get_access_data<'a>(
 
             let offset =
                 match database
-                    .get_table(0)
+                    .get_table(1)
                     .exists(PrimaryKey::Tatp(TatpPrimaryKey::AccessInfo(
                         params.s_id,
                         params.ai_type.into(),
@@ -144,10 +144,10 @@ pub fn get_access_data<'a>(
                     }
                 };
 
-            scheduler.read_value(0, 2, offset, &meta, database)?;
-            scheduler.read_value(0, 3, offset, &meta, database)?;
-            scheduler.read_value(0, 4, offset, &meta, database)?;
-            scheduler.read_value(0, 5, offset, &meta, database)?;
+            scheduler.read_value(1, 2, offset, &meta, database)?;
+            scheduler.read_value(1, 3, offset, &meta, database)?;
+            scheduler.read_value(1, 4, offset, &meta, database)?;
+            scheduler.read_value(1, 5, offset, &meta, database)?;
 
             scheduler.commit(&meta, database, TransactionType::ReadOnly)?;
 
@@ -183,7 +183,7 @@ pub fn update_subscriber_data<'a>(
             let mut bit1 = Data::Uint(params.bit_1 as u64);
             scheduler.write_value(&mut bit1, 0, 2, sub_offset, &meta, database)?;
 
-            let sf_offset = match database.get_table(0).exists(PrimaryKey::Tatp(
+            let sf_offset = match database.get_table(2).exists(PrimaryKey::Tatp(
                 TatpPrimaryKey::SpecialFacility(params.s_id, params.sf_type.into()),
             )) {
                 Ok(offset) => offset,

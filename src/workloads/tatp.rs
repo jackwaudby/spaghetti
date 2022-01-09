@@ -50,10 +50,10 @@ impl TatpDatabase {
         // Note; subscriber has 34 columns which are largely redunant
         // Included: s_id; sub_nbr; bit_1; msc_location; vlr_location
         let array: [Table; 4] = [
-            Table::new(population, 5),     // subscribers
-            Table::new(population * 5, 6), // access info
-            Table::new(population * 5, 6), // special facility
-            Table::new(population * 5, 5), // call forwarding
+            Table::new(population, 5),     // subscribers: 0
+            Table::new(population * 5, 6), // access info: 1
+            Table::new(population * 5, 6), // special facility: 2
+            Table::new(population * 5, 5), // call forwarding: 3
         ];
 
         TatpDatabase(array)

@@ -113,6 +113,7 @@ impl TatpGenerator {
                 let s_id = self.rng.gen_range(0..self.subscribers);
                 let ai_type = self.rng.gen_range(1..=4);
                 let payload = GetAccessData { s_id, ai_type };
+
                 (
                     TatpTransaction::GetAccessData,
                     TatpTransactionProfile::GetAccessData(payload),

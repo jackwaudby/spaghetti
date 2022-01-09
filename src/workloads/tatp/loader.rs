@@ -66,6 +66,7 @@ pub fn populate_tables(
             ai_offset += 1;
         }
     }
+
     info!("Loaded {} rows into access_info", ai_offset);
 
     // special facility
