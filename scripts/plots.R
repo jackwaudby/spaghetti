@@ -4,7 +4,6 @@ library(readr)
 library(dplyr)
 
 waudby <- read_csv(file = './results.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
-waudby
 durner <- read_delim(file = './durner_sgt.csv', delim = ";",col_names = F)
 #durner_2pl <- read_delim(file = './durner_2pl.csv', delim = ";",col_names = F)
 #durner = durner[,c(1,2,3,5,8,9,11,10,15,18)]
@@ -20,10 +19,19 @@ durner <- read_delim(file = './durner_sgt.csv', delim = ";",col_names = F)
 #dat = bind_rows(waudby,durner,durner_2pl)
 #dat = bind_rows(waudby,durner_2pl)
 dat = bind_rows(waudby)
+dat$sf = as.factor(dat$sf)
+
 sf1 = dat %>% filter((sf == 1) | (sf == 100))
 sf3 = dat %>% filter((sf == 3) | (sf == 10000))
 #sf1 = sf1 %>% filter(cores <= 40)
 #sf3 = sf3 %>% filter(cores <= 40)
+
+ggplot(data=dat, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=sf, colour=sf)) +
+  geom_line() +
+  ylab("thpt (million/s)") +
+  # ggtitle(paste0(dat$workload[1]," - sf1")) +
+  ggtitle(paste0("dummy")) +
+  theme_bw() 
 
 
 ggplot(data=sf1, aes(x=cores, y=commits/(total_time/cores/1000)/1000000, group=workload, colour=workload)) +

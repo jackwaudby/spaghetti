@@ -85,7 +85,7 @@ impl NoConcurrencyControl {
         let rw_table = table.get_rwtable(offset); // index into a vector
         let lsn = table.get_lsn(offset); // index into a vector
 
-        lsn.load(Ordering::Relaxed) + 1;
+        // lsn.load(Ordering::Relaxed) + 1;
 
         // let prv = rw_table.push_front(Access::Write(meta.clone()));
 
