@@ -122,8 +122,9 @@ impl NoConcurrencyControl {
                 ..
             } = op;
 
-            let table = database.get_table(table_id);
-            let rwtable = table.get_rwtable(offset);
+            let table = database.get_flattable(table_id);
+            let row = table.get_row(offset);
+            let rwtable = row.get_rwtable();
 
             match op_type {
                 OperationType::Read => {
