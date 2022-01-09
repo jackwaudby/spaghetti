@@ -46,27 +46,28 @@ impl NoConcurrencyControl {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
-        let table: &Table = database.get_table(table_id);
-        let rw_table = table.get_rwtable(offset);
-        let prv = rw_table.push_front(Access::Read(meta.clone()));
-        let lsn = table.get_lsn(offset);
+        // let table: &Table = database.get_table(table_id);
+        // let rw_table = table.get_rwtable(offset);
+        // let prv = rw_table.push_front(Access::Read(meta.clone()));
+        // let lsn = table.get_lsn(offset);
 
-        spin(prv, lsn);
+        // spin(prv, lsn);
 
-        let tuple = table.get_tuple(column_id, offset).get();
-        let value = tuple.get_value().unwrap().get_value();
+        // let tuple = table.get_tuple(column_id, offset).get();
+        // let value = tuple.get_value().unwrap().get_value();
 
-        lsn.store(prv + 1, Ordering::Release);
+        // lsn.store(prv + 1, Ordering::Release);
 
-        self.txn_info.get().unwrap().borrow_mut().add(
-            OperationType::Read,
-            table_id,
-            column_id,
-            offset,
-            prv,
-        );
+        // self.txn_info.get().unwrap().borrow_mut().add(
+        //     OperationType::Read,
+        //     table_id,
+        //     column_id,
+        //     offset,
+        //     prv,
+        // );
 
-        Ok(value)
+        // Ok(value)
+        unimplemented!()
     }
 
     /// Write a value in a column at some offset.
@@ -81,9 +82,11 @@ impl NoConcurrencyControl {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        let table = database.get_table(table_id); // index into a vector
-        let rw_table = table.get_rwtable(offset); // index into a vector
-        let lsn = table.get_lsn(offset); // index into a vector
+        let table = database.get_flattable(table_id); // index into a vector
+        let row = table.get_row(offset);
+
+        let rw_table = row.get_rwtable();
+        let lsn = row.get_lsn(); // index into a vector
 
         // lsn.load(Ordering::Relaxed) + 1;
 
@@ -91,7 +94,7 @@ impl NoConcurrencyControl {
 
         // spin(prv, lsn);
 
-        let tuple = table.get_tuple(column_id, offset).get(); // index into a vector
+        let tuple = row.get_tuple().get(); // index into a vector
         let value = tuple.get_value().unwrap().get_value();
         u64::try_from(value)? * 4; // dummy op
 

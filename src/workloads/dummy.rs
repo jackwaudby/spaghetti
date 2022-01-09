@@ -1,5 +1,5 @@
 use crate::storage::datatype::Data;
-use crate::storage::table::Table;
+use crate::storage::flattable::FlatTable;
 
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
@@ -27,7 +27,7 @@ lazy_static! {
 }
 
 #[derive(Debug)]
-pub struct DummyDatabase([Table; 1]);
+pub struct DummyDatabase([FlatTable; 1]);
 
 #[derive(EnumIter, Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum DummyTransaction {
@@ -39,24 +39,25 @@ pub enum DummyTransaction {
 
 impl DummyDatabase {
     pub fn new(population: usize) -> Self {
-        let array: [Table; 1] = [Table::new(population, 1)]; // 1 table with 1 column
+        let array: [FlatTable; 1] = [FlatTable::new(population)]; // 1 table with 1 column
 
         Self(array)
     }
 
-    pub fn insert_value(&mut self, table_id: usize, column_id: usize, offset: usize, value: Data) {
+    pub fn insert_value(&mut self, table_id: usize, offset: usize, value: Data) {
         self.get_mut_table(table_id)
-            .get_tuple(column_id, offset)
+            .get_row(offset)
+            .get_tuple()
             .get()
             .init_value(value)
             .unwrap();
     }
 
-    pub fn get_table(&self, id: usize) -> &Table {
+    pub fn get_table(&self, id: usize) -> &FlatTable {
         &self.0[id]
     }
 
-    pub fn get_mut_table(&mut self, id: usize) -> &mut Table {
+    pub fn get_mut_table(&mut self, id: usize) -> &mut FlatTable {
         &mut self.0[id]
     }
 }
