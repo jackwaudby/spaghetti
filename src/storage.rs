@@ -1,5 +1,4 @@
 use crate::common::error::FatalError;
-use crate::storage::flattable::FlatTable;
 use crate::storage::table::Table;
 use crate::workloads::acid::*;
 use crate::workloads::acid::{self, AcidDatabase};
@@ -22,8 +21,6 @@ pub mod datatype;
 pub mod tuple;
 
 pub mod table;
-
-pub mod flattable;
 
 pub mod access;
 
@@ -115,15 +112,7 @@ impl Database {
             Database::SmallBank(ref db) => db.get_table(id),
             Database::Acid(ref db) => db.get_table(id),
             Database::Tatp(ref db) => db.get_table(id),
-            Database::Dummy(ref db) => unimplemented!(),
-            //db.get_table(id),
-        }
-    }
-
-    pub fn get_flattable(&self, id: usize) -> &FlatTable {
-        match self {
             Database::Dummy(ref db) => db.get_table(id),
-            _ => unimplemented!(),
         }
     }
 }

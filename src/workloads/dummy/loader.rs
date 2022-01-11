@@ -15,7 +15,7 @@ pub fn populate_tables(
     for offset in 0..population {
         let num = rng.gen_range(0..=100) as u64; // random int
 
-        database.insert_value(0, offset, Data::Uint(num)); //
+        database.insert_value(0, 0, offset, Data::Uint(num)); //
     }
     info!("Loaded {} rows into table 1", population);
 
