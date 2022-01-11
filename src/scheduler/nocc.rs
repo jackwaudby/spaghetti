@@ -82,29 +82,35 @@ impl NoConcurrencyControl {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        let table = database.get_flattable(table_id);
+        let table = database.get_flattable(table_id); // index into a vector
         let row = table.get_row(offset);
 
         let rw_table = row.get_rwtable();
-        let lsn = row.get_lsn();
+        let lsn = row.get_lsn(); // index into a vector
 
-        let prv = rw_table.push_front(Access::Write(meta.clone()));
+        // lsn.load(Ordering::Relaxed) + 1;
 
-        spin(prv, lsn);
+        // let prv = rw_table.push_front(Access::Write(meta.clone()));
 
-        let tuple = row.get_tuple().get();
-        tuple.set_value(value).unwrap();
-        tuple.commit();
+        // spin(prv, lsn);
 
-        lsn.store(prv + 1, Ordering::Release);
+        let tuple = row.get_tuple().get(); // index into a vector
+        let value = tuple.get_value().unwrap().get_value();
+        u64::try_from(value)? * 4; // dummy op
 
-        self.txn_info.get().unwrap().borrow_mut().add(
-            OperationType::Write,
-            table_id,
-            column_id,
-            offset,
-            prv,
-        );
+        // tuple.set_value(value).unwrap();
+
+        // tuple.commit();
+
+        // lsn.store(prv + 1, Ordering::Release);
+
+        // self.txn_info.get().unwrap().borrow_mut().add(
+        //     OperationType::Write,
+        //     table_id,
+        //     column_id,
+        //     offset,
+        //     prv,
+        // );
 
         Ok(())
     }
