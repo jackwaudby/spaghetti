@@ -266,13 +266,13 @@ impl SmallBankGenerator {
     }
 
     pub fn get_accounts(&mut self) -> (u64, u64) {
-        let name1 = self.get_name();
-        let mut name2 = self.get_name();
+        let acc1 = self.get_account();
+        let mut acc2 = self.get_account();
 
-        while name1 == name2 {
-            name2 = self.get_name();
+        while acc1 == acc2 {
+            acc2 = self.get_account();
         }
-        (name1, name2)
+        (acc1, acc2)
     }
 }
 

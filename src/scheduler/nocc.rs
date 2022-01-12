@@ -6,7 +6,6 @@ use crate::storage::table::Table;
 use crate::storage::Database;
 
 use std::cell::RefCell;
-use std::convert::TryFrom;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
@@ -84,30 +83,23 @@ impl NoConcurrencyControl {
         let table = database.get_table(table_id); // index into a vector
         let rw_table = table.get_rwtable(offset); // index into a vector
         let lsn = table.get_lsn(offset); // index into a vector
+        let prv = rw_table.push_front(Access::Write(meta.clone()));
 
-        // lsn.load(Ordering::Relaxed) + 1;
-
-        // let prv = rw_table.push_front(Access::Write(meta.clone()));
-
-        // spin(prv, lsn);
+        spin(prv, lsn);
 
         let tuple = table.get_tuple(column_id, offset).get(); // index into a vector
-        let value = tuple.get_value().unwrap().get_value();
-        u64::try_from(value)? * 4; // dummy op
+        tuple.set_value(value).unwrap();
+        tuple.commit();
 
-        // tuple.set_value(value).unwrap();
+        lsn.store(prv + 1, Ordering::Release);
 
-        // tuple.commit();
-
-        // lsn.store(prv + 1, Ordering::Release);
-
-        // self.txn_info.get().unwrap().borrow_mut().add(
-        //     OperationType::Write,
-        //     table_id,
-        //     column_id,
-        //     offset,
-        //     prv,
-        // );
+        self.txn_info.get().unwrap().borrow_mut().add(
+            OperationType::Write,
+            table_id,
+            column_id,
+            offset,
+            prv,
+        );
 
         Ok(())
     }

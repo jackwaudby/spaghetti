@@ -21,13 +21,7 @@ lazy_static! {
         let mut m = HashMap::new();
         m.insert(0, 10);
         m.insert(1, 100000);
-        // m.insert(1, 100);
         m.insert(2, 200000);
-        // m.insert(3, 10000);
-        m.insert(3, 500000);
-        m.insert(10, 1000000);
-        m.insert(20, 2000000);
-        m.insert(50, 5000000);
         m
     };
 }
