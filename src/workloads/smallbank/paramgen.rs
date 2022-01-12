@@ -9,33 +9,15 @@ use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// SmallBank workload transaction generator.
 pub struct SmallBankGenerator {
-    /// Thread id
     thread_id: u32,
-
-    /// Random number generator.
     rng: StdRng,
-
-    /// Number of transactions generated.
     pub generated: u32,
-
-    /// Number of accounts.
     accounts: u32,
-
-    /// Flag if read-heavy workload should be used.
     use_balance_mix: bool,
-
-    /// Amount that is sent between accounts.
     send_payment_amount: f64,
-
-    /// Amount that is deposited in the checking account.
     deposit_checking_amount: f64,
-
-    /// Amount that is deposited in the savings account.
     transact_savings_amount: f64,
-
-    /// Value of a cheque written against an account.
     write_check_amount: f64,
 }
 
@@ -117,9 +99,8 @@ impl SmallBankGenerator {
     fn uniform_mix(&mut self, n: f32) -> (SmallBankTransaction, SmallBankTransactionProfile) {
         match n {
             // BALANCE
-            //            _ => {
             x if x < 0.15 => {
-                let name = self.get_name();
+                let name = self.get_account();
                 let payload = Balance { name };
 
                 (
@@ -128,7 +109,7 @@ impl SmallBankGenerator {
                 )
             } // // DEPOSIT_CHECKING
             x if x < 0.30 => {
-                let name = self.get_name();
+                let name = self.get_account();
 
                 let payload = DepositChecking {
                     name,
@@ -141,7 +122,7 @@ impl SmallBankGenerator {
             }
             // TRANSACT_SAVING
             x if x < 0.45 => {
-                let name = self.get_name();
+                let name = self.get_account();
 
                 let payload = TransactSaving {
                     name,
@@ -154,7 +135,7 @@ impl SmallBankGenerator {
             }
             // AMALGAMATE
             x if x < 0.60 => {
-                let (name1, name2) = self.get_names();
+                let (name1, name2) = self.get_accounts();
 
                 let payload = Amalgamate { name1, name2 };
                 (
@@ -164,7 +145,7 @@ impl SmallBankGenerator {
             }
             // WRITE_CHECK
             x if x < 0.75 => {
-                let name = self.get_name();
+                let name = self.get_account();
 
                 let payload = WriteCheck {
                     name,
@@ -177,7 +158,7 @@ impl SmallBankGenerator {
             }
             // SEND_PAYMENT
             _ => {
-                let (name1, name2) = self.get_names();
+                let (name1, name2) = self.get_accounts();
 
                 let payload = SendPayment {
                     name1,
@@ -197,7 +178,7 @@ impl SmallBankGenerator {
         match n {
             // BALANCE
             x if x < 0.6 => {
-                let name = self.get_name();
+                let name = self.get_account();
 
                 let payload = Balance { name };
 
@@ -208,7 +189,7 @@ impl SmallBankGenerator {
             }
             // DEPOSIT_CHECKING
             x if x < 0.68 => {
-                let name = self.get_name();
+                let name = self.get_account();
 
                 let payload = DepositChecking {
                     name,
@@ -221,7 +202,7 @@ impl SmallBankGenerator {
             }
             // TRANSACT_SAVING
             x if x < 0.76 => {
-                let name = self.get_name();
+                let name = self.get_account();
 
                 let payload = TransactSaving {
                     name,
@@ -234,7 +215,7 @@ impl SmallBankGenerator {
             }
             // AMALGAMATE
             x if x < 0.84 => {
-                let (name1, name2) = self.get_names();
+                let (name1, name2) = self.get_accounts();
 
                 let payload = Amalgamate { name1, name2 };
                 (
@@ -244,7 +225,7 @@ impl SmallBankGenerator {
             }
             // WRITE_CHECK
             x if x < 0.92 => {
-                let name = self.get_name();
+                let name = self.get_account();
 
                 let payload = WriteCheck {
                     name,
@@ -257,7 +238,7 @@ impl SmallBankGenerator {
             }
             // SEND_PAYMENT
             _ => {
-                let (name1, name2) = self.get_names();
+                let (name1, name2) = self.get_accounts();
 
                 let payload = SendPayment {
                     name1,
@@ -272,38 +253,19 @@ impl SmallBankGenerator {
         }
     }
 
-    /// Get customer name.
-    pub fn get_name(&mut self) -> u64 {
-        if self.accounts < 10 {
-            let id: u64 = self.rng.gen_range(0..self.accounts).into();
-            return id;
-        }
-
-        if self.accounts == 10 {
-            let id: u64 = self.rng.gen_range(0..self.accounts).into();
-            return id;
-        }
-
-        if self.accounts == 100 {
-            let id: u64 = self.rng.gen_range(0..self.accounts).into();
-            return id;
-        }
-
-        let n: f32 = self.rng.gen();
-        match n {
-            x if x < 0.25 => {
-                let id = self.rng.gen_range(0..100) as u32;
-                id as u64
-            }
-            _ => {
-                let id: u64 = self.rng.gen_range(100..self.accounts).into();
-                id
+    pub fn get_account(&mut self) -> u64 {
+        if self.accounts <= 100 {
+            self.rng.gen_range(0..self.accounts as u64)
+        } else {
+            let n: f32 = self.rng.gen();
+            match n {
+                x if x < 0.25 => self.rng.gen_range(0..100 as u64),
+                _ => self.rng.gen_range(100..self.accounts as u64),
             }
         }
     }
 
-    /// Get distinct customer names.
-    pub fn get_names(&mut self) -> (u64, u64) {
+    pub fn get_accounts(&mut self) -> (u64, u64) {
         let name1 = self.get_name();
         let mut name2 = self.get_name();
 

@@ -55,7 +55,7 @@ impl SmallBankDatabase {
         let array: [Table; 3] = [
             Table::new(population, 1),
             Table::new(population, 2),
-            Table::new(population, 3),
+            Table::new(population, 2),
         ];
 
         SmallBankDatabase(array)
@@ -80,8 +80,6 @@ impl SmallBankDatabase {
 
 impl fmt::Display for SmallBankDatabase {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // print each version history for each row for each table
-
         for (i, table) in self.0.iter().enumerate() {
             write!(f, "table {}:\n", i).unwrap();
             write!(f, "{}", table).unwrap();
