@@ -102,7 +102,7 @@ pub fn get_new_destination<'a>(
             let end_time = u64::try_from(scheduler.read_value(3, 3, sf_offset, &meta, database)?)?;
             scheduler.read_value(3, 4, sf_offset, &meta, database)?;
 
-            if params.end_time as u64 >= end_time {
+            if params.end_time >= end_time {
                 scheduler.abort(&meta, database);
                 return Err(NonFatalError::RowNotFound(
                     "todo".to_string(),
@@ -180,7 +180,7 @@ pub fn update_subscriber_data<'a>(
                 }
             };
 
-            let mut bit1 = Data::Uint(params.bit_1 as u64);
+            let mut bit1 = Data::Uint(params.bit_1);
             scheduler.write_value(&mut bit1, 0, 2, sub_offset, &meta, database)?;
 
             let sf_offset = match database.get_table(2).exists(PrimaryKey::Tatp(
@@ -193,7 +193,7 @@ pub fn update_subscriber_data<'a>(
                 }
             };
 
-            let mut data_a = Data::Uint(params.bit_1 as u64);
+            let mut data_a = Data::Uint(params.data_a);
             scheduler.write_value(&mut data_a, 2, 4, sf_offset, &meta, database)?;
 
             scheduler.commit(&meta, database, TransactionType::WriteOnly)?;
@@ -227,7 +227,7 @@ pub fn update_location<'a>(
                 }
             };
 
-            let mut vlr = Data::Uint(params.vlr_location as u64);
+            let mut vlr = Data::Uint(params.vlr_location);
             scheduler.write_value(&mut vlr, 0, 4, offset, &meta, database)?;
 
             scheduler.commit(&meta, database, TransactionType::WriteOnly)?;

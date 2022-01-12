@@ -36,7 +36,7 @@ pub fn to_sub_nbr(s_id: u64) -> String {
 }
 
 /// Generate a start time.
-pub fn get_start_time(rng: &mut StdRng) -> u8 {
+pub fn get_start_time(rng: &mut StdRng) -> u64 {
     let n: f32 = rng.gen();
 
     match n {

@@ -9,7 +9,6 @@ use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-/// TATP workload transaction generator.
 pub struct TatpGenerator {
     thread_id: u32,
     subscribers: u64,
@@ -47,7 +46,6 @@ impl TatpGenerator {
 }
 
 impl Generator for TatpGenerator {
-    /// Generate a transaction request.
     fn generate(&mut self) -> Message {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
@@ -76,15 +74,16 @@ impl TatpGenerator {
     /// Get a random transaction profile (type, params)
     fn get_params(&mut self, n: f32) -> (TatpTransaction, TatpTransactionProfile) {
         self.generated += 1;
+
+        let s_id = if self.use_nurand {
+            helper::nurand_sid(&mut self.rng, self.subscribers, 1) // TODO: start ID id 0 not 1.
+        } else {
+            self.rng.gen_range(0..self.subscribers)
+        };
+
         match n {
             x if x < 0.35 => {
                 // GET_SUBSCRIBER_DATA
-                let s_id;
-                if self.use_nurand {
-                    s_id = helper::nurand_sid(&mut self.rng, self.subscribers, 1);
-                } else {
-                    s_id = self.rng.gen_range(0..self.subscribers);
-                }
                 let payload = GetSubscriberData { s_id };
                 (
                     TatpTransaction::GetSubscriberData,
@@ -93,7 +92,6 @@ impl TatpGenerator {
             }
             x if x < 0.45 => {
                 // GET_NEW_DESTINATION
-                let s_id = self.rng.gen_range(0..self.subscribers);
                 let sf_type = self.rng.gen_range(1..=4);
                 let start_time = helper::get_start_time(&mut self.rng);
                 let end_time = start_time + self.rng.gen_range(1..=8);
@@ -110,7 +108,6 @@ impl TatpGenerator {
             }
             x if x < 0.8 => {
                 // GET_ACCESS_DATA
-                let s_id = self.rng.gen_range(0..self.subscribers);
                 let ai_type = self.rng.gen_range(1..=4);
                 let payload = GetAccessData { s_id, ai_type };
 
@@ -119,9 +116,8 @@ impl TatpGenerator {
                     TatpTransactionProfile::GetAccessData(payload),
                 )
             }
-            x if x < 0.82 => {
+            x if x < 0.84 => {
                 // UPDATE_SUBSCRIBER_DATA
-                let s_id = self.rng.gen_range(0..self.subscribers);
                 let sf_type = self.rng.gen_range(1..=4);
                 let bit_1 = self.rng.gen_range(0..=1);
                 let data_a = self.rng.gen_range(0..=255);
@@ -136,10 +132,8 @@ impl TatpGenerator {
                     TatpTransactionProfile::UpdateSubscriberData(payload),
                 )
             }
-
             _ => {
                 // UPDATE_LOCATION
-                let s_id = self.rng.gen_range(0..self.subscribers);
                 let vlr_location = self.rng.gen_range(1..(2 ^ 32));
                 let payload = UpdateLocationData { s_id, vlr_location };
                 (
@@ -170,8 +164,8 @@ pub struct GetSubscriberData {
 pub struct GetNewDestination {
     pub s_id: u64,
     pub sf_type: u8,
-    pub start_time: u8,
-    pub end_time: u8,
+    pub start_time: u64,
+    pub end_time: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
@@ -184,14 +178,14 @@ pub struct GetAccessData {
 pub struct UpdateSubscriberData {
     pub s_id: u64,
     pub sf_type: u8,
-    pub bit_1: u8,
-    pub data_a: u8,
+    pub bit_1: u64,
+    pub data_a: u64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone, Copy)]
 pub struct UpdateLocationData {
     pub s_id: u64,
-    pub vlr_location: u8,
+    pub vlr_location: u64,
 }
 
 impl fmt::Display for TatpTransactionProfile {
