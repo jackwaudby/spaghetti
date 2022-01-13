@@ -10,6 +10,7 @@ use crate::workloads::acid::AcidTransaction;
 use crate::workloads::dummy::DummyTransaction;
 use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::TatpTransaction;
+use crate::workloads::IsolationLevel;
 
 use config::Config;
 use serde::{Deserialize, Serialize};
@@ -281,10 +282,12 @@ impl LocalStatistics {
         self.core_id
     }
 
+    /// Per-thread latency
     pub fn stop_worker(&mut self, start: Instant) {
         self.total_time = start.elapsed().as_nanos();
     }
 
+    /// Per-transaction latency
     pub fn stop_latency(&mut self, start: Instant) {
         self.latency += start.elapsed().as_nanos();
     }
@@ -293,6 +296,7 @@ impl LocalStatistics {
         if let Message::Response {
             transaction,
             outcome,
+            isolation,
             ..
         } = response
         {
@@ -344,6 +348,12 @@ impl LocalStatistics {
                                 }
                                 SerializationGraphError::CycleFound => metric.inc_cycle_found(),
                             }
+
+                            match isolation {
+                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
+                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
+                                IsolationLevel::Serializable => metric.inc_serializable(),
+                            }
                         }
                     }
 
@@ -356,6 +366,11 @@ impl LocalStatistics {
                                 MixedSerializationGraphError::CycleFound => {
                                     metric.inc_cycle_found()
                                 }
+                            }
+                            match isolation {
+                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
+                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
+                                IsolationLevel::Serializable => metric.inc_serializable(),
                             }
                         }
                     }
@@ -787,6 +802,9 @@ enum ProtocolAbortBreakdown {
 struct SerializationGraphReasons {
     cascading_abort: u32,
     cycle_found: u32,
+    read_uncommitted: u32,
+    read_committed: u32,
+    serializable: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -808,6 +826,9 @@ impl SerializationGraphReasons {
         SerializationGraphReasons {
             cascading_abort: 0,
             cycle_found: 0,
+            read_uncommitted: 0,
+            read_committed: 0,
+            serializable: 0,
         }
     }
 
@@ -819,11 +840,27 @@ impl SerializationGraphReasons {
         self.cycle_found += 1;
     }
 
+    fn inc_read_uncommitted(&mut self) {
+        self.read_uncommitted += 1;
+    }
+
+    fn inc_read_committed(&mut self) {
+        self.read_committed += 1;
+    }
+
+    fn inc_serializable(&mut self) {
+        self.serializable += 1;
+    }
+
     fn merge(&mut self, other: SerializationGraphReasons) {
         self.cascading_abort += other.cascading_abort;
         self.cycle_found += other.cycle_found;
+        self.read_uncommitted += other.read_uncommitted;
+        self.read_committed += other.read_committed;
+        self.serializable += other.serializable;
     }
 }
+
 impl HitListReasons {
     fn new() -> HitListReasons {
         HitListReasons {

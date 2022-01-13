@@ -4,7 +4,19 @@ library(readr)
 library(dplyr)
 
 # Investigation: sgt vs msgt
-# Parameters: smallbank, sf1, median of 5 runs
+# Parameters: smallbank, sf1, median of 5 runs, 1 million txns
+raw = read_csv(file = './data/22_01_13_sgt_msgt_smallbank_sf1.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
+
+raw$thpt = raw$commits/(raw$total_time/raw$cores/1000)/1000000
+raw$abr = raw$errors/(raw$commits + raw$errors)
+raw$lat = raw$total_latency/(raw$commits + raw$errors + raw$aborts)
+
+dat = raw %>%
+  group_by(protocol) %>% 
+  group_by(cores) %>%
+  summarise(thpt = median(thpt), abr = median(abr), lat = median(lat))
+
+
 
 sgt <- read_csv(file = './data/22_01_12_sgt_smallbank_sf1_sf3.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
 msgt <- read_csv(file = './data/22_01_12_msgt_smallbank_sf1_sf3.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
