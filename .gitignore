@@ -15,4 +15,5 @@ Cargo.lock
 *.csv
 *debug
 
-plot.sh
+./scripts/plots.R
+./plot.sh
