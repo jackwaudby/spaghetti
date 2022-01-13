@@ -3,6 +3,61 @@ library(ggplot2)
 library(readr)
 library(dplyr)
 
+sgt <- read_csv(file = './data/22_01_12_sgt_smallbank_sf1_sf3.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
+msgt <- read_csv(file = './data/22_01_12_msgt_smallbank_sf1_sf3.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
+sgt_sf1 = sgt %>% filter(sf == 1)
+msgt_sf1 = msgt %>% filter(sf == 1)
+sgt_sf1$thpt = sgt_sf1$commits/(sgt_sf1$total_time/sgt_sf1$cores/1000)/1000000
+msgt_sf1$thpt = msgt_sf1$commits/(msgt_sf1$total_time/msgt_sf1$cores/1000)/1000000
+sgt_sf1$abr = sgt_sf1$errors/(sgt_sf1$commits+sgt_sf1$errors)
+msgt_sf1$abr = msgt_sf1$errors/(msgt_sf1$commits+msgt_sf1$errors)
+
+sgt_sf1 = sgt_sf1 %>%
+  group_by(cores) %>%
+  summarise(thpt = median(abr))
+
+msgt_sf1 = msgt_sf1 %>%
+  group_by(cores) %>%
+  summarise(thpt = median(abr))
+
+((msgt_sf1$thpt/sgt_sf1$thpt) - 1)*100
+
+
+
+sgt_sf1$protocol = rep("sgt",7)
+msgt_sf1$protocol = rep("msgt",7)
+
+dat = rbind(msgt_sf1,sgt_sf1)
+dat$protocol <- as.factor(dat$protocol)
+
+head(dat)
+
+ggplot(data=dat, aes(x=cores, y=thpt, group=protocol, colour=protocol)) +
+  geom_line() +
+  ylab("thpt (million/s)") +
+  # ggtitle(paste0(dat$workload[1]," - sf1")) +
+  ggtitle(paste0("sgt smallbank sf1")) +
+  theme_bw() 
+
+ggsave(paste0("./graphics/22_01_12_nocc_tatp_sf1.png"))
+
+sf3 = dat %>% filter(sf == 3)
+sf3$thpt = sf3$commits/(sf3$total_time/sf3$cores/1000)/1000000
+sf3 = sf3 %>%
+  group_by(cores) %>%
+  summarise(thpt = median(thpt))
+
+ggplot(data=sf3, aes(x=cores, y=thpt)) +
+  geom_line() +
+  ylab("thpt (million/s)") +
+  # ggtitle(paste0(dat$workload[1]," - sf3")) +
+  ggtitle(paste0("sgt smallbank sf1")) +
+  theme_bw() 
+ggsave(paste0("./graphics/22_01_12_nocc_smallbank_sf3.png"))
+
+
+
+
 waudby <- read_csv(file = './results.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
 durner <- read_delim(file = './durner_sgt.csv', delim = ";",col_names = F)
 #durner_2pl <- read_delim(file = './durner_2pl.csv', delim = ";",col_names = F)
