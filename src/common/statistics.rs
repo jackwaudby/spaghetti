@@ -114,8 +114,8 @@ impl GlobalStatistics {
         } else {
             path = format!("./results/{}", self.workload);
             file = format!(
-                "./results/{}/{}-sf{}.json",
-                self.workload, self.protocol, self.scale_factor
+                "./results/{}/{}-sf{}-{}.json",
+                self.workload, self.protocol, self.scale_factor, self.cores
             );
         }
 

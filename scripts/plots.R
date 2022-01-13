@@ -3,6 +3,9 @@ library(ggplot2)
 library(readr)
 library(dplyr)
 
+# Investigation: sgt vs msgt
+# Parameters: smallbank, sf1, median of 5 runs
+
 sgt <- read_csv(file = './data/22_01_12_sgt_smallbank_sf1_sf3.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
 msgt <- read_csv(file = './data/22_01_12_msgt_smallbank_sf1_sf3.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
 sgt_sf1 = sgt %>% filter(sf == 1)
