@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
-use tracing::{debug, info, instrument, Span};
+use tracing::info;
 
 pub mod node;
 
@@ -133,12 +133,6 @@ impl MixedSerializationGraph {
                 continue; // if (from) checked in process of terminating so try again
             }
 
-            match from {
-                Edge::ReadWrite(_) => debug!("inserted: ({}) -[rw]-> ({})", from_id, this_id),
-                Edge::WriteRead(_) => debug!("inserted: ({}) -[wr]-> ({})", from_id, this_id),
-                Edge::WriteWrite(_) => debug!("inserted: ({}) -[ww]-> ({})", from_id, this_id),
-            }
-
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
 
@@ -148,9 +142,7 @@ impl MixedSerializationGraph {
         }
     }
 
-    #[instrument(level = "debug", skip(self))]
     pub fn cycle_check(&self) -> bool {
-        debug!("start cycle check");
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
 
@@ -178,7 +170,6 @@ impl MixedSerializationGraph {
             };
 
             if start_id == current {
-                debug!("cycle found");
                 return true; // cycle found
             }
 
@@ -202,7 +193,6 @@ impl MixedSerializationGraph {
             drop(rlock);
         }
 
-        debug!("no cycle");
         false
     }
 
@@ -214,7 +204,6 @@ impl MixedSerializationGraph {
         aborted || cascading_abort
     }
 
-    #[instrument(level = "debug", skip(self), fields(id))]
     pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1;
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
@@ -225,9 +214,6 @@ impl MixedSerializationGraph {
         let guard = epoch::pin();
 
         MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
-
-        Span::current().record("id", &ref_id);
-        debug!("begin");
 
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
@@ -257,7 +243,6 @@ impl MixedSerializationGraph {
         (id, thread_id, thread_ctr)
     }
 
-    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn read_value(
         &self,
         table_id: usize,
@@ -266,17 +251,10 @@ impl MixedSerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
-        match meta {
-            TransactionId::SerializationGraph(id, _, _) => {
-                Span::current().record("id", &id);
-            }
-            _ => panic!("unexpected txn id"),
-        };
-
         let this = unsafe { &*self.get_transaction() };
 
         if this.is_cascading_abort() {
-            self.abort(meta, database);
+            self.abort(database);
             return Err(MixedSerializationGraphError::CascadingAbort.into());
         }
 
@@ -314,7 +292,7 @@ impl MixedSerializationGraph {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(meta, database); // abort
+            self.abort(database); // abort
             return Err(MixedSerializationGraphError::CycleFound.into());
         }
 
@@ -332,157 +310,9 @@ impl MixedSerializationGraph {
         Ok(vals)
     }
 
-    // #[instrument(level = "debug", skip(self, meta, database), fields(id))]
-    // pub fn write_value(
-    //     &self,
-    //     value: &mut Data,
-    //     table_id: usize,
-    //     column_id: usize,
-    //     offset: usize,
-    //     meta: &TransactionId,
-    //     database: &Database,
-    // ) -> Result<(), NonFatalError> {
-    //     match meta {
-    //         TransactionId::SerializationGraph(id, _, _) => {
-    //             Span::current().record("id", &id);
-    //         }
-    //         _ => panic!("unexpected txn id"),
-    //     };
-
-    //     let table = database.get_table(table_id);
-    //     let rw_table = table.get_rwtable(offset);
-    //     let lsn = table.get_lsn(offset);
-    //     let mut prv;
-
-    //     let mut attempts = 0;
-    //     loop {
-    //         if self.needs_abort() {
-    //             self.abort(meta, database);
-    //             return Err(MixedSerializationGraphError::CascadingAbort.into());
-    //         }
-
-    //         prv = rw_table.push_front(Access::Write(meta.clone()));
-
-    //         unsafe { spin(prv, lsn) };
-
-    //         let guard = &epoch::pin();
-    //         let snapshot = rw_table.iter(guard);
-
-    //         let mut wait = false;
-    //         let mut cyclic = false;
-
-    //         for (id, access) in snapshot {
-    //             if id < &prv {
-    //                 match access {
-    //                     // W-W conflict
-    //                     Access::Write(from) => {
-    //                         if let TransactionId::SerializationGraph(from_addr, _, _) = from {
-    //                             let from = unsafe { &*(*from_addr as *const Node) };
-    //                             if !from.is_committed() {
-    //                                 if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
-    //                                     cyclic = true;
-    //                                     break;
-    //                                 }
-    //                                 debug!("predecessor: {} not committed", from_addr);
-    //                                 attempts += 1;
-    //                                 if attempts > 10000 {
-    //                                     panic!("attempted to write 10000x");
-    //                                 }
-    //                                 wait = true;
-    //                                 break;
-    //                             } else {
-    //                                 // if table.get_tuple(column_id, offset).get().is_dirty() {
-    //                                 //     debug!("tuple dirty");
-    //                                 //     wait = true; // TODO: hack
-    //                                 // }
-    //                             }
-    //                         }
-    //                     }
-    //                     Access::Read(_) => {}
-    //                 }
-    //             }
-    //         }
-
-    //         if cyclic {
-    //             rw_table.erase(prv); // remove from rw table
-    //             self.abort(meta, database);
-    //             lsn.store(prv + 1, Ordering::Release); // update lsn
-    //             return Err(MixedSerializationGraphError::CycleFound.into());
-    //         }
-
-    //         // (ii) there is an uncommitted write (wait = T)
-    //         // restart operation
-    //         if wait {
-    //             rw_table.erase(prv); // remove from rw table
-    //             lsn.store(prv + 1, Ordering::Release); // update lsn
-    //             continue;
-    //         }
-
-    //         // (iii) no w-w conflicts -> clean record (both F)
-    //         // check for cascading abort
-    //         if self.needs_abort() {
-    //             rw_table.erase(prv); // remove from rw table
-    //             self.abort(meta, database);
-    //             lsn.store(prv + 1, Ordering::Release); // update lsn
-    //             return Err(MixedSerializationGraphError::CascadingAbort.into());
-    //         }
-
-    //         break;
-    //     }
-
-    //     // Now, handle R-W conflicts
-    //     let guard = &epoch::pin(); // pin thread
-    //     let snapshot = rw_table.iter(guard);
-
-    //     let mut cyclic = false;
-
-    //     for (id, access) in snapshot {
-    //         if self.needs_abort() {
-    //             rw_table.erase(prv); // remove from rw table
-
-    //             self.abort(meta, database);
-    //             lsn.store(prv + 1, Ordering::Release); // update lsn
-    //             return Err(MixedSerializationGraphError::CascadingAbort.into());
-    //         }
-
-    //         if id < &prv {
-    //             match access {
-    //                 Access::Read(from) => {
-    //                     if let TransactionId::SerializationGraph(from_addr, _, _) = from {
-    //                         if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
-    //                             cyclic = true;
-    //                             break;
-    //                         }
-    //                     }
-    //                 }
-    //                 Access::Write(_) => {}
-    //             }
-    //         }
-    //     }
-
-    //     // (iv) transaction is in a cycle (cycle = T)
-    //     // abort transaction
-    //     if cyclic {
-    //         rw_table.erase(prv); // remove from rw table
-    //         self.abort(meta, database);
-    //         lsn.store(prv + 1, Ordering::Release); // update lsn
-    //         return Err(MixedSerializationGraphError::CycleFound.into());
-    //     }
-
-    //     if let Err(e) = table.get_tuple(column_id, offset).get().set_value(value) {
-    //         panic!("{}", e);
-    //     }
-
-    //     lsn.store(prv + 1, Ordering::Release);
-    //     self.record(OperationType::Write, table_id, column_id, offset, prv); // record operation
-
-    //     Ok(())
-    // }
-
     /// Write operation.
     ///
     /// A write is executed iff there are no uncommitted writes on a record, else the operation is delayed.
-    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn write_value(
         &self,
         value: &mut Data,
@@ -492,13 +322,6 @@ impl MixedSerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        match meta {
-            TransactionId::SerializationGraph(id, _, _) => {
-                Span::current().record("id", &id);
-            }
-            _ => panic!("unexpected txn id"),
-        };
-
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
@@ -506,7 +329,7 @@ impl MixedSerializationGraph {
 
         loop {
             if self.needs_abort() {
-                self.abort(meta, database);
+                self.abort(database);
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
                 // check for cascading abort
             }
@@ -560,7 +383,7 @@ impl MixedSerializationGraph {
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                self.abort(meta, database);
+                self.abort(database);
                 return Err(MixedSerializationGraphError::CycleFound.into());
             }
 
@@ -577,7 +400,7 @@ impl MixedSerializationGraph {
             // check for cascading abort
             if self.needs_abort() {
                 rw_table.erase(prv); // remove from rw table
-                self.abort(meta, database);
+                self.abort(database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
 
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
@@ -613,7 +436,7 @@ impl MixedSerializationGraph {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(meta, database);
+            self.abort(database);
 
             return Err(MixedSerializationGraphError::CycleFound.into());
         }
@@ -635,20 +458,12 @@ impl MixedSerializationGraph {
     }
 
     /// Commit operation.
-    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
-    pub fn commit(&self, meta: &TransactionId, database: &Database) -> Result<(), NonFatalError> {
-        match meta {
-            TransactionId::SerializationGraph(id, _, _) => {
-                Span::current().record("id", &id);
-            }
-            _ => panic!("unexpected txn id"),
-        };
-
+    pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
 
         loop {
             if this.is_cascading_abort() || this.is_aborted() {
-                self.abort(meta, database);
+                self.abort(database);
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
             }
 
@@ -677,15 +492,7 @@ impl MixedSerializationGraph {
         Ok(())
     }
 
-    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
-    pub fn abort(&self, meta: &TransactionId, database: &Database) -> NonFatalError {
-        match meta {
-            TransactionId::SerializationGraph(id, _, _) => {
-                Span::current().record("id", &id);
-            }
-            _ => panic!("unexpected txn id"),
-        };
-
+    pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = unsafe { &*self.get_transaction() };
 
         this.set_aborted();
@@ -716,7 +523,6 @@ impl MixedSerializationGraph {
                     let that_rlock = that.read();
                     if !that.is_cleaned() {
                         that.remove_incoming(&Edge::ReadWrite(this_id));
-                        debug!("removed: ({}) -[rw]-> ({})", this_id, that_id);
                     }
                     drop(that_rlock);
                 }
@@ -729,7 +535,6 @@ impl MixedSerializationGraph {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
                             that.remove_incoming(&Edge::WriteWrite(this_id));
-                            debug!("removed: ({}) -[ww]-> ({})", this_id, that_id);
                         }
                         drop(that_rlock);
                     }
@@ -743,7 +548,6 @@ impl MixedSerializationGraph {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
                             that.remove_incoming(&Edge::WriteRead(this_id));
-                            debug!("removed: ({}) -[wr]-> ({})", this_id, that_id);
                         }
                         drop(that_rlock);
                     }
@@ -823,39 +627,6 @@ impl MixedSerializationGraph {
             }
         }
     }
-
-    // pub fn tidyup(&self, database: &Database, commit: bool) {
-    //     let ops = self.get_operations();
-
-    //     for op in ops {
-    //         let Operation {
-    //             op_type,
-    //             table_id,
-    //             column_id,
-    //             offset,
-    //             prv,
-    //         } = op;
-
-    //         let table = database.get_table(table_id);
-    //         let rwtable = table.get_rwtable(offset);
-    //         let tuple = table.get_tuple(column_id, offset);
-
-    //         match op_type {
-    //             OperationType::Read => {
-    //                 rwtable.erase(prv);
-    //             }
-    //             OperationType::Write => {
-    //                 if commit {
-    //                     tuple.get().commit();
-    //                 } else {
-    //                     tuple.get().revert();
-    //                 }
-
-    //                 rwtable.erase(prv);
-    //             }
-    //         }
-    //     }
-    // }
 }
 
 unsafe fn spin(prv: u64, lsn: &AtomicU64) {
