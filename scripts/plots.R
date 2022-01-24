@@ -6,17 +6,33 @@ library(dplyr)
 # Investigation: sgt vs msgt
 # Parameters: smallbank, sf1, median of 5 runs, 1 million txns
 raw = read_csv(file = './data/22_01_13_sgt_msgt_smallbank_sf1.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
-
 raw$thpt = raw$commits/(raw$total_time/raw$cores/1000)/1000000
 raw$abr = raw$errors/(raw$commits + raw$errors)
 raw$lat = raw$total_latency/(raw$commits + raw$errors + raw$aborts)
 
 dat = raw %>%
-  group_by(protocol) %>% 
-  group_by(cores) %>%
+  group_by(protocol,cores) %>%
   summarise(thpt = median(thpt), abr = median(abr), lat = median(lat))
 
+dat
 
+ggplot(data=dat, aes(x=cores, y=thpt, group=protocol, colour=protocol)) +
+  geom_line() +
+  ylab("thpt (million/s)") +
+  ggtitle(paste0("smallbank sf1")) +
+  theme_bw()
+
+ggplot(data=dat, aes(x=cores, y=abr, group=protocol, colour=protocol)) +
+  geom_line() +
+  ylab("abort rate") +
+  ggtitle(paste0("smallbank sf1")) +
+  theme_bw() 
+
+ggplot(data=dat, aes(x=cores, y=lat, group=protocol, colour=protocol)) +
+  geom_line() +
+  ylab("av latency (ms)") +
+  ggtitle(paste0("sgt smallbank sf1")) +
+  theme_bw() 
 
 sgt <- read_csv(file = './data/22_01_12_sgt_smallbank_sf1_sf3.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
 msgt <- read_csv(file = './data/22_01_12_msgt_smallbank_sf1_sf3.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
@@ -181,3 +197,69 @@ ggsave("./graphics/error_sf3.png")
 #   theme_bw() 
 # 
 # ggsave("./graphics/smallbank_lat_low.png")
+
+
+raw = read_csv(file = './data/22_01_13_old.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","restarted","aborted","total_latency"))
+raw = read_csv(file = './data/22_01_13_old.csv',col_names = c("sf","protocol","workload","cores","total_time","commits","aborts","errors","total_latency"))
+raw$thpt = raw$commits/(raw$total_time/raw$cores/1000)/1000000
+
+ggplot(data=raw,aes(x=cores, y=thpt, group=protocol, colour=protocol)) +
+  geom_line() +
+  ylab("thpt (million/s)") +
+  ggtitle(paste0("smallbank sf1")) +
+  theme_bw()
+
+# Isolation breakdown
+
+cores = c(10,20,30,40,50,60)
+
+msgt_ru = c(7900,49318,157417,357359,659623,1043204)
+msgt_rc = c(16496,108639,361963,848857,1596211,2541636)
+msgt_s = c(53066,273932,746512,1496097,2545877,3735399)
+total = msgt_ru + msgt_rc + msgt_s
+
+sgt_ru = c(35870,182023,472259,925095,1509435,2241890)
+sgt_rc = c(70824,365181,945414,1850348,3016117,4474513)
+sgt_s = c(71349,364745,944946,1849372,3016714,4475011)
+sgt_total = sgt_ru + sgt_rc + sgt_s
+
+msgt_ru = data.frame(cores, aborts = msgt_ru/total, iso = rep("msgt-ru",6))
+msgt_rc = data.frame(cores, aborts = msgt_rc/total, iso = rep("msgt-rc",6))
+msgt_s = data.frame(cores, aborts = msgt_s/total, iso = rep("msgt-s",6))
+msgt = data.frame(rbind(msgt_ru,msgt_rc,msgt_s))
+
+sgt_ru = data.frame(cores, aborts = sgt_ru/sgt_total, iso = rep("sgt-ru",6))
+sgt_rc = data.frame(cores, aborts = sgt_rc/sgt_total, iso = rep("sgt-rc",6))
+sgt_s = data.frame(cores, aborts = sgt_s/sgt_total, iso = rep("sgt-s",6))
+sgt = data.frame(rbind(sgt_ru,sgt_rc,sgt_s))
+
+dat = data.frame(rbind(sgt,msgt))
+
+ggplot(data=dat, aes(x=cores, y=aborts, group=iso, colour=iso)) +
+  geom_line() +
+  ylab("thpt (million/s)") +
+  ggtitle(paste0("smallbank sf1")) +
+  theme_bw()
+
+
+
+msgt_ca = c(32631,176045,513448,1134919,2099962,3377140)
+msgt_cyc = c(44831,255844,752444,1567394,2701749,3943099)
+
+sgt_ca = c(72142,347277,870526,1707934,2818415,4291545)
+sgt_cyc = c(105901,564672,1492093,2916881,4723851,6899869)
+
+msgt_ca = data.frame(cores, ca = msgt_ca/total, iso = rep("msgt-cas",6))
+msgt_cyc = data.frame(cores, ca = msgt_cyc/total, iso = rep("msgt-cyc",6))
+
+sgt_ca = data.frame(cores, ca = sgt_ca/sgt_total, iso = rep("sgt-cas",6))
+sgt_cyc = data.frame(cores, ca = sgt_cyc/sgt_total, iso = rep("sgt-cyc",6))
+
+dat2 = data.frame(rbind(sgt_ca,sgt_cyc,msgt_ca,msgt_cyc))
+
+ggplot(data=dat2, aes(x=cores, y=ca, group=iso, colour=iso)) +
+  geom_line() +
+  ylab("thpt (million/s)") +
+  ggtitle(paste0("smallbank sf1")) +
+  theme_bw()
+
