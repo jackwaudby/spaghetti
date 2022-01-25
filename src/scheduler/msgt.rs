@@ -137,12 +137,13 @@ impl MixedSerializationGraph {
             this_ref.insert_incoming(from); // (to)
 
             drop(from_rlock);
-            let is_cycle = self.cycle_check(); // cycle check
+            let isolation_level = this_ref.get_isolation_level();
+            let is_cycle = self.cycle_check(isolation_level, true); // cycle check
             return !is_cycle;
         }
     }
 
-    pub fn cycle_check(&self) -> bool {
+    pub fn cycle_check(&self, isolation: IsolationLevel, relevant: bool) -> bool {
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
 
@@ -163,17 +164,40 @@ impl MixedSerializationGraph {
         drop(this_rlock);
 
         while let Some(edge) = stack.pop() {
-            let current = match edge {
-                Edge::ReadWrite(node) => node,
-                Edge::WriteWrite(node) => node,
-                Edge::WriteRead(node) => node,
+            let current = if relevant {
+                // traverse only relevant edges
+                match isolation {
+                    IsolationLevel::ReadUncommitted => {
+                        if let Edge::WriteWrite(node) = edge {
+                            node
+                        } else {
+                            continue;
+                        }
+                    }
+                    IsolationLevel::ReadCommitted => match edge {
+                        Edge::ReadWrite(_) => continue,
+                        Edge::WriteWrite(node) => node,
+                        Edge::WriteRead(node) => node,
+                    },
+                    IsolationLevel::Serializable => match edge {
+                        Edge::ReadWrite(node) => node,
+                        Edge::WriteWrite(node) => node,
+                        Edge::WriteRead(node) => node,
+                    },
+                }
+            } else {
+                // traverse any edge
+                match edge {
+                    Edge::ReadWrite(node) => node,
+                    Edge::WriteWrite(node) => node,
+                    Edge::WriteRead(node) => node,
+                }
             };
 
             if start_id == current {
                 return true; // cycle found
             }
 
-            // let current_addr = current as *const _ as usize;
             if visited.contains(&current) {
                 continue; // already visited
             }
@@ -474,7 +498,7 @@ impl MixedSerializationGraph {
             // no lock taken as only outgoing edges can be added from here
             if this.has_incoming() {
                 this.set_checked(false); // if incoming then flip back to unchecked
-                let is_cycle = self.cycle_check(); // cycle check
+                let is_cycle = self.cycle_check(this.get_isolation_level(), true); // cycle check
                 if is_cycle {
                     this.set_aborted(); // cycle so abort (this)
                 }
