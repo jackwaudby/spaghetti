@@ -76,13 +76,26 @@ impl MixedSerializationGraph {
             .add(op_type, table_id, column_id, offset, prv);
     }
 
+    /// Insert edge (from) -type-> (this). Returns true to continue, false if should abort.
     pub fn insert_and_check(&self, from: Edge) -> bool {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
         // prepare
         let (from_id, rw, out_edge) = match from {
-            // only add if (from) is PL3
+            // WW edges always get inserted
+            Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
+
+            // WR edge inserted if this node is PL2/3
+            Edge::WriteRead(from_id) => {
+                if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
+                    return true;
+                }
+
+                (from_id, false, Edge::WriteRead(this_id))
+            }
+
+            // RW edge inserted if from node is PL3
             Edge::ReadWrite(from_id) => {
                 let from_ref = unsafe { &*(from_id as *const Node) };
                 match from_ref.get_isolation_level() {
@@ -91,17 +104,6 @@ impl MixedSerializationGraph {
                     }
                     IsolationLevel::Serializable => (from_id, true, Edge::ReadWrite(this_id)),
                 }
-            }
-
-            Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
-
-            // only insert edge if (to) is PL2/PL3
-            Edge::WriteRead(from_id) => {
-                if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
-                    return true;
-                }
-
-                (from_id, false, Edge::WriteRead(this_id))
             }
         };
 
