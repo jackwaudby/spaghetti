@@ -14,6 +14,10 @@ use crate::workloads::IsolationLevel;
 
 use config::Config;
 
+pub mod error;
+
+pub mod common;
+
 pub mod wh;
 
 pub mod owh;

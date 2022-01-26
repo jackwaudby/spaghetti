@@ -1,9 +1,8 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Message, Outcome, Transaction};
-use crate::scheduler::msgt::error::MixedSerializationGraphError;
+use crate::scheduler::error::{MixedSerializationGraphError, SerializationGraphError};
 use crate::scheduler::mtpl::error::MixedTwoPhaseLockingError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
-use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::acid::AcidTransaction;

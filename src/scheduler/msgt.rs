@@ -1,7 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
-use crate::scheduler::msgt::error::MixedSerializationGraphError;
-use crate::scheduler::msgt::node::{Edge, Node};
+use crate::scheduler::common::{Edge, Node};
+use crate::scheduler::error::MixedSerializationGraphError;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
@@ -16,10 +16,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
 use tracing::{debug, info};
-
-pub mod node;
-
-pub mod error;
 
 #[derive(Debug)]
 pub struct MixedSerializationGraph {
@@ -218,7 +214,7 @@ impl MixedSerializationGraph {
 
             if start_id == current {
                 debug!(
-                    "[thread id: {}, transaction id: {}] outgoing edge(s): cycle found",
+                    "[thread id: {}, transaction id: {}] cycle found",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                 );
@@ -246,7 +242,7 @@ impl MixedSerializationGraph {
         }
 
         debug!(
-            "[thread id: {}, transaction id: {}] outgoing edge(s): no cycle found",
+            "[thread id: {}, transaction id: {}] no cycle found",
             this.get_thread_id(),
             format!("{:x}", this.get_id()),
         );
@@ -298,7 +294,7 @@ impl MixedSerializationGraph {
             thread_ctr,
             incoming,
             outgoing,
-            isolation_level,
+            Some(isolation_level),
         ));
         let ptr: *mut Node = Box::into_raw(node);
         let id = ptr as usize;

@@ -1,7 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
-use crate::scheduler::sgt::error::SerializationGraphError;
-use crate::scheduler::sgt::node::{Edge, Node};
+use crate::scheduler::common::{Edge, Node};
+use crate::scheduler::error::SerializationGraphError;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
@@ -15,10 +15,6 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
 use tracing::{debug, info, instrument, Span};
-
-pub mod node;
-
-pub mod error;
 
 #[derive(Debug)]
 pub struct SerializationGraph {
@@ -209,7 +205,7 @@ impl SerializationGraph {
         let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
         let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
-        let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing)); // allocate node
+        let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing, None)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
         let id = ptr as usize; // get id
         unsafe { (*ptr).set_id(id) }; // set id on node
@@ -358,11 +354,6 @@ impl SerializationGraph {
 
                                     wait = true; // retry operation
                                     break;
-                                } else {
-                                    // from is complete
-                                    // if table.get_tuple(column_id, offset).get().is_dirty() {
-                                    //     wait = true; // retry operation TODO: hack
-                                    // }
                                 }
                             }
                         }
