@@ -24,9 +24,9 @@ impl std::fmt::Debug for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         use Edge::*;
         match &*self {
-            ReadWrite(id) => write!(f, "{}", format!("{:x}", id)),
-            WriteRead(id) => write!(f, "{}", format!("{:x}", id)),
-            WriteWrite(id) => write!(f, "{}", format!("{:x}", id)),
+            ReadWrite(id) => write!(f, "{}", format!("rw: {:x}", id)),
+            WriteRead(id) => write!(f, "{}", format!("wr: {:x}", id)),
+            WriteWrite(id) => write!(f, "{}", format!("ww: {:x}", id)),
         }
     }
 }
