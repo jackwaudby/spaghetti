@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
-use tracing::info;
+use tracing::{debug, info};
 
 pub mod node;
 
