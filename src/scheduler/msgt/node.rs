@@ -264,6 +264,10 @@ impl Node {
         unsafe { *self.node_id.get().as_mut().unwrap() = Some(node_id) };
     }
 
+    pub fn get_id(&self) -> usize {
+        unsafe { self.node_id.get().as_mut().unwrap().unwrap() }
+    }
+
     pub fn is_aborted(&self) -> bool {
         self.aborted.load(Ordering::Acquire)
     }

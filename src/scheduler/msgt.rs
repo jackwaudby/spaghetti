@@ -501,6 +501,7 @@ impl MixedSerializationGraph {
     /// Commit operation.
     pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
+        let ref_id = this.get_id();
 
         loop {
             if this.is_cascading_abort() || this.is_aborted() {
@@ -533,17 +534,20 @@ impl MixedSerializationGraph {
 
             break;
         }
-        debug!("committed");
+        debug!("[transaction id: {}] committed", format!("{:x}", ref_id),);
+
         Ok(())
     }
 
     pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = unsafe { &*self.get_transaction() };
+        let ref_id = this.get_id();
 
         this.set_aborted();
         self.cleanup();
         self.tidyup(database, false);
-        debug!("aborted");
+        debug!("[transaction id: {}] aborted", format!("{:x}", ref_id),);
+
         NonFatalError::NonSerializable // TODO: return the why
     }
 
