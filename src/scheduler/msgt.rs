@@ -147,7 +147,7 @@ impl MixedSerializationGraph {
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
 
-        debug!("{:?} txn {} starting cycle check", isolation, start_id);
+        debug!("starting cycle check",);
 
         let mut visited = self
             .visited
@@ -162,8 +162,8 @@ impl MixedSerializationGraph {
         let this_rlock = this.read();
         let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
         let incoming = this.get_incoming();
-        debug!("{:?} txn {} incoming: {:?}", isolation, start_id, incoming);
-        debug!("{:?} txn {} outgoing: {:?}", isolation, start_id, outgoing);
+        debug!("incoming edge(s): {:?}", incoming);
+        debug!("outgoing edge(s): {:?}", outgoing);
 
         let mut out = outgoing.into_iter().collect();
         stack.append(&mut out);
@@ -201,7 +201,7 @@ impl MixedSerializationGraph {
             };
 
             if start_id == current {
-                debug!("{:?} txn {} found cycle", isolation, start_id);
+                debug!("cycle found");
 
                 return true; // cycle found
             }
@@ -225,7 +225,7 @@ impl MixedSerializationGraph {
             drop(rlock);
         }
 
-        debug!("{:?} txn {} found no cycle", isolation, start_id);
+        debug!("no cycle found");
 
         false
     }
@@ -248,6 +248,12 @@ impl MixedSerializationGraph {
         let guard = epoch::pin();
 
         MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
+
+        debug!(
+            "[transaction id: {}, isolation level: {}] begin",
+            format!("{:x}", ref_id),
+            isolation_level
+        );
 
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
@@ -512,6 +518,10 @@ impl MixedSerializationGraph {
                 if is_cycle {
                     this.set_aborted(); // cycle so abort (this)
                 }
+                debug!(
+                    "can't commit has incoming edge(s): {:?}",
+                    this.get_incoming()
+                );
                 continue;
             }
 
@@ -522,7 +532,7 @@ impl MixedSerializationGraph {
 
             break;
         }
-
+        debug!("committed");
         Ok(())
     }
 
@@ -532,7 +542,7 @@ impl MixedSerializationGraph {
         this.set_aborted();
         self.cleanup();
         self.tidyup(database, false);
-
+        debug!("aborted");
         NonFatalError::NonSerializable // TODO: return the why
     }
 
