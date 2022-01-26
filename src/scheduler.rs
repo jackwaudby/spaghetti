@@ -55,7 +55,13 @@ impl<'a> Scheduler<'a> {
 
         let protocol = match config.get_str("protocol")?.as_str() {
             "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
-            "msgt" => Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(cores)),
+            "msgt" => {
+                let relevant_cycle_check = config.get_bool("relevant_cycle_check")?;
+                Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(
+                    cores,
+                    relevant_cycle_check,
+                ))
+            }
             "wh" => Scheduler::WaitHit(WaitHit::new(cores)),
             "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
             "owhtt" => Scheduler::OptimisedWaitHitTransactionTypes(

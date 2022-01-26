@@ -27,6 +27,7 @@ pub struct MixedSerializationGraph {
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
     stack: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
+    relevant_cycle_check: bool,
 }
 
 impl MixedSerializationGraph {
@@ -35,17 +36,16 @@ impl MixedSerializationGraph {
         static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
     }
 
-    pub fn new(size: usize) -> Self {
-        info!(
-            "Initialise mixed serialization graph with {} thread(s)",
-            size
-        );
+    pub fn new(size: usize, relevant_cycle_check: bool) -> Self {
+        info!("Initialise msg with {} thread(s)", size);
+        info!("Relevant cycle check: {}", relevant_cycle_check);
 
         Self {
             txn_ctr: ThreadLocal::new(),
             visited: ThreadLocal::new(),
             stack: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
+            relevant_cycle_check,
         }
     }
 
@@ -138,12 +138,12 @@ impl MixedSerializationGraph {
 
             drop(from_rlock);
             let isolation_level = this_ref.get_isolation_level();
-            let is_cycle = self.cycle_check(isolation_level, true); // cycle check
+            let is_cycle = self.cycle_check(isolation_level); // cycle check
             return !is_cycle;
         }
     }
 
-    pub fn cycle_check(&self, isolation: IsolationLevel, relevant: bool) -> bool {
+    pub fn cycle_check(&self, isolation: IsolationLevel) -> bool {
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
 
@@ -164,7 +164,7 @@ impl MixedSerializationGraph {
         drop(this_rlock);
 
         while let Some(edge) = stack.pop() {
-            let current = if relevant {
+            let current = if self.relevant_cycle_check {
                 // traverse only relevant edges
                 match isolation {
                     IsolationLevel::ReadUncommitted => {
@@ -498,7 +498,7 @@ impl MixedSerializationGraph {
             // no lock taken as only outgoing edges can be added from here
             if this.has_incoming() {
                 this.set_checked(false); // if incoming then flip back to unchecked
-                let is_cycle = self.cycle_check(this.get_isolation_level(), true); // cycle check
+                let is_cycle = self.cycle_check(this.get_isolation_level()); // cycle check
                 if is_cycle {
                     this.set_aborted(); // cycle so abort (this)
                 }

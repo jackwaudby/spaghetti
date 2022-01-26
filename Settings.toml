@@ -9,6 +9,7 @@ set_seed = false
 
 protocol="sgt"
 cores = 1
+relevant_cycle_check = true
 garbage_collection = false
 garbage_collection_sleep = 1
 
