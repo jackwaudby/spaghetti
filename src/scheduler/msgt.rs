@@ -147,7 +147,11 @@ impl MixedSerializationGraph {
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
 
-        debug!("starting cycle check",);
+        debug!(
+            "[thread id: {}, transaction id: {}] starting cycle check",
+            this.get_thread_id(),
+            format!("{:x}", this.get_id()),
+        );
 
         let mut visited = self
             .visited
@@ -162,8 +166,20 @@ impl MixedSerializationGraph {
         let this_rlock = this.read();
         let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
         let incoming = this.get_incoming();
-        debug!("incoming edge(s): {:?}", incoming);
-        debug!("outgoing edge(s): {:?}", outgoing);
+
+        debug!(
+            "[thread id: {}, transaction id: {}] incoming edge(s): {:?}",
+            this.get_thread_id(),
+            format!("{:x}", this.get_id()),
+            incoming
+        );
+
+        debug!(
+            "[thread id: {}, transaction id: {}] outgoing edge(s): {:?}",
+            this.get_thread_id(),
+            format!("{:x}", this.get_id()),
+            outgoing
+        );
 
         let mut out = outgoing.into_iter().collect();
         stack.append(&mut out);
@@ -201,7 +217,11 @@ impl MixedSerializationGraph {
             };
 
             if start_id == current {
-                debug!("cycle found");
+                debug!(
+                    "[thread id: {}, transaction id: {}] outgoing edge(s): cycle found",
+                    this.get_thread_id(),
+                    format!("{:x}", this.get_id()),
+                );
 
                 return true; // cycle found
             }
@@ -225,7 +245,11 @@ impl MixedSerializationGraph {
             drop(rlock);
         }
 
-        debug!("no cycle found");
+        debug!(
+            "[thread id: {}, transaction id: {}] outgoing edge(s): no cycle found",
+            this.get_thread_id(),
+            format!("{:x}", this.get_id()),
+        );
 
         false
     }
@@ -250,7 +274,7 @@ impl MixedSerializationGraph {
         MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
         debug!(
-            "[thread_id: {}, transaction id: {}, isolation level: {}] begin",
+            "[thread id: {}, transaction id: {}, isolation level: {}] begin",
             thread_id,
             format!("{:x}", ref_id),
             isolation_level

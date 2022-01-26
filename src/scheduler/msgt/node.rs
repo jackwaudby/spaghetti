@@ -268,6 +268,10 @@ impl Node {
         unsafe { self.node_id.get().as_mut().unwrap().unwrap() }
     }
 
+    pub fn get_thread_id(&self) -> usize {
+        self.thread_id
+    }
+
     pub fn is_aborted(&self) -> bool {
         self.aborted.load(Ordering::Acquire)
     }
