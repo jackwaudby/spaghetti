@@ -160,6 +160,8 @@ impl MixedSerializationGraph {
 
         let this_rlock = this.read();
         let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
+        debug!("outgoing: {:?}", outgoing);
+
         let mut out = outgoing.into_iter().collect();
         stack.append(&mut out);
         drop(this_rlock);
