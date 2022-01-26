@@ -37,6 +37,7 @@ pub struct GlobalStatistics {
     transaction_breakdown: TransactionBreakdown,
     abort_breakdown: AbortBreakdown,
     anomaly: Option<String>,
+    relevant_cycle_check: bool,
 }
 
 impl GlobalStatistics {
@@ -53,6 +54,7 @@ impl GlobalStatistics {
         } else {
             anomaly = None;
         }
+        let relevant_cycle_check = config.get_bool("relevant_cycle_check").unwrap();
 
         GlobalStatistics {
             scale_factor,
@@ -68,6 +70,7 @@ impl GlobalStatistics {
             transaction_breakdown,
             abort_breakdown,
             anomaly,
+            relevant_cycle_check,
         }
     }
 
@@ -240,9 +243,19 @@ impl GlobalStatistics {
 
         let mut wtr = csv::Writer::from_writer(file);
 
+        let protocol = if self.protocol.eq("msgt") {
+            if self.relevant_cycle_check {
+                format!("{}-relevant", self.protocol)
+            } else {
+                format!("{}-std", self.protocol)
+            }
+        } else {
+            self.protocol.clone()
+        };
+
         wtr.serialize((
             self.scale_factor,
-            &self.protocol,
+            protocol,
             &self.workload,
             self.cores,
             (self.total_time as f64 / 1000000.0), // ms
