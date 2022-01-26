@@ -191,13 +191,11 @@ impl MixedSerializationGraph {
                         if let Edge::WriteWrite(node) = edge {
                             node
                         } else {
-                            visited.insert(node);
                             continue;
                         }
                     }
                     IsolationLevel::ReadCommitted => match edge {
                         Edge::ReadWrite(_) => {
-                            visited.insert(node);
                             continue;
                         }
                         Edge::WriteWrite(node) => node,
@@ -432,11 +430,6 @@ impl MixedSerializationGraph {
 
                                     wait = true; // retry operation
                                     break;
-                                } else {
-                                    // from is complete
-                                    // if table.get_tuple(column_id, offset).get().is_dirty() {
-                                    //     wait = true; // retry operation TODO: hack
-                                    // }
                                 }
                             }
                         }
