@@ -92,7 +92,9 @@ impl MixedSerializationGraph {
                     IsolationLevel::Serializable => (from_id, true, Edge::ReadWrite(this_id)),
                 }
             }
+
             Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
+
             // only insert edge if (to) is PL2/PL3
             Edge::WriteRead(from_id) => {
                 if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
@@ -189,11 +191,15 @@ impl MixedSerializationGraph {
                         if let Edge::WriteWrite(node) = edge {
                             node
                         } else {
+                            visited.insert(node);
                             continue;
                         }
                     }
                     IsolationLevel::ReadCommitted => match edge {
-                        Edge::ReadWrite(_) => continue,
+                        Edge::ReadWrite(_) => {
+                            visited.insert(node);
+                            continue;
+                        }
                         Edge::WriteWrite(node) => node,
                         Edge::WriteRead(node) => node,
                     },
