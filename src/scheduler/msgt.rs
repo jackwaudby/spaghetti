@@ -144,9 +144,10 @@ impl MixedSerializationGraph {
     }
 
     pub fn cycle_check(&self, isolation: IsolationLevel) -> bool {
-        debug!("start cycle check: {:?}", isolation);
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
+
+        debug!("{:?} txn {} starting cycle check", isolation, start_id);
 
         let mut visited = self
             .visited
@@ -160,7 +161,9 @@ impl MixedSerializationGraph {
 
         let this_rlock = this.read();
         let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
-        debug!("outgoing: {:?}", outgoing);
+        let incoming = this.get_incoming();
+        debug!("{:?} txn {} incoming: {:?}", isolation, start_id, incoming);
+        debug!("{:?} txn {} outgoing: {:?}", isolation, start_id, outgoing);
 
         let mut out = outgoing.into_iter().collect();
         stack.append(&mut out);
@@ -198,7 +201,8 @@ impl MixedSerializationGraph {
             };
 
             if start_id == current {
-                debug!("cycle found");
+                debug!("{:?} txn {} found cycle", isolation, start_id);
+
                 return true; // cycle found
             }
 
@@ -221,7 +225,8 @@ impl MixedSerializationGraph {
             drop(rlock);
         }
 
-        debug!("no cycle");
+        debug!("{:?} txn {} found no cycle", isolation, start_id);
+
         false
     }
 
