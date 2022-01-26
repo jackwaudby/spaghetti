@@ -144,7 +144,7 @@ impl MixedSerializationGraph {
     }
 
     pub fn cycle_check(&self, isolation: IsolationLevel) -> bool {
-        debug!("start cycle check");
+        debug!("start cycle check: {:?}", isolation);
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
 
