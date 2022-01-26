@@ -250,7 +250,8 @@ impl MixedSerializationGraph {
         MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
         debug!(
-            "[transaction id: {}, isolation level: {}] begin",
+            "[thread_id: {}, transaction id: {}, isolation level: {}] begin",
+            thread_id,
             format!("{:x}", ref_id),
             isolation_level
         );
