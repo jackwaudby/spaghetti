@@ -175,7 +175,7 @@ pub fn run(
 
             let res = thx.send(1);
             match res {
-                Ok(_) => {}
+                Ok(_) => {}m
                 Err(e) => debug!("{}", e),
             }
             break;
