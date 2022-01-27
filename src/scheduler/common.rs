@@ -3,6 +3,7 @@ use crate::workloads::IsolationLevel;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::time::{Duration, Instant};
 
 use std::cell::UnsafeCell;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -38,11 +39,37 @@ pub struct Node {
 
 impl Node {
     pub fn read(&self) -> RwLockReadGuard<u32> {
-        self.lock.read()
+        let timeout_start = Instant::now(); // timeout
+        let runtime = Duration::new(3, 0);
+        let timeout_end = timeout_start + runtime;
+
+        loop {
+            let res = self.lock.try_read();
+            if let Some(guard) = res {
+                return guard;
+            }
+
+            if Instant::now() > timeout_end {
+                panic!("deadlock"); // potential deadlock
+            }
+        }
     }
 
     pub fn write(&self) -> RwLockWriteGuard<u32> {
-        self.lock.write()
+        let timeout_start = Instant::now(); // timeout
+        let runtime = Duration::new(3, 0);
+        let timeout_end = timeout_start + runtime;
+
+        loop {
+            let res = self.lock.try_write();
+            if let Some(guard) = res {
+                return guard;
+            }
+
+            if Instant::now() > timeout_end {
+                panic!("deadlock"); // potential deadlock
+            }
+        }
     }
 
     pub fn new(
