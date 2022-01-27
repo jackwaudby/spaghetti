@@ -22,13 +22,13 @@ impl fmt::Display for IsolationLevel {
         use IsolationLevel::*;
         match &*self {
             ReadUncommitted => {
-                write!(f, "read uncommitted")
+                write!(f, "ru")
             }
             ReadCommitted => {
-                write!(f, "read uncommitted")
+                write!(f, "rc")
             }
             Serializable => {
-                write!(f, "serializable")
+                write!(f, "s")
             }
         }
     }

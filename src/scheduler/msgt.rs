@@ -300,14 +300,14 @@ impl MixedSerializationGraph {
 
         if deadlock {
             error!(
-                "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst trying to write",
+                "[th-id: {}, t-id: {}, lvl: {}] detected deadlock whilst trying to write",
                 this.get_thread_id(),
                 this.get_isolation_level(),
                 format!("{:x}", this.get_id()),
             );
 
             error!(
-                "[thread id: {}, transaction id: {}, isolation level: {}] incoming edges: {:?}",
+                "[th-id: {}, t-id: {}, lvl: {}] incoming edges: {:?}",
                 this.get_thread_id(),
                 format!("{:x}", this.get_id()),
                 this.get_isolation_level(),
@@ -315,7 +315,7 @@ impl MixedSerializationGraph {
             );
 
             error!(
-                "[thread id: {}, transaction id: {}, isolation level: {}] outgoing edges: {:?}",
+                "[th-id: {}, t-id: {}, lvl: {}] outgoing edges: {:?}",
                 this.get_thread_id(),
                 format!("{:x}", this.get_id()),
                 this.get_isolation_level(),
@@ -401,14 +401,14 @@ impl MixedSerializationGraph {
             let deadlock = unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
             if deadlock {
                 error!(
-                    "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst trying to write",
+                    "[th-id: {}, t-id: {}, lvl: {}] detected deadlock whilst trying to write",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                     this.get_isolation_level(),
                 );
 
                 error!(
-                    "[thread id: {}, transaction id: {}, isolation level: {}] incoming edges: {:?}",
+                    "[th-id: {}, t-id: {}, lvl: {}] incoming edges: {:?}",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                     this.get_isolation_level(),
@@ -416,7 +416,7 @@ impl MixedSerializationGraph {
                 );
 
                 error!(
-                    "[thread id: {}, transaction id: {}, isolation level: {}] outgoing edges: {:?}",
+                    "[th-id: {}, t-id: {}, lvl: {}] outgoing edges: {:?}",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                     this.get_isolation_level(),
@@ -559,14 +559,14 @@ impl MixedSerializationGraph {
         loop {
             if Instant::now() > timeout_end {
                 error!(
-                    "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst committing",
+                    "[th-id: {}, t-id: {}, lvl: {}] detected deadlock whilst committing",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                     this.get_isolation_level(),
                 );
 
                 error!(
-                    "[thread id: {}, transaction id: {}, isolation level: {}] incoming edges: {:?}",
+                    "[th-id: {}, t-id: {}, lvl: {}] incoming edges: {:?}",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                     this.get_isolation_level(),
@@ -574,7 +574,7 @@ impl MixedSerializationGraph {
                 );
 
                 error!(
-                    "[thread id: {}, transaction id: {}, isolation level: {}] outgoing edges: {:?}",
+                    "[th-id: {}, t-id: {}, lvl: {}] outgoing edges: {:?}",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                     this.get_isolation_level(),
@@ -600,10 +600,7 @@ impl MixedSerializationGraph {
                 if is_cycle {
                     this.set_aborted(); // cycle so abort (this)
                 }
-                // debug!(
-                //     "can't commit has incoming edge(s): {:?}",
-                //     this.get_incoming()
-                // );
+
                 continue;
             }
 
@@ -614,7 +611,6 @@ impl MixedSerializationGraph {
 
             break;
         }
-        // debug!("[transaction id: {}] committed", format!("{:x}", ref_id),);
 
         Ok(())
     }
@@ -625,7 +621,6 @@ impl MixedSerializationGraph {
         this.set_aborted();
         self.cleanup();
         self.tidyup(database, false);
-        // debug!("[transaction id: {}] aborted", format!("{:x}", ref_id),);
 
         NonFatalError::NonSerializable // TODO: return the why
     }
