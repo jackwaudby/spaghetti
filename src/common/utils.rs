@@ -87,6 +87,7 @@ pub fn run(
     database: &Database,
     tx: mpsc::Sender<LocalStatistics>,
     mut pbr: Option<ProgressBar<Pipe>>,
+    rx: mpsc::Receiver<i32>,
 ) {
     let timeout = config.get_int("timeout").unwrap() as u64;
     let p = config.get_str("protocol").unwrap();
@@ -155,6 +156,9 @@ pub fn run(
             break;
         } else if Instant::now() > timeout_end {
             tracing::info!("Timeout reached: {} minute(s)", timeout);
+            break;
+        } else if rx.try_recv().is_ok() {
+            tracing::info!("Received emergency shutdown");
             break;
         } else {
             let txn = generator.get_next(); // generate txn

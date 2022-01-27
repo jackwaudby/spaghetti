@@ -14,6 +14,7 @@ use rustc_hash::FxHashSet;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::sync::mpsc;
 use thread_local::ThreadLocal;
 use tracing::{debug, info};
 
@@ -24,6 +25,9 @@ pub struct MixedSerializationGraph {
     stack: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
     relevant_cycle_check: bool,
+
+    // Used to indicate a potential problem on a thread
+    tx: ThreadLocal<RefCell<mpsc::Sender<i32>>>,
 }
 
 impl MixedSerializationGraph {
@@ -32,7 +36,7 @@ impl MixedSerializationGraph {
         static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
     }
 
-    pub fn new(size: usize, relevant_cycle_check: bool) -> Self {
+    pub fn new(size: usize, relevant_cycle_check: bool, tx: mpsc::Sender<i32>) -> Self {
         info!("Initialise msg with {} thread(s)", size);
         info!("Relevant cycle check: {}", relevant_cycle_check);
 
