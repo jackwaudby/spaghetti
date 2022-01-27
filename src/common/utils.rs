@@ -17,7 +17,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tracing::Level;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub fn init_config(file: &str) -> Config {
@@ -168,7 +168,7 @@ pub fn run(
 
             break;
         } else if rx.try_recv().is_ok() {
-            info!(
+            error!(
                 "[thread id: {}] received shutdown notification and exited",
                 thread_id
             );
@@ -193,7 +193,7 @@ pub fn run(
                             Ok(_) => {}
                             Err(e) => debug!("{}", e),
                         }
-                        info!("[thread id: {}] detected deadlock and exited", thread_id);
+                        error!("[thread id: {}] detected deadlock and exited", thread_id);
 
                         break;
                     }

@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
-use tracing::info;
+use tracing::{error, info};
 
 #[derive(Debug)]
 pub struct MixedSerializationGraph {
@@ -312,14 +312,14 @@ impl MixedSerializationGraph {
         let deadlock = unsafe { spin(prv, lsn) };
 
         if deadlock {
-            info!(
+            error!(
                 "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst trying to write",
                 this.get_thread_id(),
                 this.get_isolation_level(),
                 format!("{:x}", this.get_id()),
             );
 
-            info!(
+            error!(
                 "[thread id: {}, transaction id: {}, isolation level: {}] incoming edges: {:?}",
                 this.get_thread_id(),
                 format!("{:x}", this.get_id()),
@@ -327,7 +327,7 @@ impl MixedSerializationGraph {
                 this.get_incoming(),
             );
 
-            info!(
+            error!(
                 "[thread id: {}, transaction id: {}, isolation level: {}] outgoing edges: {:?}",
                 this.get_thread_id(),
                 format!("{:x}", this.get_id()),
@@ -412,14 +412,14 @@ impl MixedSerializationGraph {
 
             let deadlock = unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
             if deadlock {
-                info!(
+                error!(
                     "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst trying to write",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                     this.get_isolation_level(),
                 );
 
-                info!(
+                error!(
                     "[thread id: {}, transaction id: {}, isolation level: {}] incoming edges: {:?}",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
@@ -427,7 +427,7 @@ impl MixedSerializationGraph {
                     this.get_incoming(),
                 );
 
-                info!(
+                error!(
                     "[thread id: {}, transaction id: {}, isolation level: {}] outgoing edges: {:?}",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
@@ -560,14 +560,14 @@ impl MixedSerializationGraph {
         loop {
             attempts += 1;
             if attempts > 100000 {
-                info!(
+                error!(
                     "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst committing",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                     this.get_isolation_level(),
                 );
 
-                info!(
+                error!(
                     "[thread id: {}, transaction id: {}, isolation level: {}] incoming edges: {:?}",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
@@ -575,7 +575,7 @@ impl MixedSerializationGraph {
                     this.get_incoming(),
                 );
 
-                info!(
+                error!(
                     "[thread id: {}, transaction id: {}, isolation level: {}] outgoing edges: {:?}",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),

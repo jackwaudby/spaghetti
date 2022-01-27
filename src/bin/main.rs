@@ -9,7 +9,7 @@ use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::time::Instant;
 use tracing::Level;
-use tracing::{debug, info};
+use tracing::{debug, error, info};
 use tracing_subscriber::fmt;
 
 fn main() {
@@ -152,7 +152,7 @@ fn main() {
 
                     // message was from a problemed threa
                     if value == 2 {
-                        debug!("Recevied deadlock message");
+                        error!("Deadlock detected!");
 
                         // broadcast shutdown to all
                         for channel in &shutdown_channels {
