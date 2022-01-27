@@ -593,10 +593,12 @@ impl MixedSerializationGraph {
                     let from = unsafe { &*(node as *const Node) };
 
                     error!(
-                        "[th-id: {}, t-id: {}, lvl: {}]",
+                        "[th-id: {}, t-id: {}, lvl: {}] outgoing: {:?}, {}",
                         from.get_thread_id(),
                         format!("{:x}", from.get_id()),
                         from.get_isolation_level(),
+                        from.get_outgoing(),
+                        from.is_committed(),
                     );
                 }
 
