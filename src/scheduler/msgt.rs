@@ -313,11 +313,27 @@ impl MixedSerializationGraph {
 
         if deadlock {
             info!(
-                "[thread id: {}, transaction id: {}] detected deadlock whilst trying to write",
+                "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst trying to write",
                 this.get_thread_id(),
+                this.get_isolation_level(),
                 format!("{:x}", this.get_id()),
             );
 
+            info!(
+                "[thread id: {}, transaction id: {}, isolation level: {}] incoming edges: {:?}",
+                this.get_thread_id(),
+                format!("{:x}", this.get_id()),
+                this.get_isolation_level(),
+                this.get_incoming(),
+            );
+
+            info!(
+                "[thread id: {}, transaction id: {}, isolation level: {}] outgoing edges: {:?}",
+                this.get_thread_id(),
+                format!("{:x}", this.get_id()),
+                this.get_isolation_level(),
+                this.get_outgoing(),
+            );
             return Err(NonFatalError::Emergency);
         }
 
