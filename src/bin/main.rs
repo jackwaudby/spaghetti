@@ -150,7 +150,7 @@ fn main() {
                         debug!("Exited normally");
                     }
 
-                    // message was from a problemed thread
+                    // message was from a problemed threa
                     if value == 2 {
                         debug!("Recevied deadlock message");
 

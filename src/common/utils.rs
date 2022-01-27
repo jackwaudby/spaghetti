@@ -168,7 +168,16 @@ pub fn run(
 
             break;
         } else if rx.try_recv().is_ok() {
-            info!("Received emergency shutdown");
+            info!(
+                "[thread id: {}] received shutdown notification and exited",
+                thread_id
+            );
+
+            let res = thx.send(1);
+            match res {
+                Ok(_) => {}
+                Err(e) => debug!("{}", e),
+            }
             break;
         } else {
             let txn = generator.get_next(); // generate txn
@@ -184,7 +193,8 @@ pub fn run(
                             Ok(_) => {}
                             Err(e) => debug!("{}", e),
                         }
-                        info!("Exit thread");
+                        info!("[thread id: {}] detected deadlock and exited", thread_id);
+
                         break;
                     }
                 }

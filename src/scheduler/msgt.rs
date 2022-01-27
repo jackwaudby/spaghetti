@@ -313,7 +313,7 @@ impl MixedSerializationGraph {
 
         if deadlock {
             info!(
-                "[thread id: {}, transaction id: {}] spin",
+                "[thread id: {}, transaction id: {}] detected deadlock whilst trying to write",
                 this.get_thread_id(),
                 format!("{:x}", this.get_id()),
             );
@@ -397,10 +397,11 @@ impl MixedSerializationGraph {
             let deadlock = unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
             if deadlock {
                 info!(
-                    "[thread id: {}, transaction id: {}] spin",
+                    "[thread id: {}, transaction id: {}] detected deadlock whilst trying to write",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                 );
+
                 return Err(NonFatalError::Emergency);
             }
 
@@ -527,7 +528,7 @@ impl MixedSerializationGraph {
             attempts += 1;
             if attempts > 100000 {
                 info!(
-                    "[thread id: {}, transaction id: {}] cycle checking",
+                    "[thread id: {}, transaction id: {}] detected deadlock whilst committing",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
                 );
@@ -721,7 +722,6 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64) -> bool {
 
         if attempts >= 1000000 {
             std::thread::yield_now();
-            info!("Deadlock detected - spin");
             return true; // potential deadlock
         }
     }
