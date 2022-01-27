@@ -148,7 +148,7 @@ pub fn run(
 
     loop {
         if completed == max_transactions {
-            info!("All transactions sent: {} ", completed);
+            debug!("All transactions sent: {} ", completed);
 
             let res = thx.send(1);
             match res {
@@ -158,7 +158,7 @@ pub fn run(
 
             break;
         } else if Instant::now() > timeout_end {
-            info!("Timeout reached: {} minute(s)", timeout);
+            debug!("Timeout reached: {} minute(s)", timeout);
 
             let res = thx.send(1);
             match res {

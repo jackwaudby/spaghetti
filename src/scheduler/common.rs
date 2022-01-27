@@ -12,11 +12,12 @@ unsafe impl<'a> Sync for Node {}
 
 pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 
+// (from/to, thread id)
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub enum Edge {
-    ReadWrite(usize),
-    WriteWrite(usize),
-    WriteRead(usize),
+    ReadWrite(usize, usize),
+    WriteWrite(usize, usize),
+    WriteRead(usize, usize),
 }
 
 #[derive(Debug)]
@@ -271,9 +272,21 @@ impl std::fmt::Debug for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         use Edge::*;
         match &*self {
-            ReadWrite(id) => write!(f, "{}", format!("rw: {:x}", id)),
-            WriteRead(id) => write!(f, "{}", format!("wr: {:x}", id)),
-            WriteWrite(id) => write!(f, "{}", format!("ww: {:x}", id)),
+            ReadWrite(txn_id, thread_id) => write!(
+                f,
+                "{}",
+                format!("rw: {:x}, thread id: {}", txn_id, thread_id)
+            ),
+            WriteWrite(txn_id, thread_id) => write!(
+                f,
+                "{}",
+                format!("ww: {:x}, thread id: {}", txn_id, thread_id)
+            ),
+            WriteRead(txn_id, thread_id) => write!(
+                f,
+                "{}",
+                format!("wr: {:x}, thread id: {}", txn_id, thread_id)
+            ),
         }
     }
 }
