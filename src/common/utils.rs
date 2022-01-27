@@ -77,8 +77,11 @@ pub fn init_database(config: &Config) -> Database {
     Database::new(config).unwrap()
 }
 
-pub fn init_scheduler(config: &Config, tx: std::sync::mpsc::Sender<i32>) -> Scheduler {
-    Scheduler::new(config, tx).unwrap()
+pub fn init_scheduler(
+    config: &Config,
+    // tx: std::sync::mpsc::SyncSender<i32>
+) -> Scheduler {
+    Scheduler::new(config).unwrap()
 }
 
 pub fn run(
@@ -89,6 +92,7 @@ pub fn run(
     tx: mpsc::Sender<LocalStatistics>,
     mut pbr: Option<ProgressBar<Pipe>>,
     rx: mpsc::Receiver<i32>,
+    thx: mpsc::SyncSender<i32>,
 ) {
     let timeout = config.get_int("timeout").unwrap() as u64;
     let p = config.get_str("protocol").unwrap();
@@ -154,9 +158,23 @@ pub fn run(
                 completed,
                 max_transactions
             );
+
+            let res = thx.send(1);
+            match res {
+                Ok(_) => {}
+                Err(e) => println!("{}", e),
+            }
+
             break;
         } else if Instant::now() > timeout_end {
             tracing::info!("Timeout reached: {} minute(s)", timeout);
+
+            let res = thx.send(1);
+            match res {
+                Ok(_) => {}
+                Err(e) => println!("{}", e),
+            }
+
             break;
         } else if rx.try_recv().is_ok() {
             tracing::info!("Received emergency shutdown");
@@ -167,15 +185,15 @@ pub fn run(
             let response = execute(txn.clone(), scheduler, database); // execute txn
 
             // Check that thread has not run into a problem
-            if let Message::Response {
-                request_no,
-                transaction,
-                isolation,
-                outcome,
-            } = response.clone()
-            {
+            if let Message::Response { outcome, .. } = response.clone() {
                 if let Outcome::Aborted(err) = outcome {
                     if let NonFatalError::Emergency = err {
+                        let res = thx.send(2);
+                        match res {
+                            Ok(_) => {}
+                            Err(e) => println!("{}", e),
+                        }
+                        tracing::info!("Exit thread");
                         break;
                     }
                 }
