@@ -581,6 +581,7 @@ impl MixedSerializationGraph {
                     this.get_outgoing(),
                 );
 
+                // incoming
                 let incoming = this.get_incoming();
 
                 for edge in incoming {
@@ -593,12 +594,42 @@ impl MixedSerializationGraph {
                     let from = unsafe { &*(node as *const Node) };
 
                     error!(
-                        "[th-id: {}, t-id: {}, lvl: {}] outgoing: {:?}, {}",
+                        "[th-id: {}, t-id: {}, lvl: {}] incoming: {:?}, outgoing: {:?}, {}, {}, {}, {}",
                         from.get_thread_id(),
                         format!("{:x}", from.get_id()),
                         from.get_isolation_level(),
+                        from.get_incoming(),
                         from.get_outgoing(),
                         from.is_committed(),
+                        from.is_aborted(),
+                        from.is_cascading_abort(),
+                        from.is_cleaned(),
+                    );
+                }
+
+                // outgoing
+                let outgoing = this.get_outgoing();
+
+                for edge in outgoing {
+                    let node = match edge {
+                        Edge::ReadWrite(node, _) => node,
+                        Edge::WriteWrite(node, _) => node,
+                        Edge::WriteRead(node, _) => node,
+                    };
+
+                    let from = unsafe { &*(node as *const Node) };
+
+                    error!(
+                        "[th-id: {}, t-id: {}, lvl: {}] incoming: {:?}, outgoing: {:?}, {}, {}, {}, {}",
+                        from.get_thread_id(),
+                        format!("{:x}", from.get_id()),
+                        from.get_isolation_level(),
+                        from.get_incoming(),
+                        from.get_outgoing(),
+                        from.is_committed(),
+                        from.is_aborted(),
+                        from.is_cascading_abort(),
+                        from.is_cleaned(),
                     );
                 }
 
