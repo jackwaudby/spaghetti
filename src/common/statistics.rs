@@ -25,7 +25,6 @@ use strum::IntoEnumIterator;
 pub struct GlobalStatistics {
     scale_factor: u64,
     data_generation: Option<Duration>,
-    load_time: Option<Duration>,
     start: Option<Instant>,
     end: Option<Duration>,
     cores: u32,
@@ -58,7 +57,6 @@ impl GlobalStatistics {
         GlobalStatistics {
             scale_factor,
             data_generation: None,
-            load_time: None,
             start: None,
             end: None,
             protocol,

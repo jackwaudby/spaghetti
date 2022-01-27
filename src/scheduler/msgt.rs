@@ -14,7 +14,6 @@ use rustc_hash::FxHashSet;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::sync::mpsc;
 use thread_local::ThreadLocal;
 use tracing::{debug, info};
 
@@ -25,9 +24,6 @@ pub struct MixedSerializationGraph {
     stack: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
     relevant_cycle_check: bool,
-    // // Used to indicate a potential problem on a thread
-    // tx: ThreadLocal<RefCell<Option<mpsc::SyncSender<i32>>>>,
-    // test: mpsc::SyncSender<i32>,
 }
 
 impl MixedSerializationGraph {
@@ -36,11 +32,7 @@ impl MixedSerializationGraph {
         static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
     }
 
-    pub fn new(
-        size: usize,
-        relevant_cycle_check: bool,
-        // tx2: mpsc::SyncSender<i32>
-    ) -> Self {
+    pub fn new(size: usize, relevant_cycle_check: bool) -> Self {
         info!("Initialise msg with {} thread(s)", size);
         info!("Relevant cycle check: {}", relevant_cycle_check);
 
@@ -50,8 +42,6 @@ impl MixedSerializationGraph {
             stack: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
             relevant_cycle_check,
-            // tx: ThreadLocal::new(),
-            // test: tx2,
         }
     }
 
@@ -275,7 +265,6 @@ impl MixedSerializationGraph {
     }
 
     pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
-        // self.tx.get_or(|| RefCell::new(Some(self.test.clone())));
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1;
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new());
@@ -329,24 +318,9 @@ impl MixedSerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
-        // A problem is detected
-        // Send a message to the coordinator
-        // info!("Deadlock detected");
-        // let res = self
-        //     .tx
-        //     .get()
-        //     .unwrap()
-        //     .borrow_mut()
-        //     .as_ref()
-        //     .unwrap()
-        //     .send(2);
-        // match res {
-        //     Ok(_) => {}
-        //     Err(e) => println!("{}", e),
-        // }
-
-        // End the processing of this transaction
-        return Err(NonFatalError::Emergency);
+        // TODO: replace with logic
+        // debug!("Deadlock detected");
+        // return Err(NonFatalError::Emergency);
 
         let this = unsafe { &*self.get_transaction() };
 

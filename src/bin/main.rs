@@ -5,13 +5,11 @@ use spaghetti::storage::Database;
 
 use clap::clap_app;
 use crossbeam_utils::thread;
-use std::sync::Arc;
-// use pbr::MultiBar;
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::time::Instant;
-use tracing::info;
 use tracing::Level;
+use tracing::{debug, info};
 use tracing_subscriber::fmt;
 
 fn main() {
@@ -88,17 +86,20 @@ fn main() {
     // log directory
     utils::create_log_dir(&config);
 
+    // global stats
     let mut global_stats = GlobalStatistics::new(&config);
+    let (tx, rx) = mpsc::channel(); // channel for thread local stats
 
+    // data generation
     let dg_start = Instant::now();
     let database: Database = utils::init_database(&config);
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
-    let (thread_tx, coord_rx): (SyncSender<i32>, Receiver<i32>) = mpsc::sync_channel(32);
+    // shutdown channel: thread(s) -> main
+    let (thread_tx, main_rx): (SyncSender<i32>, Receiver<i32>) = mpsc::sync_channel(32);
 
     let scheduler: Scheduler = utils::init_scheduler(&config);
-    let (tx, rx) = mpsc::channel();
 
     info!("Starting execution");
     global_stats.start();
@@ -111,20 +112,11 @@ fn main() {
         let database = &database;
         let config = &config;
 
-        // let mb = MultiBar::new(); // progress bar
-
         let mut shutdown_channels = Vec::new();
-        let timeout_start = Instant::now(); // timeout
-        let runtime = std::time::Duration::new(5, 0);
-        let timeout_end = timeout_start + runtime;
 
         for (thread_id, core_id) in core_ids[..cores].iter().enumerate() {
             let txc = tx.clone();
             let thread_txc = thread_tx.clone();
-
-            // let mut p = mb.create_bar(100); // create bar
-            // p.show_speed = false;
-            // p.show_counter = false;
 
             // Coordinator to thread shutdown
             let (tx, rx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
@@ -134,10 +126,7 @@ fn main() {
                 .name(thread_id.to_string())
                 .spawn(move |_| {
                     core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                                                              // utils::run(thread_id, config, scheduler, database, txc, Some(p));
-                    utils::run(
-                        thread_id, config, scheduler, database, txc, None, rx, thread_txc,
-                    );
+                    utils::run(thread_id, config, scheduler, database, txc, rx, thread_txc);
                 })
                 .unwrap();
         }
@@ -149,7 +138,7 @@ fn main() {
             // This message can be: (i) exited normally (1) or (ii) deadlocked (2)
             // It should receive 1 message from each core
 
-            let res = coord_rx.try_recv();
+            let res = main_rx.try_recv();
 
             match res {
                 Ok(value) => {
@@ -158,19 +147,19 @@ fn main() {
                     // message was from a clean shutdown
                     if value == 1 {
                         // clean shutdown
-                        info!("Exited normally");
+                        debug!("Exited normally");
                     }
 
                     // message was from a problemed thread
                     if value == 2 {
-                        info!("Recevied deadlock message");
+                        debug!("Recevied deadlock message");
 
                         // broadcast shutdown to all
                         for channel in &shutdown_channels {
                             let res = channel.send(1); // may already be shutdown
                             match res {
                                 Ok(_) => {}
-                                Err(e) => info!("{}", e),
+                                Err(e) => debug!("{}", e),
                             }
                         }
                     }

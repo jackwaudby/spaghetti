@@ -11,14 +11,13 @@ use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
 use crate::workloads::{acid, dummy, smallbank, tatp};
 
 use config::Config;
-use pbr::{Pipe, ProgressBar};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-use tracing::info;
 use tracing::Level;
+use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub fn init_config(file: &str) -> Config {
@@ -77,10 +76,7 @@ pub fn init_database(config: &Config) -> Database {
     Database::new(config).unwrap()
 }
 
-pub fn init_scheduler(
-    config: &Config,
-    // tx: std::sync::mpsc::SyncSender<i32>
-) -> Scheduler {
+pub fn init_scheduler(config: &Config) -> Scheduler {
     Scheduler::new(config).unwrap()
 }
 
@@ -90,7 +86,6 @@ pub fn run(
     scheduler: &Scheduler,
     database: &Database,
     tx: mpsc::Sender<LocalStatistics>,
-    mut pbr: Option<ProgressBar<Pipe>>,
     rx: mpsc::Receiver<i32>,
     thx: mpsc::SyncSender<i32>,
 ) {
@@ -153,31 +148,30 @@ pub fn run(
 
     loop {
         if completed == max_transactions {
-            tracing::debug!(
+            info!(
                 "All transactions sent: {} = {}",
-                completed,
-                max_transactions
+                completed, max_transactions
             );
 
             let res = thx.send(1);
             match res {
                 Ok(_) => {}
-                Err(e) => println!("{}", e),
+                Err(e) => debug!("{}", e),
             }
 
             break;
         } else if Instant::now() > timeout_end {
-            tracing::info!("Timeout reached: {} minute(s)", timeout);
+            info!("Timeout reached: {} minute(s)", timeout);
 
             let res = thx.send(1);
             match res {
                 Ok(_) => {}
-                Err(e) => println!("{}", e),
+                Err(e) => debug!("{}", e),
             }
 
             break;
         } else if rx.try_recv().is_ok() {
-            tracing::info!("Received emergency shutdown");
+            info!("Received emergency shutdown");
             break;
         } else {
             let txn = generator.get_next(); // generate txn
@@ -191,9 +185,9 @@ pub fn run(
                         let res = thx.send(2);
                         match res {
                             Ok(_) => {}
-                            Err(e) => println!("{}", e),
+                            Err(e) => debug!("{}", e),
                         }
-                        tracing::info!("Exit thread");
+                        debug!("Exit thread");
                         break;
                     }
                 }
@@ -205,26 +199,10 @@ pub fn run(
             }
             stats.stop_latency(start_latency); // stop measuring latency
             completed += 1;
-
-            match pbr {
-                Some(ref mut pbr) => {
-                    if completed % (max_transactions / 100) == 0 {
-                        pbr.inc();
-                    }
-                }
-                None => {}
-            }
         }
     }
 
     stats.stop_worker(start_worker);
-
-    // match pbr {
-    //     Some(ref mut pbr) => {
-    //         pbr.finish_print(&format!("thread {} done!", thread_id));
-    //     }
-    //     None => {}
-    // }
 
     if record {
         tx.send(stats).unwrap();
