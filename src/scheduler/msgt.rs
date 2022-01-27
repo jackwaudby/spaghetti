@@ -139,6 +139,15 @@ impl MixedSerializationGraph {
                 continue; // if (from) checked in process of terminating so try again
             }
 
+            debug!(
+                "[th-id: {}, t-id: {}, lvl: {}] out: {:?} in:{:?}",
+                this_ref.get_thread_id(),
+                format!("{:x}", this_ref.get_id()),
+                this_ref.get_isolation_level(),
+                out_edge,
+                from
+            );
+
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
 
