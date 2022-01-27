@@ -413,9 +413,10 @@ impl MixedSerializationGraph {
             let deadlock = unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
             if deadlock {
                 info!(
-                    "[thread id: {}, transaction id: {}] detected deadlock whilst trying to write",
+                    "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst trying to write",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
+                    this.get_isolation_level(),
                 );
 
                 info!(
@@ -560,9 +561,10 @@ impl MixedSerializationGraph {
             attempts += 1;
             if attempts > 100000 {
                 info!(
-                    "[thread id: {}, transaction id: {}] detected deadlock whilst committing",
+                    "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst committing",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
+                    this.get_isolation_level(),
                 );
 
                 info!(
