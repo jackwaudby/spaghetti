@@ -275,17 +275,17 @@ impl std::fmt::Debug for Edge {
             ReadWrite(txn_id, thread_id) => write!(
                 f,
                 "{}",
-                format!("rw: {:x}, thread id: {}", txn_id, thread_id)
+                format!("[rw: {:x}, thread id: {}]", txn_id, thread_id)
             ),
             WriteWrite(txn_id, thread_id) => write!(
                 f,
                 "{}",
-                format!("ww: {:x}, thread id: {}", txn_id, thread_id)
+                format!("[ww: {:x}, thread id: {}]", txn_id, thread_id)
             ),
             WriteRead(txn_id, thread_id) => write!(
                 f,
                 "{}",
-                format!("wr: {:x}, thread id: {}", txn_id, thread_id)
+                format!("[wr: {:x}, thread id: {}]", txn_id, thread_id)
             ),
         }
     }
