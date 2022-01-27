@@ -581,6 +581,25 @@ impl MixedSerializationGraph {
                     this.get_outgoing(),
                 );
 
+                let incoming = this.get_incoming();
+
+                for edge in incoming {
+                    let node = match edge {
+                        Edge::ReadWrite(node, _) => node,
+                        Edge::WriteWrite(node, _) => node,
+                        Edge::WriteRead(node, _) => node,
+                    };
+
+                    let from = unsafe { &*(node as *const Node) };
+
+                    error!(
+                        "[th-id: {}, t-id: {}, lvl: {}]",
+                        from.get_thread_id(),
+                        format!("{:x}", from.get_id()),
+                        from.get_isolation_level(),
+                    );
+                }
+
                 return Err(NonFatalError::Emergency);
             }
 
