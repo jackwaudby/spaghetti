@@ -16,7 +16,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 use thread_local::ThreadLocal;
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
 #[derive(Debug)]
 pub struct MixedSerializationGraph {
@@ -285,7 +285,7 @@ impl MixedSerializationGraph {
         database: &Database,
     ) -> Result<Data, NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
-        error!(
+        debug!(
             "[th-id: {}, t-id: {}, lvl: {}] read",
             this.get_thread_id(),
             this.get_isolation_level(),
@@ -389,7 +389,7 @@ impl MixedSerializationGraph {
         database: &Database,
     ) -> Result<(), NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
-        error!(
+        debug!(
             "[th-id: {}, t-id: {}, lvl: {}] write",
             this.get_thread_id(),
             this.get_isolation_level(),
