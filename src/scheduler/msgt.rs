@@ -14,6 +14,7 @@ use rustc_hash::FxHashSet;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 use thread_local::ThreadLocal;
 use tracing::{error, info};
 
@@ -556,10 +557,12 @@ impl MixedSerializationGraph {
     pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
 
-        let mut attempts = 0;
+        let timeout_start = Instant::now(); // timeout
+        let runtime = Duration::new(3, 0);
+        let timeout_end = timeout_start + runtime;
+
         loop {
-            attempts += 1;
-            if attempts > 100000 {
+            if Instant::now() > timeout_end {
                 error!(
                     "[thread id: {}, transaction id: {}, isolation level: {}] detected deadlock whilst committing",
                     this.get_thread_id(),
@@ -762,16 +765,18 @@ impl MixedSerializationGraph {
 unsafe fn spin(prv: u64, lsn: &AtomicU64) -> bool {
     let mut i = 0;
 
-    let mut attempts = 0;
+    let timeout_start = Instant::now(); // timeout
+    let runtime = Duration::new(3, 0);
+    let timeout_end = timeout_start + runtime;
+
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
-        attempts += 1;
+
         if i >= 10000 {
             std::thread::yield_now();
         }
 
-        if attempts >= 1000000 {
-            std::thread::yield_now();
+        if Instant::now() > timeout_end {
             return true; // potential deadlock
         }
     }
