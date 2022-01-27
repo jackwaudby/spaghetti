@@ -148,10 +148,7 @@ pub fn run(
 
     loop {
         if completed == max_transactions {
-            info!(
-                "All transactions sent: {} = {}",
-                completed, max_transactions
-            );
+            info!("All transactions sent: {} ", completed);
 
             let res = thx.send(1);
             match res {
@@ -187,7 +184,7 @@ pub fn run(
                             Ok(_) => {}
                             Err(e) => debug!("{}", e),
                         }
-                        debug!("Exit thread");
+                        info!("Exit thread");
                         break;
                     }
                 }

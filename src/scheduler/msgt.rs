@@ -15,7 +15,7 @@ use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
-use tracing::{debug, info};
+use tracing::info;
 
 #[derive(Debug)]
 pub struct MixedSerializationGraph {
@@ -147,12 +147,6 @@ impl MixedSerializationGraph {
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
 
-        debug!(
-            "[thread id: {}, transaction id: {}] starting cycle check",
-            this.get_thread_id(),
-            format!("{:x}", this.get_id()),
-        );
-
         let mut visited = self
             .visited
             .get_or(|| RefCell::new(FxHashSet::default()))
@@ -165,21 +159,6 @@ impl MixedSerializationGraph {
 
         let this_rlock = this.read();
         let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
-        let incoming = this.get_incoming();
-
-        debug!(
-            "[thread id: {}, transaction id: {}] incoming edge(s): {:?}",
-            this.get_thread_id(),
-            format!("{:x}", this.get_id()),
-            incoming
-        );
-
-        debug!(
-            "[thread id: {}, transaction id: {}] outgoing edge(s): {:?}",
-            this.get_thread_id(),
-            format!("{:x}", this.get_id()),
-            outgoing
-        );
 
         let mut out = outgoing.into_iter().collect();
         stack.append(&mut out);
@@ -219,11 +198,11 @@ impl MixedSerializationGraph {
             };
 
             if start_id == current {
-                debug!(
-                    "[thread id: {}, transaction id: {}] cycle found",
-                    this.get_thread_id(),
-                    format!("{:x}", this.get_id()),
-                );
+                // debug!(
+                //     "[thread id: {}, transaction id: {}] cycle found",
+                //     this.get_thread_id(),
+                //     format!("{:x}", this.get_id()),
+                // );
 
                 return true; // cycle found
             }
@@ -247,11 +226,11 @@ impl MixedSerializationGraph {
             drop(rlock);
         }
 
-        debug!(
-            "[thread id: {}, transaction id: {}] no cycle found",
-            this.get_thread_id(),
-            format!("{:x}", this.get_id()),
-        );
+        // debug!(
+        //     "[thread id: {}, transaction id: {}] no cycle found",
+        //     this.get_thread_id(),
+        //     format!("{:x}", this.get_id()),
+        // );
 
         false
     }
@@ -275,12 +254,12 @@ impl MixedSerializationGraph {
 
         MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
-        debug!(
-            "[thread id: {}, transaction id: {}, isolation level: {}] begin",
-            thread_id,
-            format!("{:x}", ref_id),
-            isolation_level
-        );
+        // debug!(
+        //     "[thread id: {}, transaction id: {}, isolation level: {}] begin",
+        //     thread_id,
+        //     format!("{:x}", ref_id),
+        //     isolation_level
+        // );
 
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
@@ -318,10 +297,6 @@ impl MixedSerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
-        // TODO: replace with logic
-        // debug!("Deadlock detected");
-        // return Err(NonFatalError::Emergency);
-
         let this = unsafe { &*self.get_transaction() };
 
         if this.is_cascading_abort() {
@@ -334,7 +309,17 @@ impl MixedSerializationGraph {
         let prv = rw_table.push_front(Access::Read(meta.clone()));
         let lsn = table.get_lsn(offset);
 
-        unsafe { spin(prv, lsn) };
+        let deadlock = unsafe { spin(prv, lsn) };
+
+        if deadlock {
+            info!(
+                "[thread id: {}, transaction id: {}] spin",
+                this.get_thread_id(),
+                format!("{:x}", this.get_id()),
+            );
+
+            return Err(NonFatalError::Emergency);
+        }
 
         let guard = &epoch::pin(); // pin thread
 
@@ -393,6 +378,8 @@ impl MixedSerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<(), NonFatalError> {
+        let this = unsafe { &*self.get_transaction() };
+
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
@@ -407,7 +394,15 @@ impl MixedSerializationGraph {
 
             prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
 
-            unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
+            let deadlock = unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
+            if deadlock {
+                info!(
+                    "[thread id: {}, transaction id: {}] spin",
+                    this.get_thread_id(),
+                    format!("{:x}", this.get_id()),
+                );
+                return Err(NonFatalError::Emergency);
+            }
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -526,9 +521,20 @@ impl MixedSerializationGraph {
     /// Commit operation.
     pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
-        let ref_id = this.get_id();
 
+        let mut attempts = 0;
         loop {
+            attempts += 1;
+            if attempts > 100000 {
+                info!(
+                    "[thread id: {}, transaction id: {}] cycle checking",
+                    this.get_thread_id(),
+                    format!("{:x}", this.get_id()),
+                );
+
+                return Err(NonFatalError::Emergency);
+            }
+
             if this.is_cascading_abort() || this.is_aborted() {
                 self.abort(database);
                 return Err(MixedSerializationGraphError::CascadingAbort.into());
@@ -545,10 +551,10 @@ impl MixedSerializationGraph {
                 if is_cycle {
                     this.set_aborted(); // cycle so abort (this)
                 }
-                debug!(
-                    "can't commit has incoming edge(s): {:?}",
-                    this.get_incoming()
-                );
+                // debug!(
+                //     "can't commit has incoming edge(s): {:?}",
+                //     this.get_incoming()
+                // );
                 continue;
             }
 
@@ -559,19 +565,18 @@ impl MixedSerializationGraph {
 
             break;
         }
-        debug!("[transaction id: {}] committed", format!("{:x}", ref_id),);
+        // debug!("[transaction id: {}] committed", format!("{:x}", ref_id),);
 
         Ok(())
     }
 
     pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = unsafe { &*self.get_transaction() };
-        let ref_id = this.get_id();
 
         this.set_aborted();
         self.cleanup();
         self.tidyup(database, false);
-        debug!("[transaction id: {}] aborted", format!("{:x}", ref_id),);
+        // debug!("[transaction id: {}] aborted", format!("{:x}", ref_id),);
 
         NonFatalError::NonSerializable // TODO: return the why
     }
@@ -703,12 +708,22 @@ impl MixedSerializationGraph {
     }
 }
 
-unsafe fn spin(prv: u64, lsn: &AtomicU64) {
+unsafe fn spin(prv: u64, lsn: &AtomicU64) -> bool {
     let mut i = 0;
+
+    let mut attempts = 0;
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
+        attempts += 1;
         if i >= 10000 {
             std::thread::yield_now();
         }
+
+        if attempts >= 1000000 {
+            std::thread::yield_now();
+            info!("Deadlock detected - spin");
+            return true; // potential deadlock
+        }
     }
+    false
 }
