@@ -418,6 +418,22 @@ impl MixedSerializationGraph {
                     format!("{:x}", this.get_id()),
                 );
 
+                info!(
+                    "[thread id: {}, transaction id: {}, isolation level: {}] incoming edges: {:?}",
+                    this.get_thread_id(),
+                    format!("{:x}", this.get_id()),
+                    this.get_isolation_level(),
+                    this.get_incoming(),
+                );
+
+                info!(
+                    "[thread id: {}, transaction id: {}, isolation level: {}] outgoing edges: {:?}",
+                    this.get_thread_id(),
+                    format!("{:x}", this.get_id()),
+                    this.get_isolation_level(),
+                    this.get_outgoing(),
+                );
+
                 return Err(NonFatalError::Emergency);
             }
 
@@ -547,6 +563,22 @@ impl MixedSerializationGraph {
                     "[thread id: {}, transaction id: {}] detected deadlock whilst committing",
                     this.get_thread_id(),
                     format!("{:x}", this.get_id()),
+                );
+
+                info!(
+                    "[thread id: {}, transaction id: {}, isolation level: {}] incoming edges: {:?}",
+                    this.get_thread_id(),
+                    format!("{:x}", this.get_id()),
+                    this.get_isolation_level(),
+                    this.get_incoming(),
+                );
+
+                info!(
+                    "[thread id: {}, transaction id: {}, isolation level: {}] outgoing edges: {:?}",
+                    this.get_thread_id(),
+                    format!("{:x}", this.get_id()),
+                    this.get_isolation_level(),
+                    this.get_outgoing(),
                 );
 
                 return Err(NonFatalError::Emergency);
