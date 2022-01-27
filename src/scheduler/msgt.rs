@@ -117,9 +117,13 @@ impl MixedSerializationGraph {
             return true; // check for (this) --> (this)
         }
 
+        let isolation_level = this_ref.get_isolation_level();
         loop {
+            // check if (from) --> (this) already exists
             if this_ref.incoming_edge_exists(&from) {
-                return true; // check if (from) --> (this) already exists
+                // Cycle check here needed
+                let is_cycle = self.cycle_check(isolation_level); // cycle check
+                return !is_cycle;
             };
 
             let from_ref = unsafe { &*(from_id as *const Node) };
