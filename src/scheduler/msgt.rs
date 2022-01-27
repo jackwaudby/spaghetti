@@ -628,7 +628,7 @@ impl MixedSerializationGraph {
     pub fn cleanup(&self) {
         let this = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
-
+        let this_thread_id = this.get_thread_id();
         let this_wlock = this.write();
         this.set_cleaned();
         drop(this_wlock);
@@ -644,22 +644,22 @@ impl MixedSerializationGraph {
                 Edge::ReadWrite(that_id, _) => {
                     let that = unsafe { &*(*that_id as *const Node) };
                     let that_rlock = that.read();
-                    let thread_id = that.get_thread_id();
+
                     if !that.is_cleaned() {
-                        that.remove_incoming(&Edge::ReadWrite(this_id, thread_id));
+                        that.remove_incoming(&Edge::ReadWrite(this_id, this_thread_id));
                     }
                     drop(that_rlock);
                 }
 
                 Edge::WriteWrite(that_id, _) => {
                     let that = unsafe { &*(*that_id as *const Node) };
-                    let thread_id = that.get_thread_id();
+
                     if this.is_aborted() {
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteWrite(this_id, thread_id));
+                            that.remove_incoming(&Edge::WriteWrite(this_id, this_thread_id));
                         }
                         drop(that_rlock);
                     }
@@ -667,13 +667,13 @@ impl MixedSerializationGraph {
 
                 Edge::WriteRead(that_id, _) => {
                     let that = unsafe { &*(*that_id as *const Node) };
-                    let thread_id = that.get_thread_id();
+
                     if this.is_aborted() {
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteRead(this_id, thread_id));
+                            that.remove_incoming(&Edge::WriteRead(this_id, this_thread_id));
                         }
                         drop(that_rlock);
                     }
