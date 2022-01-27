@@ -145,10 +145,12 @@ if (nrow(sf1) > 0) {
     ylab("av latency (ms)") +
     theme_bw()
   
-  combined <- p1 + p2 + p3 & theme(legend.position = "top")
+  combined <- p1 + p2 + p3 & theme(legend.position = "top",
+                                   text = element_text(size = 16)
+                                   )
   combined + plot_layout(guides = "collect")
   
-  ggsave(paste0("./graphics/", tolower(workload), "_sf1.png"),width = 18, height = 6)
+  ggsave(paste0("./graphics/", tolower(workload), "_sf1.pdf"),width = 18, height = 6,device = "pdf")
 }
 
 if (nrow(sf3) > 0) {
@@ -182,9 +184,10 @@ if (nrow(sf3) > 0) {
     ylab("av latency (ms)") +
     theme_bw()
   
-  combined <- p1 + p2 + p3 & theme(legend.position = "top")
+  combined <- p1 + p2 + p3 & theme(legend.position = "top",
+                                   text = element_text(size = 16))
   combined + plot_layout(guides = "collect")
   
-  ggsave(paste0("./graphics/", tolower(workload), "_sf3.png"),width = 18, height = 6)
+  ggsave(paste0("./graphics/", tolower(workload), "_sf3.pdf"),width = 18, height = 6,device = "pdf")
 }
 
