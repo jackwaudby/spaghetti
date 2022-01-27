@@ -137,7 +137,7 @@ impl Node {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let mut guard = edges.lock();
-                    assert_eq!(guard.remove(from), true, "{:?}", edges);
+                    assert_eq!(guard.remove(from), true, "{:?}", *guard);
                     drop(guard);
                 }
                 None => panic!("incoming edge set removed"),
