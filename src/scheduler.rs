@@ -54,7 +54,7 @@ pub enum Scheduler<'a> {
 }
 
 impl<'a> Scheduler<'a> {
-    pub fn new(config: &Config) -> crate::Result<Self> {
+    pub fn new(config: &Config, tx: std::sync::mpsc::Sender<i32>) -> crate::Result<Self> {
         let cores = config.get_int("cores")? as usize;
 
         let protocol = match config.get_str("protocol")?.as_str() {
@@ -64,6 +64,7 @@ impl<'a> Scheduler<'a> {
                 Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(
                     cores,
                     relevant_cycle_check,
+                    tx,
                 ))
             }
             "wh" => Scheduler::WaitHit(WaitHit::new(cores)),

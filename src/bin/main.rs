@@ -94,7 +94,9 @@ fn main() {
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
-    let scheduler: Scheduler = utils::init_scheduler(&config);
+    let (thread_tx, coord_rx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
+
+    let scheduler: Scheduler = utils::init_scheduler(&config, thread_tx);
     let (tx, rx) = mpsc::channel();
 
     info!("Starting execution");
@@ -122,6 +124,7 @@ fn main() {
             // p.show_speed = false;
             // p.show_counter = false;
 
+            // Coordinator to thread shutdown
             let (tx, rx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
             shutdown_channels.push(tx);
 
@@ -135,9 +138,40 @@ fn main() {
                 .unwrap();
         }
 
-        info!("Starting emergency shutdown");
-        for channel in shutdown_channels {
-            channel.send(1).unwrap();
+        // Shutdown management
+        let mut received = 0;
+        loop {
+            // Each thread should send a message when it terminates
+            // This message can be: (i) exited normally (1) or (ii) deadlocked (2)
+            // It should receive 1 message from each core
+
+            let res = coord_rx.try_recv();
+
+            match res {
+                Ok(value) => {
+                    received += 1;
+
+                    // message was from a clean shutdown
+                    if value == 1 {
+                        // clean shutdown
+                    }
+
+                    // message was from a problemed thread
+                    if value == 2 {
+                        // broadcast shutdown to all
+                        for channel in &shutdown_channels {
+                            channel.send(1).unwrap(); // may already be shutdown
+                        }
+                    }
+                }
+                Err(_) => {
+                    // shouldn't get here
+                }
+            }
+
+            if received == cores {
+                break;
+            }
         }
     })
     .unwrap();

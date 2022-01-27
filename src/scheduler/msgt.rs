@@ -36,9 +36,11 @@ impl MixedSerializationGraph {
         static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
     }
 
-    pub fn new(size: usize, relevant_cycle_check: bool, tx: mpsc::Sender<i32>) -> Self {
+    pub fn new(size: usize, relevant_cycle_check: bool, tx2: mpsc::Sender<i32>) -> Self {
         info!("Initialise msg with {} thread(s)", size);
         info!("Relevant cycle check: {}", relevant_cycle_check);
+        let tx = ThreadLocal::new();
+        tx.get_or(|| RefCell::new(tx2.clone()));
 
         Self {
             txn_ctr: ThreadLocal::new(),
@@ -46,6 +48,7 @@ impl MixedSerializationGraph {
             stack: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
             relevant_cycle_check,
+            tx,
         }
     }
 
@@ -322,6 +325,12 @@ impl MixedSerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
+        // A problem is detected
+        // Send a message to the coordinator
+        self.tx.get().unwrap().borrow_mut().send(1).unwrap();
+        // End the processing of this transaction
+        return Err(NonFatalError::Emergency);
+
         let this = unsafe { &*self.get_transaction() };
 
         if this.is_cascading_abort() {

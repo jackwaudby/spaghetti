@@ -1,3 +1,4 @@
+use crate::common::error::NonFatalError;
 use crate::common::message::{Message, Outcome, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
@@ -76,8 +77,8 @@ pub fn init_database(config: &Config) -> Database {
     Database::new(config).unwrap()
 }
 
-pub fn init_scheduler(config: &Config) -> Scheduler {
-    Scheduler::new(config).unwrap()
+pub fn init_scheduler(config: &Config, tx: std::sync::mpsc::Sender<i32>) -> Scheduler {
+    Scheduler::new(config, tx).unwrap()
 }
 
 pub fn run(
@@ -164,6 +165,22 @@ pub fn run(
             let txn = generator.get_next(); // generate txn
             let start_latency = Instant::now(); // start measuring latency
             let response = execute(txn.clone(), scheduler, database); // execute txn
+
+            // Check that thread has not run into a problem
+            if let Message::Response {
+                request_no,
+                transaction,
+                isolation,
+                outcome,
+            } = response.clone()
+            {
+                if let Outcome::Aborted(err) = outcome {
+                    if let NonFatalError::Emergency = err {
+                        break;
+                    }
+                }
+            }
+
             stats.record(&response); // record response
             if log_results {
                 log_result(&mut fh, &response); // log response
