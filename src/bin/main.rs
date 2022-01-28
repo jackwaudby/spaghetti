@@ -21,35 +21,35 @@ fn main() {
         .version("0.1.0")
         .author("j. waudby <j.waudby2@newcastle.ac.uk>")
         .about("spaghetti")
-        .arg(arg!(-w --workload <WORKLOAD> "Set a workload"))
-        .arg(arg!(-p --protocol <PROTOCOL> "Set a protocol"))
-        .arg(arg!(-s --scalefactor <SF> "Set a scale factor"))
-        .arg(arg!(-t --transactions <TRANSACTIONS> "Transactions per core"))
-        .arg(arg!(-c --cores <CORES> "Number of cores to use"))
-        .arg(arg!(-l --log <LOG> "Log level"))
+        .arg(arg!(-w --workload <WORKLOAD> "Set a workload").required(false))
+        .arg(arg!(-p --protocol <PROTOCOL> "Set a protocol").required(false))
+        .arg(arg!(-s --scalefactor <SF> "Set a scale factor").required(false))
+        .arg(arg!(-t --transactions <TRANSACTIONS> "Transactions per core").required(false))
+        .arg(arg!(-c --cores <CORES> "Number of cores to use").required(false))
+        .arg(arg!(-l --log <LOG> "Log level").required(false))
         .get_matches();
 
-    if let Some(w) = matches.value_of("WORKLOAD") {
+    if let Some(w) = matches.value_of("workload") {
         config.set("workload", w).unwrap();
     }
 
-    if let Some(p) = matches.value_of("PROTOCOL") {
+    if let Some(p) = matches.value_of("protocol") {
         config.set("protocol", p).unwrap();
     }
 
-    if let Some(s) = matches.value_of("SF") {
+    if let Some(s) = matches.value_of("scalefactor") {
         config.set("scale_factor", s).unwrap();
     }
 
-    if let Some(t) = matches.value_of("TRANSACTIONS") {
+    if let Some(t) = matches.value_of("transactions") {
         config.set("transactions", t).unwrap();
     }
 
-    if let Some(c) = matches.value_of("CORES") {
+    if let Some(c) = matches.value_of("cores") {
         config.set("cores", c).unwrap();
     }
 
-    if let Some(l) = matches.value_of("LOG") {
+    if let Some(l) = matches.value_of("log") {
         config.set("log", l).unwrap();
     }
 
