@@ -3,7 +3,7 @@ use spaghetti::common::utils;
 use spaghetti::scheduler::Scheduler;
 use spaghetti::storage::Database;
 
-use clap::clap_app;
+use clap::{arg, App};
 use crossbeam_utils::thread;
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
@@ -17,18 +17,17 @@ fn main() {
     let mut config = utils::init_config("Settings.toml");
 
     // command line
-    let matches = clap_app!(spag =>
-                            (version: "0.1.0")
-                            (author: "j. waudby <j.waudby2@newcastle.ac.uk>")
-                            (about: "spaghetti")
-                            (@arg WORKLOAD: -w --workload +takes_value "Set a workload")
-                            (@arg PROTOCOL: -p --protocol +takes_value "Set a protocol")
-                            (@arg SF: -s --scalefactor +takes_value "Set a scale factor")
-                            (@arg TRANSACTIONS: -t --transactions +takes_value "Transactions per core")
-                            (@arg CORES: -c --cores +takes_value "Number of cores to use")
-                            (@arg LOG: -l --log +takes_value "Log level")
-    )
-    .get_matches();
+    let matches = App::new("MyApp")
+        .version("0.1.0")
+        .author("j. waudby <j.waudby2@newcastle.ac.uk>")
+        .about("spaghetti")
+        .arg(arg!(-w --workload <WORKLOAD> "Set a workload"))
+        .arg(arg!(-p --protocol <PROTOCOL> "Set a protocol"))
+        .arg(arg!(-s --scalefactor <SF> "Set a scale factor"))
+        .arg(arg!(-t --transactions <TRANSACTIONS> "Transactions per core"))
+        .arg(arg!(-c --cores <CORES> "Number of cores to use"))
+        .arg(arg!(-l --log <LOG> "Log level"))
+        .get_matches();
 
     if let Some(w) = matches.value_of("WORKLOAD") {
         config.set("workload", w).unwrap();
