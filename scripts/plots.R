@@ -11,8 +11,6 @@ file = args[1]
 include_2pl = args[2]
 include_sgt = args[3]
 
-file = "./data/22_01_27_all.csv"
-
 # load data
 col_names = c(
   "sf",
@@ -21,8 +19,8 @@ col_names = c(
   "cores",
   "total_time",
   "commits",
-  "aborts",
-  "errors",
+  "external",
+  "internal",
   "total_latency"
 )
 raw = read_csv(file = file, col_names = col_names)
@@ -48,8 +46,8 @@ if (include_2pl == "true") {
       "cores",
       "total_time",
       "commits",
-      "aborts",
-      "errors",
+      "external",
+      "internal",
       "txn_time",
       "latency"
     )
@@ -91,8 +89,8 @@ if (include_sgt == "true") {
 
 # compute thpt, av.latency, and abort rate.
 raw$thpt = raw$commits / (raw$total_time / raw$cores / 1000) / 1000000
-raw$abr = raw$errors / (raw$commits + raw$errors)
-raw$lat = raw$total_latency / (raw$commits + raw$errors + raw$aborts)
+raw$abr = raw$external / (raw$commits + raw$external+ raw$internal)
+raw$lat = raw$total_latency / (raw$commits + raw$external + raw$internal)
 
 # remove cores above 40
 raw = raw %>% filter(cores <= 40)
@@ -137,7 +135,7 @@ if (nrow(sf1) > 0) {
   
   p3 = ggplot(data = sf1, aes(
     x = cores,
-    y = lat,
+    y = log(lat),
     group = protocol,
     colour = protocol
   )) +

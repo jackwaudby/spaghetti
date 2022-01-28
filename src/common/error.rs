@@ -76,14 +76,8 @@ pub enum NonFatalError {
     /// Unable to initalise a row.
     UnableToInitialiseRow(String, String, String),
 
-    /// Row already exists in index.
-    RowAlreadyExists(String, String),
-
     /// Row dirty.
     RowDirty(String),
-
-    /// No space in table
-    NoFreeSpace,
 
     /// Row deleted.
     RowDeleted(String, String),
@@ -155,9 +149,7 @@ impl fmt::Display for NonFatalError {
                 "unable to initalise: column {} in table {} with value {}",
                 column, table, value
             ),
-            RowAlreadyExists(ref key, ref index) => {
-                write!(f, "already exists: {} in {}", key, index)
-            }
+
             InvalidColumnType(ref col_type) => write!(f, "invalid: column type {}", col_type),
             RowDirty(ref tid) => write!(f, "row dirty, modified by: {}", tid),
             RowDeleted(ref key, ref table) => write!(f, "deleted: {} in table {}", key, table),
@@ -171,7 +163,7 @@ impl fmt::Display for NonFatalError {
                 "unable to convert: type {} to type {}",
                 spaghetti_type, value
             ),
-            NoFreeSpace => write!(f, "no free space"),
+
             NonSerializable => write!(f, "non-serializable behaviour"),
             SmallBankError(ref e) => write!(f, "{}", e),
             SerializationGraph(ref e) => write!(f, "{}", e),

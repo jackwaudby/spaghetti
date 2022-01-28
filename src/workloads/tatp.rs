@@ -36,7 +36,6 @@ pub enum TatpTransaction {
     GetAccessData,
     UpdateSubscriberData,
     UpdateLocationData,
-    InsertCallForwarding,
 }
 
 impl TatpDatabase {
