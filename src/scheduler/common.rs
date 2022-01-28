@@ -16,9 +16,9 @@ pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 // (from/to, thread id)
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub enum Edge {
-    ReadWrite(usize, usize),
-    WriteWrite(usize, usize),
-    WriteRead(usize, usize),
+    ReadWrite(usize),
+    WriteWrite(usize),
+    WriteRead(usize),
 }
 
 #[derive(Debug)]
@@ -303,19 +303,20 @@ impl Node {
 
 impl std::fmt::Debug for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        let thread_id = "x";
         use Edge::*;
         match &*self {
-            ReadWrite(txn_id, thread_id) => write!(
+            ReadWrite(txn_id) => write!(
                 f,
                 "{}",
                 format!("[rw: {:x}, thread id: {}]", txn_id, thread_id)
             ),
-            WriteWrite(txn_id, thread_id) => write!(
+            WriteWrite(txn_id) => write!(
                 f,
                 "{}",
                 format!("[ww: {:x}, thread id: {}]", txn_id, thread_id)
             ),
-            WriteRead(txn_id, thread_id) => write!(
+            WriteRead(txn_id) => write!(
                 f,
                 "{}",
                 format!("[wr: {:x}, thread id: {}]", txn_id, thread_id)

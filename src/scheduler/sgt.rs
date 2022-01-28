@@ -76,18 +76,12 @@ impl SerializationGraph {
     pub fn insert_and_check(&self, from: Edge) -> bool {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
-        let this_thread_id = this_ref.get_thread_id();
+
         // prepare
         let (from_id, rw, out_edge) = match from {
-            Edge::ReadWrite(from_id, _) => {
-                (from_id, true, Edge::ReadWrite(this_id, this_thread_id))
-            }
-            Edge::WriteRead(from_id, _) => {
-                (from_id, false, Edge::WriteRead(this_id, this_thread_id))
-            }
-            Edge::WriteWrite(from_id, _) => {
-                (from_id, false, Edge::WriteWrite(this_id, this_thread_id))
-            }
+            Edge::ReadWrite(from_id) => (from_id, true, Edge::ReadWrite(this_id)),
+            Edge::WriteRead(from_id) => (from_id, false, Edge::WriteRead(this_id)),
+            Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
         };
 
         if this_id == from_id {
@@ -146,9 +140,9 @@ impl SerializationGraph {
 
         while let Some(edge) = stack.pop() {
             let current = match edge {
-                Edge::ReadWrite(node, _) => node,
-                Edge::WriteWrite(node, _) => node,
-                Edge::WriteRead(node, _) => node,
+                Edge::ReadWrite(node) => node,
+                Edge::WriteWrite(node) => node,
+                Edge::WriteRead(node) => node,
             };
 
             if start_id == current {
@@ -255,9 +249,8 @@ impl SerializationGraph {
                 match access {
                     // W-R conflict
                     Access::Write(from) => {
-                        if let TransactionId::SerializationGraph(from_id, from_thread_id, _) = from
-                        {
-                            if !self.insert_and_check(Edge::WriteRead(*from_id, *from_thread_id)) {
+                        if let TransactionId::SerializationGraph(from_id, _, _) = from {
+                            if !self.insert_and_check(Edge::WriteRead(*from_id)) {
                                 cyclic = true;
                                 break;
                             }
@@ -330,18 +323,13 @@ impl SerializationGraph {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
-                            if let TransactionId::SerializationGraph(from_addr, from_thread_id, _) =
-                                from
-                            {
+                            if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
-                                    if !self.insert_and_check(Edge::WriteWrite(
-                                        *from_addr,
-                                        *from_thread_id,
-                                    )) {
+                                    if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
                                         cyclic = true;
                                         break; // no reason to check other accesses
                                     }
@@ -397,11 +385,8 @@ impl SerializationGraph {
             if id < &prv {
                 match access {
                     Access::Read(from) => {
-                        if let TransactionId::SerializationGraph(from_addr, from_thread_id, _) =
-                            from
-                        {
-                            if !self.insert_and_check(Edge::ReadWrite(*from_addr, *from_thread_id))
-                            {
+                        if let TransactionId::SerializationGraph(from_addr, _, _) = from {
+                            if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
                                 cyclic = true;
                                 break;
                             }
@@ -487,7 +472,6 @@ impl SerializationGraph {
     pub fn cleanup(&self) {
         let this = unsafe { &*self.get_transaction() }; // shared reference to node
         let this_id = self.get_transaction() as usize; // node id
-        let thread_id = this.get_thread_id();
 
         // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)
         let this_wlock = this.write();
@@ -506,38 +490,38 @@ impl SerializationGraph {
         for edge in outgoing_set {
             match edge {
                 // (this) -[rw]-> (to)
-                Edge::ReadWrite(that_id, _) => {
+                Edge::ReadWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
                     let that_rlock = that.read(); // prevent (to) from committing
                     if !that.is_cleaned() {
-                        that.remove_incoming(&Edge::ReadWrite(this_id, thread_id));
+                        that.remove_incoming(&Edge::ReadWrite(this_id));
                         // if (to) is not cleaned remove incoming edge
                     }
                     drop(that_rlock);
                 }
 
                 // (this) -[ww]-> (to)
-                Edge::WriteWrite(that_id, _) => {
+                Edge::WriteWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
                     if this.is_aborted() {
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteWrite(this_id, thread_id));
+                            that.remove_incoming(&Edge::WriteWrite(this_id));
                         }
                         drop(that_rlock);
                     }
                 }
                 // (this) -[wr]-> (to)
-                Edge::WriteRead(that, _) => {
+                Edge::WriteRead(that) => {
                     let that = unsafe { &*(*that as *const Node) };
                     if this.is_aborted() {
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteRead(this_id, thread_id));
+                            that.remove_incoming(&Edge::WriteRead(this_id));
                         }
                         drop(that_rlock);
                     }

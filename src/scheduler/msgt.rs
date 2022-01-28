@@ -81,34 +81,29 @@ impl MixedSerializationGraph {
     pub fn insert_and_check(&self, from: Edge) -> bool {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
-        let this_thread_id = this_ref.get_thread_id();
 
         // Create outgoing edge for (from)
         let (from_id, rw, out_edge) = match from {
             // WW edges always get inserted
-            Edge::WriteWrite(from_id, _) => {
-                (from_id, false, Edge::WriteWrite(this_id, this_thread_id))
-            }
+            Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
 
             // WR edge inserted if this node is PL2/3
-            Edge::WriteRead(from_id, _) => {
+            Edge::WriteRead(from_id) => {
                 if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
                     return true;
                 }
 
-                (from_id, false, Edge::WriteRead(this_id, this_thread_id))
+                (from_id, false, Edge::WriteRead(this_id))
             }
 
             // RW edge inserted if from node is PL3
-            Edge::ReadWrite(from_id, _) => {
+            Edge::ReadWrite(from_id) => {
                 let from_ref = unsafe { &*(from_id as *const Node) };
                 match from_ref.get_isolation_level() {
                     IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
                         return true;
                     }
-                    IsolationLevel::Serializable => {
-                        (from_id, true, Edge::ReadWrite(this_id, this_thread_id))
-                    }
+                    IsolationLevel::Serializable => (from_id, true, Edge::ReadWrite(this_id)),
                 }
             }
         };
@@ -188,31 +183,31 @@ impl MixedSerializationGraph {
                 // traverse only relevant edges
                 match isolation {
                     IsolationLevel::ReadUncommitted => {
-                        if let Edge::WriteWrite(node, _) = edge {
+                        if let Edge::WriteWrite(node) = edge {
                             node
                         } else {
                             continue;
                         }
                     }
                     IsolationLevel::ReadCommitted => match edge {
-                        Edge::ReadWrite(_, _) => {
+                        Edge::ReadWrite(_) => {
                             continue;
                         }
-                        Edge::WriteWrite(node, _) => node,
-                        Edge::WriteRead(node, _) => node,
+                        Edge::WriteWrite(node) => node,
+                        Edge::WriteRead(node) => node,
                     },
                     IsolationLevel::Serializable => match edge {
-                        Edge::ReadWrite(node, _) => node,
-                        Edge::WriteWrite(node, _) => node,
-                        Edge::WriteRead(node, _) => node,
+                        Edge::ReadWrite(node) => node,
+                        Edge::WriteWrite(node) => node,
+                        Edge::WriteRead(node) => node,
                     },
                 }
             } else {
                 // traverse any edge
                 match edge {
-                    Edge::ReadWrite(node, _) => node,
-                    Edge::WriteWrite(node, _) => node,
-                    Edge::WriteRead(node, _) => node,
+                    Edge::ReadWrite(node) => node,
+                    Edge::WriteWrite(node) => node,
+                    Edge::WriteRead(node) => node,
                 }
             };
 
@@ -355,9 +350,8 @@ impl MixedSerializationGraph {
                 match access {
                     // W-R conflict
                     Access::Write(from) => {
-                        if let TransactionId::SerializationGraph(from_id, from_thread_id, _) = from
-                        {
-                            if !self.insert_and_check(Edge::WriteRead(*from_id, *from_thread_id)) {
+                        if let TransactionId::SerializationGraph(from_id, _, _) = from {
+                            if !self.insert_and_check(Edge::WriteRead(*from_id)) {
                                 cyclic = true;
                                 break;
                             }
@@ -465,18 +459,13 @@ impl MixedSerializationGraph {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
-                            if let TransactionId::SerializationGraph(from_addr, from_thread_id, _) =
-                                from
-                            {
+                            if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
-                                    if !self.insert_and_check(Edge::WriteWrite(
-                                        *from_addr,
-                                        *from_thread_id,
-                                    )) {
+                                    if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
                                         cyclic = true;
                                         break; // no reason to check other accesses
                                     }
@@ -532,11 +521,8 @@ impl MixedSerializationGraph {
             if id < &prv {
                 match access {
                     Access::Read(from) => {
-                        if let TransactionId::SerializationGraph(from_addr, from_thread_id, _) =
-                            from
-                        {
-                            if !self.insert_and_check(Edge::ReadWrite(*from_addr, *from_thread_id))
-                            {
+                        if let TransactionId::SerializationGraph(from_addr, _, _) = from {
+                            if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
                                 cyclic = true;
                                 break;
                             }
@@ -611,9 +597,9 @@ impl MixedSerializationGraph {
 
                 for edge in incoming {
                     let node = match edge {
-                        Edge::ReadWrite(node, _) => node,
-                        Edge::WriteWrite(node, _) => node,
-                        Edge::WriteRead(node, _) => node,
+                        Edge::ReadWrite(node) => node,
+                        Edge::WriteWrite(node) => node,
+                        Edge::WriteRead(node) => node,
                     };
 
                     let from = unsafe { &*(node as *const Node) };
@@ -637,9 +623,9 @@ impl MixedSerializationGraph {
 
                 for edge in outgoing {
                     let node = match edge {
-                        Edge::ReadWrite(node, _) => node,
-                        Edge::WriteWrite(node, _) => node,
-                        Edge::WriteRead(node, _) => node,
+                        Edge::ReadWrite(node) => node,
+                        Edge::WriteWrite(node) => node,
+                        Edge::WriteRead(node) => node,
                     };
 
                     let from = unsafe { &*(node as *const Node) };
@@ -705,7 +691,7 @@ impl MixedSerializationGraph {
     pub fn cleanup(&self) {
         let this = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
-        let this_thread_id = this.get_thread_id();
+
         let this_wlock = this.write();
         this.set_cleaned();
         drop(this_wlock);
@@ -718,17 +704,17 @@ impl MixedSerializationGraph {
 
         for edge in outgoing_set {
             match edge {
-                Edge::ReadWrite(that_id, _) => {
+                Edge::ReadWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
                     let that_rlock = that.read();
 
                     if !that.is_cleaned() {
-                        that.remove_incoming(&Edge::ReadWrite(this_id, this_thread_id));
+                        that.remove_incoming(&Edge::ReadWrite(this_id));
                     }
                     drop(that_rlock);
                 }
 
-                Edge::WriteWrite(that_id, _) => {
+                Edge::WriteWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
 
                     if this.is_aborted() {
@@ -736,13 +722,13 @@ impl MixedSerializationGraph {
                     } else {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteWrite(this_id, this_thread_id));
+                            that.remove_incoming(&Edge::WriteWrite(this_id));
                         }
                         drop(that_rlock);
                     }
                 }
 
-                Edge::WriteRead(that_id, _) => {
+                Edge::WriteRead(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
 
                     if this.is_aborted() {
@@ -750,7 +736,7 @@ impl MixedSerializationGraph {
                     } else {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteRead(this_id, this_thread_id));
+                            that.remove_incoming(&Edge::WriteRead(this_id));
                         }
                         drop(that_rlock);
                     }
