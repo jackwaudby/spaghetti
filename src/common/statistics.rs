@@ -151,6 +151,7 @@ impl GlobalStatistics {
             WorkloadAbortBreakdown::Tatp(ref reasons) => {
                 committed += reasons.row_not_found;
                 aborted -= reasons.row_not_found;
+                reasons.row_already_exists
             }
             WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
             WorkloadAbortBreakdown::Acid(ref reasons) => reasons.non_serializable,
