@@ -3,17 +3,18 @@ use crate::workloads::IsolationLevel;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::time::{Duration, Instant};
 
 use std::cell::UnsafeCell;
-use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-unsafe impl Send for Node {}
-unsafe impl Sync for Node {}
+unsafe impl<'a> Send for Node {}
+unsafe impl<'a> Sync for Node {}
 
 pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+// (from/to, thread id)
+#[derive(Clone, Eq, Hash, PartialEq)]
 pub enum Edge {
     ReadWrite(usize),
     WriteWrite(usize),
@@ -24,32 +25,51 @@ pub enum Edge {
 pub struct Node {
     thread_id: usize,
     thread_ctr: usize,
-    isolation_level: IsolationLevel,
+    isolation_level: Option<IsolationLevel>,
     node_id: UnsafeCell<Option<usize>>,
     incoming: UnsafeCell<Option<EdgeSet>>,
     outgoing: UnsafeCell<Option<EdgeSet>>,
     committed: AtomicBool,
-    cascading_abort: AtomicBool,
+    cascading: AtomicBool,
     aborted: AtomicBool,
     cleaned: AtomicBool,
     checked: AtomicBool,
     lock: RwLock<u32>,
 }
 
-#[derive(Debug)]
-pub enum Incoming {
-    None,
-    SomeRelevant,
-    SomeNotRelevant,
-}
-
 impl Node {
     pub fn read(&self) -> RwLockReadGuard<u32> {
-        self.lock.read()
+        let timeout_start = Instant::now(); // timeout
+        let runtime = Duration::new(3, 0);
+        let timeout_end = timeout_start + runtime;
+
+        loop {
+            let res = self.lock.try_read();
+            if let Some(guard) = res {
+                return guard;
+            }
+
+            if Instant::now() > timeout_end {
+                panic!("deadlock"); // potential deadlock
+            }
+        }
     }
 
     pub fn write(&self) -> RwLockWriteGuard<u32> {
-        self.lock.write()
+        let timeout_start = Instant::now(); // timeout
+        let runtime = Duration::new(3, 0);
+        let timeout_end = timeout_start + runtime;
+
+        loop {
+            let res = self.lock.try_write();
+            if let Some(guard) = res {
+                return guard;
+            }
+
+            if Instant::now() > timeout_end {
+                panic!("deadlock"); // potential deadlock
+            }
+        }
     }
 
     pub fn new(
@@ -57,7 +77,7 @@ impl Node {
         thread_ctr: usize,
         incoming: EdgeSet,
         outgoing: EdgeSet,
-        isolation_level: IsolationLevel,
+        isolation_level: Option<IsolationLevel>,
     ) -> Self {
         Self {
             thread_id,
@@ -67,7 +87,7 @@ impl Node {
             incoming: UnsafeCell::new(Some(incoming)),
             outgoing: UnsafeCell::new(Some(outgoing)),
             committed: AtomicBool::new(false),
-            cascading_abort: AtomicBool::new(false),
+            cascading: AtomicBool::new(false),
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
@@ -76,13 +96,18 @@ impl Node {
     }
 
     pub fn get_isolation_level(&self) -> IsolationLevel {
-        self.isolation_level
+        self.isolation_level.unwrap()
     }
 
-    pub fn incoming_edge_exists(&self, from: &Edge) -> bool {
-        let incoming = unsafe { self.incoming.get().as_ref() };
+    pub fn get_thread_ctr(&self) -> usize {
+        self.thread_ctr
+    }
 
-        match incoming {
+    /// Returns `true` if an edge from a given node already exists in this node's incoming edge set.
+    pub fn incoming_edge_exists(&self, from: &Edge) -> bool {
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
+
+        match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let guard = edges.lock();
@@ -90,52 +115,13 @@ impl Node {
                     drop(guard);
                     exists
                 }
-                None => panic!("incoming edge set already cleaned"),
+                None => panic!("incoming edge set removed"),
             },
             None => panic!("check unsafe"),
         }
     }
 
-    // pub fn has_incoming(&self) -> Incoming {
-    //     let incoming = unsafe { self.incoming.get().as_ref() };
-
-    //     match incoming {
-    //         Some(edge_set) => match edge_set {
-    //             Some(edges) => {
-    //                 let guard = edges.lock();
-
-    //                 if guard.is_empty() {
-    //                     drop(guard);
-    //                     Incoming::None
-    //                 } else {
-    //                     match self.isolation_level {
-    //                         IsolationLevel::ReadUncommitted => {
-    //                             if guard.iter().any(|x| variant_eq(x, &Edge::WriteWrite(0))) {
-    //                                 Incoming::SomeRelevant
-    //                             } else {
-    //                                 Incoming::SomeNotRelevant
-    //                             }
-    //                         }
-    //                         IsolationLevel::ReadCommitted => {
-    //                             if guard.iter().any(|x| {
-    //                                 variant_eq(x, &Edge::WriteWrite(0))
-    //                                     || variant_eq(x, &Edge::WriteRead(0))
-    //                             }) {
-    //                                 Incoming::SomeRelevant
-    //                             } else {
-    //                                 Incoming::SomeNotRelevant
-    //                             }
-    //                         }
-    //                         IsolationLevel::Serializable => Incoming::SomeRelevant,
-    //                     }
-    //                 }
-    //             }
-    //             None => panic!("incoming edge set already cleaned"),
-    //         },
-    //         None => panic!("check unsafe"),
-    //     }
-    // }
-
+    /// Returns `true` if the node has at least 1 incoming edge.
     pub fn has_incoming(&self) -> bool {
         let incoming_edges = unsafe { self.incoming.get().as_ref() };
 
@@ -153,42 +139,51 @@ impl Node {
         }
     }
 
+    /// Insert an incoming edge: (from) --> (this)
     pub fn insert_incoming(&self, from: Edge) {
-        let incoming = unsafe { self.incoming.get().as_ref() };
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
 
-        match incoming {
+        match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let mut guard = edges.lock();
                     guard.insert(from);
                     drop(guard);
                 }
-                None => panic!("incoming edge set already cleaned"),
+                None => panic!("incoming edge set removed"),
             },
             None => panic!("check unsafe"),
         }
     }
 
+    /// Remove an edge from this node's incoming edge set.
     pub fn remove_incoming(&self, from: &Edge) {
-        let incoming = unsafe { self.incoming.get().as_ref() };
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
 
-        match incoming {
+        match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let mut guard = edges.lock();
-                    assert_eq!(guard.remove(from), true);
+                    assert_eq!(
+                        guard.remove(from),
+                        true,
+                        "Trying to remove: {:?}, Current: {:?}",
+                        from,
+                        *guard
+                    );
                     drop(guard);
                 }
-                None => panic!("incoming edge set already cleaned"),
+                None => panic!("incoming edge set removed"),
             },
             None => panic!("check unsafe"),
         }
     }
 
+    /// Insert an outgoing edge: (this) --> (to)
     pub fn insert_outgoing(&self, to: Edge) {
-        let outgoing = unsafe { self.outgoing.get().as_ref() };
+        let outgoing_edges = unsafe { self.outgoing.get().as_ref() };
 
-        match outgoing {
+        match outgoing_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
                     let mut guard = edges.lock();
@@ -201,6 +196,7 @@ impl Node {
         }
     }
 
+    /// Remove incoming edge set from node.
     pub fn take_incoming(&self) -> EdgeSet {
         let incoming = unsafe { self.incoming.get().as_mut() };
 
@@ -213,6 +209,7 @@ impl Node {
         }
     }
 
+    /// Remove outgoing edge set from node.
     pub fn take_outgoing(&self) -> EdgeSet {
         let outgoing = unsafe { self.outgoing.get().as_mut() };
 
@@ -225,6 +222,7 @@ impl Node {
         }
     }
 
+    /// Get a clone of the outgoing edge from node.
     pub fn get_outgoing(&self) -> FxHashSet<Edge> {
         match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
             Some(edges) => {
@@ -237,6 +235,7 @@ impl Node {
         }
     }
 
+    /// Get a clone of the outgoing edge from node.
     pub fn get_incoming(&self) -> FxHashSet<Edge> {
         match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
             Some(edges) => {
@@ -253,6 +252,14 @@ impl Node {
         unsafe { *self.node_id.get().as_mut().unwrap() = Some(node_id) };
     }
 
+    pub fn get_id(&self) -> usize {
+        unsafe { self.node_id.get().as_mut().unwrap().unwrap() }
+    }
+
+    pub fn get_thread_id(&self) -> usize {
+        self.thread_id
+    }
+
     pub fn is_aborted(&self) -> bool {
         self.aborted.load(Ordering::Acquire)
     }
@@ -262,11 +269,11 @@ impl Node {
     }
 
     pub fn is_cascading_abort(&self) -> bool {
-        self.cascading_abort.load(Ordering::Acquire)
+        self.cascading.load(Ordering::Acquire)
     }
 
     pub fn set_cascading_abort(&self) {
-        self.cascading_abort.store(true, Ordering::Release);
+        self.cascading.store(true, Ordering::Release);
     }
 
     pub fn is_committed(&self) -> bool {
@@ -294,46 +301,26 @@ impl Node {
     }
 }
 
-// fn variant_eq(a: &Edge, b: &Edge) -> bool {
-//     std::mem::discriminant(a) == std::mem::discriminant(b)
-// }
-
-impl fmt::Display for Edge {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Edge::ReadWrite(id) => write!(f, "rw:{}", id).unwrap(),
-            Edge::WriteWrite(id) => write!(f, "ww:{}", id,).unwrap(),
-            Edge::WriteRead(id) => write!(f, "wr:{}", id,).unwrap(),
+impl std::fmt::Debug for Edge {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
+        let thread_id = "x";
+        use Edge::*;
+        match &*self {
+            ReadWrite(txn_id) => write!(
+                f,
+                "{}",
+                format!("[rw: {:x}, thread id: {}]", txn_id, thread_id)
+            ),
+            WriteWrite(txn_id) => write!(
+                f,
+                "{}",
+                format!("[ww: {:x}, thread id: {}]", txn_id, thread_id)
+            ),
+            WriteRead(txn_id) => write!(
+                f,
+                "{}",
+                format!("[wr: {:x}, thread id: {}]", txn_id, thread_id)
+            ),
         }
-
-        Ok(())
-    }
-}
-
-impl fmt::Display for Node {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let ptr: *const Node = self;
-        let id = ptr as usize;
-
-        writeln!(f).unwrap();
-        writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
-        writeln!(f, "thread id: {:?}", self.thread_id).unwrap();
-        writeln!(f, "thread ctr: {:?}", self.thread_ctr).unwrap();
-        writeln!(f, "expected ref id: {}", unsafe {
-            self.node_id.get().as_ref().unwrap().unwrap()
-        })
-        .unwrap();
-        writeln!(f, "actual ref id: {}", id).unwrap();
-
-        writeln!(
-            f,
-            "committed: {:?}, cascading: {:?}, aborted: {:?}, cleaned: {:?}, checked: {:?}",
-            self.committed, self.cascading_abort, self.aborted, self.cleaned, self.checked
-        )
-        .unwrap();
-        writeln!(f, "-------------------------------------------------------------------------------------------").unwrap();
-        writeln!(f).unwrap();
-
-        Ok(())
     }
 }

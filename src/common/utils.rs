@@ -1,3 +1,4 @@
+use crate::common::error::NonFatalError;
 use crate::common::message::{Message, Outcome, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
@@ -10,14 +11,13 @@ use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
 use crate::workloads::{acid, dummy, smallbank, tatp};
 
 use config::Config;
-use pbr::{Pipe, ProgressBar};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-use tracing::info;
 use tracing::Level;
+use tracing::{debug, error, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub fn init_config(file: &str) -> Config {
@@ -86,7 +86,8 @@ pub fn run(
     scheduler: &Scheduler,
     database: &Database,
     tx: mpsc::Sender<LocalStatistics>,
-    mut pbr: Option<ProgressBar<Pipe>>,
+    rx: mpsc::Receiver<i32>,
+    thx: mpsc::SyncSender<i32>,
 ) {
     let timeout = config.get_int("timeout").unwrap() as u64;
     let p = config.get_str("protocol").unwrap();
@@ -147,45 +148,68 @@ pub fn run(
 
     loop {
         if completed == max_transactions {
-            tracing::debug!(
-                "All transactions sent: {} = {}",
-                completed,
-                max_transactions
-            );
+            debug!("All transactions sent: {} ", completed);
+
+            let res = thx.send(1);
+            match res {
+                Ok(_) => {}
+                Err(e) => debug!("{}", e),
+            }
+
             break;
         } else if Instant::now() > timeout_end {
-            tracing::info!("Timeout reached: {} minute(s)", timeout);
+            debug!("Timeout reached: {} minute(s)", timeout);
+
+            let res = thx.send(1);
+            match res {
+                Ok(_) => {}
+                Err(e) => debug!("{}", e),
+            }
+
+            break;
+        } else if rx.try_recv().is_ok() {
+            error!(
+                "[thread id: {}] received shutdown notification and exited",
+                thread_id
+            );
+
+            let res = thx.send(1);
+            match res {
+                Ok(_) => {}
+                Err(e) => debug!("{}", e),
+            }
             break;
         } else {
             let txn = generator.get_next(); // generate txn
             let start_latency = Instant::now(); // start measuring latency
             let response = execute(txn.clone(), scheduler, database); // execute txn
+
+            // Check that thread has not run into a problem
+            if let Message::Response { outcome, .. } = response.clone() {
+                if let Outcome::Aborted(err) = outcome {
+                    if let NonFatalError::Emergency = err {
+                        let res = thx.send(2);
+                        match res {
+                            Ok(_) => {}
+                            Err(e) => debug!("{}", e),
+                        }
+                        error!("[thread id: {}] detected deadlock and exited", thread_id);
+
+                        break;
+                    }
+                }
+            }
+
             stats.record(&response); // record response
             if log_results {
                 log_result(&mut fh, &response); // log response
             }
             stats.stop_latency(start_latency); // stop measuring latency
             completed += 1;
-
-            match pbr {
-                Some(ref mut pbr) => {
-                    if completed % (max_transactions / 100) == 0 {
-                        pbr.inc();
-                    }
-                }
-                None => {}
-            }
         }
     }
 
     stats.stop_worker(start_worker);
-
-    // match pbr {
-    //     Some(ref mut pbr) => {
-    //         pbr.finish_print(&format!("thread {} done!", thread_id));
-    //     }
-    //     None => {}
-    // }
 
     if record {
         tx.send(stats).unwrap();

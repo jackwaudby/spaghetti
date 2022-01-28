@@ -1,7 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
-use crate::scheduler::sgt::error::SerializationGraphError;
-use crate::scheduler::sgt::node::{Edge, Node};
+use crate::scheduler::common::{Edge, Node};
+use crate::scheduler::error::SerializationGraphError;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
@@ -14,11 +14,7 @@ use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
-use tracing::{debug, info, instrument, Span};
-
-pub mod node;
-
-pub mod error;
+use tracing::{debug, info};
 
 #[derive(Debug)]
 pub struct SerializationGraph {
@@ -186,7 +182,6 @@ impl SerializationGraph {
     }
 
     /// Begin a transaction.
-    #[instrument(level = "debug", skip(self), fields(id))]
     pub fn begin(&self) -> TransactionId {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
@@ -198,7 +193,6 @@ impl SerializationGraph {
 
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
-        Span::current().record("id", &ref_id);
         debug!("Begin");
 
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
@@ -209,7 +203,7 @@ impl SerializationGraph {
         let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
         let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
-        let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing)); // allocate node
+        let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing, None)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
         let id = ptr as usize; // get id
         unsafe { (*ptr).set_id(id) }; // set id on node
@@ -219,7 +213,6 @@ impl SerializationGraph {
     }
 
     /// Read operation.
-    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn read_value(
         &self,
         table_id: usize,
@@ -228,17 +221,10 @@ impl SerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
-        match meta {
-            TransactionId::SerializationGraph(id, _, _) => {
-                Span::current().record("id", &id);
-            }
-            _ => panic!("unexpected txn id"),
-        };
-
         let this = unsafe { &*self.get_transaction() };
 
         if this.is_cascading_abort() {
-            self.abort(meta, database);
+            self.abort(database);
             return Err(SerializationGraphError::CascadingAbort.into());
         }
 
@@ -278,7 +264,7 @@ impl SerializationGraph {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(meta, database); // abort
+            self.abort(database); // abort
             return Err(SerializationGraphError::CycleFound.into());
         }
 
@@ -299,7 +285,6 @@ impl SerializationGraph {
     /// Write operation.
     ///
     /// A write is executed iff there are no uncommitted writes on a record, else the operation is delayed.
-    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
     pub fn write_value(
         &self,
         value: &mut Data,
@@ -309,13 +294,6 @@ impl SerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        match meta {
-            TransactionId::SerializationGraph(id, _, _) => {
-                Span::current().record("id", &id);
-            }
-            _ => panic!("unexpected txn id"),
-        };
-
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
@@ -323,7 +301,7 @@ impl SerializationGraph {
 
         loop {
             if self.needs_abort() {
-                self.abort(meta, database);
+                self.abort(database);
                 return Err(SerializationGraphError::CascadingAbort.into()); // check for cascading abort
             }
 
@@ -358,11 +336,6 @@ impl SerializationGraph {
 
                                     wait = true; // retry operation
                                     break;
-                                } else {
-                                    // from is complete
-                                    // if table.get_tuple(column_id, offset).get().is_dirty() {
-                                    //     wait = true; // retry operation TODO: hack
-                                    // }
                                 }
                             }
                         }
@@ -376,7 +349,7 @@ impl SerializationGraph {
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                self.abort(meta, database);
+                self.abort(database);
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
@@ -393,7 +366,7 @@ impl SerializationGraph {
             // check for cascading abort
             if self.needs_abort() {
                 rw_table.erase(prv); // remove from rw table
-                self.abort(meta, database);
+                self.abort(database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
 
                 return Err(SerializationGraphError::CascadingAbort.into());
@@ -429,7 +402,7 @@ impl SerializationGraph {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(meta, database);
+            self.abort(database);
 
             return Err(SerializationGraphError::CycleFound.into());
         }
@@ -451,20 +424,12 @@ impl SerializationGraph {
     }
 
     /// Commit operation.
-    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
-    pub fn commit(&self, meta: &TransactionId, database: &Database) -> Result<(), NonFatalError> {
-        match meta {
-            TransactionId::SerializationGraph(id, _, _) => {
-                Span::current().record("id", &id);
-            }
-            _ => panic!("unexpected txn id"),
-        };
-
+    pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
 
         loop {
             if this.is_cascading_abort() || this.is_aborted() {
-                self.abort(meta, database);
+                self.abort(database);
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
@@ -483,9 +448,9 @@ impl SerializationGraph {
             }
 
             // no incoming edges and no cycle so commit
-            self.tidyup(meta, database, true);
+            self.tidyup(database, true);
             this.set_committed();
-            self.cleanup(database);
+            self.cleanup();
 
             break;
         }
@@ -494,26 +459,17 @@ impl SerializationGraph {
     }
 
     /// Abort operation.
-    #[instrument(level = "debug", skip(self, meta, database), fields(id))]
-    pub fn abort(&self, meta: &TransactionId, database: &Database) -> NonFatalError {
-        match meta {
-            TransactionId::SerializationGraph(id, _, _) => {
-                Span::current().record("id", &id);
-            }
-            _ => panic!("unexpected txn id"),
-        };
-
+    pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = unsafe { &*self.get_transaction() };
         this.set_aborted();
-        self.cleanup(database);
-        self.tidyup(meta, database, false);
+        self.cleanup();
+        self.tidyup(database, false);
 
         NonFatalError::NonSerializable // TODO: return the why
     }
 
     /// Cleanup node after committed or aborted.
-    #[instrument(level = "debug", skip(self))]
-    pub fn cleanup(&self, db: &Database) {
+    pub fn cleanup(&self) {
         let this = unsafe { &*self.get_transaction() }; // shared reference to node
         let this_id = self.get_transaction() as usize; // node id
 
@@ -538,7 +494,8 @@ impl SerializationGraph {
                     let that = unsafe { &*(*that_id as *const Node) };
                     let that_rlock = that.read(); // prevent (to) from committing
                     if !that.is_cleaned() {
-                        that.remove_incoming(&Edge::ReadWrite(this_id)); // if (to) is not cleaned remove incoming edge
+                        that.remove_incoming(&Edge::ReadWrite(this_id));
+                        // if (to) is not cleaned remove incoming edge
                     }
                     drop(that_rlock);
                 }
@@ -597,8 +554,7 @@ impl SerializationGraph {
     }
 
     /// Tidyup rwtables and tuples
-    #[instrument(level = "debug", skip(self, database, commit))]
-    pub fn tidyup(&self, meta: &TransactionId, database: &Database, commit: bool) {
+    pub fn tidyup(&self, database: &Database, commit: bool) {
         let ops = self.get_operations();
 
         // commit and revert state
@@ -658,6 +614,3 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64) {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {}

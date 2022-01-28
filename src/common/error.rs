@@ -1,7 +1,6 @@
-use crate::scheduler::msgt::error::MixedSerializationGraphError;
+use crate::scheduler::error::{MixedSerializationGraphError, SerializationGraphError};
 use crate::scheduler::mtpl::error::MixedTwoPhaseLockingError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
-use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::smallbank::error::SmallBankError;
@@ -56,6 +55,9 @@ pub enum FatalError {
 /// Represents a non-fatal error.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum NonFatalError {
+    /// TODO: this is really a fatal error
+    Emergency,
+
     /// Table not found in database.
     TableNotFound(String),
 
@@ -142,6 +144,7 @@ impl fmt::Display for NonFatalError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use NonFatalError::*;
         match *self {
+            Emergency => write!(f, "em"),
             TableNotFound(ref name) => write!(f, "not found: table {}", name),
             IndexNotFound(ref name) => write!(f, "not found: index {}", name),
             NoPrimaryIndex(ref name) => write!(f, "not found: no index on table {}", name),

@@ -3,13 +3,13 @@ use spaghetti::common::utils;
 use spaghetti::scheduler::Scheduler;
 use spaghetti::storage::Database;
 
-use clap::clap_app;
+use clap::{arg, App};
 use crossbeam_utils::thread;
-// use pbr::MultiBar;
 use std::sync::mpsc;
+use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::time::Instant;
-use tracing::info;
 use tracing::Level;
+use tracing::{debug, error, info};
 use tracing_subscriber::fmt;
 
 fn main() {
@@ -17,40 +17,39 @@ fn main() {
     let mut config = utils::init_config("Settings.toml");
 
     // command line
-    let matches = clap_app!(spag =>
-                            (version: "0.1.0")
-                            (author: "j. waudby <j.waudby2@newcastle.ac.uk>")
-                            (about: "spaghetti")
-                            (@arg WORKLOAD: -w --workload +takes_value "Set a workload")
-                            (@arg PROTOCOL: -p --protocol +takes_value "Set a protocol")
-                            (@arg SF: -s --scalefactor +takes_value "Set a scale factor")
-                            (@arg TRANSACTIONS: -t --transactions +takes_value "Transactions per core")
-                            (@arg CORES: -c --cores +takes_value "Number of cores to use")
-                            (@arg LOG: -l --log +takes_value "Log level")
-    )
-    .get_matches();
+    let matches = App::new("MyApp")
+        .version("0.1.0")
+        .author("j. waudby <j.waudby2@newcastle.ac.uk>")
+        .about("spaghetti")
+        .arg(arg!(-w --workload <WORKLOAD> "Set a workload").required(false))
+        .arg(arg!(-p --protocol <PROTOCOL> "Set a protocol").required(false))
+        .arg(arg!(-s --scalefactor <SF> "Set a scale factor").required(false))
+        .arg(arg!(-t --transactions <TRANSACTIONS> "Transactions per core").required(false))
+        .arg(arg!(-c --cores <CORES> "Number of cores to use").required(false))
+        .arg(arg!(-l --log <LOG> "Log level").required(false))
+        .get_matches();
 
-    if let Some(w) = matches.value_of("WORKLOAD") {
+    if let Some(w) = matches.value_of("workload") {
         config.set("workload", w).unwrap();
     }
 
-    if let Some(p) = matches.value_of("PROTOCOL") {
+    if let Some(p) = matches.value_of("protocol") {
         config.set("protocol", p).unwrap();
     }
 
-    if let Some(s) = matches.value_of("SF") {
+    if let Some(s) = matches.value_of("scalefactor") {
         config.set("scale_factor", s).unwrap();
     }
 
-    if let Some(t) = matches.value_of("TRANSACTIONS") {
+    if let Some(t) = matches.value_of("transactions") {
         config.set("transactions", t).unwrap();
     }
 
-    if let Some(c) = matches.value_of("CORES") {
+    if let Some(c) = matches.value_of("cores") {
         config.set("cores", c).unwrap();
     }
 
-    if let Some(l) = matches.value_of("LOG") {
+    if let Some(l) = matches.value_of("log") {
         config.set("log", l).unwrap();
     }
 
@@ -86,15 +85,20 @@ fn main() {
     // log directory
     utils::create_log_dir(&config);
 
+    // global stats
     let mut global_stats = GlobalStatistics::new(&config);
+    let (tx, rx) = mpsc::channel(); // channel for thread local stats
 
+    // data generation
     let dg_start = Instant::now();
     let database: Database = utils::init_database(&config);
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
+    // shutdown channel: thread(s) -> main
+    let (thread_tx, main_rx): (SyncSender<i32>, Receiver<i32>) = mpsc::sync_channel(32);
+
     let scheduler: Scheduler = utils::init_scheduler(&config);
-    let (tx, rx) = mpsc::channel();
 
     info!("Starting execution");
     global_stats.start();
@@ -107,26 +111,67 @@ fn main() {
         let database = &database;
         let config = &config;
 
-        // let mb = MultiBar::new(); // progress bar
+        let mut shutdown_channels = Vec::new();
 
         for (thread_id, core_id) in core_ids[..cores].iter().enumerate() {
             let txc = tx.clone();
+            let thread_txc = thread_tx.clone();
 
-            // let mut p = mb.create_bar(100); // create bar
-            // p.show_speed = false;
-            // p.show_counter = false;
+            // Coordinator to thread shutdown
+            let (tx, rx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
+            shutdown_channels.push(tx);
 
             s.builder()
                 .name(thread_id.to_string())
                 .spawn(move |_| {
                     core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                                                              // utils::run(thread_id, config, scheduler, database, txc, Some(p));
-                    utils::run(thread_id, config, scheduler, database, txc, None);
+                    utils::run(thread_id, config, scheduler, database, txc, rx, thread_txc);
                 })
                 .unwrap();
         }
 
-        // mb.listen();
+        // Shutdown management
+        let mut received = 0;
+        loop {
+            // Each thread should send a message when it terminates
+            // This message can be: (i) exited normally (1) or (ii) deadlocked (2)
+            // It should receive 1 message from each core
+
+            let res = main_rx.try_recv();
+
+            match res {
+                Ok(value) => {
+                    received += 1;
+
+                    // message was from a clean shutdown
+                    if value == 1 {
+                        // clean shutdown
+                        debug!("Exited normally");
+                    }
+
+                    // message was from a problemed threa
+                    if value == 2 {
+                        error!("Deadlock detected!");
+
+                        // broadcast shutdown to all
+                        for channel in &shutdown_channels {
+                            let res = channel.send(1); // may already be shutdown
+                            match res {
+                                Ok(_) => {}
+                                Err(e) => debug!("{}", e),
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    // shouldn't get here
+                }
+            }
+
+            if received == cores {
+                break;
+            }
+        }
     })
     .unwrap();
 

@@ -14,6 +14,10 @@ use crate::workloads::IsolationLevel;
 
 use config::Config;
 
+pub mod error;
+
+pub mod common;
+
 pub mod wh;
 
 pub mod owh;
@@ -50,12 +54,22 @@ pub enum Scheduler<'a> {
 }
 
 impl<'a> Scheduler<'a> {
-    pub fn new(config: &Config) -> crate::Result<Self> {
+    pub fn new(
+        config: &Config,
+        // tx: std::sync::mpsc::SyncSender<i32>
+    ) -> crate::Result<Self> {
         let cores = config.get_int("cores")? as usize;
 
         let protocol = match config.get_str("protocol")?.as_str() {
             "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
-            "msgt" => Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(cores)),
+            "msgt" => {
+                let relevant_cycle_check = config.get_bool("relevant_cycle_check")?;
+                Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(
+                    cores,
+                    relevant_cycle_check,
+                    // tx,
+                ))
+            }
             "wh" => Scheduler::WaitHit(WaitHit::new(cores)),
             "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
             "owhtt" => Scheduler::OptimisedWaitHitTransactionTypes(
@@ -157,7 +171,7 @@ impl<'a> Scheduler<'a> {
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.commit(meta, database),
+            SerializationGraph(sg) => sg.commit(database),
             MixedSerializationGraph(sg) => sg.commit(database),
             WaitHit(wh) => wh.commit(meta, database),
             OptimisedWaitHit(owh) => owh.commit(database),
@@ -171,7 +185,7 @@ impl<'a> Scheduler<'a> {
     pub fn abort(&self, meta: &TransactionId, database: &Database) -> NonFatalError {
         use Scheduler::*;
         match self {
-            SerializationGraph(sg) => sg.abort(meta, database),
+            SerializationGraph(sg) => sg.abort(database),
             MixedSerializationGraph(sg) => sg.abort(database),
             WaitHit(wh) => wh.abort(meta, database),
             OptimisedWaitHit(owh) => owh.abort(database),

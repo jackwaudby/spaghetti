@@ -1,9 +1,8 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Message, Outcome, Transaction};
-use crate::scheduler::msgt::error::MixedSerializationGraphError;
+use crate::scheduler::error::{MixedSerializationGraphError, SerializationGraphError};
 use crate::scheduler::mtpl::error::MixedTwoPhaseLockingError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
-use crate::scheduler::sgt::error::SerializationGraphError;
 use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::acid::AcidTransaction;
@@ -26,7 +25,6 @@ use strum::IntoEnumIterator;
 pub struct GlobalStatistics {
     scale_factor: u64,
     data_generation: Option<Duration>,
-    load_time: Option<Duration>,
     start: Option<Instant>,
     end: Option<Duration>,
     cores: u32,
@@ -37,6 +35,7 @@ pub struct GlobalStatistics {
     transaction_breakdown: TransactionBreakdown,
     abort_breakdown: AbortBreakdown,
     anomaly: Option<String>,
+    relevant_cycle_check: bool,
 }
 
 impl GlobalStatistics {
@@ -53,11 +52,11 @@ impl GlobalStatistics {
         } else {
             anomaly = None;
         }
+        let relevant_cycle_check = config.get_bool("relevant_cycle_check").unwrap();
 
         GlobalStatistics {
             scale_factor,
             data_generation: None,
-            load_time: None,
             start: None,
             end: None,
             protocol,
@@ -68,6 +67,7 @@ impl GlobalStatistics {
             transaction_breakdown,
             abort_breakdown,
             anomaly,
+            relevant_cycle_check,
         }
     }
 
@@ -240,9 +240,19 @@ impl GlobalStatistics {
 
         let mut wtr = csv::Writer::from_writer(file);
 
+        let protocol = if self.protocol.eq("msgt") {
+            if self.relevant_cycle_check {
+                format!("{}-relevant", self.protocol)
+            } else {
+                format!("{}-std", self.protocol)
+            }
+        } else {
+            self.protocol.clone()
+        };
+
         wtr.serialize((
             self.scale_factor,
-            &self.protocol,
+            protocol,
             &self.workload,
             self.cores,
             (self.total_time as f64 / 1000000.0), // ms
