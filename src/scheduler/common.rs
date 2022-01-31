@@ -21,6 +21,12 @@ pub enum Edge {
     WriteRead(usize),
 }
 
+pub enum Incoming {
+    None,
+    SomeRelevant,
+    SomeNotRelevant,
+}
+
 #[derive(Debug)]
 pub struct Node {
     thread_id: usize,
@@ -134,6 +140,46 @@ impl Node {
                     !res
                 }
                 None => panic!("incoming edge set removed"),
+            },
+            None => panic!("check unsafe"),
+        }
+    }
+
+    pub fn msgt_has_incoming(&self) -> Incoming {
+        let incoming = unsafe { self.incoming.get().as_ref() };
+
+        match incoming {
+            Some(edge_set) => match edge_set {
+                Some(edges) => {
+                    let guard = edges.lock();
+
+                    if guard.is_empty() {
+                        drop(guard);
+                        Incoming::None
+                    } else {
+                        match self.isolation_level.unwrap() {
+                            IsolationLevel::ReadUncommitted => {
+                                if guard.iter().any(|x| variant_eq(x, &Edge::WriteWrite(0))) {
+                                    Incoming::SomeRelevant
+                                } else {
+                                    Incoming::SomeNotRelevant
+                                }
+                            }
+                            IsolationLevel::ReadCommitted => {
+                                if guard.iter().any(|x| {
+                                    variant_eq(x, &Edge::WriteWrite(0))
+                                        || variant_eq(x, &Edge::WriteRead(0))
+                                }) {
+                                    Incoming::SomeRelevant
+                                } else {
+                                    Incoming::SomeNotRelevant
+                                }
+                            }
+                            IsolationLevel::Serializable => Incoming::SomeRelevant,
+                        }
+                    }
+                }
+                None => panic!("incoming edge set already cleaned"),
             },
             None => panic!("check unsafe"),
         }
@@ -299,6 +345,10 @@ impl Node {
     pub fn set_cleaned(&self) {
         self.cleaned.store(true, Ordering::Release);
     }
+}
+
+fn variant_eq(a: &Edge, b: &Edge) -> bool {
+    std::mem::discriminant(a) == std::mem::discriminant(b)
 }
 
 impl std::fmt::Debug for Edge {

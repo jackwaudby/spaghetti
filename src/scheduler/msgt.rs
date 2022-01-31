@@ -1,6 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
-use crate::scheduler::common::{Edge, Node};
+use crate::scheduler::common::{Edge, Incoming, Node};
 use crate::scheduler::error::MixedSerializationGraphError;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
@@ -31,6 +31,7 @@ impl MixedSerializationGraph {
     thread_local! {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
         static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
+        static EARLY: RefCell<Vec<*mut Node>> = RefCell::new(Vec::new());
     }
 
     pub fn new(size: usize, relevant_cycle_check: bool) -> Self {
@@ -657,20 +658,49 @@ impl MixedSerializationGraph {
             drop(this_wlock);
 
             // no lock taken as only outgoing edges can be added from here
-            if this.has_incoming() {
-                this.set_checked(false); // if incoming then flip back to unchecked
-                let is_cycle = self.cycle_check(this.get_isolation_level()); // cycle check
-                if is_cycle {
-                    this.set_aborted(); // cycle so abort (this)
+            // if this.has_incoming() {
+            //     this.set_checked(false); // if incoming then flip back to unchecked
+            //     let is_cycle = self.cycle_check(this.get_isolation_level()); // cycle check
+            //     if is_cycle {
+            //         this.set_aborted(); // cycle so abort (this)
+            //     }
+
+            //     continue;
+            // }
+
+            // no lock taken as only outgoing edges can be added from here
+            match this.msgt_has_incoming() {
+                // normal operation
+                Incoming::SomeRelevant => {
+                    this.set_checked(false);
+                    let is_cycle = self.cycle_check(this.get_isolation_level());
+                    if is_cycle {
+                        this.set_aborted();
+                    }
+                    continue;
                 }
+                // early commit
+                Incoming::SomeNotRelevant => {
+                    let this = unsafe { &*self.get_transaction() };
+                    error!("Add early committer: {:?}", this.get_id());
 
-                continue;
+                    this.set_committed();
+                    // set as committed and mark data as committed but leave access history there
+                    // must use tidy up
+
+                    let node = self.get_transaction();
+
+                    MixedSerializationGraph::EARLY.with(|x| x.borrow_mut().push(node));
+                    // think you still need to tidup and set as commtted
+                }
+                // normal operation - do not add
+                Incoming::None => {
+                    // no incoming edges and no cycle so commit
+                    self.tidyup(database, true);
+                    this.set_committed();
+                    self.cleanup();
+                }
             }
-
-            // no incoming edges and no cycle so commit
-            self.tidyup(database, true);
-            this.set_committed();
-            self.cleanup();
 
             break;
         }
@@ -689,6 +719,103 @@ impl MixedSerializationGraph {
     }
 
     pub fn cleanup(&self) {
+        // Check if any of the early committer can be removed now
+        MixedSerializationGraph::EARLY.with(|x| {
+            let mut lcl = x.borrow_mut();
+
+            // for each early committer
+            let mut i = 0;
+            while i < lcl.len() {
+                let this = unsafe { &*lcl[i] };
+                error!("Checking early committer: {:?}", this.get_id());
+
+                if let Incoming::None = unsafe { (*lcl[i]).msgt_has_incoming() } {
+                    let ptr = lcl.remove(i);
+
+                    let this = unsafe { &*ptr };
+                    let this_id = ptr as usize;
+
+                    let this_wlock = this.write();
+                    this.set_cleaned();
+                    drop(this_wlock);
+
+                    let outgoing = this.take_outgoing(); // remove edge sets
+                    let incoming = this.take_incoming();
+
+                    let mut g = outgoing.lock(); // lock on outgoing edge set
+                    let outgoing_set = g.iter(); // iterator over outgoing edge set
+
+                    for edge in outgoing_set {
+                        match edge {
+                            Edge::ReadWrite(that_id) => {
+                                let that = unsafe { &*(*that_id as *const Node) };
+                                let that_rlock = that.read();
+                                if !that.is_cleaned() {
+                                    that.remove_incoming(&Edge::ReadWrite(this_id));
+                                }
+                                drop(that_rlock);
+                            }
+
+                            Edge::WriteWrite(that_id) => {
+                                let that = unsafe { &*(*that_id as *const Node) };
+                                if this.is_aborted() {
+                                    that.set_cascading_abort();
+                                } else {
+                                    let that_rlock = that.read();
+                                    if !that.is_cleaned() {
+                                        that.remove_incoming(&Edge::WriteWrite(this_id));
+                                    }
+                                    drop(that_rlock);
+                                }
+                            }
+
+                            Edge::WriteRead(that) => {
+                                let that = unsafe { &*(*that as *const Node) };
+                                if this.is_aborted() {
+                                    that.set_cascading_abort();
+                                } else {
+                                    let that_rlock = that.read();
+                                    if !that.is_cleaned() {
+                                        that.remove_incoming(&Edge::WriteRead(this_id));
+                                    }
+                                    drop(that_rlock);
+                                }
+                            }
+                        }
+                    }
+                    g.clear();
+                    drop(g);
+
+                    // TODO: early committer cant have aborted
+                    if this.is_aborted() {
+                        incoming.lock().clear();
+                    }
+
+                    // TODO: need to call tidyup somewhere
+
+                    // let this = self.get_transaction();
+                    let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
+
+                    MixedSerializationGraph::EG.with(|x| unsafe {
+                        x.borrow().as_ref().unwrap().defer_unchecked(move || {
+                            let boxed_node = Box::from_raw(ptr);
+                            drop(boxed_node);
+                        });
+
+                        if cnt % 64 == 0 {
+                            x.borrow().as_ref().unwrap().flush();
+                        }
+
+                        let guard = x.borrow_mut().take();
+                        drop(guard)
+                    });
+                } else {
+                    i += 1;
+                }
+            }
+        });
+
+        // normal operation
         let this = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
