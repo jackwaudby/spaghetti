@@ -4,12 +4,15 @@ library(stringr)
 library(readr)
 library(dplyr)
 library(patchwork)
+library(scales)
 
 # get file path
 args = commandArgs(trailingOnly = TRUE)
 file = args[1]
 include_2pl = args[2]
 include_sgt = args[3]
+
+# file = "22_01_31_smallbank.csv"
 
 # load data
 col_names = c(
@@ -34,7 +37,7 @@ workload = str_to_title(raw$workload[1])
 
 # include durner results
 if (include_2pl == "true") {
-  durner_2pl = read_delim(file = './data/durner_2pl.csv',
+  durner_2pl = read_delim(file = './data/durner_2pl_smallbank.csv',
                           delim = ";",
                           col_names = F)
   durner_2pl = durner_2pl[, c(1, 2, 3, 5, 8, 9, 11, 10, 15, 18)]
@@ -135,13 +138,14 @@ if (nrow(sf1) > 0) {
   
   p3 = ggplot(data = sf1, aes(
     x = cores,
-    y = log(lat),
+    y = lat,
     group = protocol,
     colour = protocol
   )) +
     geom_line() +
     ylab("av latency (ms)") +
-    theme_bw()
+    theme_bw() +
+  scale_y_log10()
   
   combined <- p1 + p2 + p3 & theme(legend.position = "top",
                                    text = element_text(size = 16)
@@ -180,7 +184,9 @@ if (nrow(sf3) > 0) {
   )) +
     geom_line() +
     ylab("av latency (ms)") +
-    theme_bw()
+    theme_bw() +
+    scale_y_log10()
+  
   
   combined <- p1 + p2 + p3 & theme(legend.position = "top",
                                    text = element_text(size = 16))
