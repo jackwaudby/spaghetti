@@ -37,7 +37,10 @@ workload = str_to_title(raw$workload[1])
 
 # include durner results
 if (include_2pl == "true") {
-  durner_2pl = read_delim(file = './data/durner_2pl_smallbank.csv',
+  
+  file = paste0('./data/durner_2pl_',gsub(" ", "", tolower(workload)),'.csv')
+  
+  durner_2pl = read_delim(file = file,
                           delim = ";",
                           col_names = F)
   durner_2pl = durner_2pl[, c(1, 2, 3, 5, 8, 9, 11, 10, 15, 18)]
@@ -100,7 +103,7 @@ raw = raw %>% filter(cores <= 40)
 
 # Divide into scale factor data sets
 raw$sf = as.factor(raw$sf)
-sf1 = raw %>% filter((sf == 1) | (sf == 100))
+sf1 = raw %>% filter((sf == 1) | (sf == 100)| (sf == 100000))
 sf3 = raw %>% filter((sf == 3) | (sf == 10000))
 
 # compute median
