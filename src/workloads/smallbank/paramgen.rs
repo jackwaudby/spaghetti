@@ -64,8 +64,8 @@ impl Generator for SmallBankGenerator {
 
         let m: f32 = self.rng.gen();
         let isolation = match m {
-            x if x < 0.3 => IsolationLevel::ReadUncommitted,
-            x if x < 0.9 => IsolationLevel::ReadCommitted,
+            x if x < 0.40 => IsolationLevel::ReadUncommitted,
+            x if x < 0.99 => IsolationLevel::ReadCommitted,
             _ => IsolationLevel::Serializable,
         };
 
