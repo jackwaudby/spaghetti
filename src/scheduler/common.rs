@@ -6,6 +6,7 @@ use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 unsafe impl<'a> Send for Node {}
@@ -21,6 +22,7 @@ pub enum Edge {
     WriteRead(usize),
 }
 
+#[derive(Debug)]
 pub enum Incoming {
     None,
     SomeRelevant,
@@ -40,6 +42,7 @@ pub struct Node {
     aborted: AtomicBool,
     cleaned: AtomicBool,
     checked: AtomicBool,
+    early: AtomicBool,
     lock: RwLock<u32>,
 }
 
@@ -97,6 +100,7 @@ impl Node {
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
+            early: AtomicBool::new(false),
             lock: RwLock::new(0),
         }
     }
@@ -338,6 +342,14 @@ impl Node {
         self.checked.store(val, Ordering::Release);
     }
 
+    pub fn is_early(&self) -> bool {
+        self.early.load(Ordering::Acquire)
+    }
+
+    pub fn set_early(&self) {
+        self.early.store(true, Ordering::Release);
+    }
+
     pub fn is_cleaned(&self) -> bool {
         self.cleaned.load(Ordering::Acquire)
     }
@@ -372,5 +384,17 @@ impl std::fmt::Debug for Edge {
                 format!("[wr: {:x}, thread id: {}]", txn_id, thread_id)
             ),
         }
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "[th-id: {}, t-id: {}, iso: {}]",
+            self.get_thread_id(),
+            format!("{:x}", self.get_id()),
+            self.get_isolation_level(),
+        )
     }
 }

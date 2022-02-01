@@ -419,32 +419,8 @@ impl MixedSerializationGraph {
             prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
 
             let deadlock = unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
-            if deadlock {
-                error!(
-                    "[th-id: {}, t-id: {}, lvl: {}] detected deadlock whilst trying to write",
-                    this.get_thread_id(),
-                    format!("{:x}", this.get_id()),
-                    this.get_isolation_level(),
-                );
 
-                error!(
-                    "[th-id: {}, t-id: {}, lvl: {}] incoming edges: {:?}",
-                    this.get_thread_id(),
-                    format!("{:x}", this.get_id()),
-                    this.get_isolation_level(),
-                    this.get_incoming(),
-                );
-
-                error!(
-                    "[th-id: {}, t-id: {}, lvl: {}] outgoing edges: {:?}",
-                    this.get_thread_id(),
-                    format!("{:x}", this.get_id()),
-                    this.get_isolation_level(),
-                    this.get_outgoing(),
-                );
-
-                return Err(NonFatalError::Emergency);
-            }
+            self.deadlock_detection(deadlock, "write")?;
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -464,7 +440,7 @@ impl MixedSerializationGraph {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
                                 // check if write access is uncommitted
-                                if !from.is_cleaned() {
+                                if !from.is_committed() | from.is_early() {
                                     // if not in cycle then wait
                                     if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
                                         cyclic = true;
@@ -684,7 +660,6 @@ impl MixedSerializationGraph {
                     let this = unsafe { &*self.get_transaction() };
                     error!("Add early committer: {:?}", this.get_id());
 
-                    this.set_committed();
                     // set as committed and mark data as committed but leave access history there
                     // must use tidy up
 
@@ -707,7 +682,9 @@ impl MixedSerializationGraph {
                             tuple.get().commit();
                         }
                     }
-                    // TODO: need to record operations somewhere
+
+                    this.set_early();
+                    this.set_committed();
 
                     let node = self.get_transaction();
 
@@ -751,9 +728,25 @@ impl MixedSerializationGraph {
                 let this = unsafe { &**ptr };
 
                 // let this = unsafe { &*lcl[i] };
-                error!("Checking early committer: {:?}", this.get_id());
+                let from = this.get_incoming();
 
-                if let Incoming::None = unsafe { this.msgt_has_incoming() } {
+                for edge in from {
+                    if let Edge::ReadWrite(from_id) = edge {
+                        let from_ref = unsafe { &*(from_id as *const Node) };
+                        error!("{:?}", from_ref.get_id());
+                        error!("{:?}", from_ref.get_incoming());
+                        error!("{:?}", from_ref.get_outgoing());
+                    }
+                }
+
+                error!(
+                    "Checking early committer: {:?}, {:?},{:?}",
+                    this.get_id(),
+                    this.msgt_has_incoming(),
+                    this.get_incoming()
+                );
+
+                if let Incoming::None = this.msgt_has_incoming() {
                     let (ops, ptr) = lcl.remove(i);
 
                     let this = unsafe { &*ptr };
@@ -992,6 +985,19 @@ impl MixedSerializationGraph {
                 }
             }
         }
+    }
+
+    fn deadlock_detection(&self, deadlock: bool, location: &str) -> Result<(), NonFatalError> {
+        if deadlock {
+            let this = unsafe { &*self.get_transaction() };
+
+            error!("{} detected deadlock whilst trying to {}", this, location);
+            error!("{} incoming edges: {:?}", this, this.get_incoming());
+            error!("{} outgoing edges: {:?}", this, this.get_outgoing());
+
+            return Err(NonFatalError::Emergency);
+        }
+        Ok(())
     }
 }
 
