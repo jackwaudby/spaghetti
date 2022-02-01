@@ -118,19 +118,19 @@ impl MixedSerializationGraph {
         let isolation_level = this_ref.get_isolation_level();
 
         // add deadlock detection
-        let mut timeout_end = None;
-        if self.deadlock_detection {
-            let timeout_start = Instant::now(); // timeout
-            let runtime = Duration::new(3, 0);
-            timeout_end = Some(timeout_start + runtime);
-        }
+        // let mut timeout_end = None;
+        // if self.deadlock_detection {
+        //     let timeout_start = Instant::now(); // timeout
+        //     let runtime = Duration::new(3, 0);
+        //     timeout_end = Some(timeout_start + runtime);
+        // }
 
         loop {
-            if self.deadlock_detection {
-                if Instant::now() > timeout_end.unwrap() {
-                    self.deadlock_detection(true, "inserting edge")?;
-                }
-            }
+            // if self.deadlock_detection {
+            //     if Instant::now() > timeout_end.unwrap() {
+            //         self.deadlock_detection(true, "inserting edge")?;
+            //     }
+            // }
 
             // TODO: clean up probably
             //self.delete_early_committers(database);
@@ -315,7 +315,7 @@ impl MixedSerializationGraph {
         let lsn = table.get_lsn(offset);
 
         let deadlock = unsafe { spin(prv, lsn, self.deadlock_detection) };
-        self.deadlock_detection(deadlock, "read")?;
+        // self.deadlock_detection(deadlock, "read")?;
 
         let guard = &epoch::pin(); // pin thread
 
@@ -385,19 +385,19 @@ impl MixedSerializationGraph {
         let lsn = table.get_lsn(offset);
         let mut prv;
 
-        let mut timeout_end = None;
-        if self.deadlock_detection {
-            let timeout_start = Instant::now(); // timeout
-            let runtime = Duration::new(3, 0);
-            timeout_end = Some(timeout_start + runtime);
-        }
+        // let mut timeout_end = None;
+        // if self.deadlock_detection {
+        //     let timeout_start = Instant::now(); // timeout
+        //     let runtime = Duration::new(3, 0);
+        //     timeout_end = Some(timeout_start + runtime);
+        // }
 
         loop {
-            if self.deadlock_detection {
-                if Instant::now() > timeout_end.unwrap() {
-                    self.deadlock_detection(true, "write")?;
-                }
-            }
+            // if self.deadlock_detection {
+            //     if Instant::now() > timeout_end.unwrap() {
+            //         self.deadlock_detection(true, "write")?;
+            //     }
+            // }
 
             // TODO: clean up properly
 
@@ -410,7 +410,7 @@ impl MixedSerializationGraph {
             prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
 
             let deadlock = unsafe { spin(prv, lsn, self.deadlock_detection) }; // Safety: ensures exculsive access to the record
-            self.deadlock_detection(deadlock, "attempting to acquire write lock")?;
+                                                                               // self.deadlock_detection(deadlock, "attempting to acquire write lock")?;
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -548,19 +548,19 @@ impl MixedSerializationGraph {
 
         debug!("{} commit", this);
 
-        let mut timeout_end = None;
-        if self.deadlock_detection {
-            let timeout_start = Instant::now(); // timeout
-            let runtime = Duration::new(3, 0);
-            timeout_end = Some(timeout_start + runtime);
-        }
+        // let mut timeout_end = None;
+        // if self.deadlock_detection {
+        //     let timeout_start = Instant::now(); // timeout
+        //     let runtime = Duration::new(3, 0);
+        //     timeout_end = Some(timeout_start + runtime);
+        // }
 
         loop {
-            if self.deadlock_detection {
-                if Instant::now() > timeout_end.unwrap() {
-                    self.deadlock_detection(true, "commit")?;
-                }
-            }
+            // if self.deadlock_detection {
+            //     if Instant::now() > timeout_end.unwrap() {
+            //         self.deadlock_detection(true, "commit")?;
+            //     }
+            // }
 
             if this.is_cascading_abort() || this.is_aborted() {
                 self.abort(database);
@@ -923,12 +923,12 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64, deadlock_detection: bool) -> bool {
     let mut i = 0;
 
     // deadlock detection
-    let mut timeout_end = None;
-    if deadlock_detection {
-        let timeout_start = Instant::now();
-        let runtime = Duration::new(3, 0);
-        timeout_end = Some(timeout_start + runtime);
-    }
+    // let mut timeout_end = None;
+    // if deadlock_detection {
+    //     let timeout_start = Instant::now();
+    //     let runtime = Duration::new(3, 0);
+    //     timeout_end = Some(timeout_start + runtime);
+    // }
 
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
@@ -937,11 +937,11 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64, deadlock_detection: bool) -> bool {
             std::thread::yield_now();
         }
 
-        if deadlock_detection {
-            if Instant::now() > timeout_end.unwrap() {
-                return true; // potential deadlock
-            }
-        }
+        // if deadlock_detection {
+        //     if Instant::now() > timeout_end.unwrap() {
+        //         return true; // potential deadlock
+        //     }
+        // }
     }
     false
 }
