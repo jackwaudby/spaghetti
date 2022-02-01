@@ -79,7 +79,7 @@ impl MixedSerializationGraph {
     }
 
     /// Insert edge (from) -type-> (this). Returns true to continue, false if should abort.
-    pub fn insert_and_check(&self, from: Edge) -> Result<bool, NonFatalError> {
+    pub fn insert_and_check(&self, from: Edge, database: &Database) -> Result<bool, NonFatalError> {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
@@ -124,6 +124,8 @@ impl MixedSerializationGraph {
             if Instant::now() > timeout_end {
                 self.deadlock_detection(true, "inserting edge")?;
             }
+            // TODO: clean up probably
+            self.delete_early_committers(database);
 
             // check if (from) --> (this) already exists
             if this_ref.incoming_edge_exists(&from) {
@@ -333,7 +335,8 @@ impl MixedSerializationGraph {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id, _, _) = from {
-                            let proceed = self.insert_and_check(Edge::WriteRead(*from_id))?;
+                            let proceed =
+                                self.insert_and_check(Edge::WriteRead(*from_id), database)?;
 
                             if !proceed {
                                 cyclic = true;
@@ -395,6 +398,8 @@ impl MixedSerializationGraph {
             if Instant::now() > timeout_end {
                 self.deadlock_detection(true, "write")?;
             }
+            // TODO: clean up properly
+            self.delete_early_committers(database);
 
             if self.needs_abort() {
                 self.abort(database);
@@ -429,8 +434,8 @@ impl MixedSerializationGraph {
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
-                                    let proceed =
-                                        self.insert_and_check(Edge::WriteWrite(*from_addr))?;
+                                    let proceed = self
+                                        .insert_and_check(Edge::WriteWrite(*from_addr), database)?;
                                     if !proceed {
                                         cyclic = true;
                                         break; // no reason to check other accesses
@@ -442,8 +447,8 @@ impl MixedSerializationGraph {
 
                                 // if early then insert, cycle check and continue
                                 if from.is_early() {
-                                    let proceed =
-                                        self.insert_and_check(Edge::WriteWrite(*from_addr))?;
+                                    let proceed = self
+                                        .insert_and_check(Edge::WriteWrite(*from_addr), database)?;
                                     if !proceed {
                                         cyclic = true;
                                         break; // no reason to check other accesses
@@ -499,7 +504,8 @@ impl MixedSerializationGraph {
                 match access {
                     Access::Read(from) => {
                         if let TransactionId::SerializationGraph(from_addr, _, _) = from {
-                            let proceed = self.insert_and_check(Edge::ReadWrite(*from_addr))?;
+                            let proceed =
+                                self.insert_and_check(Edge::ReadWrite(*from_addr), database)?;
                             if !proceed {
                                 cyclic = true;
                                 break;
@@ -789,6 +795,18 @@ impl MixedSerializationGraph {
             error!("{} detected deadlock whilst trying to {}", this, location);
             error!("{} incoming edges: {:?}", this, this.get_incoming());
             error!("{} outgoing edges: {:?}", this, this.get_outgoing());
+
+            MixedSerializationGraph::EARLY.with(|x| {
+                let early = x.borrow_mut();
+
+                let mut i = 0;
+                while i < early.len() {
+                    let (_, ptr) = early.get(i).unwrap();
+                    let node = unsafe { &**ptr };
+                    error!("{}: early {}", this, node);
+                    i += 1;
+                }
+            });
 
             return Err(NonFatalError::Emergency);
         }
