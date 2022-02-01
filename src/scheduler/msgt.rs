@@ -31,7 +31,7 @@ impl MixedSerializationGraph {
     thread_local! {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
         static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
-        static EARLY: RefCell<Vec<*mut Node>> = RefCell::new(Vec::new());
+        static EARLY: RefCell<Vec<(Vec<Operation>,*mut Node)>> = RefCell::new(Vec::new());
     }
 
     pub fn new(size: usize, relevant_cycle_check: bool) -> Self {
@@ -464,7 +464,7 @@ impl MixedSerializationGraph {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
                                 // check if write access is uncommitted
-                                if !from.is_committed() {
+                                if !from.is_cleaned() {
                                     // if not in cycle then wait
                                     if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
                                         cyclic = true;
@@ -688,9 +688,30 @@ impl MixedSerializationGraph {
                     // set as committed and mark data as committed but leave access history there
                     // must use tidy up
 
+                    let ops = self.get_operations();
+
+                    // commit and revert state
+                    for op in &ops {
+                        let Operation {
+                            op_type,
+                            table_id,
+                            column_id,
+                            offset,
+                            ..
+                        } = op;
+
+                        let table = database.get_table(*table_id);
+                        let tuple = table.get_tuple(*column_id, *offset);
+
+                        if let OperationType::Write = op_type {
+                            tuple.get().commit();
+                        }
+                    }
+                    // TODO: need to record operations somewhere
+
                     let node = self.get_transaction();
 
-                    MixedSerializationGraph::EARLY.with(|x| x.borrow_mut().push(node));
+                    MixedSerializationGraph::EARLY.with(|x| x.borrow_mut().push((ops, node)));
                     // think you still need to tidup and set as commtted
                 }
                 // normal operation - do not add
@@ -698,7 +719,7 @@ impl MixedSerializationGraph {
                     // no incoming edges and no cycle so commit
                     self.tidyup(database, true);
                     this.set_committed();
-                    self.cleanup();
+                    self.cleanup(database);
                 }
             }
 
@@ -712,13 +733,13 @@ impl MixedSerializationGraph {
         let this = unsafe { &*self.get_transaction() };
 
         this.set_aborted();
-        self.cleanup();
+        self.cleanup(database);
         self.tidyup(database, false);
 
         NonFatalError::NonSerializable // TODO: return the why
     }
 
-    pub fn cleanup(&self) {
+    pub fn cleanup(&self, database: &Database) {
         // Check if any of the early committer can be removed now
         MixedSerializationGraph::EARLY.with(|x| {
             let mut lcl = x.borrow_mut();
@@ -726,15 +747,44 @@ impl MixedSerializationGraph {
             // for each early committer
             let mut i = 0;
             while i < lcl.len() {
-                let this = unsafe { &*lcl[i] };
+                let (ops, ptr) = lcl.get(i).unwrap();
+                let this = unsafe { &**ptr };
+
+                // let this = unsafe { &*lcl[i] };
                 error!("Checking early committer: {:?}", this.get_id());
 
-                if let Incoming::None = unsafe { (*lcl[i]).msgt_has_incoming() } {
-                    let ptr = lcl.remove(i);
+                if let Incoming::None = unsafe { this.msgt_has_incoming() } {
+                    let (ops, ptr) = lcl.remove(i);
 
                     let this = unsafe { &*ptr };
                     let this_id = ptr as usize;
 
+                    // TODO: get accesses
+
+                    // remove accesses
+                    for op in ops {
+                        let Operation {
+                            op_type,
+                            table_id,
+                            offset,
+                            prv,
+                            ..
+                        } = op;
+
+                        let table = database.get_table(table_id);
+                        let rwtable = table.get_rwtable(offset);
+
+                        match op_type {
+                            OperationType::Read => {
+                                rwtable.erase(prv);
+                            }
+                            OperationType::Write => {
+                                rwtable.erase(prv);
+                            }
+                        }
+                    }
+
+                    // cleanup
                     let this_wlock = this.write();
                     this.set_cleaned();
                     drop(this_wlock);
