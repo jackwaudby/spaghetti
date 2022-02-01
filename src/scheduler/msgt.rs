@@ -25,6 +25,7 @@ pub struct MixedSerializationGraph {
     stack: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
     relevant_cycle_check: bool,
+    deadlock_detection: bool,
 }
 
 impl MixedSerializationGraph {
@@ -34,7 +35,7 @@ impl MixedSerializationGraph {
         static EARLY: RefCell<Vec<(Vec<Operation>,*mut Node)>> = RefCell::new(Vec::new());
     }
 
-    pub fn new(size: usize, relevant_cycle_check: bool) -> Self {
+    pub fn new(size: usize, relevant_cycle_check: bool, deadlock_detection: bool) -> Self {
         info!("Initialise msg with {} thread(s)", size);
         info!("Relevant cycle check: {}", relevant_cycle_check);
 
@@ -44,6 +45,7 @@ impl MixedSerializationGraph {
             stack: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
             relevant_cycle_check,
+            deadlock_detection,
         }
     }
 
@@ -114,16 +116,22 @@ impl MixedSerializationGraph {
         }
 
         let isolation_level = this_ref.get_isolation_level();
-        // add deadlock detection
 
-        let timeout_start = Instant::now(); // timeout
-        let runtime = Duration::new(3, 0);
-        let timeout_end = timeout_start + runtime;
+        // add deadlock detection
+        let mut timeout_end = None;
+        if self.deadlock_detection {
+            let timeout_start = Instant::now(); // timeout
+            let runtime = Duration::new(3, 0);
+            timeout_end = Some(timeout_start + runtime);
+        }
 
         loop {
-            if Instant::now() > timeout_end {
-                self.deadlock_detection(true, "inserting edge")?;
+            if self.deadlock_detection {
+                if Instant::now() > timeout_end.unwrap() {
+                    self.deadlock_detection(true, "inserting edge")?;
+                }
             }
+
             // TODO: clean up probably
             self.delete_early_committers(database);
 
@@ -318,8 +326,7 @@ impl MixedSerializationGraph {
         let prv = rw_table.push_front(Access::Read(meta.clone()));
         let lsn = table.get_lsn(offset);
 
-        let deadlock = unsafe { spin(prv, lsn) };
-
+        let deadlock = unsafe { spin(prv, lsn, self.deadlock_detection) };
         self.deadlock_detection(deadlock, "read")?;
 
         let guard = &epoch::pin(); // pin thread
@@ -390,14 +397,20 @@ impl MixedSerializationGraph {
         let lsn = table.get_lsn(offset);
         let mut prv;
 
-        let timeout_start = Instant::now(); // timeout
-        let runtime = Duration::new(3, 0);
-        let timeout_end = timeout_start + runtime;
+        let mut timeout_end = None;
+        if self.deadlock_detection {
+            let timeout_start = Instant::now(); // timeout
+            let runtime = Duration::new(3, 0);
+            timeout_end = timeout_start + runtime;
+        }
 
         loop {
-            if Instant::now() > timeout_end {
-                self.deadlock_detection(true, "write")?;
+            if self.deadlock_detection {
+                if Instant::now() > timeout_end.unwrap() {
+                    self.deadlock_detection(true, "write")?;
+                }
             }
+
             // TODO: clean up properly
             self.delete_early_committers(database);
 
@@ -409,8 +422,7 @@ impl MixedSerializationGraph {
 
             prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
 
-            let deadlock = unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
-
+            let deadlock = unsafe { spin(prv, lsn, self.deadlock_detection) }; // Safety: ensures exculsive access to the record
             self.deadlock_detection(deadlock, "attempting to acquire write lock")?;
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
@@ -549,13 +561,18 @@ impl MixedSerializationGraph {
 
         debug!("{} commit", this);
 
-        let timeout_start = Instant::now(); // timeout
-        let runtime = Duration::new(3, 0);
-        let timeout_end = timeout_start + runtime;
+        let mut timeout_end = None;
+        if self.deadlock_detection {
+            let timeout_start = Instant::now(); // timeout
+            let runtime = Duration::new(3, 0);
+            timeout_end = Some(timeout_start + runtime);
+        }
 
         loop {
-            if Instant::now() > timeout_end {
-                self.deadlock_detection(true, "commit")?;
+            if self.deadlock_detection {
+                if Instant::now() > timeout_end.unwrap() {
+                    self.deadlock_detection(true, "commit")?;
+                }
             }
 
             if this.is_cascading_abort() || this.is_aborted() {
@@ -915,12 +932,16 @@ impl MixedSerializationGraph {
     }
 }
 
-unsafe fn spin(prv: u64, lsn: &AtomicU64) -> bool {
+unsafe fn spin(prv: u64, lsn: &AtomicU64, deadlock_detection: bool) -> bool {
     let mut i = 0;
 
-    let timeout_start = Instant::now(); // timeout
-    let runtime = Duration::new(3, 0);
-    let timeout_end = timeout_start + runtime;
+    // deadlock detection
+    let mut timeout_end = None;
+    if deadlock_detection {
+        let timeout_start = Instant::now();
+        let runtime = Duration::new(3, 0);
+        timeout_end = Some(timeout_start + runtime);
+    }
 
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
@@ -929,8 +950,10 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64) -> bool {
             std::thread::yield_now();
         }
 
-        if Instant::now() > timeout_end {
-            return true; // potential deadlock
+        if deadlock_detection {
+            if Instant::now() > timeout_end.unwrap() {
+                return true; // potential deadlock
+            }
         }
     }
     false

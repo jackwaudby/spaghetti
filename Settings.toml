@@ -2,6 +2,8 @@ log = "info"
 record = true
 log_results = false
 
+deadlock_detection = false
+
 transactions = 10000
 
 timeout = 1
