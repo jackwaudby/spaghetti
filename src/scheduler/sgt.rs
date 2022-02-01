@@ -186,14 +186,11 @@ impl SerializationGraph {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
-
         let (ref_id, thread_id, thread_ctr) = self.create_node(); // create node
-
         let guard = epoch::pin(); // pin thread
-
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
-        debug!("Begin");
+        debug!("{} begin", unsafe { &*self.get_transaction() });
 
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }

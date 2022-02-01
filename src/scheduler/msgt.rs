@@ -133,7 +133,7 @@ impl MixedSerializationGraph {
             }
 
             // TODO: clean up probably
-            self.delete_early_committers(database);
+            //self.delete_early_committers(database);
 
             // check if (from) --> (this) already exists
             if this_ref.incoming_edge_exists(&from) {
@@ -156,6 +156,7 @@ impl MixedSerializationGraph {
 
             if from_ref.is_checked() {
                 drop(from_rlock);
+                self.delete_early_committers(database);
                 continue; // if (from) checked in process of terminating so try again
             }
 
@@ -265,42 +266,29 @@ impl MixedSerializationGraph {
     }
 
     pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
-        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1;
+        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
-            Some(TransactionInformation::new());
+            Some(TransactionInformation::new()); // reset txn info
+        let (ref_id, thread_id, thread_ctr) = self.create_node(isolation_level); // create node
+        let guard = epoch::pin(); // pin thread
+        MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard)); // add to guard
 
-        let (ref_id, thread_id, thread_ctr) = self.create_node(isolation_level);
-
-        let guard = epoch::pin();
-
-        MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
-        let this = unsafe { &*self.get_transaction() };
-        debug!("{} begin", this);
+        debug!("{} begin", unsafe { &*self.get_transaction() });
 
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
 
     pub fn create_node(&self, isolation_level: IsolationLevel) -> (usize, usize, usize) {
-        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-
-        let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
-
-        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
-            Some(TransactionInformation::new());
-
-        let incoming = Mutex::new(FxHashSet::default());
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap(); // thread id
+        let thread_ctr = *self.txn_ctr.get().unwrap().borrow(); // thread ctr
+        let incoming = Mutex::new(FxHashSet::default()); // init edge sets
         let outgoing = Mutex::new(FxHashSet::default());
-        let node = Box::new(Node::new(
-            thread_id,
-            thread_ctr,
-            incoming,
-            outgoing,
-            Some(isolation_level),
-        ));
-        let ptr: *mut Node = Box::into_raw(node);
+        let iso = Some(isolation_level);
+        let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing, iso)); // allocate node
+        let ptr: *mut Node = Box::into_raw(node); // convert to raw pt
         let id = ptr as usize;
-        unsafe { (*ptr).set_id(id) };
-        MixedSerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr));
+        unsafe { (*ptr).set_id(id) }; // set id on node
+        MixedSerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
         (id, thread_id, thread_ctr)
     }
@@ -412,7 +400,6 @@ impl MixedSerializationGraph {
             }
 
             // TODO: clean up properly
-            self.delete_early_committers(database);
 
             if self.needs_abort() {
                 self.abort(database);
@@ -487,7 +474,7 @@ impl MixedSerializationGraph {
             if wait {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-
+                self.delete_early_committers(database);
                 continue;
             }
 
