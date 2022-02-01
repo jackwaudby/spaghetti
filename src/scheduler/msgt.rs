@@ -401,7 +401,7 @@ impl MixedSerializationGraph {
         if self.deadlock_detection {
             let timeout_start = Instant::now(); // timeout
             let runtime = Duration::new(3, 0);
-            timeout_end = timeout_start + runtime;
+            timeout_end = Some(timeout_start + runtime);
         }
 
         loop {
