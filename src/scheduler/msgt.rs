@@ -570,6 +570,10 @@ impl MixedSerializationGraph {
                     if is_cycle {
                         this.set_aborted();
                     }
+
+                    // TODO: gc these correctly
+                    self.delete_early_committers(database);
+
                     continue;
                 }
                 // early commit
