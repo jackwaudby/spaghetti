@@ -173,6 +173,9 @@ impl GlobalStatistics {
             ProtocolAbortBreakdown::EarlyMixedSerializationGraph(ref reasons) => {
                 reasons.cascading_abort + reasons.cycle_found
             }
+            ProtocolAbortBreakdown::AllMixedSerializationGraph(ref reasons) => {
+                reasons.cascading_abort + reasons.cycle_found
+            }
             ProtocolAbortBreakdown::WaitHit(ref reasons) => {
                 reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
             }
@@ -424,6 +427,24 @@ impl LocalStatistics {
                         }
                     }
 
+                    AllMixedSerializationGraph(ref mut metric) => {
+                        if let NonFatalError::MixedSerializationGraph(sge) = reason {
+                            match sge {
+                                MixedSerializationGraphError::CascadingAbort => {
+                                    metric.inc_cascading_abort()
+                                }
+                                MixedSerializationGraphError::CycleFound => {
+                                    metric.inc_cycle_found()
+                                }
+                            }
+                            match isolation {
+                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
+                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
+                                IsolationLevel::Serializable => metric.inc_serializable(),
+                            }
+                        }
+                    }
+
                     WaitHit(ref mut metric) => match reason {
                         NonFatalError::WaitHitError(owhe) => match owhe {
                             WaitHitError::TransactionInHitList(_) => metric.inc_hit(),
@@ -625,6 +646,9 @@ impl AbortBreakdown {
             "msgt-early" => ProtocolAbortBreakdown::EarlyMixedSerializationGraph(
                 SerializationGraphReasons::new(),
             ),
+            "msgt-all" => {
+                ProtocolAbortBreakdown::AllMixedSerializationGraph(SerializationGraphReasons::new())
+            }
             "wh" => ProtocolAbortBreakdown::WaitHit(HitListReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
             "owhtt" => {
@@ -684,6 +708,13 @@ impl AbortBreakdown {
             }
             EarlyMixedSerializationGraph(ref mut reasons) => {
                 if let EarlyMixedSerializationGraph(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+            AllMixedSerializationGraph(ref mut reasons) => {
+                if let AllMixedSerializationGraph(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -856,6 +887,7 @@ enum ProtocolAbortBreakdown {
     StdMixedSerializationGraph(SerializationGraphReasons),
     RelMixedSerializationGraph(SerializationGraphReasons),
     EarlyMixedSerializationGraph(SerializationGraphReasons),
+    AllMixedSerializationGraph(SerializationGraphReasons),
     WaitHit(HitListReasons),
     OptimisticWaitHit(HitListReasons),
     OptimisticWaitHitTransactionTypes(HitListReasons),

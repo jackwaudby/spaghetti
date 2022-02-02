@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::msgt::MixedSerializationGraph;
+use crate::scheduler::msgtall::AllMixedSerializationGraph;
 use crate::scheduler::msgtearly::EarlyMixedSerializationGraph;
 use crate::scheduler::msgtrel::RelMixedSerializationGraph;
 use crate::scheduler::msgtstd::StdMixedSerializationGraph;
@@ -29,6 +30,7 @@ pub mod owhtt;
 
 pub mod sgt;
 
+// Testing only
 pub mod msgt;
 
 pub mod msgtstd;
@@ -36,6 +38,8 @@ pub mod msgtstd;
 pub mod msgtrel;
 
 pub mod msgtearly;
+
+pub mod msgtall;
 
 pub mod tpl;
 
@@ -61,6 +65,8 @@ pub enum Scheduler<'a> {
     EarlyMixedSerializationGraph(EarlyMixedSerializationGraph),
     // Edge detection + relevant cycle check
     RelMixedSerializationGraph(RelMixedSerializationGraph),
+    // Edge detection + relevant cycle check + early commit
+    AllMixedSerializationGraph(AllMixedSerializationGraph),
     WaitHit(WaitHit),
     OptimisedWaitHit(OptimisedWaitHit<'a>),
     OptimisedWaitHitTransactionTypes(OptimisedWaitHitTransactionTypes<'a>),
@@ -93,6 +99,9 @@ impl<'a> Scheduler<'a> {
             "msgt-early" => {
                 Scheduler::EarlyMixedSerializationGraph(EarlyMixedSerializationGraph::new(cores))
             }
+            "msgt-all" => {
+                Scheduler::AllMixedSerializationGraph(AllMixedSerializationGraph::new(cores))
+            }
             "wh" => Scheduler::WaitHit(WaitHit::new(cores)),
             "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
             "owhtt" => Scheduler::OptimisedWaitHitTransactionTypes(
@@ -115,6 +124,7 @@ impl<'a> Scheduler<'a> {
             StdMixedSerializationGraph(sg) => sg.begin(isolation_level),
             RelMixedSerializationGraph(sg) => sg.begin(isolation_level),
             EarlyMixedSerializationGraph(sg) => sg.begin(isolation_level),
+            AllMixedSerializationGraph(sg) => sg.begin(isolation_level),
             WaitHit(wh) => wh.begin(),
             OptimisedWaitHit(owh) => owh.begin(),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.begin(),
@@ -145,6 +155,9 @@ impl<'a> Scheduler<'a> {
                 sg.read_value(table_id, column_id, offset, meta, database)
             }
             EarlyMixedSerializationGraph(sg) => {
+                sg.read_value(table_id, column_id, offset, meta, database)
+            }
+            AllMixedSerializationGraph(sg) => {
                 sg.read_value(table_id, column_id, offset, meta, database)
             }
             WaitHit(wh) => wh.read_value(table_id, column_id, offset, meta, database),
@@ -188,6 +201,9 @@ impl<'a> Scheduler<'a> {
             EarlyMixedSerializationGraph(sg) => {
                 sg.write_value(value, table_id, column_id, offset, meta, database)
             }
+            AllMixedSerializationGraph(sg) => {
+                sg.write_value(value, table_id, column_id, offset, meta, database)
+            }
             WaitHit(wh) => wh.write_value(value, table_id, column_id, offset, meta, database),
             OptimisedWaitHit(owh) => {
                 owh.write_value(value, table_id, column_id, offset, meta, database)
@@ -220,6 +236,7 @@ impl<'a> Scheduler<'a> {
             StdMixedSerializationGraph(sg) => sg.commit(database),
             RelMixedSerializationGraph(sg) => sg.commit(database),
             EarlyMixedSerializationGraph(sg) => sg.commit(database),
+            AllMixedSerializationGraph(sg) => sg.commit(database),
             WaitHit(wh) => wh.commit(meta, database),
             OptimisedWaitHit(owh) => owh.commit(database),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.commit(database, transaction_type),
@@ -237,6 +254,7 @@ impl<'a> Scheduler<'a> {
             StdMixedSerializationGraph(sg) => sg.abort(database),
             RelMixedSerializationGraph(sg) => sg.abort(database),
             EarlyMixedSerializationGraph(sg) => sg.abort(database),
+            AllMixedSerializationGraph(sg) => sg.abort(database),
             WaitHit(wh) => wh.abort(meta, database),
             OptimisedWaitHit(owh) => owh.abort(database),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database),
