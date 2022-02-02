@@ -110,7 +110,8 @@ impl RelMixedSerializationGraph {
 
         loop {
             if this_ref.incoming_edge_exists(&from) {
-                return true; // check if (from) --> (this) already exists
+                let is_cycle = self.cycle_check(); // cycle check
+                return !is_cycle;
             };
 
             let from_ref = unsafe { &*(from_id as *const Node) };
@@ -197,8 +198,7 @@ impl RelMixedSerializationGraph {
             let current = unsafe { &*(current as *const Node) };
 
             let rlock = current.read();
-            let val1 =
-                !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
+            let val1 = !(current.is_aborted() || current.is_cascading_abort());
             if val1 {
                 let outgoing = current.get_outgoing();
                 let mut out = outgoing.into_iter().collect();
@@ -287,7 +287,8 @@ impl RelMixedSerializationGraph {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id, _, _) = from {
-                            if !self.insert_and_check(Edge::WriteRead(*from_id)) {
+                            let proceed = self.insert_and_check(Edge::WriteRead(*from_id));
+                            if !proceed {
                                 cyclic = true;
                                 break;
                             }
@@ -365,8 +366,9 @@ impl RelMixedSerializationGraph {
 
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
-                                    // if not in cycle then wait
-                                    if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
+                                    let proceed =
+                                        self.insert_and_check(Edge::WriteWrite(*from_addr));
+                                    if !proceed {
                                         cyclic = true;
                                         break; // no reason to check other accesses
                                     }
@@ -423,7 +425,8 @@ impl RelMixedSerializationGraph {
                 match access {
                     Access::Read(from) => {
                         if let TransactionId::SerializationGraph(from_addr, _, _) = from {
-                            if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
+                            let proceed = self.insert_and_check(Edge::ReadWrite(*from_addr));
+                            if !proceed {
                                 cyclic = true;
                                 break;
                             }
