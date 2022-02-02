@@ -407,12 +407,14 @@ impl LocalStatistics {
                     }
 
                     EarlyMixedSerializationGraph(ref mut metric) => {
-                        if let NonFatalError::SerializationGraph(sge) = reason {
+                        if let NonFatalError::MixedSerializationGraph(sge) = reason {
                             match sge {
-                                SerializationGraphError::CascadingAbort => {
+                                MixedSerializationGraphError::CascadingAbort => {
                                     metric.inc_cascading_abort()
                                 }
-                                SerializationGraphError::CycleFound => metric.inc_cycle_found(),
+                                MixedSerializationGraphError::CycleFound => {
+                                    metric.inc_cycle_found()
+                                }
                             }
                             match isolation {
                                 IsolationLevel::ReadCommitted => metric.inc_read_committed(),
