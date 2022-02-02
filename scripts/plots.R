@@ -104,6 +104,7 @@ raw = raw %>% filter(cores <= 40)
 # Divide into scale factor data sets
 raw$sf = as.factor(raw$sf)
 sf1 = raw %>% filter((sf == 1) | (sf == 100)| (sf == 100000))
+sf2 = raw %>% filter((sf == 2))
 sf3 = raw %>% filter((sf == 3) | (sf == 10000))
 
 # compute median
@@ -112,6 +113,13 @@ sf1 = sf1 %>%
   summarise(thpt = median(thpt),
             abr = median(abr),
             lat = median(lat))
+
+sf2 = sf2 %>%
+  group_by(protocol, cores) %>%
+  summarise(thpt = median(thpt),
+            abr = median(abr),
+            lat = median(lat))
+
 sf3 = sf3 %>%
   group_by(protocol, cores) %>%
   summarise(thpt = median(thpt),
@@ -156,6 +164,46 @@ if (nrow(sf1) > 0) {
   combined + plot_layout(guides = "collect")
   
   ggsave(paste0("./graphics/", tolower(workload), "_sf1.pdf"),width = 18, height = 6,device = "pdf")
+}
+
+if (nrow(sf2) > 0) {
+  p1 = ggplot(data = sf2, aes(
+    x = cores,
+    y = thpt,
+    group = protocol,
+    colour = protocol
+  )) +
+    geom_line() +
+    ylab("thpt (million/s)") +
+    theme_bw()
+  
+  p2 = ggplot(data = sf2, aes(
+    x = cores,
+    y = abr,
+    group = protocol,
+    colour = protocol
+  )) +
+    geom_line() +
+    ylab("abort rate") +
+    theme_bw()
+  
+  p3 = ggplot(data = sf2, aes(
+    x = cores,
+    y = lat,
+    group = protocol,
+    colour = protocol
+  )) +
+    geom_line() +
+    ylab("av latency (ms)") +
+    theme_bw() +
+    scale_y_log10()
+  
+  combined <- p1 + p2 + p3 & theme(legend.position = "top",
+                                   text = element_text(size = 16)
+  )
+  combined + plot_layout(guides = "collect")
+  
+  ggsave(paste0("./graphics/", tolower(workload), "_sf2.pdf"),width = 18, height = 6,device = "pdf")
 }
 
 if (nrow(sf3) > 0) {
