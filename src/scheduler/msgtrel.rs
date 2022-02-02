@@ -1,7 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
-use crate::scheduler::common::{Edge, Incoming, Node};
-use crate::scheduler::error::MixedSerializationGraphError;
+use crate::scheduler::common::{Edge, Node};
+use crate::scheduler::error::SerializationGraphError;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
@@ -14,43 +14,36 @@ use rustc_hash::FxHashSet;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
-use std::time::{Duration, Instant};
 use thread_local::ThreadLocal;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 
 #[derive(Debug)]
-pub struct MixedSerializationGraph {
+pub struct RelMixedSerializationGraph {
     txn_ctr: ThreadLocal<RefCell<usize>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
     stack: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
-    relevant_cycle_check: bool,
-    deadlock_detection: bool,
 }
 
-impl MixedSerializationGraph {
+impl RelMixedSerializationGraph {
     thread_local! {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
         static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
-        static EARLY: RefCell<Vec<(Vec<Operation>,*mut Node)>> = RefCell::new(Vec::new());
     }
 
-    pub fn new(size: usize, relevant_cycle_check: bool, deadlock_detection: bool) -> Self {
-        info!("Initialise msg with {} thread(s)", size);
-        info!("Relevant cycle check: {}", relevant_cycle_check);
+    pub fn new(size: usize) -> Self {
+        info!("Initialise serialization graph with {} thread(s)", size);
 
         Self {
             txn_ctr: ThreadLocal::new(),
             visited: ThreadLocal::new(),
             stack: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
-            relevant_cycle_check,
-            deadlock_detection,
         }
     }
 
     pub fn get_transaction(&self) -> *mut Node {
-        MixedSerializationGraph::NODE.with(|x| *x.borrow().as_ref().unwrap())
+        RelMixedSerializationGraph::NODE.with(|x| *x.borrow().as_ref().unwrap())
     }
 
     pub fn get_operations(&self) -> Vec<Operation> {
@@ -80,12 +73,12 @@ impl MixedSerializationGraph {
             .add(op_type, table_id, column_id, offset, prv);
     }
 
-    /// Insert edge (from) -type-> (this). Returns true to continue, false if should abort.
-    pub fn insert_and_check(&self, from: Edge, database: &Database) -> Result<bool, NonFatalError> {
+    /// Insert an edge: (from) --> (this)
+    pub fn insert_and_check(&self, from: Edge) -> bool {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
-        // Create outgoing edge for (from)
+        // prepare
         let (from_id, rw, out_edge) = match from {
             // WW edges always get inserted
             Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
@@ -93,7 +86,7 @@ impl MixedSerializationGraph {
             // WR edge inserted if this node is PL2/3
             Edge::WriteRead(from_id) => {
                 if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
-                    return Ok(true);
+                    return true;
                 }
 
                 (from_id, false, Edge::WriteRead(this_id))
@@ -104,7 +97,7 @@ impl MixedSerializationGraph {
                 let from_ref = unsafe { &*(from_id as *const Node) };
                 match from_ref.get_isolation_level() {
                     IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
-                        return Ok(true);
+                        return true;
                     }
                     IsolationLevel::Serializable => (from_id, true, Edge::ReadWrite(this_id)),
                 }
@@ -112,74 +105,43 @@ impl MixedSerializationGraph {
         };
 
         if this_id == from_id {
-            return Ok(true); // check for (this) --> (this)
-        }
-
-        let isolation_level = this_ref.get_isolation_level();
-
-        // add deadlock detection
-        let mut timeout_end = None;
-        if self.deadlock_detection {
-            let timeout_start = Instant::now(); // timeout
-            let runtime = Duration::new(3, 0);
-            timeout_end = Some(timeout_start + runtime);
+            return true; // check for (this) --> (this)
         }
 
         loop {
-            if self.deadlock_detection {
-                if Instant::now() > timeout_end.unwrap() {
-                    self.deadlock_detection(true, "inserting edge")?;
-                }
-            }
-
-            // TODO: clean up probably
-            self.delete_early_committers(database);
-
-            // check if (from) --> (this) already exists
             if this_ref.incoming_edge_exists(&from) {
-                // Cycle check here needed
-                let is_cycle = self.cycle_check(isolation_level); // cycle check
-                return Ok(!is_cycle);
+                return true; // check if (from) --> (this) already exists
             };
 
             let from_ref = unsafe { &*(from_id as *const Node) };
             if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
                 this_ref.set_cascading_abort();
-                return Ok(false); // cascadingly abort (this)
+                return false; // cascadingly abort (this)
             }
 
             let from_rlock = from_ref.read();
             if from_ref.is_cleaned() {
                 drop(from_rlock);
-                return Ok(true); // if from is cleaned then it has terminated do not insert edge
+                return true; // if from is cleaned then it has terminated do not insert edge
             }
 
             if from_ref.is_checked() {
                 drop(from_rlock);
-                self.delete_early_committers(database);
                 continue; // if (from) checked in process of terminating so try again
             }
 
-            debug!(
-                "insert ({:x}) -{:?}-> ({:x})",
-                from_ref.get_id(),
-                from,
-                this_ref.get_id()
-            );
-
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
-
             drop(from_rlock);
-            let isolation_level = this_ref.get_isolation_level();
-            let is_cycle = self.cycle_check(isolation_level); // cycle check
-            return Ok(!is_cycle);
+            let is_cycle = self.cycle_check(); // cycle check
+            return !is_cycle;
         }
     }
 
-    pub fn cycle_check(&self, isolation: IsolationLevel) -> bool {
+    pub fn cycle_check(&self) -> bool {
         let start_id = self.get_transaction() as usize;
         let this = unsafe { &*self.get_transaction() };
+        let isolation = this.get_isolation_level();
 
         let mut visited = self
             .visited
@@ -193,13 +155,12 @@ impl MixedSerializationGraph {
 
         let this_rlock = this.read();
         let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
-
         let mut out = outgoing.into_iter().collect();
         stack.append(&mut out);
         drop(this_rlock);
 
         while let Some(edge) = stack.pop() {
-            let current = if self.relevant_cycle_check {
+            let current =
                 // traverse only relevant edges
                 match isolation {
                     IsolationLevel::ReadUncommitted => {
@@ -221,14 +182,6 @@ impl MixedSerializationGraph {
                         Edge::WriteWrite(node) => node,
                         Edge::WriteRead(node) => node,
                     },
-                }
-            } else {
-                // traverse any edge
-                match edge {
-                    Edge::ReadWrite(node) => node,
-                    Edge::WriteWrite(node) => node,
-                    Edge::WriteRead(node) => node,
-                }
             };
 
             if start_id == current {
@@ -244,7 +197,8 @@ impl MixedSerializationGraph {
             let current = unsafe { &*(current as *const Node) };
 
             let rlock = current.read();
-            let val1 = !(current.is_aborted() || current.is_cascading_abort());
+            let val1 =
+                !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
             if val1 {
                 let outgoing = current.get_outgoing();
                 let mut out = outgoing.into_iter().collect();
@@ -257,6 +211,7 @@ impl MixedSerializationGraph {
         false
     }
 
+    /// Check if a transaction needs to abort.
     pub fn needs_abort(&self) -> bool {
         let this = unsafe { &*self.get_transaction() };
 
@@ -265,13 +220,14 @@ impl MixedSerializationGraph {
         aborted || cascading_abort
     }
 
+    /// Begin a transaction.
     pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
         let (ref_id, thread_id, thread_ctr) = self.create_node(isolation_level); // create node
         let guard = epoch::pin(); // pin thread
-        MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard)); // add to guard
+        RelMixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
         debug!("{} begin", unsafe { &*self.get_transaction() });
 
@@ -279,20 +235,21 @@ impl MixedSerializationGraph {
     }
 
     pub fn create_node(&self, isolation_level: IsolationLevel) -> (usize, usize, usize) {
-        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap(); // thread id
-        let thread_ctr = *self.txn_ctr.get().unwrap().borrow(); // thread ctr
-        let incoming = Mutex::new(FxHashSet::default()); // init edge sets
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+        let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
+        let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
         let iso = Some(isolation_level);
         let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing, iso)); // allocate node
-        let ptr: *mut Node = Box::into_raw(node); // convert to raw pt
-        let id = ptr as usize;
+        let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
+        let id = ptr as usize; // get id
         unsafe { (*ptr).set_id(id) }; // set id on node
-        MixedSerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
+        RelMixedSerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
         (id, thread_id, thread_ctr)
     }
 
+    /// Read operation.
     pub fn read_value(
         &self,
         table_id: usize,
@@ -302,11 +259,10 @@ impl MixedSerializationGraph {
         database: &Database,
     ) -> Result<Data, NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
-        debug!("{} read ({},{},{})", this, table_id, column_id, offset);
 
         if this.is_cascading_abort() {
             self.abort(database);
-            return Err(MixedSerializationGraphError::CascadingAbort.into());
+            return Err(SerializationGraphError::CascadingAbort.into());
         }
 
         let table = database.get_table(table_id);
@@ -314,11 +270,12 @@ impl MixedSerializationGraph {
         let prv = rw_table.push_front(Access::Read(meta.clone()));
         let lsn = table.get_lsn(offset);
 
-        let deadlock = unsafe { spin(prv, lsn, self.deadlock_detection) };
-        self.deadlock_detection(deadlock, "read")?;
+        // Safety: ensures exculsive access to the record.
+        unsafe { spin(prv, lsn) }; // busy wait
 
+        // On acquiring the 'lock' on the record can be clean or dirty.
+        // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
         let guard = &epoch::pin(); // pin thread
-
         let snapshot = rw_table.iter(guard);
 
         let mut cyclic = false;
@@ -330,10 +287,7 @@ impl MixedSerializationGraph {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id, _, _) = from {
-                            let proceed =
-                                self.insert_and_check(Edge::WriteRead(*from_id), database)?;
-
-                            if !proceed {
+                            if !self.insert_and_check(Edge::WriteRead(*from_id)) {
                                 cyclic = true;
                                 break;
                             }
@@ -348,7 +302,7 @@ impl MixedSerializationGraph {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database); // abort
-            return Err(MixedSerializationGraphError::CycleFound.into());
+            return Err(SerializationGraphError::CycleFound.into());
         }
 
         let vals = table
@@ -377,40 +331,20 @@ impl MixedSerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        let this = unsafe { &*self.get_transaction() };
-        debug!("{} write ({},{},{})", this, table_id, column_id, offset);
-
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
         let mut prv;
 
-        let mut timeout_end = None;
-        if self.deadlock_detection {
-            let timeout_start = Instant::now(); // timeout
-            let runtime = Duration::new(3, 0);
-            timeout_end = Some(timeout_start + runtime);
-        }
-
         loop {
-            if self.deadlock_detection {
-                if Instant::now() > timeout_end.unwrap() {
-                    self.deadlock_detection(true, "write")?;
-                }
-            }
-
-            // TODO: clean up properly
-
             if self.needs_abort() {
                 self.abort(database);
-                return Err(MixedSerializationGraphError::CascadingAbort.into());
-                // check for cascading abort
+                return Err(SerializationGraphError::CascadingAbort.into()); // check for cascading abort
             }
 
             prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
 
-            let deadlock = unsafe { spin(prv, lsn, self.deadlock_detection) }; // Safety: ensures exculsive access to the record
-            self.deadlock_detection(deadlock, "attempting to acquire write lock")?;
+            unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -420,7 +354,6 @@ impl MixedSerializationGraph {
             let mut wait = false; // flag indicating if there is an uncommitted write
             let mut cyclic = false; // flag indicating if a cycle has been found
 
-            debug!("{} detect ww conflicts", this);
             for (id, access) in snapshot {
                 // only interested in accesses before this one and that are write operations.
                 if id < &prv {
@@ -433,25 +366,13 @@ impl MixedSerializationGraph {
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
-                                    let proceed = self
-                                        .insert_and_check(Edge::WriteWrite(*from_addr), database)?;
-                                    if !proceed {
+                                    if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
                                         cyclic = true;
                                         break; // no reason to check other accesses
                                     }
 
                                     wait = true; // retry operation
                                     break;
-                                }
-
-                                // if early then insert, cycle check and continue
-                                if from.is_early() {
-                                    let proceed = self
-                                        .insert_and_check(Edge::WriteWrite(*from_addr), database)?;
-                                    if !proceed {
-                                        cyclic = true;
-                                        break; // no reason to check other accesses
-                                    }
                                 }
                             }
                         }
@@ -466,7 +387,7 @@ impl MixedSerializationGraph {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 self.abort(database);
-                return Err(MixedSerializationGraphError::CycleFound.into());
+                return Err(SerializationGraphError::CycleFound.into());
             }
 
             // (ii) there is an uncommitted write (wait = T)
@@ -474,7 +395,7 @@ impl MixedSerializationGraph {
             if wait {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                self.delete_early_committers(database);
+
                 continue;
             }
 
@@ -485,7 +406,7 @@ impl MixedSerializationGraph {
                 self.abort(database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
 
-                return Err(MixedSerializationGraphError::CascadingAbort.into());
+                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
             break;
@@ -497,15 +418,12 @@ impl MixedSerializationGraph {
 
         let mut cyclic = false;
 
-        debug!("{} detect rw conflicts", this);
         for (id, access) in snapshot {
             if id < &prv {
                 match access {
                     Access::Read(from) => {
                         if let TransactionId::SerializationGraph(from_addr, _, _) = from {
-                            let proceed =
-                                self.insert_and_check(Edge::ReadWrite(*from_addr), database)?;
-                            if !proceed {
+                            if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
                                 cyclic = true;
                                 break;
                             }
@@ -523,7 +441,7 @@ impl MixedSerializationGraph {
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database);
 
-            return Err(MixedSerializationGraphError::CycleFound.into());
+            return Err(SerializationGraphError::CycleFound.into());
         }
 
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
@@ -546,25 +464,10 @@ impl MixedSerializationGraph {
     pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
 
-        debug!("{} commit", this);
-
-        let mut timeout_end = None;
-        if self.deadlock_detection {
-            let timeout_start = Instant::now(); // timeout
-            let runtime = Duration::new(3, 0);
-            timeout_end = Some(timeout_start + runtime);
-        }
-
         loop {
-            if self.deadlock_detection {
-                if Instant::now() > timeout_end.unwrap() {
-                    self.deadlock_detection(true, "commit")?;
-                }
-            }
-
             if this.is_cascading_abort() || this.is_aborted() {
                 self.abort(database);
-                return Err(MixedSerializationGraphError::CascadingAbort.into());
+                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
             let this_wlock = this.write();
@@ -572,65 +475,19 @@ impl MixedSerializationGraph {
             drop(this_wlock);
 
             // no lock taken as only outgoing edges can be added from here
-            match this.msgt_has_incoming() {
-                // normal operation
-                Incoming::SomeRelevant => {
-                    this.set_checked(false);
-                    let is_cycle = self.cycle_check(this.get_isolation_level());
-                    if is_cycle {
-                        this.set_aborted();
-                    }
-
-                    // TODO: gc these correctly
-                    self.delete_early_committers(database);
-
-                    continue;
+            if this.has_incoming() {
+                this.set_checked(false); // if incoming then flip back to unchecked
+                let is_cycle = self.cycle_check(); // cycle check
+                if is_cycle {
+                    this.set_aborted(); // cycle so abort (this)
                 }
-                // early commit
-                Incoming::SomeNotRelevant => {
-                    let this = unsafe { &*self.get_transaction() };
-                    debug!("add early committer: {}", this);
-
-                    // set as committed and mark data as committed but leave access history there
-                    // must use tidy up
-
-                    let ops = self.get_operations();
-
-                    // commit and revert state
-                    for op in &ops {
-                        let Operation {
-                            op_type,
-                            table_id,
-                            column_id,
-                            offset,
-                            ..
-                        } = op;
-
-                        let table = database.get_table(*table_id);
-                        let tuple = table.get_tuple(*column_id, *offset);
-
-                        if let OperationType::Write = op_type {
-                            tuple.get().commit();
-                        }
-                    }
-
-                    this.set_early();
-                    this.set_committed();
-                    this.set_checked(false);
-
-                    let node = self.get_transaction();
-
-                    MixedSerializationGraph::EARLY.with(|x| x.borrow_mut().push((ops, node)));
-                    // think you still need to tidup and set as commtted
-                }
-                // normal operation - do not add
-                Incoming::None => {
-                    // no incoming edges and no cycle so commit
-                    self.tidyup(database, true);
-                    this.set_committed();
-                    self.cleanup(database);
-                }
+                continue;
             }
+
+            // no incoming edges and no cycle so commit
+            self.tidyup(database, true);
+            this.set_committed();
+            self.cleanup();
 
             break;
         }
@@ -638,30 +495,30 @@ impl MixedSerializationGraph {
         Ok(())
     }
 
+    /// Abort operation.
     pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = unsafe { &*self.get_transaction() };
-        debug!("{} abort", this);
-
         this.set_aborted();
-        self.cleanup(database);
+        self.cleanup();
         self.tidyup(database, false);
 
         NonFatalError::NonSerializable // TODO: return the why
     }
 
-    pub fn cleanup(&self, database: &Database) {
-        // Check if any of the early committer can be removed now
-        let delete = self.delete_early_committers(database);
+    /// Cleanup node after committed or aborted.
+    pub fn cleanup(&self) {
+        let this = unsafe { &*self.get_transaction() }; // shared reference to node
+        let this_id = self.get_transaction() as usize; // node id
 
-        // normal operation
-        let this = unsafe { &*self.get_transaction() };
-        let this_id = self.get_transaction() as usize;
-
+        // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)
         let this_wlock = this.write();
-        this.set_cleaned();
+        this.set_cleaned(); // cleaned acts as a barrier for edge insertion.
         drop(this_wlock);
 
-        let outgoing = this.take_outgoing(); // remove edge sets
+        // remove edge sets:
+        // - no incoming edges will be added as this node is terminating: (from) --> (this)
+        // - no outgoing edges will be added from this node due to cleaned flag: (this) --> (to)
+        let outgoing = this.take_outgoing();
         let incoming = this.take_incoming();
 
         let mut g = outgoing.lock(); // lock on outgoing edge set
@@ -669,22 +526,20 @@ impl MixedSerializationGraph {
 
         for edge in outgoing_set {
             match edge {
+                // (this) -[rw]-> (to)
                 Edge::ReadWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
-                    debug!("remove ({:x}) -rw-> ({:x})", this.get_id(), that.get_id());
-                    let that_rlock = that.read();
-
+                    let that_rlock = that.read(); // prevent (to) from committing
                     if !that.is_cleaned() {
                         that.remove_incoming(&Edge::ReadWrite(this_id));
+                        // if (to) is not cleaned remove incoming edge
                     }
                     drop(that_rlock);
                 }
 
+                // (this) -[ww]-> (to)
                 Edge::WriteWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
-
-                    debug!("remove ({:x}) -ww-> ({:x})", this.get_id(), that.get_id());
-
                     if this.is_aborted() {
                         that.set_cascading_abort();
                     } else {
@@ -695,12 +550,9 @@ impl MixedSerializationGraph {
                         drop(that_rlock);
                     }
                 }
-
-                Edge::WriteRead(that_id) => {
-                    let that = unsafe { &*(*that_id as *const Node) };
-
-                    debug!("remove ({:x}) -wr-> ({:x})", this.get_id(), that.get_id());
-
+                // (this) -[wr]-> (to)
+                Edge::WriteRead(that) => {
+                    let that = unsafe { &*(*that as *const Node) };
                     if this.is_aborted() {
                         that.set_cascading_abort();
                     } else {
@@ -713,7 +565,7 @@ impl MixedSerializationGraph {
                 }
             }
         }
-        g.clear();
+        g.clear(); // clear (this) outgoing
         drop(g);
 
         if this.is_aborted() {
@@ -723,15 +575,10 @@ impl MixedSerializationGraph {
         let this = self.get_transaction();
         let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
 
-        MixedSerializationGraph::EG.with(|x| unsafe {
+        RelMixedSerializationGraph::EG.with(|x| unsafe {
             x.borrow().as_ref().unwrap().defer_unchecked(move || {
-                let boxed_node = Box::from_raw(this);
+                let boxed_node = Box::from_raw(this); // garbage collect
                 drop(boxed_node);
-
-                for ptr in delete {
-                    let boxed_node = Box::from_raw(ptr);
-                    drop(boxed_node);
-                }
             });
 
             if cnt % 64 == 0 {
@@ -743,6 +590,7 @@ impl MixedSerializationGraph {
         });
     }
 
+    /// Tidyup rwtables and tuples
     pub fn tidyup(&self, database: &Database, commit: bool) {
         let ops = self.get_operations();
 
@@ -791,157 +639,15 @@ impl MixedSerializationGraph {
             }
         }
     }
-
-    fn deadlock_detection(&self, deadlock: bool, location: &str) -> Result<(), NonFatalError> {
-        if deadlock {
-            let this = unsafe { &*self.get_transaction() };
-
-            error!("{} detected deadlock whilst trying to {}", this, location);
-            error!("{} incoming edges: {:?}", this, this.get_incoming());
-            error!("{} outgoing edges: {:?}", this, this.get_outgoing());
-
-            MixedSerializationGraph::EARLY.with(|x| {
-                let early = x.borrow_mut();
-
-                let mut i = 0;
-                while i < early.len() {
-                    let (_, ptr) = early.get(i).unwrap();
-                    let node = unsafe { &**ptr };
-                    error!("{}: early {}", this, node);
-                    i += 1;
-                }
-            });
-
-            return Err(NonFatalError::Emergency);
-        }
-        Ok(())
-    }
-
-    fn delete_early_committers(&self, database: &Database) -> Vec<*mut Node> {
-        let mut res = Vec::new();
-
-        MixedSerializationGraph::EARLY.with(|x| {
-            let mut lcl = x.borrow_mut();
-
-            // for each early committer
-            let mut i = 0;
-            while i < lcl.len() {
-                let (_, ptr) = lcl.get(i).unwrap();
-                let this = unsafe { &**ptr };
-
-                if let Incoming::None = this.msgt_has_incoming() {
-                    let (ops, ptr) = lcl.remove(i);
-
-                    let this = unsafe { &*ptr };
-                    debug!("delete early committer: {}", this);
-                    let this_id = ptr as usize;
-
-                    // remove accesses
-                    for op in ops {
-                        let Operation {
-                            op_type,
-                            table_id,
-                            offset,
-                            prv,
-                            ..
-                        } = op;
-
-                        let table = database.get_table(table_id);
-                        let rwtable = table.get_rwtable(offset);
-
-                        match op_type {
-                            OperationType::Read => {
-                                rwtable.erase(prv);
-                            }
-                            OperationType::Write => {
-                                rwtable.erase(prv);
-                            }
-                        }
-                    }
-
-                    // cleanup
-                    let this_wlock = this.write();
-                    this.set_cleaned();
-                    drop(this_wlock);
-
-                    let outgoing = this.take_outgoing(); // remove edge sets
-
-                    let mut g = outgoing.lock(); // lock on outgoing edge set
-                    let outgoing_set = g.iter(); // iterator over outgoing edge set
-
-                    for edge in outgoing_set {
-                        match edge {
-                            Edge::ReadWrite(that_id) => {
-                                let that = unsafe { &*(*that_id as *const Node) };
-                                let that_rlock = that.read();
-                                if !that.is_cleaned() {
-                                    that.remove_incoming(&Edge::ReadWrite(this_id));
-                                }
-                                drop(that_rlock);
-                            }
-
-                            Edge::WriteWrite(that_id) => {
-                                let that = unsafe { &*(*that_id as *const Node) };
-                                if this.is_aborted() {
-                                    that.set_cascading_abort();
-                                } else {
-                                    let that_rlock = that.read();
-                                    if !that.is_cleaned() {
-                                        that.remove_incoming(&Edge::WriteWrite(this_id));
-                                    }
-                                    drop(that_rlock);
-                                }
-                            }
-
-                            Edge::WriteRead(that) => {
-                                let that = unsafe { &*(*that as *const Node) };
-                                if this.is_aborted() {
-                                    that.set_cascading_abort();
-                                } else {
-                                    let that_rlock = that.read();
-                                    if !that.is_cleaned() {
-                                        that.remove_incoming(&Edge::WriteRead(this_id));
-                                    }
-                                    drop(that_rlock);
-                                }
-                            }
-                        }
-                    }
-                    g.clear();
-                    drop(g);
-                    res.push(ptr);
-                } else {
-                    i += 1;
-                }
-            }
-        });
-        res
-    }
 }
 
-unsafe fn spin(prv: u64, lsn: &AtomicU64, deadlock_detection: bool) -> bool {
+// Busy wait until prv matches lsn.
+unsafe fn spin(prv: u64, lsn: &AtomicU64) {
     let mut i = 0;
-
-    // deadlock detection
-    let mut timeout_end = None;
-    if deadlock_detection {
-        let timeout_start = Instant::now();
-        let runtime = Duration::new(3, 0);
-        timeout_end = Some(timeout_start + runtime);
-    }
-
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
-
         if i >= 10000 {
             std::thread::yield_now();
         }
-
-        if deadlock_detection {
-            if Instant::now() > timeout_end.unwrap() {
-                return true; // potential deadlock
-            }
-        }
     }
-    false
 }

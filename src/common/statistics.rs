@@ -35,7 +35,6 @@ pub struct GlobalStatistics {
     transaction_breakdown: TransactionBreakdown,
     abort_breakdown: AbortBreakdown,
     anomaly: Option<String>,
-    relevant_cycle_check: bool,
 }
 
 impl GlobalStatistics {
@@ -52,7 +51,6 @@ impl GlobalStatistics {
         } else {
             anomaly = None;
         }
-        let relevant_cycle_check = config.get_bool("relevant_cycle_check").unwrap();
 
         GlobalStatistics {
             scale_factor,
@@ -67,7 +65,6 @@ impl GlobalStatistics {
             transaction_breakdown,
             abort_breakdown,
             anomaly,
-            relevant_cycle_check,
         }
     }
 
@@ -170,6 +167,12 @@ impl GlobalStatistics {
             ProtocolAbortBreakdown::StdMixedSerializationGraph(ref reasons) => {
                 reasons.cascading_abort + reasons.cycle_found
             }
+            ProtocolAbortBreakdown::RelMixedSerializationGraph(ref reasons) => {
+                reasons.cascading_abort + reasons.cycle_found
+            }
+            ProtocolAbortBreakdown::EarlyMixedSerializationGraph(ref reasons) => {
+                reasons.cascading_abort + reasons.cycle_found
+            }
             ProtocolAbortBreakdown::WaitHit(ref reasons) => {
                 reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
             }
@@ -244,19 +247,9 @@ impl GlobalStatistics {
 
         let mut wtr = csv::Writer::from_writer(file);
 
-        let protocol = if self.protocol.eq("msgt") {
-            if self.relevant_cycle_check {
-                format!("{}-relevant", self.protocol)
-            } else {
-                format!("{}-std", self.protocol)
-            }
-        } else {
-            self.protocol.clone()
-        };
-
         wtr.serialize((
             self.scale_factor,
-            protocol,
+            &self.protocol,
             &self.workload,
             self.cores,
             (self.total_time as f64 / 1000000.0), // ms
@@ -592,6 +585,12 @@ impl AbortBreakdown {
             "msgt-std" => {
                 ProtocolAbortBreakdown::StdMixedSerializationGraph(SerializationGraphReasons::new())
             }
+            "msgt-rel" => {
+                ProtocolAbortBreakdown::RelMixedSerializationGraph(SerializationGraphReasons::new())
+            }
+            "msgt-early" => ProtocolAbortBreakdown::EarlyMixedSerializationGraph(
+                SerializationGraphReasons::new(),
+            ),
             "wh" => ProtocolAbortBreakdown::WaitHit(HitListReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
             "owhtt" => {
@@ -637,6 +636,20 @@ impl AbortBreakdown {
             }
             StdMixedSerializationGraph(ref mut reasons) => {
                 if let StdMixedSerializationGraph(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+            RelMixedSerializationGraph(ref mut reasons) => {
+                if let RelMixedSerializationGraph(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+            EarlyMixedSerializationGraph(ref mut reasons) => {
+                if let EarlyMixedSerializationGraph(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -807,6 +820,8 @@ enum ProtocolAbortBreakdown {
     SerializationGraph(SerializationGraphReasons),
     MixedSerializationGraph(SerializationGraphReasons),
     StdMixedSerializationGraph(SerializationGraphReasons),
+    RelMixedSerializationGraph(SerializationGraphReasons),
+    EarlyMixedSerializationGraph(SerializationGraphReasons),
     WaitHit(HitListReasons),
     OptimisticWaitHit(HitListReasons),
     OptimisticWaitHitTransactionTypes(HitListReasons),
