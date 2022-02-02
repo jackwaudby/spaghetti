@@ -390,6 +390,38 @@ impl LocalStatistics {
                         }
                     }
 
+                    RelMixedSerializationGraph(ref mut metric) => {
+                        if let NonFatalError::SerializationGraph(sge) = reason {
+                            match sge {
+                                SerializationGraphError::CascadingAbort => {
+                                    metric.inc_cascading_abort()
+                                }
+                                SerializationGraphError::CycleFound => metric.inc_cycle_found(),
+                            }
+                            match isolation {
+                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
+                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
+                                IsolationLevel::Serializable => metric.inc_serializable(),
+                            }
+                        }
+                    }
+
+                    EarlyMixedSerializationGraph(ref mut metric) => {
+                        if let NonFatalError::SerializationGraph(sge) = reason {
+                            match sge {
+                                SerializationGraphError::CascadingAbort => {
+                                    metric.inc_cascading_abort()
+                                }
+                                SerializationGraphError::CycleFound => metric.inc_cycle_found(),
+                            }
+                            match isolation {
+                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
+                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
+                                IsolationLevel::Serializable => metric.inc_serializable(),
+                            }
+                        }
+                    }
+
                     WaitHit(ref mut metric) => match reason {
                         NonFatalError::WaitHitError(owhe) => match owhe {
                             WaitHitError::TransactionInHitList(_) => metric.inc_hit(),
