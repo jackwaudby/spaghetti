@@ -19,6 +19,7 @@ pub struct SmallBankGenerator {
     deposit_checking_amount: f64,
     transact_savings_amount: f64,
     write_check_amount: f64,
+    isolation_mix: String,
 }
 
 impl SmallBankGenerator {
@@ -28,6 +29,7 @@ impl SmallBankGenerator {
         set_seed: bool,
         seed: Option<u64>,
         use_balance_mix: bool,
+        isolation_mix: String,
     ) -> Self {
         let rng: StdRng;
 
@@ -53,6 +55,7 @@ impl SmallBankGenerator {
             deposit_checking_amount,
             transact_savings_amount,
             write_check_amount,
+            isolation_mix,
         }
     }
 }
@@ -63,10 +66,20 @@ impl Generator for SmallBankGenerator {
         let (transaction, parameters) = self.get_params(n);
 
         let m: f32 = self.rng.gen();
-        let isolation = match m {
-            x if x < 0.2 => IsolationLevel::ReadUncommitted,
-            x if x < 0.6 => IsolationLevel::ReadCommitted,
-            _ => IsolationLevel::Serializable,
+
+        let isolation = match self.isolation_mix.as_str() {
+            "low" => match m {
+                x if x < 0.19 => IsolationLevel::ReadUncommitted,
+                x if x < 0.99 => IsolationLevel::ReadCommitted,
+                _ => IsolationLevel::Serializable,
+            },
+            "mid" => match m {
+                x if x < 0.20 => IsolationLevel::ReadUncommitted,
+                x if x < 0.80 => IsolationLevel::ReadCommitted,
+                _ => IsolationLevel::Serializable,
+            },
+            "high" => IsolationLevel::Serializable,
+            _ => unimplemented!(),
         };
 
         Message::Request {

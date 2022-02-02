@@ -399,7 +399,16 @@ pub fn get_transaction_generator(thread_id: u32, config: &Config) -> ParameterGe
     match config.get_str("workload").unwrap().as_str() {
         "smallbank" => {
             let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
-            let gen = SmallBankGenerator::new(thread_id, sf, set_seed, seed, use_balance_mix);
+            let isolation_mix = config.get_str("isolation_mix").unwrap();
+
+            let gen = SmallBankGenerator::new(
+                thread_id,
+                sf,
+                set_seed,
+                seed,
+                use_balance_mix,
+                isolation_mix,
+            );
             ParameterGenerator::SmallBank(gen)
         }
         "acid" => {

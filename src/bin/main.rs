@@ -61,26 +61,8 @@ fn main() {
         _ => Level::WARN,
     };
 
-    // TODO: hack; alternative solution: https://github.com/tokio-rs/tracing/issues/597#issuecomment-814507031
-    let file_appender = tracing_appender::rolling::hourly("./log/", "debug.log");
-    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
-
-    if let Level::DEBUG = level {
-        let subscriber = fmt::Subscriber::builder()
-            .with_writer(non_blocking)
-            .with_max_level(level)
-            .with_thread_names(true)
-            .with_target(false)
-            .finish();
-
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
-    } else {
-        let subscriber = fmt::Subscriber::builder().finish();
-
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("setting default subscriber failed");
-    };
+    let subscriber = fmt::Subscriber::builder().with_max_level(level).finish();
+    tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     // log directory
     utils::create_log_dir(&config);

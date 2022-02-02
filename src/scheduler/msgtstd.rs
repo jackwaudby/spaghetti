@@ -5,6 +5,7 @@ use crate::scheduler::error::SerializationGraphError;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
+use crate::workloads::IsolationLevel;
 
 use crossbeam_epoch as epoch;
 use crossbeam_epoch::Guard;
@@ -17,14 +18,14 @@ use thread_local::ThreadLocal;
 use tracing::{debug, info};
 
 #[derive(Debug)]
-pub struct SerializationGraph {
+pub struct StdMixedSerializationGraph {
     txn_ctr: ThreadLocal<RefCell<usize>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
     stack: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
 }
 
-impl SerializationGraph {
+impl StdMixedSerializationGraph {
     thread_local! {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
         static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
@@ -42,7 +43,7 @@ impl SerializationGraph {
     }
 
     pub fn get_transaction(&self) -> *mut Node {
-        SerializationGraph::NODE.with(|x| *x.borrow().as_ref().unwrap())
+        StdMixedSerializationGraph::NODE.with(|x| *x.borrow().as_ref().unwrap())
     }
 
     pub fn get_operations(&self) -> Vec<Operation> {
@@ -79,9 +80,28 @@ impl SerializationGraph {
 
         // prepare
         let (from_id, rw, out_edge) = match from {
-            Edge::ReadWrite(from_id) => (from_id, true, Edge::ReadWrite(this_id)),
-            Edge::WriteRead(from_id) => (from_id, false, Edge::WriteRead(this_id)),
+            // WW edges always get inserted
             Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
+
+            // WR edge inserted if this node is PL2/3
+            Edge::WriteRead(from_id) => {
+                if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
+                    return true;
+                }
+
+                (from_id, false, Edge::WriteRead(this_id))
+            }
+
+            // RW edge inserted if from node is PL3
+            Edge::ReadWrite(from_id) => {
+                let from_ref = unsafe { &*(from_id as *const Node) };
+                match from_ref.get_isolation_level() {
+                    IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
+                        return true;
+                    }
+                    IsolationLevel::Serializable => (from_id, true, Edge::ReadWrite(this_id)),
+                }
+            }
         };
 
         if this_id == from_id {
@@ -182,29 +202,30 @@ impl SerializationGraph {
     }
 
     /// Begin a transaction.
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
-        let (ref_id, thread_id, thread_ctr) = self.create_node(); // create node
+        let (ref_id, thread_id, thread_ctr) = self.create_node(isolation_level); // create node
         let guard = epoch::pin(); // pin thread
-        SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
+        StdMixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
         debug!("{} begin", unsafe { &*self.get_transaction() });
 
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
 
-    pub fn create_node(&self) -> (usize, usize, usize) {
+    pub fn create_node(&self, isolation_level: IsolationLevel) -> (usize, usize, usize) {
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
         let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
         let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
-        let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing, None)); // allocate node
+        let iso = Some(isolation_level);
+        let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing, iso)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
         let id = ptr as usize; // get id
         unsafe { (*ptr).set_id(id) }; // set id on node
-        SerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
+        StdMixedSerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
         (id, thread_id, thread_ctr)
     }
@@ -535,7 +556,7 @@ impl SerializationGraph {
         let this = self.get_transaction();
         let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
 
-        SerializationGraph::EG.with(|x| unsafe {
+        StdMixedSerializationGraph::EG.with(|x| unsafe {
             x.borrow().as_ref().unwrap().defer_unchecked(move || {
                 let boxed_node = Box::from_raw(this); // garbage collect
                 drop(boxed_node);

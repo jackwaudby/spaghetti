@@ -3,9 +3,9 @@ use crate::workloads::IsolationLevel;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
 use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
-use std::time::{Duration, Instant};
 
 use std::cell::UnsafeCell;
+use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 unsafe impl<'a> Send for Node {}
@@ -22,6 +22,13 @@ pub enum Edge {
 }
 
 #[derive(Debug)]
+pub enum Incoming {
+    None,
+    SomeRelevant,
+    SomeNotRelevant,
+}
+
+#[derive(Debug)]
 pub struct Node {
     thread_id: usize,
     thread_ctr: usize,
@@ -34,42 +41,17 @@ pub struct Node {
     aborted: AtomicBool,
     cleaned: AtomicBool,
     checked: AtomicBool,
+    early: AtomicBool,
     lock: RwLock<u32>,
 }
 
 impl Node {
     pub fn read(&self) -> RwLockReadGuard<u32> {
-        let timeout_start = Instant::now(); // timeout
-        let runtime = Duration::new(3, 0);
-        let timeout_end = timeout_start + runtime;
-
-        loop {
-            let res = self.lock.try_read();
-            if let Some(guard) = res {
-                return guard;
-            }
-
-            if Instant::now() > timeout_end {
-                panic!("deadlock"); // potential deadlock
-            }
-        }
+        self.lock.read()
     }
 
     pub fn write(&self) -> RwLockWriteGuard<u32> {
-        let timeout_start = Instant::now(); // timeout
-        let runtime = Duration::new(3, 0);
-        let timeout_end = timeout_start + runtime;
-
-        loop {
-            let res = self.lock.try_write();
-            if let Some(guard) = res {
-                return guard;
-            }
-
-            if Instant::now() > timeout_end {
-                panic!("deadlock"); // potential deadlock
-            }
-        }
+        self.lock.write()
     }
 
     pub fn new(
@@ -91,6 +73,7 @@ impl Node {
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
+            early: AtomicBool::new(false),
             lock: RwLock::new(0),
         }
     }
@@ -134,6 +117,46 @@ impl Node {
                     !res
                 }
                 None => panic!("incoming edge set removed"),
+            },
+            None => panic!("check unsafe"),
+        }
+    }
+
+    pub fn msgt_has_incoming(&self) -> Incoming {
+        let incoming = unsafe { self.incoming.get().as_ref() };
+
+        match incoming {
+            Some(edge_set) => match edge_set {
+                Some(edges) => {
+                    let guard = edges.lock();
+
+                    if guard.is_empty() {
+                        drop(guard);
+                        Incoming::None
+                    } else {
+                        match self.isolation_level.unwrap() {
+                            IsolationLevel::ReadUncommitted => {
+                                if guard.iter().any(|x| variant_eq(x, &Edge::WriteWrite(0))) {
+                                    Incoming::SomeRelevant
+                                } else {
+                                    Incoming::SomeNotRelevant
+                                }
+                            }
+                            IsolationLevel::ReadCommitted => {
+                                if guard.iter().any(|x| {
+                                    variant_eq(x, &Edge::WriteWrite(0))
+                                        || variant_eq(x, &Edge::WriteRead(0))
+                                }) {
+                                    Incoming::SomeRelevant
+                                } else {
+                                    Incoming::SomeNotRelevant
+                                }
+                            }
+                            IsolationLevel::Serializable => Incoming::SomeRelevant,
+                        }
+                    }
+                }
+                None => panic!("incoming edge set already cleaned"),
             },
             None => panic!("check unsafe"),
         }
@@ -292,6 +315,14 @@ impl Node {
         self.checked.store(val, Ordering::Release);
     }
 
+    pub fn is_early(&self) -> bool {
+        self.early.load(Ordering::Acquire)
+    }
+
+    pub fn set_early(&self) {
+        self.early.store(true, Ordering::Release);
+    }
+
     pub fn is_cleaned(&self) -> bool {
         self.cleaned.load(Ordering::Acquire)
     }
@@ -301,26 +332,29 @@ impl Node {
     }
 }
 
+fn variant_eq(a: &Edge, b: &Edge) -> bool {
+    std::mem::discriminant(a) == std::mem::discriminant(b)
+}
+
 impl std::fmt::Debug for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
-        let thread_id = "x";
         use Edge::*;
         match &*self {
-            ReadWrite(txn_id) => write!(
-                f,
-                "{}",
-                format!("[rw: {:x}, thread id: {}]", txn_id, thread_id)
-            ),
-            WriteWrite(txn_id) => write!(
-                f,
-                "{}",
-                format!("[ww: {:x}, thread id: {}]", txn_id, thread_id)
-            ),
-            WriteRead(txn_id) => write!(
-                f,
-                "{}",
-                format!("[wr: {:x}, thread id: {}]", txn_id, thread_id)
-            ),
+            ReadWrite(txn_id) => write!(f, "{}", format!("[rw: {:x}]", txn_id)),
+            WriteWrite(txn_id) => write!(f, "{}", format!("[ww: {:x}]", txn_id)),
+            WriteRead(txn_id) => write!(f, "{}", format!("[wr: {:x}]", txn_id)),
         }
+    }
+}
+
+impl fmt::Display for Node {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "[th-id: {}, t-id: {}, iso: {}]",
+            self.get_thread_id(),
+            format!("{:x}", self.get_id()),
+            self.get_isolation_level(),
+        )
     }
 }
