@@ -24,9 +24,11 @@ pub fn transaction<'a>(
                     // Read all columns
                     Operation::Read(offset) => {
                         debug!("read: {}", offset);
-                        for i in 1..10 {
-                            scheduler.read_value(0, i, offset, &meta, database)?;
-                        }
+                        // for i in 1..10 {
+                        //     scheduler.read_value(0, i, offset, &meta, database)?;
+                        // }
+
+                        scheduler.read_value(0, 2, offset, &meta, database)?;
                     }
                     // Update 1 column
                     Operation::Update(offset, value) => {
