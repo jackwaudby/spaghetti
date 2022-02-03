@@ -115,7 +115,7 @@ impl OpResult {
     }
 
     pub fn get_value(&mut self) -> Data {
-        // self.value.take().unwrap()
+        self.value.take().unwrap()
         Data::Uint(0)
     }
 }
