@@ -446,8 +446,17 @@ pub fn get_transaction_generator(thread_id: u32, config: &Config) -> ParameterGe
         "ycsb" => {
             let theta = config.get_float("theta").unwrap();
             let update_rate = config.get_float("update_rate").unwrap();
+            let serializable_rate = config.get_float("serializable_rate").unwrap();
 
-            let gen = YcsbGenerator::new(thread_id, sf, set_seed, seed, theta, update_rate);
+            let gen = YcsbGenerator::new(
+                thread_id,
+                sf,
+                set_seed,
+                seed,
+                theta,
+                update_rate,
+                serializable_rate,
+            );
             ParameterGenerator::Ycsb(gen)
         }
         _ => unimplemented!(),

@@ -27,6 +27,12 @@ fn main() {
         .arg(arg!(-t --transactions <TRANSACTIONS> "Transactions per core").required(false))
         .arg(arg!(-c --cores <CORES> "Number of cores to use").required(false))
         .arg(arg!(-l --log <LOG> "Log level").required(false))
+        .arg(arg!(-h --theta <THETA> "Contention (YCSB only)").required(false))
+        .arg(arg!(-u --updaterate <UPDATERATE> "Update rate (YCSB only)").required(false))
+        .arg(
+            arg!(-i --serializablerate <SERIALIZABLERATE> "Serializable rate (YCSB only)")
+                .required(false),
+        )
         .get_matches();
 
     if let Some(w) = matches.value_of("workload") {
@@ -51,6 +57,18 @@ fn main() {
 
     if let Some(l) = matches.value_of("log") {
         config.set("log", l).unwrap();
+    }
+
+    if let Some(theta) = matches.value_of("theta") {
+        config.set("theta", theta).unwrap();
+    }
+
+    if let Some(ur) = matches.value_of("updaterate") {
+        config.set("update_rate", ur).unwrap();
+    }
+
+    if let Some(sr) = matches.value_of("serializablerate") {
+        config.set("serializable_rate", sr).unwrap();
     }
 
     // logging

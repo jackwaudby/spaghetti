@@ -18,6 +18,8 @@ pub struct YcsbGenerator {
     cardinality: usize,
     theta: f64,
     update_rate: f64,
+    serializable_rate: f64,
+    read_uncommitted_rate: f64,
     alpha: f64,
     zetan: f64,
     eta: f64,
@@ -31,6 +33,7 @@ impl YcsbGenerator {
         seed: Option<u64>,
         theta: f64,
         update_rate: f64,
+        serializable_rate: f64,
     ) -> Self {
         let rng: StdRng;
 
@@ -47,6 +50,9 @@ impl YcsbGenerator {
         let zeta_2_thetan = helper::zeta_2_theta(theta); // constant
         let eta = helper::eta(cardinality, theta, zeta_2_thetan, zetan); // constant
 
+        let weak_rate = 1.0 - serializable_rate;
+        let read_uncommitted_rate = serializable_rate + (weak_rate / 10.0);
+
         Self {
             thread_id,
             rng,
@@ -54,6 +60,8 @@ impl YcsbGenerator {
             cardinality,
             theta,
             update_rate,
+            serializable_rate,
+            read_uncommitted_rate,
             alpha,
             zetan,
             eta,
@@ -63,14 +71,18 @@ impl YcsbGenerator {
 
 impl Generator for YcsbGenerator {
     fn generate(&mut self) -> Message {
+        // generate parameters
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
-        let m: f32 = self.rng.gen();
-        let isolation = match m {
-            x if x < 0.2 => IsolationLevel::ReadUncommitted,
-            x if x < 0.6 => IsolationLevel::ReadCommitted,
-            _ => IsolationLevel::Serializable,
+        // generate isolation level
+        let m: f64 = self.rng.gen();
+        let isolation = if m < self.serializable_rate {
+            IsolationLevel::Serializable
+        } else if m < self.read_uncommitted_rate {
+            IsolationLevel::ReadUncommitted
+        } else {
+            IsolationLevel::ReadCommitted
         };
 
         Message::Request {

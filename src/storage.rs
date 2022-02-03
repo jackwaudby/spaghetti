@@ -114,6 +114,13 @@ impl Database {
                 info!("Generate YCSB SF-{}", sf);
                 ycsb::loader::populate_tables(population, &mut database, &mut rng)?;
 
+                info!("Theta: {}", config.get_float("theta")?);
+                info!("Update rate: {}", config.get_float("update_rate")?);
+                info!(
+                    "Serializable rate: {}",
+                    config.get_float("serializable_rate")?
+                );
+
                 Ok(Database::Ycsb(database))
             }
             _ => return Err(Box::new(FatalError::IncorrectWorkload(workload))),
