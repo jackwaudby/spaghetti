@@ -9,6 +9,7 @@ use crate::workloads::acid::AcidTransaction;
 use crate::workloads::dummy::DummyTransaction;
 use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::tatp::TatpTransaction;
+use crate::workloads::ycsb::YcsbTransaction;
 use crate::workloads::IsolationLevel;
 
 use config::Config;
@@ -155,6 +156,7 @@ impl GlobalStatistics {
             WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
             WorkloadAbortBreakdown::Acid(ref reasons) => reasons.non_serializable,
             WorkloadAbortBreakdown::Dummy(ref reasons) => reasons.non_serializable,
+            WorkloadAbortBreakdown::Ycsb => 0,
         }; // aborts due to integrity constraints/manual aborts
 
         let external_aborts = match self.abort_breakdown.protocol_specific {
@@ -338,6 +340,7 @@ impl LocalStatistics {
                             metric.inc_not_found();
                         }
                     }
+                    Ycsb => {}
                 }
 
                 use ProtocolAbortBreakdown::*;
@@ -555,6 +558,16 @@ impl TransactionBreakdown {
                 TransactionBreakdown { name, transactions }
             }
 
+            "ycsb" => {
+                let name = workload.to_string();
+                let mut transactions = vec![];
+                for transaction in YcsbTransaction::iter() {
+                    let metrics = TransactionMetrics::new(Transaction::Ycsb(transaction));
+                    transactions.push(metrics);
+                }
+                TransactionBreakdown { name, transactions }
+            }
+
             _ => panic!("{} not implemented", workload),
         }
     }
@@ -665,6 +678,7 @@ impl AbortBreakdown {
             "tatp" => WorkloadAbortBreakdown::Tatp(TatpReasons::new()),
             "acid" => WorkloadAbortBreakdown::Acid(AcidReasons::new()),
             "dummy" => WorkloadAbortBreakdown::Dummy(DummyReasons::new()),
+            "ycsb" => WorkloadAbortBreakdown::Ycsb,
             _ => unimplemented!(),
         };
 
@@ -787,6 +801,7 @@ impl AbortBreakdown {
                     panic!("workload abort breakdowns do not match");
                 }
             }
+            Ycsb => {}
         }
     }
 }
@@ -796,6 +811,7 @@ enum WorkloadAbortBreakdown {
     Tatp(TatpReasons),
     Acid(AcidReasons),
     Dummy(DummyReasons),
+    Ycsb,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

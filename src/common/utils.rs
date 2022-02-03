@@ -8,7 +8,8 @@ use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
 use crate::workloads::dummy::paramgen::{DummyGenerator, DummyTransactionProfile};
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
 use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
-use crate::workloads::{acid, dummy, smallbank, tatp};
+use crate::workloads::ycsb::paramgen::{YcsbGenerator, YcsbTransactionProfile};
+use crate::workloads::{acid, dummy, smallbank, tatp, ycsb};
 
 use config::Config;
 use std::fs::{self, OpenOptions};
@@ -259,6 +260,7 @@ pub fn execute<'a>(txn: Message, scheduler: &'a Scheduler, workload: &'a Databas
                     panic!("transaction type and parameters do not match");
                 }
             }
+
             Transaction::Dummy(_) => {
                 if let Parameters::Dummy(params) = parameters {
                     match params {
@@ -280,6 +282,18 @@ pub fn execute<'a>(txn: Message, scheduler: &'a Scheduler, workload: &'a Databas
 
                         DummyTransactionProfile::WriteAbort(params) => {
                             dummy::procedures::write_only_abort(params, scheduler, workload)
+                        }
+                    }
+                } else {
+                    panic!("transaction type and parameters do not match");
+                }
+            }
+
+            Transaction::Ycsb(_) => {
+                if let Parameters::Ycsb(params) = parameters {
+                    match params {
+                        YcsbTransactionProfile::General(params) => {
+                            ycsb::procedures::transaction(params, scheduler, workload, isolation)
                         }
                     }
                 } else {
@@ -427,6 +441,13 @@ pub fn get_transaction_generator(thread_id: u32, config: &Config) -> ParameterGe
             let use_nurand = config.get_bool("nurand").unwrap();
             let gen = TatpGenerator::new(thread_id, sf, set_seed, seed, use_nurand);
             ParameterGenerator::Tatp(gen)
+        }
+        "ycsb" => {
+            let theta = config.get_float("theta").unwrap();
+            let update_rate = config.get_float("update_rate").unwrap();
+
+            let gen = YcsbGenerator::new(thread_id, sf, set_seed, seed, theta, update_rate);
+            ParameterGenerator::Ycsb(gen)
         }
         _ => unimplemented!(),
     }

@@ -9,6 +9,8 @@ use crate::workloads::smallbank::{self, SmallBankDatabase};
 use crate::workloads::tatp::keys::TatpPrimaryKey;
 use crate::workloads::tatp::*;
 use crate::workloads::tatp::{self, TatpDatabase};
+use crate::workloads::ycsb::*;
+use crate::workloads::ycsb::{self, YcsbDatabase};
 
 use config::Config;
 use rand::rngs::StdRng;
@@ -30,6 +32,7 @@ pub enum Database {
     SmallBank(SmallBankDatabase),
     Tatp(TatpDatabase),
     Acid(AcidDatabase),
+    Ycsb(YcsbDatabase),
 }
 
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone)]
@@ -103,6 +106,16 @@ impl Database {
 
                 Ok(Database::Tatp(database))
             }
+            "ycsb" => {
+                let population = *YCSB_SF_MAP.get(&sf).unwrap() as usize;
+                let mut database = YcsbDatabase::new(population);
+                let mut rng: StdRng = SeedableRng::from_entropy();
+
+                info!("Generate YCSB SF-{}", sf);
+                ycsb::loader::populate_tables(population, &mut database, &mut rng)?;
+
+                Ok(Database::Ycsb(database))
+            }
             _ => return Err(Box::new(FatalError::IncorrectWorkload(workload))),
         }
     }
@@ -113,6 +126,7 @@ impl Database {
             Database::Acid(ref db) => db.get_table(id),
             Database::Tatp(ref db) => db.get_table(id),
             Database::Dummy(ref db) => db.get_table(id),
+            Database::Ycsb(ref db) => db.get_table(id),
         }
     }
 }

@@ -351,10 +351,11 @@ impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "[th-id: {}, t-id: {}, iso: {}]",
+            "[th-id: {}, t-id: {}]",
+            // "[th-id: {}, t-id: {}, iso: {}]",
             self.get_thread_id(),
             format!("{:x}", self.get_id()),
-            self.get_isolation_level(),
+            // self.get_isolation_level(),
         )
     }
 }

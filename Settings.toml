@@ -24,3 +24,6 @@ load = false
 nurand = true
 use_balance_mix = false
 isolation_mix = "low"
+
+theta = 0.1
+update_rate = 0.1
