@@ -36,6 +36,9 @@ pub struct GlobalStatistics {
     transaction_breakdown: TransactionBreakdown,
     abort_breakdown: AbortBreakdown,
     anomaly: Option<String>,
+    theta: f64,
+    update_rate: f64,
+    serializable_rate: f64,
 }
 
 impl GlobalStatistics {
@@ -53,6 +56,10 @@ impl GlobalStatistics {
             anomaly = None;
         }
 
+        let theta = config.get_float("theta").unwrap();
+        let update_rate = config.get_float("update_rate").unwrap();
+        let serializable_rate = config.get_float("serializable_rate").unwrap();
+
         GlobalStatistics {
             scale_factor,
             data_generation: None,
@@ -66,6 +73,9 @@ impl GlobalStatistics {
             transaction_breakdown,
             abort_breakdown,
             anomaly,
+            theta,
+            update_rate,
+            serializable_rate,
         }
     }
 
@@ -262,6 +272,9 @@ impl GlobalStatistics {
             external_aborts,
             internal_aborts,
             (self.latency as f64 / 1000000.0), // ms
+            self.theta,
+            self.update_rate,
+            self.serializable_rate,
         ))
         .unwrap();
     }
