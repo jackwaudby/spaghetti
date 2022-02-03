@@ -168,18 +168,19 @@ pub fn run(
             }
 
             break;
-        } else if rx.try_recv().is_ok() {
-            error!(
-                "[thread id: {}] received shutdown notification and exited",
-                thread_id
-            );
+        // }
+        // else if rx.try_recv().is_ok() {
+        //     error!(
+        //         "[thread id: {}] received shutdown notification and exited",
+        //         thread_id
+        //     );
 
-            let res = thx.send(1);
-            match res {
-                Ok(_) => {}
-                Err(e) => debug!("{}", e),
-            }
-            break;
+        //     let res = thx.send(1);
+        //     match res {
+        //         Ok(_) => {}
+        //         Err(e) => debug!("{}", e),
+        //     }
+        //     break;
         } else {
             let txn = generator.get_next(); // generate txn
             let start_latency = Instant::now(); // start measuring latency

@@ -112,48 +112,48 @@ fn main() {
                 .unwrap();
         }
 
-        // Shutdown management
-        let mut received = 0;
-        loop {
-            // Each thread should send a message when it terminates
-            // This message can be: (i) exited normally (1) or (ii) deadlocked (2)
-            // It should receive 1 message from each core
+        // // Shutdown management
+        // let mut received = 0;
+        // loop {
+        //     // Each thread should send a message when it terminates
+        //     // This message can be: (i) exited normally (1) or (ii) deadlocked (2)
+        //     // It should receive 1 message from each core
 
-            let res = main_rx.try_recv();
+        //     let res = main_rx.try_recv();
 
-            match res {
-                Ok(value) => {
-                    received += 1;
+        //     match res {
+        //         Ok(value) => {
+        //             received += 1;
 
-                    // message was from a clean shutdown
-                    if value == 1 {
-                        // clean shutdown
-                        debug!("Exited normally");
-                    }
+        //             // message was from a clean shutdown
+        //             if value == 1 {
+        //                 // clean shutdown
+        //                 debug!("Exited normally");
+        //             }
 
-                    // message was from a problemed threa
-                    if value == 2 {
-                        error!("Deadlock detected!");
+        //             // message was from a problemed threa
+        //             if value == 2 {
+        //                 error!("Deadlock detected!");
 
-                        // broadcast shutdown to all
-                        for channel in &shutdown_channels {
-                            let res = channel.send(1); // may already be shutdown
-                            match res {
-                                Ok(_) => {}
-                                Err(e) => debug!("{}", e),
-                            }
-                        }
-                    }
-                }
-                Err(_) => {
-                    // shouldn't get here
-                }
-            }
+        //                 // broadcast shutdown to all
+        //                 for channel in &shutdown_channels {
+        //                     let res = channel.send(1); // may already be shutdown
+        //                     match res {
+        //                         Ok(_) => {}
+        //                         Err(e) => debug!("{}", e),
+        //                     }
+        //                 }
+        //             }
+        //         }
+        //         Err(_) => {
+        //             // shouldn't get here
+        //         }
+        //     }
 
-            if received == cores {
-                break;
-            }
-        }
+        //     if received == cores {
+        //         break;
+        //     }
+        // }
     })
     .unwrap();
 
