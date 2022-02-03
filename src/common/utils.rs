@@ -151,21 +151,21 @@ pub fn run(
         if completed == max_transactions {
             debug!("All transactions sent: {} ", completed);
 
-            let res = thx.send(1);
-            match res {
-                Ok(_) => {}
-                Err(e) => debug!("{}", e),
-            }
+            // let res = thx.send(1);
+            // match res {
+            //     Ok(_) => {}
+            //     Err(e) => debug!("{}", e),
+            // }
 
             break;
         } else if Instant::now() > timeout_end {
             debug!("Timeout reached: {} minute(s)", timeout);
 
-            let res = thx.send(1);
-            match res {
-                Ok(_) => {}
-                Err(e) => debug!("{}", e),
-            }
+            // let res = thx.send(1);
+            // match res {
+            //     Ok(_) => {}
+            //     Err(e) => debug!("{}", e),
+            // }
 
             break;
         // }
@@ -186,21 +186,21 @@ pub fn run(
             let start_latency = Instant::now(); // start measuring latency
             let response = execute(txn.clone(), scheduler, database); // execute txn
 
-            // Check that thread has not run into a problem
-            if let Message::Response { outcome, .. } = response.clone() {
-                if let Outcome::Aborted(err) = outcome {
-                    if let NonFatalError::Emergency = err {
-                        let res = thx.send(2);
-                        match res {
-                            Ok(_) => {}
-                            Err(e) => debug!("{}", e),
-                        }
-                        error!("[thread id: {}] detected deadlock and exited", thread_id);
+            // // Check that thread has not run into a problem
+            // if let Message::Response { outcome, .. } = response.clone() {
+            //     if let Outcome::Aborted(err) = outcome {
+            //         if let NonFatalError::Emergency = err {
+            //             let res = thx.send(2);
+            //             match res {
+            //                 Ok(_) => {}
+            //                 Err(e) => debug!("{}", e),
+            //             }
+            //             error!("[thread id: {}] detected deadlock and exited", thread_id);
 
-                        break;
-                    }
-                }
-            }
+            //             break;
+            //         }
+            //     }
+            // }
 
             stats.record(&response); // record response
             if log_results {
