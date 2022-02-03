@@ -18,6 +18,9 @@ pub struct YcsbGenerator {
     cardinality: usize,
     theta: f64,
     update_rate: f64,
+    alpha: f64,
+    zetan: f64,
+    eta: f64,
 }
 
 impl YcsbGenerator {
@@ -39,6 +42,11 @@ impl YcsbGenerator {
 
         let cardinality = *YCSB_SF_MAP.get(&sf).unwrap();
 
+        let alpha = helper::alpha(theta); // constant
+        let zetan = helper::zeta(cardinality, theta); // constant
+        let zeta_2_thetan = helper::zeta_2_theta(theta); // constant
+        let eta = helper::eta(cardinality, theta, zeta_2_thetan, zetan); // constant
+
         Self {
             thread_id,
             rng,
@@ -46,6 +54,9 @@ impl YcsbGenerator {
             cardinality,
             theta,
             update_rate,
+            alpha,
+            zetan,
+            eta,
         }
     }
 }
@@ -87,7 +98,14 @@ impl YcsbGenerator {
             for _ in 0..10 {
                 let mut offset;
                 loop {
-                    offset = helper::zipf(&mut self.rng, self.cardinality, self.theta);
+                    offset = helper::zipf2(
+                        &mut self.rng,
+                        self.cardinality,
+                        self.theta,
+                        self.alpha,
+                        self.zetan,
+                        self.eta,
+                    );
                     if unique.contains(&offset) {
                         continue;
                     } else {
@@ -110,7 +128,15 @@ impl YcsbGenerator {
             for _ in 0..10 {
                 let mut offset;
                 loop {
-                    offset = helper::zipf(&mut self.rng, self.cardinality, self.theta);
+                    offset = helper::zipf2(
+                        &mut self.rng,
+                        self.cardinality,
+                        self.theta,
+                        self.alpha,
+                        self.zetan,
+                        self.eta,
+                    );
+
                     if unique.contains(&offset) {
                         continue;
                     } else {

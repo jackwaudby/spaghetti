@@ -10,11 +10,12 @@ pub fn generate_random_string(rng: &mut StdRng) -> String {
         .collect();
     s
 }
-fn alpha(theta: f64) -> f64 {
+
+pub fn alpha(theta: f64) -> f64 {
     1.0 / (1.0 - theta)
 }
 
-fn zeta(population: usize, theta: f64) -> f64 {
+pub fn zeta(population: usize, theta: f64) -> f64 {
     let mut sum = 0.0;
     for i in 1..population {
         let x = 1.0 / i as f64;
@@ -23,7 +24,7 @@ fn zeta(population: usize, theta: f64) -> f64 {
     sum
 }
 
-fn zeta_2_theta(theta: f64) -> f64 {
+pub fn zeta_2_theta(theta: f64) -> f64 {
     let mut sum = 0.0;
     for i in 1..2 {
         let x = 1.0 / i as f64;
@@ -32,7 +33,7 @@ fn zeta_2_theta(theta: f64) -> f64 {
     sum
 }
 
-fn eta(population: usize, theta: f64, zeta_2_thetan: f64, zetan: f64) -> f64 {
+pub fn eta(population: usize, theta: f64, zeta_2_thetan: f64, zetan: f64) -> f64 {
     let x = 2.0 / population as f64;
     (1.0 - f64::powf(x, 1.0 - theta)) / (1.0 - zeta_2_thetan / zetan)
 }
@@ -42,6 +43,25 @@ pub fn zipf(rng: &mut StdRng, population: usize, theta: f64) -> usize {
     let zetan = zeta(population, theta);
     let zeta_2_thetan = zeta_2_theta(theta);
     let eta = eta(population, theta, zeta_2_thetan, zetan);
+    let u: f64 = rng.gen();
+    let uz = u * zetan;
+    if uz < 1.0 {
+        1
+    } else if uz < (1.0 + f64::powf(0.5, theta)) {
+        2
+    } else {
+        (1.0 + (population as f64 * f64::powf(eta * u - eta + 1.0, alpha))) as usize
+    }
+}
+
+pub fn zipf2(
+    rng: &mut StdRng,
+    population: usize,
+    theta: f64,
+    alpha: f64,
+    zetan: f64,
+    eta: f64,
+) -> usize {
     let u: f64 = rng.gen();
     let uz = u * zetan;
     if uz < 1.0 {
