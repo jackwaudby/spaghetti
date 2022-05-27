@@ -24,13 +24,13 @@ pub fn balance<'a>(
 ) -> Result<Success, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
-            let offset = params.name as usize;
+            let offset = params.get_name();
 
-            let meta = scheduler.begin(isolation); // register
+            let meta = scheduler.begin(isolation);
             scheduler.read_value(0, 0, offset, &meta, database)?; // get customer id
             scheduler.read_value(1, 1, offset, &meta, database)?; // get checking balance
             scheduler.read_value(2, 1, offset, &meta, database)?; // get savings balance
-            scheduler.commit(&meta, database, TransactionType::ReadOnly)?; // commit
+            scheduler.commit(&meta, database, TransactionType::ReadOnly)?;
 
             Ok(Success::new(meta, None, None, None, None, None))
         }
@@ -50,13 +50,14 @@ pub fn deposit_checking<'a>(
 ) -> Result<Success, NonFatalError> {
     match &*database {
         Database::SmallBank(_) => {
-            let offset = params.name as usize;
+            let offset = params.get_name();
 
             let meta = scheduler.begin(isolation);
             scheduler.read_value(0, 0, offset, &meta, database)?; // get customer id
-            let res = scheduler.read_value(1, 1, offset, &meta, database)?; // get current balance
-            let mut balance = Data::from(f64::try_from(res)? + params.value); // new balance
-            scheduler.write_value(&mut balance, 1, 1, offset, &meta, database)?; // write 1 -- update balance
+            let current_balance = scheduler.read_value(1, 1, offset, &meta, database)?;
+            let mut new_balance =
+                Data::from(f64::try_from(current_balance).unwrap() + params.get_value());
+            scheduler.write_value(&mut new_balance, 1, 1, offset, &meta, database)?; // update checking balance
             scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
 
             Ok(Success::new(meta, None, None, None, None, None))

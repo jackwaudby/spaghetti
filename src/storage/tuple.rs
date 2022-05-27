@@ -63,7 +63,6 @@ impl Internal {
 
     pub fn get_value(&self) -> Result<OpResult, NonFatalError> {
         Ok(OpResult::new(Some(self.current.get())))
-        // Ok(OpResult::new(None))
     }
 
     pub fn set_value(&mut self, value: &mut Data) -> Result<OpResult, NonFatalError> {
@@ -115,8 +114,8 @@ impl OpResult {
     }
 
     pub fn get_value(&mut self) -> Data {
+        //        Data::Uint(0)
         self.value.take().unwrap()
-        Data::Uint(0)
     }
 }
 

@@ -9,7 +9,6 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::fmt;
 
 pub struct YcsbGenerator {
     thread_id: u32,
@@ -45,10 +44,10 @@ impl YcsbGenerator {
 
         let cardinality = *YCSB_SF_MAP.get(&sf).unwrap();
 
-        let alpha = helper::alpha(theta); // constant
-        let zetan = helper::zeta(cardinality, theta); // constant
-        let zeta_2_thetan = helper::zeta_2_theta(theta); // constant
-        let eta = helper::eta(cardinality, theta, zeta_2_thetan, zetan); // constant
+        let alpha = helper::alpha(theta);
+        let zetan = helper::zeta(cardinality, theta);
+        let zeta_2_thetan = helper::zeta_2_theta(theta);
+        let eta = helper::eta(cardinality, theta, zeta_2_thetan, zetan);
 
         let weak_rate = 1.0 - serializable_rate;
         let read_uncommitted_rate = serializable_rate + (weak_rate / 10.0);
@@ -71,23 +70,14 @@ impl YcsbGenerator {
 
 impl Generator for YcsbGenerator {
     fn generate(&mut self) -> Message {
-        // generate parameters
-        let n: f32 = self.rng.gen();
-        let (transaction, parameters) = self.get_params(n);
+        self.inc_generated();
 
-        // generate isolation level
-        let m: f64 = self.rng.gen();
-        let isolation = if m < self.serializable_rate {
-            IsolationLevel::Serializable
-        } else if m < self.read_uncommitted_rate {
-            IsolationLevel::ReadUncommitted
-        } else {
-            IsolationLevel::ReadCommitted
-        };
+        let parameters = self.get_parameters();
+        let isolation = self.get_isolation_level();
 
         Message::Request {
             request_no: (self.thread_id, self.generated),
-            transaction: Transaction::Ycsb(transaction),
+            transaction: Transaction::Ycsb(YcsbTransaction::General),
             parameters: Parameters::Ycsb(parameters),
             isolation,
         }
@@ -99,99 +89,83 @@ impl Generator for YcsbGenerator {
 }
 
 impl YcsbGenerator {
-    fn get_params(&mut self, n: f32) -> (YcsbTransaction, YcsbTransactionProfile) {
+    fn inc_generated(&mut self) {
         self.generated += 1;
-        let mut operations = Vec::new();
+    }
 
+    fn get_isolation_level(&mut self) -> IsolationLevel {
+        let n: f64 = self.rng.gen();
+
+        if n < self.serializable_rate {
+            IsolationLevel::Serializable
+        } else if n < self.read_uncommitted_rate {
+            IsolationLevel::ReadUncommitted
+        } else {
+            IsolationLevel::ReadCommitted
+        }
+    }
+
+    fn is_update_transaction(&mut self) -> bool {
+        let n: f64 = self.rng.gen();
+        n < self.update_rate
+    }
+
+    fn is_update_operation(&mut self) -> bool {
+        let x: f32 = self.rng.gen();
+        x < 0.5
+    }
+
+    fn get_parameters(&mut self) -> YcsbTransactionProfile {
+        let mut operations = Vec::new();
         let mut unique = HashSet::new();
 
-        if n < self.update_rate as f32 {
-            // update txn
-            for _ in 0..10 {
-                let mut offset;
-                loop {
-                    offset = helper::zipf2(
-                        &mut self.rng,
-                        self.cardinality,
-                        self.theta,
-                        self.alpha,
-                        self.zetan,
-                        self.eta,
-                    );
-                    if unique.contains(&offset) {
-                        continue;
-                    } else {
-                        unique.insert(offset);
-                        break;
-                    }
-                }
-
-                let x: f32 = self.rng.gen();
-                if x < 0.5 {
-                    operations.push(Operation::Read(offset - 1));
+        for _ in 0..10 {
+            let mut offset;
+            loop {
+                offset = helper::zipf2(
+                    &mut self.rng,
+                    self.cardinality,
+                    self.theta,
+                    self.alpha,
+                    self.zetan,
+                    self.eta,
+                );
+                if unique.contains(&offset) {
+                    continue;
                 } else {
-                    let value = helper::generate_random_string(&mut self.rng);
-
-                    operations.push(Operation::Update(offset - 1, value));
+                    unique.insert(offset);
+                    break;
                 }
             }
-        } else {
-            // read txn
-            for _ in 0..10 {
-                let mut offset;
-                loop {
-                    offset = helper::zipf2(
-                        &mut self.rng,
-                        self.cardinality,
-                        self.theta,
-                        self.alpha,
-                        self.zetan,
-                        self.eta,
-                    );
 
-                    if unique.contains(&offset) {
-                        continue;
-                    } else {
-                        unique.insert(offset);
-                        break;
-                    }
-                }
-
+            if self.is_update_transaction() && self.is_update_operation() {
+                let value = helper::generate_random_string(&mut self.rng);
+                operations.push(Operation::Update(offset - 1, value));
+            } else {
                 operations.push(Operation::Read(offset - 1));
             }
         }
 
-        (
-            YcsbTransaction::General,
-            YcsbTransactionProfile::General(Operations(operations)),
-        )
+        YcsbTransactionProfile::General(Operations(operations))
     }
 }
 
-/// Represents parameters for each transaction.
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum YcsbTransactionProfile {
     General(Operations),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct Operations(pub Vec<Operation>);
+pub struct Operations(Vec<Operation>);
+
+impl Operations {
+    pub fn get_operations(self) -> Vec<Operation> {
+        self.0
+    }
+}
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Operation {
-    // offset
     Read(usize),
-
-    // offset, value
     Update(usize, String),
-}
-
-impl fmt::Display for YcsbTransactionProfile {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match &*self {
-            YcsbTransactionProfile::General(_) => {
-                write!(f, "TODO")
-            }
-        }
-    }
 }

@@ -6,10 +6,9 @@ use spaghetti::storage::Database;
 use clap::{arg, App};
 use crossbeam_utils::thread;
 use std::sync::mpsc;
-use std::sync::mpsc::{Receiver, Sender, SyncSender};
+use std::sync::mpsc::{Receiver, Sender};
 use std::time::Instant;
-use tracing::Level;
-use tracing::{debug, error, info};
+use tracing::{info, Level};
 use tracing_subscriber::fmt;
 
 fn main() {
@@ -95,9 +94,6 @@ fn main() {
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
-    // shutdown channel: thread(s) -> main
-    let (thread_tx, main_rx): (SyncSender<i32>, Receiver<i32>) = mpsc::sync_channel(32);
-
     let scheduler: Scheduler = utils::init_scheduler(&config);
 
     info!("Starting execution");
@@ -115,63 +111,19 @@ fn main() {
 
         for (thread_id, core_id) in core_ids[..cores].iter().enumerate() {
             let txc = tx.clone();
-            let thread_txc = thread_tx.clone();
 
             // Coordinator to thread shutdown
-            let (tx, rx): (Sender<i32>, Receiver<i32>) = mpsc::channel();
+            let (tx, _): (Sender<i32>, Receiver<i32>) = mpsc::channel();
             shutdown_channels.push(tx);
 
             s.builder()
                 .name(thread_id.to_string())
                 .spawn(move |_| {
                     core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                    utils::run(thread_id, config, scheduler, database, txc, rx, thread_txc);
+                    utils::run(thread_id, config, scheduler, database, txc);
                 })
                 .unwrap();
         }
-
-        // // Shutdown management
-        // let mut received = 0;
-        // loop {
-        //     // Each thread should send a message when it terminates
-        //     // This message can be: (i) exited normally (1) or (ii) deadlocked (2)
-        //     // It should receive 1 message from each core
-
-        //     let res = main_rx.try_recv();
-
-        //     match res {
-        //         Ok(value) => {
-        //             received += 1;
-
-        //             // message was from a clean shutdown
-        //             if value == 1 {
-        //                 // clean shutdown
-        //                 debug!("Exited normally");
-        //             }
-
-        //             // message was from a problemed threa
-        //             if value == 2 {
-        //                 error!("Deadlock detected!");
-
-        //                 // broadcast shutdown to all
-        //                 for channel in &shutdown_channels {
-        //                     let res = channel.send(1); // may already be shutdown
-        //                     match res {
-        //                         Ok(_) => {}
-        //                         Err(e) => debug!("{}", e),
-        //                     }
-        //                 }
-        //             }
-        //         }
-        //         Err(_) => {
-        //             // shouldn't get here
-        //         }
-        //     }
-
-        //     if received == cores {
-        //         break;
-        //     }
-        // }
     })
     .unwrap();
 

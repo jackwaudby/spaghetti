@@ -266,19 +266,22 @@ impl SmallBankGenerator {
         }
     }
 
-    pub fn get_account(&mut self) -> u64 {
-        if self.accounts <= 100 {
-            self.rng.gen_range(0..self.accounts as u64)
-        } else {
+    pub fn get_account(&mut self) -> usize {
+        let mut min_account = 0;
+        let mut max_account = self.accounts;
+
+        if self.accounts > 100 {
             let n: f32 = self.rng.gen();
             match n {
-                x if x < 0.25 => self.rng.gen_range(0..100 as u64),
-                _ => self.rng.gen_range(100..self.accounts as u64),
+                x if x < 0.25 => max_account = 100,
+                _ => min_account = 100,
             }
         }
+
+        self.rng.gen_range(min_account..max_account) as usize
     }
 
-    pub fn get_accounts(&mut self) -> (u64, u64) {
+    pub fn get_accounts(&mut self) -> (usize, usize) {
         let acc1 = self.get_account();
         let mut acc2 = self.get_account();
 
@@ -302,37 +305,53 @@ pub enum SmallBankTransactionProfile {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Balance {
-    pub name: u64,
+    name: usize,
+}
+
+impl Balance {
+    pub fn get_name(&self) -> usize {
+        self.name
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct DepositChecking {
-    pub name: u64,
+    pub name: usize,
     pub value: f64,
+}
+
+impl DepositChecking {
+    pub fn get_name(&self) -> usize {
+        self.name
+    }
+
+    pub fn get_value(&self) -> f64 {
+        self.value
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct TransactSaving {
-    pub name: u64,
+    pub name: usize,
     pub value: f64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Amalgamate {
-    pub name1: u64,
-    pub name2: u64,
+    pub name1: usize,
+    pub name2: usize,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct WriteCheck {
-    pub name: u64,
+    pub name: usize,
     pub value: f64,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct SendPayment {
-    pub name1: u64,
-    pub name2: u64,
+    pub name1: usize,
+    pub name2: usize,
     pub value: f64,
 }
 

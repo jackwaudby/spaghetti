@@ -1,4 +1,3 @@
-use crate::common::error::NonFatalError;
 use crate::common::message::{Message, Outcome, Parameters, Transaction};
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
@@ -18,7 +17,7 @@ use std::path::Path;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tracing::Level;
-use tracing::{debug, error, info};
+use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub fn init_config(file: &str) -> Config {
@@ -87,8 +86,6 @@ pub fn run(
     scheduler: &Scheduler,
     database: &Database,
     tx: mpsc::Sender<LocalStatistics>,
-    rx: mpsc::Receiver<i32>,
-    thx: mpsc::SyncSender<i32>,
 ) {
     let timeout = config.get_int("timeout").unwrap() as u64;
     let p = config.get_str("protocol").unwrap();

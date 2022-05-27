@@ -218,6 +218,7 @@ impl SerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
+        debug!("read");
         let this = unsafe { &*self.get_transaction() };
 
         if this.is_cascading_abort() {
@@ -291,6 +292,7 @@ impl SerializationGraph {
         meta: &TransactionId,
         database: &Database,
     ) -> Result<(), NonFatalError> {
+        debug!("write");
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
@@ -422,6 +424,7 @@ impl SerializationGraph {
 
     /// Commit operation.
     pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
+        debug!("commit");
         let this = unsafe { &*self.get_transaction() };
 
         loop {
@@ -457,6 +460,7 @@ impl SerializationGraph {
 
     /// Abort operation.
     pub fn abort(&self, database: &Database) -> NonFatalError {
+        debug!("abort");
         let this = unsafe { &*self.get_transaction() };
         this.set_aborted();
         self.cleanup();

@@ -67,6 +67,16 @@ pub struct Success {
 }
 
 impl Success {
+    pub fn default(id: TransactionId) -> Self {
+        Self {
+            id,
+            created: None,
+            updated: None,
+            deleted: None,
+            read: None,
+        }
+    }
+
     pub fn new(
         id: TransactionId,
         created: Option<Vec<(usize, usize)>>,
