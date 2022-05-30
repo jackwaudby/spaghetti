@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::message::{Message, Outcome, Transaction};
+use crate::scheduler::attendez::error::AttendezError;
 use crate::scheduler::error::{MixedSerializationGraphError, SerializationGraphError};
 use crate::scheduler::mtpl::error::MixedTwoPhaseLockingError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
@@ -190,6 +191,9 @@ impl GlobalStatistics {
             }
             ProtocolAbortBreakdown::WaitHit(ref reasons) => {
                 reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
+            }
+            ProtocolAbortBreakdown::Attendez(ref reasons) => {
+                reasons.predecessor_aborted + reasons.exceeded_watermark + reasons.row_dirty
             }
             ProtocolAbortBreakdown::OptimisticWaitHit(ref reasons) => {
                 reasons.hit
@@ -479,6 +483,15 @@ impl LocalStatistics {
                         _ => {}
                     },
 
+                    Attendez(ref mut metric) => match reason {
+                        NonFatalError::AttendezError(owhe) => match owhe {
+                            AttendezError::ExceededWatermark => metric.inc_exceeded_watermark(),
+                            AttendezError::PredecessorAborted => metric.inc_predecessor_aborted(),
+                        },
+                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                        _ => {}
+                    },
+
                     OptimisticWaitHit(ref mut metric) => match reason {
                         NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
                             OptimisedWaitHitError::Hit => metric.inc_hit(),
@@ -687,7 +700,7 @@ impl AbortBreakdown {
             }
             "wh" => ProtocolAbortBreakdown::WaitHit(HitListReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
-            "wait" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
+            "attendez" => ProtocolAbortBreakdown::Attendez(AttendezReasons::new()),
 
             "owhtt" => {
                 ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(HitListReasons::new())
@@ -761,6 +774,13 @@ impl AbortBreakdown {
             }
             WaitHit(ref mut reasons) => {
                 if let WaitHit(other_reasons) = other.protocol_specific {
+                    reasons.merge(other_reasons);
+                } else {
+                    panic!("protocol abort breakdowns do not match");
+                }
+            }
+            Attendez(ref mut reasons) => {
+                if let Attendez(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -930,6 +950,7 @@ enum ProtocolAbortBreakdown {
     EarlyMixedSerializationGraph(SerializationGraphReasons),
     AllMixedSerializationGraph(SerializationGraphReasons),
     WaitHit(HitListReasons),
+    Attendez(AttendezReasons),
     OptimisticWaitHit(HitListReasons),
     OptimisticWaitHitTransactionTypes(HitListReasons),
     TwoPhaseLocking(TwoPhaseLockingReasons),
@@ -953,6 +974,13 @@ struct HitListReasons {
     pur_active: u32,
     pur_aborted: u32,
     waited_too_long: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct AttendezReasons {
+    row_dirty: u32,
+    predecessor_aborted: u32,
+    exceeded_watermark: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -1060,5 +1088,33 @@ impl TwoPhaseLockingReasons {
     fn merge(&mut self, other: TwoPhaseLockingReasons) {
         self.read_lock_denied += other.read_lock_denied;
         self.write_lock_denied += other.write_lock_denied;
+    }
+}
+
+impl AttendezReasons {
+    fn new() -> Self {
+        AttendezReasons {
+            row_dirty: 0,
+            predecessor_aborted: 0,
+            exceeded_watermark: 0,
+        }
+    }
+
+    fn inc_row_dirty(&mut self) {
+        self.row_dirty += 1;
+    }
+
+    fn inc_predecessor_aborted(&mut self) {
+        self.predecessor_aborted += 1;
+    }
+
+    fn inc_exceeded_watermark(&mut self) {
+        self.exceeded_watermark += 1;
+    }
+
+    fn merge(&mut self, other: AttendezReasons) {
+        self.row_dirty += other.row_dirty;
+        self.predecessor_aborted += other.predecessor_aborted;
+        self.exceeded_watermark += other.exceeded_watermark;
     }
 }

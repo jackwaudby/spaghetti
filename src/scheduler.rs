@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::scheduler::attendez::Attendez;
 use crate::scheduler::msgt::MixedSerializationGraph;
 use crate::scheduler::msgtall::AllMixedSerializationGraph;
 use crate::scheduler::msgtearly::EarlyMixedSerializationGraph;
@@ -10,7 +11,6 @@ use crate::scheduler::owh::OptimisedWaitHit;
 use crate::scheduler::owhtt::OptimisedWaitHitTransactionTypes;
 use crate::scheduler::sgt::SerializationGraph;
 use crate::scheduler::tpl::TwoPhaseLocking;
-use crate::scheduler::wait::Wait;
 use crate::scheduler::wh::WaitHit;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
@@ -31,6 +31,8 @@ pub mod owhtt;
 
 pub mod sgt;
 
+pub mod attendez;
+
 // Testing only
 pub mod msgt;
 
@@ -47,8 +49,6 @@ pub mod tpl;
 pub mod mtpl;
 
 pub mod nocc;
-
-pub mod wait;
 
 #[derive(Debug)]
 pub enum TransactionType {
@@ -70,7 +70,7 @@ pub enum Scheduler<'a> {
     RelMixedSerializationGraph(RelMixedSerializationGraph),
     // Edge detection + relevant cycle check + early commit
     AllMixedSerializationGraph(AllMixedSerializationGraph),
-    Wait(Wait<'a>),
+    Attendez(Attendez<'a>),
     WaitHit(WaitHit),
     OptimisedWaitHit(OptimisedWaitHit<'a>),
     OptimisedWaitHitTransactionTypes(OptimisedWaitHitTransactionTypes<'a>),
@@ -108,7 +108,7 @@ impl<'a> Scheduler<'a> {
             }
             "wh" => Scheduler::WaitHit(WaitHit::new(cores)),
             "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
-            "wait" => Scheduler::Wait(Wait::new(cores)),
+            "attendez" => Scheduler::Attendez(Attendez::new(cores)),
 
             "owhtt" => Scheduler::OptimisedWaitHitTransactionTypes(
                 OptimisedWaitHitTransactionTypes::new(cores),
@@ -131,7 +131,7 @@ impl<'a> Scheduler<'a> {
             RelMixedSerializationGraph(sg) => sg.begin(isolation_level),
             EarlyMixedSerializationGraph(sg) => sg.begin(isolation_level),
             AllMixedSerializationGraph(sg) => sg.begin(isolation_level),
-            Wait(w) => w.begin(),
+            Attendez(w) => w.begin(),
             WaitHit(wh) => wh.begin(),
             OptimisedWaitHit(owh) => owh.begin(),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.begin(),
@@ -167,7 +167,7 @@ impl<'a> Scheduler<'a> {
             AllMixedSerializationGraph(sg) => {
                 sg.read_value(table_id, column_id, offset, meta, database)
             }
-            Wait(wh) => wh.read_value(table_id, column_id, offset, meta, database),
+            Attendez(wh) => wh.read_value(table_id, column_id, offset, meta, database),
 
             WaitHit(wh) => wh.read_value(table_id, column_id, offset, meta, database),
             OptimisedWaitHit(owh) => owh.read_value(table_id, column_id, offset, meta, database),
@@ -214,7 +214,7 @@ impl<'a> Scheduler<'a> {
                 sg.write_value(value, table_id, column_id, offset, meta, database)
             }
             WaitHit(wh) => wh.write_value(value, table_id, column_id, offset, meta, database),
-            Wait(wh) => wh.write_value(value, table_id, column_id, offset, meta, database),
+            Attendez(wh) => wh.write_value(value, table_id, column_id, offset, meta, database),
 
             OptimisedWaitHit(owh) => {
                 owh.write_value(value, table_id, column_id, offset, meta, database)
@@ -249,7 +249,7 @@ impl<'a> Scheduler<'a> {
             EarlyMixedSerializationGraph(sg) => sg.commit(database),
             AllMixedSerializationGraph(sg) => sg.commit(database),
             WaitHit(wh) => wh.commit(meta, database),
-            Wait(wh) => wh.commit(database),
+            Attendez(wh) => wh.commit(database),
 
             OptimisedWaitHit(owh) => owh.commit(database),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.commit(database, transaction_type),
@@ -269,7 +269,7 @@ impl<'a> Scheduler<'a> {
             EarlyMixedSerializationGraph(sg) => sg.abort(database),
             AllMixedSerializationGraph(sg) => sg.abort(database),
             WaitHit(wh) => wh.abort(meta, database),
-            Wait(wh) => wh.abort(database),
+            Attendez(wh) => wh.abort(database),
             OptimisedWaitHit(owh) => owh.abort(database),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database),
             NoConcurrencyControl(nocc) => nocc.abort(database),
