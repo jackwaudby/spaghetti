@@ -14,6 +14,7 @@ use config::Config;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 use tracing::Level;
@@ -476,6 +477,16 @@ pub fn log_result(fh: &mut Option<std::fs::File>, response: &Message) {
             //         writeln!(fh, "{{\"id\":{},\"aborted\":{}}}", request_no, &value).unwrap();
             //     }
             // }
+        }
+    }
+}
+
+pub fn spin(prv: u64, lsn: &AtomicU64) {
+    let mut i = 0;
+    while lsn.load(Ordering::Relaxed) != prv {
+        i += 1;
+        if i >= 10000 {
+            std::thread::yield_now();
         }
     }
 }

@@ -192,10 +192,18 @@ impl GlobalStatistics {
                 reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
             }
             ProtocolAbortBreakdown::OptimisticWaitHit(ref reasons) => {
-                reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
+                reasons.hit
+                    + reasons.pur_active
+                    + reasons.row_dirty
+                    + reasons.pur_aborted
+                    + reasons.waited_too_long
             }
             ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(ref reasons) => {
-                reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
+                reasons.hit
+                    + reasons.pur_active
+                    + reasons.row_dirty
+                    + reasons.pur_aborted
+                    + reasons.waited_too_long
             }
             ProtocolAbortBreakdown::TwoPhaseLocking(ref reasons) => {
                 reasons.read_lock_denied + reasons.write_lock_denied
@@ -476,6 +484,7 @@ impl LocalStatistics {
                             OptimisedWaitHitError::Hit => metric.inc_hit(),
                             OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
                             OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
+                            OptimisedWaitHitError::WaitedTooLong => metric.inc_waited_too_long(),
                         },
                         NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
                         _ => {}
@@ -486,6 +495,7 @@ impl LocalStatistics {
                             OptimisedWaitHitError::Hit => metric.inc_hit(),
                             OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
                             OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
+                            OptimisedWaitHitError::WaitedTooLong => metric.inc_waited_too_long(),
                         },
                         NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
                         _ => {}
@@ -677,6 +687,8 @@ impl AbortBreakdown {
             }
             "wh" => ProtocolAbortBreakdown::WaitHit(HitListReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
+            "wait" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
+
             "owhtt" => {
                 ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(HitListReasons::new())
             }
@@ -940,6 +952,7 @@ struct HitListReasons {
     hit: u32,
     pur_active: u32,
     pur_aborted: u32,
+    waited_too_long: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -995,6 +1008,7 @@ impl HitListReasons {
             hit: 0,
             pur_aborted: 0,
             pur_active: 0,
+            waited_too_long: 0,
         }
     }
 
@@ -1014,11 +1028,16 @@ impl HitListReasons {
         self.pur_aborted += 1;
     }
 
+    fn inc_waited_too_long(&mut self) {
+        self.waited_too_long += 1;
+    }
+
     fn merge(&mut self, other: HitListReasons) {
         self.row_dirty += other.row_dirty;
         self.hit += other.hit;
         self.pur_aborted += other.pur_aborted;
         self.pur_active += other.pur_active;
+        self.waited_too_long += other.waited_too_long;
     }
 }
 

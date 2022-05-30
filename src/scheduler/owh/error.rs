@@ -12,6 +12,8 @@ pub enum OptimisedWaitHitError {
 
     /// Transaction aborted in wait-phase due to predecessor been active.
     PredecessorActive,
+
+    WaitedTooLong,
 }
 
 impl Error for OptimisedWaitHitError {}
@@ -27,6 +29,7 @@ impl fmt::Display for OptimisedWaitHitError {
             PredecessorActive => {
                 write!(f, "aborted due to predecessor being active",)
             }
+            WaitedTooLong => write!(f, "waited too long"),
         }
     }
 }
