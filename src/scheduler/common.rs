@@ -22,13 +22,6 @@ pub enum Edge {
 }
 
 #[derive(Debug)]
-pub enum Incoming {
-    None,
-    SomeRelevant,
-    SomeNotRelevant,
-}
-
-#[derive(Debug)]
 pub struct Node {
     thread_id: usize,
     thread_ctr: usize,
@@ -117,46 +110,6 @@ impl Node {
                     !res
                 }
                 None => panic!("incoming edge set removed"),
-            },
-            None => panic!("check unsafe"),
-        }
-    }
-
-    pub fn msgt_has_incoming(&self) -> Incoming {
-        let incoming = unsafe { self.incoming.get().as_ref() };
-
-        match incoming {
-            Some(edge_set) => match edge_set {
-                Some(edges) => {
-                    let guard = edges.lock();
-
-                    if guard.is_empty() {
-                        drop(guard);
-                        Incoming::None
-                    } else {
-                        match self.isolation_level.unwrap() {
-                            IsolationLevel::ReadUncommitted => {
-                                if guard.iter().any(|x| variant_eq(x, &Edge::WriteWrite(0))) {
-                                    Incoming::SomeRelevant
-                                } else {
-                                    Incoming::SomeNotRelevant
-                                }
-                            }
-                            IsolationLevel::ReadCommitted => {
-                                if guard.iter().any(|x| {
-                                    variant_eq(x, &Edge::WriteWrite(0))
-                                        || variant_eq(x, &Edge::WriteRead(0))
-                                }) {
-                                    Incoming::SomeRelevant
-                                } else {
-                                    Incoming::SomeNotRelevant
-                                }
-                            }
-                            IsolationLevel::Serializable => Incoming::SomeRelevant,
-                        }
-                    }
-                }
-                None => panic!("incoming edge set already cleaned"),
             },
             None => panic!("check unsafe"),
         }
@@ -352,10 +305,8 @@ impl fmt::Display for Node {
         write!(
             f,
             "[th-id: {}, t-id: {}]",
-            // "[th-id: {}, t-id: {}, iso: {}]",
             self.get_thread_id(),
             format!("{:x}", self.get_id()),
-            // self.get_isolation_level(),
         )
     }
 }
