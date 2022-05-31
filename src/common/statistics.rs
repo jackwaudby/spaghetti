@@ -260,7 +260,7 @@ impl GlobalStatistics {
             "external_aborts": external_aborts,
             "throughput": format!("{:.3}", throughput),
             "abort_rate": format!("{:.3}", abort_rate),
-            "av_latency(ms)":format!("{:.3}", mean),
+            "av_latency(ms)":format!("{:.5}", mean),
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
 
