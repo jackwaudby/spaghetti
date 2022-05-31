@@ -27,6 +27,9 @@ pub struct Attendez<'a> {
     transaction: ThreadLocal<RefCell<Option<&'a Transaction<'a>>>>,
     transaction_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
     transaction_cnt: ThreadLocal<RefCell<u64>>,
+    a: u64,
+    b: u64,
+    watermark: u64,
 }
 
 impl<'a> Attendez<'a> {
@@ -34,13 +37,17 @@ impl<'a> Attendez<'a> {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
     }
 
-    pub fn new(size: usize) -> Self {
-        info!("Initialise wait scheduler with {} thread(s)", size);
+    pub fn new(size: usize, watermark: u64, a: u64, b: u64) -> Self {
+        info!("Initialise attendez scheduler with {} thread(s)", size);
+        info!("Watermark = {}, a = {}, b = {}", watermark, a, b);
 
         Self {
             transaction: ThreadLocal::new(),
             transaction_info: ThreadLocal::new(),
             transaction_cnt: ThreadLocal::new(),
+            a,
+            b,
+            watermark,
         }
     }
 
@@ -285,17 +292,14 @@ impl<'a> Attendez<'a> {
     }
 
     pub fn commit<'g>(&self, database: &Database) -> Result<(), NonFatalError> {
-        let watermark = 100;
         let mut delta = 10;
-        let a = 1;
-        let b = 2;
 
         let transaction = self.get_transaction();
         let predecessors = transaction.get_predecessors();
         let num_predecessors = predecessors.len();
 
         loop {
-            if delta >= watermark {
+            if delta >= self.watermark {
                 self.abort(database);
                 return Err(AttendezError::ExceededWatermark.into());
             }
@@ -317,10 +321,10 @@ impl<'a> Attendez<'a> {
                     return Err(AttendezError::ExceededWatermark.into());
                 }
                 WaitOutcome::Change => {
-                    delta = delta / b;
+                    delta = delta / self.b;
                 }
                 WaitOutcome::NoChange => {
-                    delta += a;
+                    delta += self.a;
                 }
             }
         }

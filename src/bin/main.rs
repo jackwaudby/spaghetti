@@ -32,6 +32,9 @@ fn main() {
             arg!(-i --serializablerate <SERIALIZABLERATE> "Serializable rate (YCSB only)")
                 .required(false),
         )
+        .arg(arg!(-m --watermark <WATERMARK> "Watermark (Attendez only)").required(false))
+        .arg(arg!(-a --increase <INCREASE> "Additive increase (Attendez only)").required(false))
+        .arg(arg!(-b --decrease <DECREASE> "Multiplicative decrease (Attendez)").required(false))
         .get_matches();
 
     if let Some(w) = matches.value_of("workload") {
@@ -68,6 +71,18 @@ fn main() {
 
     if let Some(sr) = matches.value_of("serializablerate") {
         config.set("serializable_rate", sr).unwrap();
+    }
+
+    if let Some(wm) = matches.value_of("watermark") {
+        config.set("watermark", wm).unwrap();
+    }
+
+    if let Some(a) = matches.value_of("increase") {
+        config.set("increase", a).unwrap();
+    }
+
+    if let Some(b) = matches.value_of("decrease") {
+        config.set("decrease", b).unwrap();
     }
 
     // logging

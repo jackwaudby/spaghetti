@@ -108,7 +108,13 @@ impl<'a> Scheduler<'a> {
             }
             "wh" => Scheduler::WaitHit(WaitHit::new(cores)),
             "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
-            "attendez" => Scheduler::Attendez(Attendez::new(cores)),
+            "attendez" => {
+                let watermark = config.get_int("watermark")? as u64;
+                let a = config.get_int("increase")? as u64;
+                let b = config.get_int("decrease")? as u64;
+
+                Scheduler::Attendez(Attendez::new(cores, watermark, a, b))
+            }
 
             "owhtt" => Scheduler::OptimisedWaitHitTransactionTypes(
                 OptimisedWaitHitTransactionTypes::new(cores),
