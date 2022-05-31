@@ -172,9 +172,6 @@ impl GlobalStatistics {
             ProtocolAbortBreakdown::WaitHit(ref reasons) => reasons.aggregate(),
             ProtocolAbortBreakdown::Attendez(ref reasons) => reasons.aggregate(),
             ProtocolAbortBreakdown::OptimisticWaitHit(ref reasons) => reasons.aggregate(),
-            ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(ref reasons) => {
-                reasons.aggregate()
-            }
             ProtocolAbortBreakdown::NoConcurrencyControl => 0,
         }; // aborts due to system implementation
 
@@ -382,16 +379,6 @@ impl LocalStatistics {
                     },
 
                     OptimisticWaitHit(ref mut metric) => match reason {
-                        NonFatalError::WaitHitError(err) => match err {
-                            WaitHitError::Hit => metric.inc_hit(),
-                            WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-                            WaitHitError::PredecessorActive => metric.inc_pur_active(),
-                        },
-                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-                        _ => {}
-                    },
-
-                    OptimisticWaitHitTransactionTypes(ref mut metric) => match reason {
                         NonFatalError::WaitHitError(err) => match err {
                             WaitHitError::Hit => metric.inc_hit(),
                             WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),

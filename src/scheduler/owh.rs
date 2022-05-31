@@ -31,6 +31,7 @@ impl<'a> OptimisedWaitHit<'a> {
     /// Create a new optimised wait hit scheduler.
     pub fn new(size: usize, type_aware: bool) -> Self {
         info!("Initialise optimised wait hit with {} thread(s)", size);
+        info!("Transaction type aware: {}", type_aware);
 
         Self {
             transaction: ThreadLocal::new(),

@@ -3,7 +3,6 @@ use crate::scheduler::attendez::Attendez;
 use crate::scheduler::msgt::MixedSerializationGraph;
 use crate::scheduler::nocc::NoConcurrencyControl;
 use crate::scheduler::owh::OptimisedWaitHit;
-use crate::scheduler::owhtt::OptimisedWaitHitTransactionTypes;
 use crate::scheduler::sgt::SerializationGraph;
 use crate::scheduler::wh::WaitHit;
 use crate::storage::access::TransactionId;
@@ -18,8 +17,6 @@ pub mod common;
 pub mod wh;
 
 pub mod owh;
-
-pub mod owhtt;
 
 pub mod sgt;
 
@@ -43,7 +40,6 @@ pub enum Scheduler<'a> {
     Attendez(Attendez<'a>),
     WaitHit(WaitHit),
     OptimisedWaitHit(OptimisedWaitHit<'a>),
-    OptimisedWaitHitTransactionTypes(OptimisedWaitHitTransactionTypes<'a>),
     NoConcurrencyControl(NoConcurrencyControl),
 }
 
@@ -73,10 +69,6 @@ impl<'a> Scheduler<'a> {
 
                 Scheduler::Attendez(Attendez::new(cores, watermark, a, b))
             }
-
-            "owhtt" => Scheduler::OptimisedWaitHitTransactionTypes(
-                OptimisedWaitHitTransactionTypes::new(cores),
-            ),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
             _ => panic!("unknown concurrency control protocol: {}", p),
         };
@@ -92,7 +84,6 @@ impl<'a> Scheduler<'a> {
             Attendez(w) => w.begin(),
             WaitHit(wh) => wh.begin(),
             OptimisedWaitHit(owh) => owh.begin(),
-            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.begin(),
             NoConcurrencyControl(nocc) => nocc.begin(),
         }
     }
@@ -115,9 +106,6 @@ impl<'a> Scheduler<'a> {
 
             WaitHit(wh) => wh.read_value(table_id, column_id, offset, meta, database),
             OptimisedWaitHit(owh) => owh.read_value(table_id, column_id, offset, meta, database),
-            OptimisedWaitHitTransactionTypes(owhtt) => {
-                owhtt.read_value(table_id, column_id, offset, meta, database)
-            }
             NoConcurrencyControl(nocc) => {
                 nocc.read_value(table_id, column_id, offset, meta, database)
             }
@@ -146,9 +134,6 @@ impl<'a> Scheduler<'a> {
             OptimisedWaitHit(owh) => {
                 owh.write_value(value, table_id, column_id, offset, meta, database)
             }
-            OptimisedWaitHitTransactionTypes(owhtt) => {
-                owhtt.write_value(value, table_id, column_id, offset, meta, database)
-            }
             NoConcurrencyControl(nocc) => {
                 nocc.write_value(value, table_id, column_id, offset, meta, database)
             }
@@ -168,7 +153,6 @@ impl<'a> Scheduler<'a> {
             WaitHit(wh) => wh.commit(meta, database),
             Attendez(wh) => wh.commit(database),
             OptimisedWaitHit(owh) => owh.commit(database, transaction_type),
-            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.commit(database, transaction_type),
             NoConcurrencyControl(nocc) => nocc.commit(database),
         }
     }
@@ -181,7 +165,6 @@ impl<'a> Scheduler<'a> {
             WaitHit(wh) => wh.abort(meta, database),
             Attendez(wh) => wh.abort(database),
             OptimisedWaitHit(owh) => owh.abort(database),
-            OptimisedWaitHitTransactionTypes(owhtt) => owhtt.abort(database),
             NoConcurrencyControl(nocc) => nocc.abort(database),
         }
     }

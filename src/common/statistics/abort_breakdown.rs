@@ -23,9 +23,6 @@ impl AbortBreakdown {
             "attendez" => ProtocolAbortBreakdown::Attendez(AttendezReasons::new()),
             "wh" => ProtocolAbortBreakdown::WaitHit(WaitHitReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(WaitHitReasons::new()),
-            "owhtt" => {
-                ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(WaitHitReasons::new())
-            }
             "nocc" => ProtocolAbortBreakdown::NoConcurrencyControl,
             _ => unimplemented!(),
         };
@@ -91,14 +88,6 @@ impl AbortBreakdown {
             }
             OptimisticWaitHit(ref mut reasons) => {
                 if let OptimisticWaitHit(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-
-            OptimisticWaitHitTransactionTypes(ref mut reasons) => {
-                if let OptimisticWaitHitTransactionTypes(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");

@@ -39,6 +39,7 @@ fn main() {
                 .required(false),
         )
         .arg(arg!(-r --relevant <RELEVANT> "Reduced relevant DFS (MSGT only)").required(false))
+        .arg(arg!(-o --types <TYPES> "Transaction types optimization (OWH only)").required(false))
         .get_matches();
 
     if let Some(w) = matches.value_of("workload") {
@@ -94,6 +95,11 @@ fn main() {
     // MSGT
     if let Some(dfs) = matches.value_of("relevant") {
         config.set("relevant_dfs", dfs).unwrap();
+    }
+
+    // OWH
+    if let Some(ta) = matches.value_of("types") {
+        config.set("type_aware", ta).unwrap();
     }
 
     // logging

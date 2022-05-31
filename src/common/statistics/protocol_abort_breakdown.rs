@@ -9,7 +9,6 @@ pub enum ProtocolAbortBreakdown {
     WaitHit(WaitHitReasons),
     Attendez(AttendezReasons),
     OptimisticWaitHit(WaitHitReasons),
-    OptimisticWaitHitTransactionTypes(WaitHitReasons),
     NoConcurrencyControl,
 }
 
