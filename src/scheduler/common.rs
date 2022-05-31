@@ -285,10 +285,6 @@ impl Node {
     }
 }
 
-fn variant_eq(a: &Edge, b: &Edge) -> bool {
-    std::mem::discriminant(a) == std::mem::discriminant(b)
-}
-
 impl std::fmt::Debug for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         use Edge::*;
