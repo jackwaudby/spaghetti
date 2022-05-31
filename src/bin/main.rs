@@ -34,7 +34,11 @@ fn main() {
         )
         .arg(arg!(-m --watermark <WATERMARK> "Watermark (Attendez only)").required(false))
         .arg(arg!(-a --increase <INCREASE> "Additive increase (Attendez only)").required(false))
-        .arg(arg!(-b --decrease <DECREASE> "Multiplicative decrease (Attendez)").required(false))
+        .arg(
+            arg!(-b --decrease <DECREASE> "Multiplicative decrease (Attendez only)")
+                .required(false),
+        )
+        .arg(arg!(-r --relevant <RELEVANT> "Reduced relevant DFS (MSGT only)").required(false))
         .get_matches();
 
     if let Some(w) = matches.value_of("workload") {
@@ -61,6 +65,7 @@ fn main() {
         config.set("log", l).unwrap();
     }
 
+    // YCSB
     if let Some(theta) = matches.value_of("theta") {
         config.set("theta", theta).unwrap();
     }
@@ -73,6 +78,7 @@ fn main() {
         config.set("serializable_rate", sr).unwrap();
     }
 
+    // Attendez
     if let Some(wm) = matches.value_of("watermark") {
         config.set("watermark", wm).unwrap();
     }
@@ -83,6 +89,11 @@ fn main() {
 
     if let Some(b) = matches.value_of("decrease") {
         config.set("decrease", b).unwrap();
+    }
+
+    // MSGT
+    if let Some(dfs) = matches.value_of("relevant") {
+        config.set("relevant_dfs", dfs).unwrap();
     }
 
     // logging

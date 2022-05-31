@@ -64,7 +64,7 @@ impl<'a> Scheduler<'a> {
         let protocol = match p.as_str() {
             "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
             "msgt" => {
-                let relevant_cycle_check = config.get_bool("relevant_cycle_check")?;
+                let relevant_cycle_check = config.get_bool("relevant_dfs")?;
                 Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(
                     cores,
                     relevant_cycle_check,

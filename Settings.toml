@@ -8,7 +8,7 @@ set_seed = false
 
 protocol="sgt"
 cores = 1
-relevant_cycle_check = false
+relevant_dfs = false
 garbage_collection = false
 garbage_collection_sleep = 1
 
