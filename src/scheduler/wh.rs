@@ -1,6 +1,5 @@
-use crate::common::error::NonFatalError;
+use crate::common::error::{NonFatalError, WaitHitError};
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
-use crate::scheduler::wh::error::WaitHitError;
 use crate::scheduler::wh::shared::Shared;
 use crate::scheduler::wh::shared::TransactionOutcome;
 use crate::storage::access::{Access, TransactionId};
@@ -16,7 +15,6 @@ use std::sync::Arc;
 use thread_local::ThreadLocal;
 use tracing::info;
 
-pub mod error;
 pub mod shared;
 
 #[derive(Debug)]
@@ -234,12 +232,12 @@ impl WaitHit {
                 if g.get_terminated_outcome(pred) == TransactionOutcome::Aborted {
                     drop(g);
                     self.abort(meta, database);
-                    return Err(WaitHitError::PredecessorAborted(*this_id).into());
+                    return Err(WaitHitError::PredecessorAborted.into());
                 }
             } else {
                 drop(g);
                 self.abort(meta, database);
-                return Err(WaitHitError::PredecessorActive(*this_id).into());
+                return Err(WaitHitError::PredecessorActive.into());
             }
         }
 
@@ -258,7 +256,7 @@ impl WaitHit {
         } else {
             drop(g);
             self.abort(meta, database);
-            Err(WaitHitError::TransactionInHitList(*this_id).into())
+            Err(WaitHitError::Hit.into())
         }
     }
 

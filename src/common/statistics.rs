@@ -1,25 +1,23 @@
-use crate::common::error::NonFatalError;
-use crate::common::message::{Message, Outcome, Transaction};
-use crate::scheduler::attendez::error::AttendezError;
-use crate::scheduler::error::{MixedSerializationGraphError, SerializationGraphError};
-use crate::scheduler::owh::error::OptimisedWaitHitError;
-use crate::scheduler::wh::error::WaitHitError;
-use crate::workloads::acid::AcidTransaction;
-use crate::workloads::dummy::DummyTransaction;
-use crate::workloads::smallbank::SmallBankTransaction;
-use crate::workloads::tatp::TatpTransaction;
-use crate::workloads::ycsb::YcsbTransaction;
+use crate::common::error::{AttendezError, NonFatalError, SerializationGraphError, WaitHitError};
+use crate::common::message::{Message, Outcome};
+use crate::common::statistics::abort_breakdown::AbortBreakdown;
+use crate::common::statistics::protocol_abort_breakdown::ProtocolAbortBreakdown;
+use crate::common::statistics::transaction_breakdown::TransactionBreakdown;
+use crate::common::statistics::workload_abort_breakdown::WorkloadAbortBreakdown;
 use crate::workloads::IsolationLevel;
 
 use config::Config;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs::{self, OpenOptions};
 use std::path::Path;
 
 use std::time::Duration;
 use std::time::Instant;
-use strum::IntoEnumIterator;
+
+pub mod abort_breakdown;
+pub mod protocol_abort_breakdown;
+pub mod transaction_breakdown;
+pub mod workload_abort_breakdown;
 
 #[derive(Debug)]
 pub struct GlobalStatistics {
@@ -146,66 +144,38 @@ impl GlobalStatistics {
         let mut committed = 0;
         let mut aborted = 0; // total aborts
 
-        for transaction in &mut self.transaction_breakdown.transactions {
-            completed += transaction.completed;
-            committed += transaction.committed;
-            aborted += transaction.aborted;
+        for transaction in self.transaction_breakdown.get_transactions() {
+            completed += transaction.get_completed();
+            committed += transaction.get_committed();
+            aborted += transaction.get_aborted();
         }
 
         assert_eq!(completed, committed + aborted);
 
-        let internal_aborts = match self.abort_breakdown.workload_specific {
+        let internal_aborts = match self.abort_breakdown.get_workload_specific() {
             WorkloadAbortBreakdown::Tatp(ref reasons) => {
                 // row not found is the only internal abort
                 // but these count as committed in this workload
-                committed += reasons.row_not_found;
-                aborted -= reasons.row_not_found;
+                committed += reasons.get_row_not_found();
+                aborted -= reasons.get_row_not_found();
                 0
             }
-            WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.insufficient_funds,
-            WorkloadAbortBreakdown::Acid(ref reasons) => reasons.non_serializable,
-            WorkloadAbortBreakdown::Dummy(ref reasons) => reasons.non_serializable,
+            WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.get_insufficient_funds(),
+            WorkloadAbortBreakdown::Acid(ref reasons) => reasons.get_non_serializable(),
+            WorkloadAbortBreakdown::Dummy(ref reasons) => reasons.get_non_serializable(),
             WorkloadAbortBreakdown::Ycsb => 0,
         }; // aborts due to integrity constraints/manual aborts
 
-        let external_aborts = match self.abort_breakdown.protocol_specific {
-            ProtocolAbortBreakdown::SerializationGraph(ref reasons) => {
-                reasons.cascading_abort + reasons.cycle_found
-            }
-            ProtocolAbortBreakdown::MixedSerializationGraph(ref reasons) => {
-                reasons.cascading_abort + reasons.cycle_found
-            }
-            ProtocolAbortBreakdown::StdMixedSerializationGraph(ref reasons) => {
-                reasons.cascading_abort + reasons.cycle_found
-            }
-            ProtocolAbortBreakdown::RelMixedSerializationGraph(ref reasons) => {
-                reasons.cascading_abort + reasons.cycle_found
-            }
-            ProtocolAbortBreakdown::EarlyMixedSerializationGraph(ref reasons) => {
-                reasons.cascading_abort + reasons.cycle_found
-            }
-            ProtocolAbortBreakdown::AllMixedSerializationGraph(ref reasons) => {
-                reasons.cascading_abort + reasons.cycle_found
-            }
-            ProtocolAbortBreakdown::WaitHit(ref reasons) => {
-                reasons.hit + reasons.pur_active + reasons.row_dirty + reasons.pur_aborted
-            }
-            ProtocolAbortBreakdown::Attendez(ref reasons) => {
-                reasons.predecessor_aborted + reasons.exceeded_watermark + reasons.row_dirty
-            }
-            ProtocolAbortBreakdown::OptimisticWaitHit(ref reasons) => {
-                reasons.hit
-                    + reasons.pur_active
-                    + reasons.row_dirty
-                    + reasons.pur_aborted
-                    + reasons.waited_too_long
-            }
+        let external_aborts = match self.abort_breakdown.get_protocol_specific() {
+            ProtocolAbortBreakdown::SerializationGraph(ref reasons) => reasons.aggregate(),
+            ProtocolAbortBreakdown::MixedSerializationGraph(ref reasons) => reasons.aggregate(),
+            ProtocolAbortBreakdown::StdMixedSerializationGraph(ref reasons) => reasons.aggregate(),
+            ProtocolAbortBreakdown::RelMixedSerializationGraph(ref reasons) => reasons.aggregate(),
+            ProtocolAbortBreakdown::WaitHit(ref reasons) => reasons.aggregate(),
+            ProtocolAbortBreakdown::Attendez(ref reasons) => reasons.aggregate(),
+            ProtocolAbortBreakdown::OptimisticWaitHit(ref reasons) => reasons.aggregate(),
             ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(ref reasons) => {
-                reasons.hit
-                    + reasons.pur_active
-                    + reasons.row_dirty
-                    + reasons.pur_aborted
-                    + reasons.waited_too_long
+                reasons.aggregate()
             }
             ProtocolAbortBreakdown::NoConcurrencyControl => 0,
         }; // aborts due to system implementation
@@ -333,7 +303,7 @@ impl LocalStatistics {
 
             if let Outcome::Aborted(reason) = outcome {
                 use WorkloadAbortBreakdown::*;
-                match self.abort_breakdown.workload_specific {
+                match self.abort_breakdown.get_workload_specific() {
                     SmallBank(ref mut metric) => {
                         if let NonFatalError::SmallBankError(_) = reason {
                             metric.inc_insufficient_funds();
@@ -360,120 +330,67 @@ impl LocalStatistics {
                     Ycsb => {}
                 }
 
+                use IsolationLevel::*;
                 use ProtocolAbortBreakdown::*;
-                match self.abort_breakdown.protocol_specific {
+                use SerializationGraphError::*;
+
+                match self.abort_breakdown.get_protocol_specific() {
                     SerializationGraph(ref mut metric) => {
-                        if let NonFatalError::SerializationGraph(sge) = reason {
-                            match sge {
-                                SerializationGraphError::CascadingAbort => {
-                                    metric.inc_cascading_abort()
-                                }
-                                SerializationGraphError::CycleFound => metric.inc_cycle_found(),
+                        if let NonFatalError::SerializationGraphError(err) = reason {
+                            match err {
+                                CascadingAbort => metric.inc_cascading_abort(),
+                                CycleFound => metric.inc_cycle_found(),
                             }
 
                             match isolation {
-                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
-                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
-                                IsolationLevel::Serializable => metric.inc_serializable(),
+                                ReadCommitted => metric.inc_read_committed(),
+                                ReadUncommitted => metric.inc_read_uncommitted(),
+                                Serializable => metric.inc_serializable(),
                             }
                         }
                     }
 
                     MixedSerializationGraph(ref mut metric) => {
-                        if let NonFatalError::MixedSerializationGraph(sge) = reason {
+                        if let NonFatalError::SerializationGraphError(sge) = reason {
                             match sge {
-                                MixedSerializationGraphError::CascadingAbort => {
-                                    metric.inc_cascading_abort()
-                                }
-                                MixedSerializationGraphError::CycleFound => {
-                                    metric.inc_cycle_found()
-                                }
+                                CascadingAbort => metric.inc_cascading_abort(),
+                                CycleFound => metric.inc_cycle_found(),
                             }
                             match isolation {
-                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
-                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
-                                IsolationLevel::Serializable => metric.inc_serializable(),
+                                ReadCommitted => metric.inc_read_committed(),
+                                ReadUncommitted => metric.inc_read_uncommitted(),
+                                Serializable => metric.inc_serializable(),
                             }
                         }
                     }
 
                     StdMixedSerializationGraph(ref mut metric) => {
-                        if let NonFatalError::SerializationGraph(sge) = reason {
-                            match sge {
-                                SerializationGraphError::CascadingAbort => {
-                                    metric.inc_cascading_abort()
-                                }
-                                SerializationGraphError::CycleFound => metric.inc_cycle_found(),
+                        if let NonFatalError::SerializationGraphError(err) = reason {
+                            match err {
+                                CascadingAbort => metric.inc_cascading_abort(),
+                                CycleFound => metric.inc_cycle_found(),
                             }
                             match isolation {
-                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
-                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
-                                IsolationLevel::Serializable => metric.inc_serializable(),
+                                ReadCommitted => metric.inc_read_committed(),
+                                ReadUncommitted => metric.inc_read_uncommitted(),
+                                Serializable => metric.inc_serializable(),
                             }
                         }
                     }
 
                     RelMixedSerializationGraph(ref mut metric) => {
-                        if let NonFatalError::SerializationGraph(sge) = reason {
-                            match sge {
-                                SerializationGraphError::CascadingAbort => {
-                                    metric.inc_cascading_abort()
-                                }
-                                SerializationGraphError::CycleFound => metric.inc_cycle_found(),
+                        if let NonFatalError::SerializationGraphError(err) = reason {
+                            match err {
+                                CascadingAbort => metric.inc_cascading_abort(),
+                                CycleFound => metric.inc_cycle_found(),
                             }
                             match isolation {
-                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
-                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
-                                IsolationLevel::Serializable => metric.inc_serializable(),
+                                ReadCommitted => metric.inc_read_committed(),
+                                ReadUncommitted => metric.inc_read_uncommitted(),
+                                Serializable => metric.inc_serializable(),
                             }
                         }
                     }
-
-                    EarlyMixedSerializationGraph(ref mut metric) => {
-                        if let NonFatalError::MixedSerializationGraph(sge) = reason {
-                            match sge {
-                                MixedSerializationGraphError::CascadingAbort => {
-                                    metric.inc_cascading_abort()
-                                }
-                                MixedSerializationGraphError::CycleFound => {
-                                    metric.inc_cycle_found()
-                                }
-                            }
-                            match isolation {
-                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
-                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
-                                IsolationLevel::Serializable => metric.inc_serializable(),
-                            }
-                        }
-                    }
-
-                    AllMixedSerializationGraph(ref mut metric) => {
-                        if let NonFatalError::MixedSerializationGraph(sge) = reason {
-                            match sge {
-                                MixedSerializationGraphError::CascadingAbort => {
-                                    metric.inc_cascading_abort()
-                                }
-                                MixedSerializationGraphError::CycleFound => {
-                                    metric.inc_cycle_found()
-                                }
-                            }
-                            match isolation {
-                                IsolationLevel::ReadCommitted => metric.inc_read_committed(),
-                                IsolationLevel::ReadUncommitted => metric.inc_read_uncommitted(),
-                                IsolationLevel::Serializable => metric.inc_serializable(),
-                            }
-                        }
-                    }
-
-                    WaitHit(ref mut metric) => match reason {
-                        NonFatalError::WaitHitError(owhe) => match owhe {
-                            WaitHitError::TransactionInHitList(_) => metric.inc_hit(),
-                            WaitHitError::PredecessorAborted(_) => metric.inc_pur_aborted(),
-                            WaitHitError::PredecessorActive(_) => metric.inc_pur_active(),
-                        },
-                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-                        _ => {}
-                    },
 
                     Attendez(ref mut metric) => match reason {
                         NonFatalError::AttendezError(owhe) => match owhe {
@@ -484,23 +401,31 @@ impl LocalStatistics {
                         _ => {}
                     },
 
+                    WaitHit(ref mut metric) => match reason {
+                        NonFatalError::WaitHitError(owhe) => match owhe {
+                            WaitHitError::Hit => metric.inc_hit(),
+                            WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+                            WaitHitError::PredecessorActive => metric.inc_pur_active(),
+                        },
+                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                        _ => {}
+                    },
+
                     OptimisticWaitHit(ref mut metric) => match reason {
-                        NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
-                            OptimisedWaitHitError::Hit => metric.inc_hit(),
-                            OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-                            OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
-                            OptimisedWaitHitError::WaitedTooLong => metric.inc_waited_too_long(),
+                        NonFatalError::WaitHitError(err) => match err {
+                            WaitHitError::Hit => metric.inc_hit(),
+                            WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+                            WaitHitError::PredecessorActive => metric.inc_pur_active(),
                         },
                         NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
                         _ => {}
                     },
 
                     OptimisticWaitHitTransactionTypes(ref mut metric) => match reason {
-                        NonFatalError::OptimisedWaitHitError(owhe) => match owhe {
-                            OptimisedWaitHitError::Hit => metric.inc_hit(),
-                            OptimisedWaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-                            OptimisedWaitHitError::PredecessorActive => metric.inc_pur_active(),
-                            OptimisedWaitHitError::WaitedTooLong => metric.inc_waited_too_long(),
+                        NonFatalError::WaitHitError(err) => match err {
+                            WaitHitError::Hit => metric.inc_hit(),
+                            WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+                            WaitHitError::PredecessorActive => metric.inc_pur_active(),
                         },
                         NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
                         _ => {}
@@ -510,533 +435,5 @@ impl LocalStatistics {
                 }
             }
         }
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct TransactionBreakdown {
-    name: String,
-    transactions: Vec<TransactionMetrics>,
-}
-
-impl TransactionBreakdown {
-    fn new(workload: &str) -> Self {
-        match workload {
-            "smallbank" => {
-                let name = workload.to_string();
-                let mut transactions = vec![];
-                for transaction in SmallBankTransaction::iter() {
-                    let metrics = TransactionMetrics::new(Transaction::SmallBank(transaction));
-                    transactions.push(metrics);
-                }
-                TransactionBreakdown { name, transactions }
-            }
-
-            "acid" => {
-                let name = workload.to_string();
-                let mut transactions = vec![];
-                for transaction in AcidTransaction::iter() {
-                    let metrics = TransactionMetrics::new(Transaction::Acid(transaction));
-                    transactions.push(metrics);
-                }
-                TransactionBreakdown { name, transactions }
-            }
-
-            "dummy" => {
-                let name = workload.to_string();
-                let mut transactions = vec![];
-                for transaction in DummyTransaction::iter() {
-                    let metrics = TransactionMetrics::new(Transaction::Dummy(transaction));
-                    transactions.push(metrics);
-                }
-                TransactionBreakdown { name, transactions }
-            }
-
-            "tatp" => {
-                let name = workload.to_string();
-                let mut transactions = vec![];
-                for transaction in TatpTransaction::iter() {
-                    let metrics = TransactionMetrics::new(Transaction::Tatp(transaction));
-                    transactions.push(metrics);
-                }
-                TransactionBreakdown { name, transactions }
-            }
-
-            "ycsb" => {
-                let name = workload.to_string();
-                let mut transactions = vec![];
-                for transaction in YcsbTransaction::iter() {
-                    let metrics = TransactionMetrics::new(Transaction::Ycsb(transaction));
-                    transactions.push(metrics);
-                }
-                TransactionBreakdown { name, transactions }
-            }
-
-            _ => panic!("unknown workload: {}", workload),
-        }
-    }
-
-    fn record(&mut self, transaction: &Transaction, outcome: &Outcome) {
-        let ind = self
-            .transactions
-            .iter()
-            .position(|x| &x.transaction == transaction)
-            .unwrap();
-
-        match outcome {
-            Outcome::Committed { .. } => self.transactions[ind].inc_committed(),
-            Outcome::Aborted { .. } => self.transactions[ind].inc_aborted(),
-        }
-    }
-
-    fn merge(&mut self, other: TransactionBreakdown) {
-        assert!(self.name == other.name);
-
-        for holder in other.transactions {
-            let ind = self
-                .transactions
-                .iter()
-                .position(|x| x.transaction == holder.transaction)
-                .unwrap();
-            self.transactions[ind].merge(holder);
-        }
-    }
-}
-
-/// Per-transaction metrics holder.
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct TransactionMetrics {
-    transaction: Transaction,
-    completed: u32,
-    committed: u32,
-    aborted: u32, // internal and external aborts
-}
-
-impl TransactionMetrics {
-    fn new(transaction: Transaction) -> Self {
-        TransactionMetrics {
-            transaction,
-            completed: 0,
-            committed: 0,
-            aborted: 0,
-        }
-    }
-
-    fn inc_committed(&mut self) {
-        self.committed += 1;
-        self.completed += 1;
-    }
-
-    fn inc_aborted(&mut self) {
-        self.completed += 1;
-        self.aborted += 1;
-    }
-
-    fn merge(&mut self, other: TransactionMetrics) {
-        assert!(self.transaction == other.transaction);
-
-        self.completed += other.completed;
-        self.committed += other.committed;
-        self.aborted += other.aborted;
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct AbortBreakdown {
-    protocol_specific: ProtocolAbortBreakdown,
-    workload_specific: WorkloadAbortBreakdown,
-}
-
-impl AbortBreakdown {
-    fn new(protocol: &str, workload: &str) -> AbortBreakdown {
-        let protocol_specific = match protocol {
-            "sgt" => ProtocolAbortBreakdown::SerializationGraph(SerializationGraphReasons::new()),
-            "msgt" => {
-                ProtocolAbortBreakdown::MixedSerializationGraph(SerializationGraphReasons::new())
-            }
-            "msgt-std" => {
-                ProtocolAbortBreakdown::StdMixedSerializationGraph(SerializationGraphReasons::new())
-            }
-            "msgt-rel" => {
-                ProtocolAbortBreakdown::RelMixedSerializationGraph(SerializationGraphReasons::new())
-            }
-            "msgt-early" => ProtocolAbortBreakdown::EarlyMixedSerializationGraph(
-                SerializationGraphReasons::new(),
-            ),
-            "msgt-all" => {
-                ProtocolAbortBreakdown::AllMixedSerializationGraph(SerializationGraphReasons::new())
-            }
-            "wh" => ProtocolAbortBreakdown::WaitHit(HitListReasons::new()),
-            "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(HitListReasons::new()),
-            "attendez" => ProtocolAbortBreakdown::Attendez(AttendezReasons::new()),
-
-            "owhtt" => {
-                ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(HitListReasons::new())
-            }
-            "nocc" => ProtocolAbortBreakdown::NoConcurrencyControl,
-            _ => unimplemented!(),
-        };
-
-        let workload_specific = match workload {
-            "smallbank" => WorkloadAbortBreakdown::SmallBank(SmallBankReasons::new()),
-            "tatp" => WorkloadAbortBreakdown::Tatp(TatpReasons::new()),
-            "acid" => WorkloadAbortBreakdown::Acid(AcidReasons::new()),
-            "dummy" => WorkloadAbortBreakdown::Dummy(DummyReasons::new()),
-            "ycsb" => WorkloadAbortBreakdown::Ycsb,
-            _ => unimplemented!(),
-        };
-
-        AbortBreakdown {
-            protocol_specific,
-            workload_specific,
-        }
-    }
-
-    fn merge(&mut self, other: AbortBreakdown) {
-        use ProtocolAbortBreakdown::*;
-        use WorkloadAbortBreakdown::*;
-        match self.protocol_specific {
-            SerializationGraph(ref mut reasons) => {
-                if let SerializationGraph(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            MixedSerializationGraph(ref mut reasons) => {
-                if let MixedSerializationGraph(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            StdMixedSerializationGraph(ref mut reasons) => {
-                if let StdMixedSerializationGraph(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            RelMixedSerializationGraph(ref mut reasons) => {
-                if let RelMixedSerializationGraph(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            EarlyMixedSerializationGraph(ref mut reasons) => {
-                if let EarlyMixedSerializationGraph(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            AllMixedSerializationGraph(ref mut reasons) => {
-                if let AllMixedSerializationGraph(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            WaitHit(ref mut reasons) => {
-                if let WaitHit(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            Attendez(ref mut reasons) => {
-                if let Attendez(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            OptimisticWaitHit(ref mut reasons) => {
-                if let OptimisticWaitHit(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            OptimisticWaitHitTransactionTypes(ref mut reasons) => {
-                if let OptimisticWaitHitTransactionTypes(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-
-            _ => {}
-        }
-        match self.workload_specific {
-            SmallBank(ref mut reasons) => {
-                if let SmallBank(other_reasons) = other.workload_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("workload abort breakdowns do not match");
-                }
-            }
-            Tatp(ref mut reasons) => {
-                if let Tatp(other_reasons) = other.workload_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("workload abort breakdowns do not match");
-                }
-            }
-            Acid(ref mut reasons) => {
-                if let Acid(other_reasons) = other.workload_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("workload abort breakdowns do not match");
-                }
-            }
-            Dummy(ref mut reasons) => {
-                if let Dummy(other_reasons) = other.workload_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("workload abort breakdowns do not match");
-                }
-            }
-            Ycsb => {}
-        }
-    }
-}
-#[derive(Serialize, Deserialize, Debug, Clone)]
-enum WorkloadAbortBreakdown {
-    SmallBank(SmallBankReasons),
-    Tatp(TatpReasons),
-    Acid(AcidReasons),
-    Dummy(DummyReasons),
-    Ycsb,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct TatpReasons {
-    row_not_found: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct SmallBankReasons {
-    insufficient_funds: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct AcidReasons {
-    non_serializable: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct DummyReasons {
-    non_serializable: u32,
-}
-
-impl TatpReasons {
-    fn new() -> Self {
-        TatpReasons { row_not_found: 0 }
-    }
-
-    fn inc_not_found(&mut self) {
-        self.row_not_found += 1;
-    }
-
-    fn merge(&mut self, other: TatpReasons) {
-        self.row_not_found += other.row_not_found;
-    }
-}
-
-impl SmallBankReasons {
-    fn new() -> Self {
-        SmallBankReasons {
-            insufficient_funds: 0,
-        }
-    }
-
-    fn inc_insufficient_funds(&mut self) {
-        self.insufficient_funds += 1;
-    }
-
-    fn merge(&mut self, other: SmallBankReasons) {
-        self.insufficient_funds += other.insufficient_funds;
-    }
-}
-
-impl AcidReasons {
-    fn new() -> Self {
-        AcidReasons {
-            non_serializable: 0,
-        }
-    }
-
-    fn inc_non_serializable(&mut self) {
-        self.non_serializable += 1;
-    }
-
-    fn merge(&mut self, other: AcidReasons) {
-        self.non_serializable += other.non_serializable;
-    }
-}
-
-impl DummyReasons {
-    fn new() -> Self {
-        Self {
-            non_serializable: 0,
-        }
-    }
-
-    fn inc_non_serializable(&mut self) {
-        self.non_serializable += 1;
-    }
-
-    fn merge(&mut self, other: DummyReasons) {
-        self.non_serializable += other.non_serializable;
-    }
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-enum ProtocolAbortBreakdown {
-    SerializationGraph(SerializationGraphReasons),
-    MixedSerializationGraph(SerializationGraphReasons),
-    StdMixedSerializationGraph(SerializationGraphReasons),
-    RelMixedSerializationGraph(SerializationGraphReasons),
-    EarlyMixedSerializationGraph(SerializationGraphReasons),
-    AllMixedSerializationGraph(SerializationGraphReasons),
-    WaitHit(HitListReasons),
-    Attendez(AttendezReasons),
-    OptimisticWaitHit(HitListReasons),
-    OptimisticWaitHitTransactionTypes(HitListReasons),
-    NoConcurrencyControl,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct SerializationGraphReasons {
-    cascading_abort: u32,
-    cycle_found: u32,
-    read_uncommitted: u32,
-    read_committed: u32,
-    serializable: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct HitListReasons {
-    row_dirty: u32,
-    hit: u32,
-    pur_active: u32,
-    pur_aborted: u32,
-    waited_too_long: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct AttendezReasons {
-    row_dirty: u32,
-    predecessor_aborted: u32,
-    exceeded_watermark: u32,
-}
-
-impl SerializationGraphReasons {
-    fn new() -> Self {
-        SerializationGraphReasons {
-            cascading_abort: 0,
-            cycle_found: 0,
-            read_uncommitted: 0,
-            read_committed: 0,
-            serializable: 0,
-        }
-    }
-
-    fn inc_cascading_abort(&mut self) {
-        self.cascading_abort += 1;
-    }
-
-    fn inc_cycle_found(&mut self) {
-        self.cycle_found += 1;
-    }
-
-    fn inc_read_uncommitted(&mut self) {
-        self.read_uncommitted += 1;
-    }
-
-    fn inc_read_committed(&mut self) {
-        self.read_committed += 1;
-    }
-
-    fn inc_serializable(&mut self) {
-        self.serializable += 1;
-    }
-
-    fn merge(&mut self, other: SerializationGraphReasons) {
-        self.cascading_abort += other.cascading_abort;
-        self.cycle_found += other.cycle_found;
-        self.read_uncommitted += other.read_uncommitted;
-        self.read_committed += other.read_committed;
-        self.serializable += other.serializable;
-    }
-}
-
-impl HitListReasons {
-    fn new() -> HitListReasons {
-        HitListReasons {
-            row_dirty: 0,
-            hit: 0,
-            pur_aborted: 0,
-            pur_active: 0,
-            waited_too_long: 0,
-        }
-    }
-
-    fn inc_row_dirty(&mut self) {
-        self.row_dirty += 1;
-    }
-
-    fn inc_hit(&mut self) {
-        self.hit += 1;
-    }
-
-    fn inc_pur_active(&mut self) {
-        self.pur_active += 1;
-    }
-
-    fn inc_pur_aborted(&mut self) {
-        self.pur_aborted += 1;
-    }
-
-    fn inc_waited_too_long(&mut self) {
-        self.waited_too_long += 1;
-    }
-
-    fn merge(&mut self, other: HitListReasons) {
-        self.row_dirty += other.row_dirty;
-        self.hit += other.hit;
-        self.pur_aborted += other.pur_aborted;
-        self.pur_active += other.pur_active;
-        self.waited_too_long += other.waited_too_long;
-    }
-}
-
-impl AttendezReasons {
-    fn new() -> Self {
-        AttendezReasons {
-            row_dirty: 0,
-            predecessor_aborted: 0,
-            exceeded_watermark: 0,
-        }
-    }
-
-    fn inc_row_dirty(&mut self) {
-        self.row_dirty += 1;
-    }
-
-    fn inc_predecessor_aborted(&mut self) {
-        self.predecessor_aborted += 1;
-    }
-
-    fn inc_exceeded_watermark(&mut self) {
-        self.exceeded_watermark += 1;
-    }
-
-    fn merge(&mut self, other: AttendezReasons) {
-        self.row_dirty += other.row_dirty;
-        self.predecessor_aborted += other.predecessor_aborted;
-        self.exceeded_watermark += other.exceeded_watermark;
     }
 }

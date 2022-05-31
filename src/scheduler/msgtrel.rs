@@ -1,7 +1,6 @@
-use crate::common::error::NonFatalError;
+use crate::common::error::{NonFatalError, SerializationGraphError};
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::common::{Edge, Node};
-use crate::scheduler::error::SerializationGraphError;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;

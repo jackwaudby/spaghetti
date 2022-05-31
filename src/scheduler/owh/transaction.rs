@@ -1,5 +1,4 @@
-use crate::scheduler::owh::error::OptimisedWaitHitError;
-use crate::scheduler::NonFatalError;
+use crate::common::error::{NonFatalError, WaitHitError};
 
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -84,7 +83,7 @@ impl<'a> Transaction<'a> {
         let mut guard = self.state.lock();
         let state = guard.clone();
         if state == TransactionState::Aborted {
-            return Err(OptimisedWaitHitError::Hit.into());
+            return Err(WaitHitError::Hit.into());
         } else {
             *guard = TransactionState::Committed;
         }

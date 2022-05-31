@@ -1,7 +1,6 @@
-use crate::common::error::NonFatalError;
+use crate::common::error::{AttendezError, NonFatalError};
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::common::utils;
-use crate::scheduler::attendez::error::AttendezError;
 use crate::scheduler::attendez::predecessor_summary::scan_predecessors;
 use crate::scheduler::attendez::transaction::{PredecessorSet, Transaction, TransactionState};
 use crate::scheduler::Database;
@@ -19,8 +18,6 @@ use tracing::info;
 pub mod transaction;
 
 pub mod predecessor_summary;
-
-pub mod error;
 
 #[derive(Debug)]
 pub struct Attendez<'a> {

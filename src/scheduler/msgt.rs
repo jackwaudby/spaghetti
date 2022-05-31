@@ -1,7 +1,6 @@
-use crate::common::error::NonFatalError;
+use crate::common::error::{NonFatalError, SerializationGraphError};
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::common::{Edge, Incoming, Node};
-use crate::scheduler::error::MixedSerializationGraphError;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
@@ -306,7 +305,7 @@ impl MixedSerializationGraph {
 
         if this.is_cascading_abort() {
             self.abort(database);
-            return Err(MixedSerializationGraphError::CascadingAbort.into());
+            return Err(SerializationGraphError::CascadingAbort.into());
         }
 
         let table = database.get_table(table_id);
@@ -348,7 +347,7 @@ impl MixedSerializationGraph {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database); // abort
-            return Err(MixedSerializationGraphError::CycleFound.into());
+            return Err(SerializationGraphError::CycleFound.into());
         }
 
         let vals = table
@@ -403,7 +402,7 @@ impl MixedSerializationGraph {
 
             if self.needs_abort() {
                 self.abort(database);
-                return Err(MixedSerializationGraphError::CascadingAbort.into());
+                return Err(SerializationGraphError::CascadingAbort.into());
                 // check for cascading abort
             }
 
@@ -466,7 +465,7 @@ impl MixedSerializationGraph {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 self.abort(database);
-                return Err(MixedSerializationGraphError::CycleFound.into());
+                return Err(SerializationGraphError::CycleFound.into());
             }
 
             // (ii) there is an uncommitted write (wait = T)
@@ -485,7 +484,7 @@ impl MixedSerializationGraph {
                 self.abort(database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
 
-                return Err(MixedSerializationGraphError::CascadingAbort.into());
+                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
             break;
@@ -523,7 +522,7 @@ impl MixedSerializationGraph {
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(database);
 
-            return Err(MixedSerializationGraphError::CycleFound.into());
+            return Err(SerializationGraphError::CycleFound.into());
         }
 
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
@@ -564,7 +563,7 @@ impl MixedSerializationGraph {
 
             if this.is_cascading_abort() || this.is_aborted() {
                 self.abort(database);
-                return Err(MixedSerializationGraphError::CascadingAbort.into());
+                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
             let this_wlock = this.write();

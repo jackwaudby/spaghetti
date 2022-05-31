@@ -1,6 +1,5 @@
-use crate::common::error::NonFatalError;
+use crate::common::error::{NonFatalError, WaitHitError};
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
-use crate::scheduler::owh::error::OptimisedWaitHitError;
 use crate::scheduler::owh::transaction::{self, PredecessorUpon, Transaction, TransactionState};
 use crate::scheduler::{Database, TransactionType};
 use crate::storage::access::{Access, TransactionId};
@@ -287,7 +286,7 @@ impl<'a> OptimisedWaitHitTransactionTypes<'a> {
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
             self.abort(database);
-            return Err(OptimisedWaitHitError::Hit.into());
+            return Err(WaitHitError::Hit.into());
         }
 
         // HIT PHASE //
@@ -307,7 +306,7 @@ impl<'a> OptimisedWaitHitTransactionTypes<'a> {
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
             self.abort(database);
-            return Err(OptimisedWaitHitError::Hit.into());
+            return Err(WaitHitError::Hit.into());
         }
 
         // WAIT PHASE //
@@ -319,11 +318,11 @@ impl<'a> OptimisedWaitHitTransactionTypes<'a> {
                     match predecessor.get_state() {
                         TransactionState::Active => {
                             self.abort(database);
-                            return Err(OptimisedWaitHitError::PredecessorActive.into());
+                            return Err(WaitHitError::PredecessorActive.into());
                         }
                         TransactionState::Aborted => {
                             self.abort(database);
-                            return Err(OptimisedWaitHitError::PredecessorAborted.into());
+                            return Err(WaitHitError::PredecessorAborted.into());
                         }
                         TransactionState::Committed => {}
                     }
@@ -335,7 +334,7 @@ impl<'a> OptimisedWaitHitTransactionTypes<'a> {
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
             self.abort(database);
-            return Err(OptimisedWaitHitError::Hit.into());
+            return Err(WaitHitError::Hit.into());
         }
 
         // WAIT PHASE //
@@ -343,7 +342,7 @@ impl<'a> OptimisedWaitHitTransactionTypes<'a> {
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
             self.abort(database);
-            return Err(OptimisedWaitHitError::Hit.into());
+            return Err(WaitHitError::Hit.into());
         }
 
         // TRY COMMIT //
