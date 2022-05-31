@@ -812,7 +812,7 @@ impl MixedSerializationGraph {
                 }
             });
 
-            return Err(NonFatalError::Emergency);
+            panic!("deadlock found");
         }
         Ok(())
     }

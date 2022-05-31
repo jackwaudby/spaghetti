@@ -1,4 +1,4 @@
-use crate::common::error::FatalError;
+// use crate::common::error::FatalError; /
 use crate::storage::table::Table;
 use crate::workloads::acid::*;
 use crate::workloads::acid::{self, AcidDatabase};
@@ -123,7 +123,7 @@ impl Database {
 
                 Ok(Database::Ycsb(database))
             }
-            _ => return Err(Box::new(FatalError::IncorrectWorkload(workload))),
+            _ => panic!("unknown workload: {}", workload),
         }
     }
 

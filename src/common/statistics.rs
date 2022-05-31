@@ -604,7 +604,7 @@ impl TransactionBreakdown {
                 TransactionBreakdown { name, transactions }
             }
 
-            _ => panic!("{} not implemented", workload),
+            _ => panic!("unknown workload: {}", workload),
         }
     }
 
