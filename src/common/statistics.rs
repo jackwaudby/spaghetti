@@ -2,9 +2,7 @@ use crate::common::error::NonFatalError;
 use crate::common::message::{Message, Outcome, Transaction};
 use crate::scheduler::attendez::error::AttendezError;
 use crate::scheduler::error::{MixedSerializationGraphError, SerializationGraphError};
-use crate::scheduler::mtpl::error::MixedTwoPhaseLockingError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
-use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::acid::AcidTransaction;
 use crate::workloads::dummy::DummyTransaction;
@@ -208,12 +206,6 @@ impl GlobalStatistics {
                     + reasons.row_dirty
                     + reasons.pur_aborted
                     + reasons.waited_too_long
-            }
-            ProtocolAbortBreakdown::TwoPhaseLocking(ref reasons) => {
-                reasons.read_lock_denied + reasons.write_lock_denied
-            }
-            ProtocolAbortBreakdown::MixedTwoPhaseLocking(ref reasons) => {
-                reasons.read_lock_denied + reasons.write_lock_denied
             }
             ProtocolAbortBreakdown::NoConcurrencyControl => 0,
         }; // aborts due to system implementation
@@ -514,30 +506,6 @@ impl LocalStatistics {
                         _ => {}
                     },
 
-                    TwoPhaseLocking(ref mut metric) => match reason {
-                        NonFatalError::TwoPhaseLockingError(tple) => match tple {
-                            TwoPhaseLockingError::ReadLockRequestDenied(_) => {
-                                metric.inc_read_lock_denied()
-                            }
-                            TwoPhaseLockingError::WriteLockRequestDenied(_) => {
-                                metric.inc_write_lock_denied()
-                            }
-                        },
-                        _ => {}
-                    },
-
-                    MixedTwoPhaseLocking(ref mut metric) => match reason {
-                        NonFatalError::MixedTwoPhaseLockingError(tple) => match tple {
-                            MixedTwoPhaseLockingError::ReadLockRequestDenied(_) => {
-                                metric.inc_read_lock_denied()
-                            }
-                            MixedTwoPhaseLockingError::WriteLockRequestDenied(_) => {
-                                metric.inc_write_lock_denied()
-                            }
-                        },
-                        _ => {}
-                    },
-
                     _ => {}
                 }
             }
@@ -706,8 +674,6 @@ impl AbortBreakdown {
                 ProtocolAbortBreakdown::OptimisticWaitHitTransactionTypes(HitListReasons::new())
             }
             "nocc" => ProtocolAbortBreakdown::NoConcurrencyControl,
-            "tpl" => ProtocolAbortBreakdown::TwoPhaseLocking(TwoPhaseLockingReasons::new()),
-            "mtpl" => ProtocolAbortBreakdown::MixedTwoPhaseLocking(TwoPhaseLockingReasons::new()),
             _ => unimplemented!(),
         };
 
@@ -795,20 +761,6 @@ impl AbortBreakdown {
             }
             OptimisticWaitHitTransactionTypes(ref mut reasons) => {
                 if let OptimisticWaitHitTransactionTypes(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            TwoPhaseLocking(ref mut reasons) => {
-                if let TwoPhaseLocking(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-            MixedTwoPhaseLocking(ref mut reasons) => {
-                if let MixedTwoPhaseLocking(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -953,8 +905,6 @@ enum ProtocolAbortBreakdown {
     Attendez(AttendezReasons),
     OptimisticWaitHit(HitListReasons),
     OptimisticWaitHitTransactionTypes(HitListReasons),
-    TwoPhaseLocking(TwoPhaseLockingReasons),
-    MixedTwoPhaseLocking(TwoPhaseLockingReasons),
     NoConcurrencyControl,
 }
 
@@ -981,12 +931,6 @@ struct AttendezReasons {
     row_dirty: u32,
     predecessor_aborted: u32,
     exceeded_watermark: u32,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
-struct TwoPhaseLockingReasons {
-    read_lock_denied: u32,
-    write_lock_denied: u32,
 }
 
 impl SerializationGraphReasons {
@@ -1066,28 +1010,6 @@ impl HitListReasons {
         self.pur_aborted += other.pur_aborted;
         self.pur_active += other.pur_active;
         self.waited_too_long += other.waited_too_long;
-    }
-}
-
-impl TwoPhaseLockingReasons {
-    fn new() -> TwoPhaseLockingReasons {
-        TwoPhaseLockingReasons {
-            read_lock_denied: 0,
-            write_lock_denied: 0,
-        }
-    }
-
-    fn inc_read_lock_denied(&mut self) {
-        self.read_lock_denied += 1;
-    }
-
-    fn inc_write_lock_denied(&mut self) {
-        self.write_lock_denied += 1;
-    }
-
-    fn merge(&mut self, other: TwoPhaseLockingReasons) {
-        self.read_lock_denied += other.read_lock_denied;
-        self.write_lock_denied += other.write_lock_denied;
     }
 }
 

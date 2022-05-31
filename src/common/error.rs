@@ -1,8 +1,6 @@
 use crate::scheduler::attendez::error::AttendezError;
 use crate::scheduler::error::{MixedSerializationGraphError, SerializationGraphError};
-use crate::scheduler::mtpl::error::MixedTwoPhaseLockingError;
 use crate::scheduler::owh::error::OptimisedWaitHitError;
-use crate::scheduler::tpl::error::TwoPhaseLockingError;
 use crate::scheduler::wh::error::WaitHitError;
 use crate::workloads::smallbank::error::SmallBankError;
 
@@ -20,8 +18,6 @@ pub enum NonFatalError {
     MixedSerializationGraph(MixedSerializationGraphError),
     WaitHitError(WaitHitError),
     OptimisedWaitHitError(OptimisedWaitHitError),
-    TwoPhaseLockingError(TwoPhaseLockingError),
-    MixedTwoPhaseLockingError(MixedTwoPhaseLockingError),
     AttendezError(AttendezError),
 }
 
@@ -42,8 +38,6 @@ impl fmt::Display for NonFatalError {
             WaitHitError(ref e) => write!(f, "{}", e),
             AttendezError(ref e) => write!(f, "{}", e),
             OptimisedWaitHitError(ref e) => write!(f, "{}", e),
-            TwoPhaseLockingError(ref e) => write!(f, "{}", e),
-            MixedTwoPhaseLockingError(ref e) => write!(f, "{}", e),
         }
     }
 }
@@ -77,18 +71,6 @@ impl From<WaitHitError> for NonFatalError {
 impl From<OptimisedWaitHitError> for NonFatalError {
     fn from(error: OptimisedWaitHitError) -> Self {
         NonFatalError::OptimisedWaitHitError(error)
-    }
-}
-
-impl From<TwoPhaseLockingError> for NonFatalError {
-    fn from(error: TwoPhaseLockingError) -> Self {
-        NonFatalError::TwoPhaseLockingError(error)
-    }
-}
-
-impl From<MixedTwoPhaseLockingError> for NonFatalError {
-    fn from(error: MixedTwoPhaseLockingError) -> Self {
-        NonFatalError::MixedTwoPhaseLockingError(error)
     }
 }
 
