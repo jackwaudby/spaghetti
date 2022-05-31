@@ -209,8 +209,6 @@ impl StdMixedSerializationGraph {
         let guard = epoch::pin(); // pin thread
         StdMixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
-        debug!("{} begin", unsafe { &*self.get_transaction() });
-
         TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
 
@@ -475,7 +473,6 @@ impl StdMixedSerializationGraph {
         Ok(())
     }
 
-    /// Abort operation.
     pub fn abort(&self, database: &Database) -> NonFatalError {
         let this = unsafe { &*self.get_transaction() };
         this.set_aborted();
@@ -487,8 +484,8 @@ impl StdMixedSerializationGraph {
 
     /// Cleanup node after committed or aborted.
     pub fn cleanup(&self) {
-        let this = unsafe { &*self.get_transaction() }; // shared reference to node
-        let this_id = self.get_transaction() as usize; // node id
+        let this = unsafe { &*self.get_transaction() };
+        let this_id = self.get_transaction() as usize;
 
         // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)
         let this_wlock = this.write();

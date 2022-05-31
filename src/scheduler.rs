@@ -65,11 +65,9 @@ impl<'a> Scheduler<'a> {
             "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
             "msgt" => {
                 let relevant_cycle_check = config.get_bool("relevant_cycle_check")?;
-                let detection_deadlock = config.get_bool("deadlock_detection")?;
                 Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(
                     cores,
                     relevant_cycle_check,
-                    detection_deadlock,
                 ))
             }
             "msgt-std" => {
