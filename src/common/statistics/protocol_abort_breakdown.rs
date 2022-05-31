@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 pub enum ProtocolAbortBreakdown {
     SerializationGraph(SerializationGraphReasons),
     MixedSerializationGraph(SerializationGraphReasons),
-    StdMixedSerializationGraph(SerializationGraphReasons),
-    RelMixedSerializationGraph(SerializationGraphReasons),
     WaitHit(WaitHitReasons),
     Attendez(AttendezReasons),
     OptimisticWaitHit(WaitHitReasons),

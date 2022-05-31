@@ -1,8 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::scheduler::attendez::Attendez;
 use crate::scheduler::msgt::MixedSerializationGraph;
-use crate::scheduler::msgtrel::RelMixedSerializationGraph;
-use crate::scheduler::msgtstd::StdMixedSerializationGraph;
 use crate::scheduler::nocc::NoConcurrencyControl;
 use crate::scheduler::owh::OptimisedWaitHit;
 use crate::scheduler::owhtt::OptimisedWaitHitTransactionTypes;
@@ -27,12 +25,7 @@ pub mod sgt;
 
 pub mod attendez;
 
-// Testing only
 pub mod msgt;
-
-pub mod msgtstd;
-
-pub mod msgtrel;
 
 pub mod nocc;
 
@@ -47,8 +40,6 @@ pub enum TransactionType {
 pub enum Scheduler<'a> {
     SerializationGraph(SerializationGraph),
     MixedSerializationGraph(MixedSerializationGraph),
-    StdMixedSerializationGraph(StdMixedSerializationGraph),
-    RelMixedSerializationGraph(RelMixedSerializationGraph),
     Attendez(Attendez<'a>),
     WaitHit(WaitHit),
     OptimisedWaitHit(OptimisedWaitHit<'a>),
@@ -69,12 +60,6 @@ impl<'a> Scheduler<'a> {
                     cores,
                     relevant_cycle_check,
                 ))
-            }
-            "msgt-std" => {
-                Scheduler::StdMixedSerializationGraph(StdMixedSerializationGraph::new(cores))
-            }
-            "msgt-rel" => {
-                Scheduler::RelMixedSerializationGraph(RelMixedSerializationGraph::new(cores))
             }
             "wh" => Scheduler::WaitHit(WaitHit::new(cores)),
             "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
@@ -101,8 +86,6 @@ impl<'a> Scheduler<'a> {
         match self {
             SerializationGraph(sg) => sg.begin(),
             MixedSerializationGraph(sg) => sg.begin(isolation_level),
-            StdMixedSerializationGraph(sg) => sg.begin(isolation_level),
-            RelMixedSerializationGraph(sg) => sg.begin(isolation_level),
             Attendez(w) => w.begin(),
             WaitHit(wh) => wh.begin(),
             OptimisedWaitHit(owh) => owh.begin(),
@@ -123,12 +106,6 @@ impl<'a> Scheduler<'a> {
         match self {
             SerializationGraph(sg) => sg.read_value(table_id, column_id, offset, meta, database),
             MixedSerializationGraph(sg) => {
-                sg.read_value(table_id, column_id, offset, meta, database)
-            }
-            StdMixedSerializationGraph(sg) => {
-                sg.read_value(table_id, column_id, offset, meta, database)
-            }
-            RelMixedSerializationGraph(sg) => {
                 sg.read_value(table_id, column_id, offset, meta, database)
             }
             Attendez(wh) => wh.read_value(table_id, column_id, offset, meta, database),
@@ -161,13 +138,6 @@ impl<'a> Scheduler<'a> {
             MixedSerializationGraph(sg) => {
                 sg.write_value(value, table_id, column_id, offset, meta, database)
             }
-            StdMixedSerializationGraph(sg) => {
-                sg.write_value(value, table_id, column_id, offset, meta, database)
-            }
-            RelMixedSerializationGraph(sg) => {
-                sg.write_value(value, table_id, column_id, offset, meta, database)
-            }
-
             WaitHit(wh) => wh.write_value(value, table_id, column_id, offset, meta, database),
             Attendez(wh) => wh.write_value(value, table_id, column_id, offset, meta, database),
             OptimisedWaitHit(owh) => {
@@ -192,8 +162,6 @@ impl<'a> Scheduler<'a> {
         match self {
             SerializationGraph(sg) => sg.commit(database),
             MixedSerializationGraph(sg) => sg.commit(database),
-            StdMixedSerializationGraph(sg) => sg.commit(database),
-            RelMixedSerializationGraph(sg) => sg.commit(database),
             WaitHit(wh) => wh.commit(meta, database),
             Attendez(wh) => wh.commit(database),
             OptimisedWaitHit(owh) => owh.commit(database),
@@ -207,8 +175,6 @@ impl<'a> Scheduler<'a> {
         match self {
             SerializationGraph(sg) => sg.abort(database),
             MixedSerializationGraph(sg) => sg.abort(database),
-            StdMixedSerializationGraph(sg) => sg.abort(database),
-            RelMixedSerializationGraph(sg) => sg.abort(database),
             WaitHit(wh) => wh.abort(meta, database),
             Attendez(wh) => wh.abort(database),
             OptimisedWaitHit(owh) => owh.abort(database),

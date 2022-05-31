@@ -20,12 +20,6 @@ impl AbortBreakdown {
             "msgt" => {
                 ProtocolAbortBreakdown::MixedSerializationGraph(SerializationGraphReasons::new())
             }
-            "msgt-std" => {
-                ProtocolAbortBreakdown::StdMixedSerializationGraph(SerializationGraphReasons::new())
-            }
-            "msgt-rel" => {
-                ProtocolAbortBreakdown::RelMixedSerializationGraph(SerializationGraphReasons::new())
-            }
             "attendez" => ProtocolAbortBreakdown::Attendez(AttendezReasons::new()),
             "wh" => ProtocolAbortBreakdown::WaitHit(WaitHitReasons::new()),
             "owh" => ProtocolAbortBreakdown::OptimisticWaitHit(WaitHitReasons::new()),
@@ -74,22 +68,6 @@ impl AbortBreakdown {
 
             MixedSerializationGraph(ref mut reasons) => {
                 if let MixedSerializationGraph(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-
-            StdMixedSerializationGraph(ref mut reasons) => {
-                if let StdMixedSerializationGraph(other_reasons) = other.protocol_specific {
-                    reasons.merge(other_reasons);
-                } else {
-                    panic!("protocol abort breakdowns do not match");
-                }
-            }
-
-            RelMixedSerializationGraph(ref mut reasons) => {
-                if let RelMixedSerializationGraph(other_reasons) = other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");

@@ -169,8 +169,6 @@ impl GlobalStatistics {
         let external_aborts = match self.abort_breakdown.get_protocol_specific() {
             ProtocolAbortBreakdown::SerializationGraph(ref reasons) => reasons.aggregate(),
             ProtocolAbortBreakdown::MixedSerializationGraph(ref reasons) => reasons.aggregate(),
-            ProtocolAbortBreakdown::StdMixedSerializationGraph(ref reasons) => reasons.aggregate(),
-            ProtocolAbortBreakdown::RelMixedSerializationGraph(ref reasons) => reasons.aggregate(),
             ProtocolAbortBreakdown::WaitHit(ref reasons) => reasons.aggregate(),
             ProtocolAbortBreakdown::Attendez(ref reasons) => reasons.aggregate(),
             ProtocolAbortBreakdown::OptimisticWaitHit(ref reasons) => reasons.aggregate(),
@@ -353,34 +351,6 @@ impl LocalStatistics {
                     MixedSerializationGraph(ref mut metric) => {
                         if let NonFatalError::SerializationGraphError(sge) = reason {
                             match sge {
-                                CascadingAbort => metric.inc_cascading_abort(),
-                                CycleFound => metric.inc_cycle_found(),
-                            }
-                            match isolation {
-                                ReadCommitted => metric.inc_read_committed(),
-                                ReadUncommitted => metric.inc_read_uncommitted(),
-                                Serializable => metric.inc_serializable(),
-                            }
-                        }
-                    }
-
-                    StdMixedSerializationGraph(ref mut metric) => {
-                        if let NonFatalError::SerializationGraphError(err) = reason {
-                            match err {
-                                CascadingAbort => metric.inc_cascading_abort(),
-                                CycleFound => metric.inc_cycle_found(),
-                            }
-                            match isolation {
-                                ReadCommitted => metric.inc_read_committed(),
-                                ReadUncommitted => metric.inc_read_uncommitted(),
-                                Serializable => metric.inc_serializable(),
-                            }
-                        }
-                    }
-
-                    RelMixedSerializationGraph(ref mut metric) => {
-                        if let NonFatalError::SerializationGraphError(err) = reason {
-                            match err {
                                 CascadingAbort => metric.inc_cascading_abort(),
                                 CycleFound => metric.inc_cycle_found(),
                             }
