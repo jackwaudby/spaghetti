@@ -337,14 +337,6 @@ impl<'a> OptimisedWaitHitTransactionTypes<'a> {
             return Err(WaitHitError::Hit.into());
         }
 
-        // WAIT PHASE //
-
-        // CHECK //
-        if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database);
-            return Err(WaitHitError::Hit.into());
-        }
-
         // TRY COMMIT //
         let outcome = transaction.try_commit();
         match outcome {

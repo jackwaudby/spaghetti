@@ -1,7 +1,7 @@
 use crate::common::error::{NonFatalError, WaitHitError};
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::owh::transaction::{PredecessorUpon, Transaction, TransactionState};
-use crate::scheduler::Database;
+use crate::scheduler::{Database, TransactionType};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
@@ -20,6 +20,7 @@ pub struct OptimisedWaitHit<'a> {
     transaction: ThreadLocal<RefCell<Option<&'a Transaction<'a>>>>,
     transaction_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
     transaction_cnt: ThreadLocal<RefCell<u64>>,
+    type_aware: bool,
 }
 
 impl<'a> OptimisedWaitHit<'a> {
@@ -28,13 +29,14 @@ impl<'a> OptimisedWaitHit<'a> {
     }
 
     /// Create a new optimised wait hit scheduler.
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: usize, type_aware: bool) -> Self {
         info!("Initialise optimised wait hit with {} thread(s)", size);
 
         Self {
             transaction: ThreadLocal::new(),
             transaction_info: ThreadLocal::new(),
             transaction_cnt: ThreadLocal::new(),
+            type_aware,
         }
     }
 
@@ -281,8 +283,92 @@ impl<'a> OptimisedWaitHit<'a> {
         NonFatalError::NonSerializable // placeholder
     }
 
+    fn transaction_type_aware(&self) -> bool {
+        self.type_aware
+    }
+
+    fn hit_phase(&self, transaction_type: TransactionType) -> Result<(), NonFatalError> {
+        let transaction = self.get_transaction();
+
+        if self.transaction_type_aware() {
+            match transaction_type {
+                TransactionType::WriteOnly | TransactionType::ReadWrite => {
+                    let hit_list = transaction.get_predecessors(PredecessorUpon::Write);
+                    for predecessor in &hit_list {
+                        // if active then hit
+                        if let TransactionState::Active = predecessor.get_state() {
+                            predecessor.set_state(TransactionState::Aborted);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            let hit_list = transaction.get_predecessors(PredecessorUpon::Write);
+            for predecessor in &hit_list {
+                // if active then hit
+                if let TransactionState::Active = predecessor.get_state() {
+                    predecessor.set_state(TransactionState::Aborted);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn wait_phase(
+        &self,
+        database: &Database,
+        transaction_type: TransactionType,
+    ) -> Result<(), NonFatalError> {
+        let transaction = self.get_transaction();
+
+        if self.transaction_type_aware() {
+            match transaction_type {
+                TransactionType::ReadOnly | TransactionType::ReadWrite => {
+                    let wait_list = transaction.get_predecessors(PredecessorUpon::Read);
+                    for predecessor in &wait_list {
+                        // if active or aborted then abort
+                        match predecessor.get_state() {
+                            TransactionState::Active => {
+                                self.abort(database);
+                                return Err(WaitHitError::PredecessorActive.into());
+                            }
+                            TransactionState::Aborted => {
+                                self.abort(database);
+                                return Err(WaitHitError::PredecessorAborted.into());
+                            }
+                            TransactionState::Committed => {}
+                        }
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            let wait_list = transaction.get_predecessors(PredecessorUpon::Read);
+            for predecessor in &wait_list {
+                // if active or aborted then abort
+                match predecessor.get_state() {
+                    TransactionState::Active => {
+                        self.abort(database);
+                        return Err(WaitHitError::PredecessorActive.into());
+                    }
+                    TransactionState::Aborted => {
+                        self.abort(database);
+                        return Err(WaitHitError::PredecessorAborted.into());
+                    }
+                    TransactionState::Committed => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Commit a transaction.
-    pub fn commit<'g>(&self, database: &Database) -> Result<(), NonFatalError> {
+    pub fn commit<'g>(
+        &self,
+        database: &Database,
+        transaction_type: TransactionType,
+    ) -> Result<(), NonFatalError> {
         let transaction = self.get_transaction();
 
         // CHECK //
@@ -291,14 +377,7 @@ impl<'a> OptimisedWaitHit<'a> {
             return Err(WaitHitError::Hit.into());
         }
 
-        // HIT PHASE //
-        let hit_list = transaction.get_predecessors(PredecessorUpon::Write);
-        for predecessor in &hit_list {
-            // if active then hit
-            if let TransactionState::Active = predecessor.get_state() {
-                predecessor.set_state(TransactionState::Aborted);
-            }
-        }
+        self.hit_phase(transaction_type)?;
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
@@ -306,22 +385,7 @@ impl<'a> OptimisedWaitHit<'a> {
             return Err(WaitHitError::Hit.into());
         }
 
-        // WAIT PHASE //
-        let wait_list = transaction.get_predecessors(PredecessorUpon::Read);
-        for predecessor in &wait_list {
-            // if active or aborted then abort
-            match predecessor.get_state() {
-                TransactionState::Active => {
-                    self.abort(database);
-                    return Err(WaitHitError::PredecessorActive.into());
-                }
-                TransactionState::Aborted => {
-                    self.abort(database);
-                    return Err(WaitHitError::PredecessorAborted.into());
-                }
-                TransactionState::Committed => {}
-            }
-        }
+        self.wait_phase(database, transaction_type)?;
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {

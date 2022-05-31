@@ -29,7 +29,7 @@ pub mod msgt;
 
 pub mod nocc;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum TransactionType {
     WriteOnly,
     ReadOnly,
@@ -62,7 +62,10 @@ impl<'a> Scheduler<'a> {
                 ))
             }
             "wh" => Scheduler::WaitHit(WaitHit::new(cores)),
-            "owh" => Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores)),
+            "owh" => {
+                let type_aware = config.get_bool("type_aware")?;
+                Scheduler::OptimisedWaitHit(OptimisedWaitHit::new(cores, type_aware))
+            }
             "attendez" => {
                 let watermark = config.get_int("watermark")? as u64;
                 let a = config.get_int("increase")? as u64;
@@ -164,7 +167,7 @@ impl<'a> Scheduler<'a> {
             MixedSerializationGraph(sg) => sg.commit(database),
             WaitHit(wh) => wh.commit(meta, database),
             Attendez(wh) => wh.commit(database),
-            OptimisedWaitHit(owh) => owh.commit(database),
+            OptimisedWaitHit(owh) => owh.commit(database, transaction_type),
             OptimisedWaitHitTransactionTypes(owhtt) => owhtt.commit(database, transaction_type),
             NoConcurrencyControl(nocc) => nocc.commit(database),
         }
