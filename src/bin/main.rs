@@ -32,6 +32,7 @@ fn main() {
             arg!(-i --serializablerate <SERIALIZABLERATE> "Serializable rate (YCSB only)")
                 .required(false),
         )
+        .arg(arg!(-e --delta <DELTA> "Delta (Attendez only)").required(false))
         .arg(arg!(-m --watermark <WATERMARK> "Watermark (Attendez only)").required(false))
         .arg(arg!(-a --increase <INCREASE> "Additive increase (Attendez only)").required(false))
         .arg(
@@ -95,6 +96,10 @@ fn main() {
 
     if let Some(d) = matches.value_of("nowait") {
         config.set("no_wait_write", d).unwrap();
+    }
+
+    if let Some(d) = matches.value_of("delta") {
+        config.set("delta", d).unwrap();
     }
 
     // MSGT

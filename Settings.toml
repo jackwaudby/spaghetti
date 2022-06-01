@@ -30,5 +30,6 @@ increase = 1
 decrease = 2
 watermark = 100
 no_wait_write = false
+delta = 5
 
 type_aware = false

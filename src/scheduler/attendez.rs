@@ -29,6 +29,7 @@ pub struct Attendez<'a> {
     b: u64,
     watermark: u64,
     no_wait_write: bool,
+    delta: u64,
 }
 
 impl<'a> Attendez<'a> {
@@ -36,9 +37,19 @@ impl<'a> Attendez<'a> {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
     }
 
-    pub fn new(size: usize, watermark: u64, a: u64, b: u64, no_wait_write: bool) -> Self {
+    pub fn new(
+        size: usize,
+        watermark: u64,
+        a: u64,
+        b: u64,
+        no_wait_write: bool,
+        delta: u64,
+    ) -> Self {
         info!("Initialise attendez scheduler with {} thread(s)", size);
-        info!("Watermark = {}, a = {}, b = {}", watermark, a, b);
+        info!(
+            "delta = {}, watermark = {}, a = {}, b = {}",
+            delta, watermark, a, b
+        );
         info!("No wait write operation: {}", no_wait_write);
 
         Self {
@@ -49,6 +60,7 @@ impl<'a> Attendez<'a> {
             b,
             watermark,
             no_wait_write,
+            delta,
         }
     }
 
@@ -344,7 +356,7 @@ impl<'a> Attendez<'a> {
     }
 
     pub fn commit<'g>(&self, database: &Database) -> Result<ProtocolDiagnostics, NonFatalError> {
-        let mut delta = 10;
+        let mut delta = self.delta;
 
         let transaction = self.get_transaction();
         let predecessors = transaction.get_predecessors();
