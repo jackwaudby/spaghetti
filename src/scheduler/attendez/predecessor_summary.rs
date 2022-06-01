@@ -23,17 +23,18 @@ pub fn scan_predecessors<'a>(predecessors: &PredecessorSet<'a>) -> PredecessorSu
     let mut committed = 0;
     //    let mut cascade = false;
 
-    for (predecessor, _) in predecessors {
+    for (predecessor, rw) in predecessors {
         match predecessor.get_state() {
             TransactionState::Active => {
                 active += 1;
             }
 
             TransactionState::Aborted => {
-                aborted += 1;
-                // if !rw {
-                //     cascade = true;
-                // }
+                if !rw {
+                    aborted += 1; // cascade
+                } else {
+                    committed += 1; // count as terminated
+                }
             }
 
             TransactionState::Committed => {
