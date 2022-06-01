@@ -185,17 +185,28 @@ impl<'a> Attendez<'a> {
             ticket = rw_table.push_front(Access::Write(meta.clone()));
             utils::spin(ticket, lsn);
             let tuple = table.get_tuple(column_id, offset); // handle to tuple
-            let dirty = tuple.get().is_dirty();
 
+            let mut x = 0;
+            loop {
+                let dirty = tuple.get().is_dirty();
+                if dirty && x > 10 {
+                    // ok to have state change under feet here
+                    rw_table.erase(ticket); // remove from rwtable
+                    lsn.store(ticket + 1, Ordering::Release); // update lsn
+                    self.abort(database); // abort this transaction
+                    return Err(NonFatalError::RowDirty("todo".to_string()));
+                }
+                x += 1;
+            }
             // if tuple is dirty then abort
             // else for each read in the rwtable, add a predecessor upon write to hit list
-            if dirty {
-                // ok to have state change under feet here
-                rw_table.erase(ticket); // remove from rwtable
-                lsn.store(ticket + 1, Ordering::Release); // update lsn
-                self.abort(database); // abort this transaction
-                return Err(NonFatalError::RowDirty("todo".to_string()));
-            }
+            // if dirty {
+            //     // ok to have state change under feet here
+            //     rw_table.erase(ticket); // remove from rwtable
+            //     lsn.store(ticket + 1, Ordering::Release); // update lsn
+            //     self.abort(database); // abort this transaction
+            //     return Err(NonFatalError::RowDirty("todo".to_string()));
+            // }
         } else {
             let mut prv_ticket = 0;
             let mut window = 0;
