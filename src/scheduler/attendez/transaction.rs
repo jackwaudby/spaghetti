@@ -39,7 +39,7 @@ pub enum TransactionState {
     Committed,
 }
 
-pub type PredecessorSet<'a> = FxHashSet<&'a Transaction<'a>>;
+pub type PredecessorSet<'a> = FxHashSet<(&'a Transaction<'a>, bool)>;
 
 #[derive(Debug)]
 pub struct Transaction<'a> {
@@ -77,10 +77,10 @@ impl<'a> Transaction<'a> {
         Ok(())
     }
 
-    pub fn add_predecessor(&self, predecessor: &'a Transaction<'a>) {
+    pub fn add_predecessor(&self, predecessor: &'a Transaction<'a>, rw: bool) {
         unsafe {
             let v = &mut *self.predecessors.get();
-            v.as_mut().unwrap().insert(predecessor);
+            v.as_mut().unwrap().insert((predecessor, rw));
         }
     }
 

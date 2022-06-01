@@ -142,7 +142,7 @@ impl<'a> Attendez<'a> {
                             if std::ptr::eq(transaction, pred) {
                                 continue; // skip self predecessors
                             } else {
-                                transaction.add_predecessor(pred);
+                                transaction.add_predecessor(pred, false);
                             }
                         }
                         _ => panic!("unexpected transaction information"),
@@ -258,7 +258,7 @@ impl<'a> Attendez<'a> {
                             if std::ptr::eq(transaction, pred) {
                                 continue;
                             } else {
-                                transaction.add_predecessor(pred);
+                                transaction.add_predecessor(pred, true);
                             }
                         }
                         _ => panic!("unexpected transaction information"),
@@ -269,7 +269,7 @@ impl<'a> Attendez<'a> {
                             if std::ptr::eq(transaction, pred) {
                                 continue;
                             } else {
-                                transaction.add_predecessor(pred);
+                                transaction.add_predecessor(pred, false);
                             }
                         }
                         _ => panic!("unexpected transaction information"),

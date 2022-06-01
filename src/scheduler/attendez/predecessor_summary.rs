@@ -4,6 +4,7 @@ pub struct PredecessorSummary {
     aborted: u64,
     _active: u64,
     committed: u64,
+    cascade: bool,
 }
 
 impl PredecessorSummary {
@@ -20,15 +21,19 @@ pub fn scan_predecessors<'a>(predecessors: &PredecessorSet<'a>) -> PredecessorSu
     let mut aborted = 0;
     let mut active = 0;
     let mut committed = 0;
+    //    let mut cascade = false;
 
-    for predecessor in predecessors {
+    for (predecessor, _) in predecessors {
         match predecessor.get_state() {
             TransactionState::Active => {
-                aborted += 1;
+                active += 1;
             }
 
             TransactionState::Aborted => {
-                active += 1;
+                aborted += 1;
+                // if !rw {
+                //     cascade = true;
+                // }
             }
 
             TransactionState::Committed => {
@@ -41,5 +46,6 @@ pub fn scan_predecessors<'a>(predecessors: &PredecessorSet<'a>) -> PredecessorSu
         aborted,
         _active: active,
         committed,
+        cascade: false,
     }
 }
