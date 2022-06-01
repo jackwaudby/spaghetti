@@ -28,6 +28,7 @@ pub struct Attendez<'a> {
     a: u64,
     b: u64,
     watermark: u64,
+    no_wait_write: bool,
 }
 
 impl<'a> Attendez<'a> {
@@ -35,9 +36,10 @@ impl<'a> Attendez<'a> {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
     }
 
-    pub fn new(size: usize, watermark: u64, a: u64, b: u64) -> Self {
+    pub fn new(size: usize, watermark: u64, a: u64, b: u64, no_wait_write: bool) -> Self {
         info!("Initialise attendez scheduler with {} thread(s)", size);
         info!("Watermark = {}, a = {}, b = {}", watermark, a, b);
+        info!("No wait write operation: {}", no_wait_write);
 
         Self {
             transaction: ThreadLocal::new(),
@@ -46,6 +48,7 @@ impl<'a> Attendez<'a> {
             a,
             b,
             watermark,
+            no_wait_write,
         }
     }
 
@@ -173,67 +176,118 @@ impl<'a> Attendez<'a> {
         database: &Database,
     ) -> Result<(), NonFatalError> {
         let transaction: &'a Transaction<'a> = self.get_transaction(); // transaction active on this thread
-        let table = database.get_table(table_id); // handle to table
-        let rw_table = table.get_rwtable(offset); // handle to rwtable
-        let prv = rw_table.push_front(Access::Write(meta.clone())); // append access
-        let lsn = table.get_lsn(offset); // handle to lsn
-        utils::spin(prv, lsn); // delay until prv == lsn
+        let table = database.get_table(table_id);
+        let rw_table = table.get_rwtable(offset);
+        let lsn = table.get_lsn(offset);
 
-        let tuple = table.get_tuple(column_id, offset); // handle to tuple
-        let dirty = tuple.get().is_dirty();
+        let mut ticket;
+        if self.no_wait_write {
+            ticket = rw_table.push_front(Access::Write(meta.clone()));
+            utils::spin(ticket, lsn);
+            let tuple = table.get_tuple(column_id, offset); // handle to tuple
+            let dirty = tuple.get().is_dirty();
 
-        // if tuple is dirty then abort
-        // else for each read in the rwtable, add a predecessor upon write to hit list
-        if dirty {
-            // ok to have state change under feet here
-            rw_table.erase(prv); // remove from rwtable
-            lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(database); // abort this transaction
-            return Err(NonFatalError::RowDirty("todo".to_string()));
+            // if tuple is dirty then abort
+            // else for each read in the rwtable, add a predecessor upon write to hit list
+            if dirty {
+                // ok to have state change under feet here
+                rw_table.erase(ticket); // remove from rwtable
+                lsn.store(ticket + 1, Ordering::Release); // update lsn
+                self.abort(database); // abort this transaction
+                return Err(NonFatalError::RowDirty("todo".to_string()));
+            }
         } else {
-            let guard = &epoch::pin(); // pin thread
-            let snapshot = rw_table.iter(guard); // iterator over rwtable
+            let mut prv_ticket = 0;
+            let mut window = 0;
+            let mut prv_window = 0;
+            let watermark = 10;
+            let mut delta = 5;
+            let mut attempt = 0;
+            let mut diff: i64 = 0;
+            loop {
+                if delta >= watermark {
+                    self.abort(database);
+                    return Err(NonFatalError::RowDirty("todo".to_string()));
+                }
 
-            for (id, access) in snapshot {
-                if id < &prv {
-                    match access {
-                        Access::Read(txn_info) => match txn_info {
-                            TransactionId::OptimisticWaitHit(pred_addr) => {
-                                let pred = transaction::from_usize(*pred_addr); // convert to ptr
-                                if std::ptr::eq(transaction, pred) {
-                                    continue;
-                                } else {
-                                    transaction.add_predecessor(pred);
-                                }
-                            }
-                            _ => panic!("unexpected transaction information"),
-                        },
-                        Access::Write(txn_info) => match txn_info {
-                            TransactionId::OptimisticWaitHit(pred_addr) => {
-                                let pred: &'a Transaction<'a> = transaction::from_usize(*pred_addr); // convert to ptr
-                                if std::ptr::eq(transaction, pred) {
-                                    continue;
-                                } else {
-                                    transaction.add_predecessor(pred);
-                                }
-                            }
-                            _ => panic!("unexpected transaction information"),
-                        },
-                    }
+                ticket = rw_table.push_front(Access::Write(meta.clone()));
+
+                if attempt > 0 {
+                    window = ticket - prv_ticket;
+                }
+
+                if attempt > 1 {
+                    diff = window as i64 - prv_window as i64;
+                }
+
+                if diff < 0 {
+                    delta = delta / 2;
+                } else {
+                    delta += 1;
+                }
+
+                utils::spin(ticket, lsn);
+
+                let tuple = table.get_tuple(column_id, offset);
+                let dirty = tuple.get().is_dirty();
+
+                // if tuple is dirty then backoff
+                if dirty {
+                    rw_table.erase(ticket); // remove from rwtable
+                    lsn.store(ticket + 1, Ordering::Release); // update lsn
+                    prv_ticket = ticket;
+                    prv_window = window;
+                    attempt += 1;
+                    continue;
+                } else {
+                    // else for each read in the rwtable, add a predecessor upon write to hit list
+                    break;
                 }
             }
-
-            table
-                .get_tuple(column_id, offset)
-                .get()
-                .set_value(value)
-                .unwrap();
-
-            self.record_operation(OperationType::Write, table_id, column_id, offset, prv); // record operation
-            lsn.store(prv + 1, Ordering::Release); // update lsn
-
-            Ok(())
         }
+
+        let guard = &epoch::pin(); // pin thread
+        let snapshot = rw_table.iter(guard); // iterator over rwtable
+
+        for (id, access) in snapshot {
+            if id < &ticket {
+                match access {
+                    Access::Read(txn_info) => match txn_info {
+                        TransactionId::OptimisticWaitHit(pred_addr) => {
+                            let pred = transaction::from_usize(*pred_addr); // convert to ptr
+                            if std::ptr::eq(transaction, pred) {
+                                continue;
+                            } else {
+                                transaction.add_predecessor(pred);
+                            }
+                        }
+                        _ => panic!("unexpected transaction information"),
+                    },
+                    Access::Write(txn_info) => match txn_info {
+                        TransactionId::OptimisticWaitHit(pred_addr) => {
+                            let pred: &'a Transaction<'a> = transaction::from_usize(*pred_addr); // convert to ptr
+                            if std::ptr::eq(transaction, pred) {
+                                continue;
+                            } else {
+                                transaction.add_predecessor(pred);
+                            }
+                        }
+                        _ => panic!("unexpected transaction information"),
+                    },
+                }
+            }
+        }
+
+        table
+            .get_tuple(column_id, offset)
+            .get()
+            .set_value(value)
+            .unwrap();
+
+        self.record_operation(OperationType::Write, table_id, column_id, offset, ticket); // record operation
+        lsn.store(ticket + 1, Ordering::Release); // update lsn
+
+        Ok(())
     }
 
     pub fn abort(&self, database: &Database) -> NonFatalError {

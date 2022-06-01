@@ -67,8 +67,9 @@ impl<'a> Scheduler<'a> {
                 let watermark = config.get_int("watermark")? as u64;
                 let a = config.get_int("increase")? as u64;
                 let b = config.get_int("decrease")? as u64;
+                let no_wait_write = config.get_bool("no_wait_write")?;
 
-                Scheduler::Attendez(Attendez::new(cores, watermark, a, b))
+                Scheduler::Attendez(Attendez::new(cores, watermark, a, b, no_wait_write))
             }
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
             _ => panic!("unknown concurrency control protocol: {}", p),

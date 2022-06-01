@@ -29,5 +29,6 @@ serializable_rate = 0.0
 increase = 1
 decrease = 2
 watermark = 100
+no_wait_write = false
 
 type_aware = false

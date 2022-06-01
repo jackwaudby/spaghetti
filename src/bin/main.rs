@@ -38,6 +38,7 @@ fn main() {
             arg!(-b --decrease <DECREASE> "Multiplicative decrease (Attendez only)")
                 .required(false),
         )
+        .arg(arg!(-d --nowait <NOWAIT> "No wait write (Attendez only)").required(false))
         .arg(arg!(-r --relevant <RELEVANT> "Reduced relevant DFS (MSGT only)").required(false))
         .arg(arg!(-o --types <TYPES> "Transaction types optimization (OWH only)").required(false))
         .get_matches();
@@ -90,6 +91,10 @@ fn main() {
 
     if let Some(b) = matches.value_of("decrease") {
         config.set("decrease", b).unwrap();
+    }
+
+    if let Some(d) = matches.value_of("nowait") {
+        config.set("no_wait_write", d).unwrap();
     }
 
     // MSGT
