@@ -1,4 +1,5 @@
 use crate::common::error::{AttendezError, NonFatalError};
+use crate::common::statistics::protocol_diagnostics::{AttendezDiagnostics, ProtocolDiagnostics};
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::common::utils;
 use crate::scheduler::attendez::predecessor_summary::scan_predecessors;
@@ -288,7 +289,7 @@ impl<'a> Attendez<'a> {
         NonFatalError::NonSerializable // placeholder
     }
 
-    pub fn commit<'g>(&self, database: &Database) -> Result<(), NonFatalError> {
+    pub fn commit<'g>(&self, database: &Database) -> Result<ProtocolDiagnostics, NonFatalError> {
         let mut delta = 10;
 
         let transaction = self.get_transaction();
@@ -315,7 +316,7 @@ impl<'a> Attendez<'a> {
             match outcome {
                 WaitOutcome::Abort => {
                     self.abort(database);
-                    return Err(AttendezError::ExceededWatermark.into());
+                    return Err(AttendezError::PredecessorAborted.into());
                 }
                 WaitOutcome::Change => {
                     delta = delta / self.b;
@@ -375,7 +376,9 @@ impl<'a> Attendez<'a> {
                     drop(guard)
                 });
 
-                Ok(())
+                Ok(ProtocolDiagnostics::Attendez(AttendezDiagnostics::new(
+                    num_predecessors,
+                )))
             }
             Err(e) => {
                 self.abort(database);

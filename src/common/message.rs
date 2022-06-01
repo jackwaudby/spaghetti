@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
 use crate::workloads::acid::paramgen::AcidTransactionProfile;
@@ -64,6 +65,7 @@ pub struct Success {
     read: Option<BTreeMap<String, String>>,
     updated: Option<Vec<(usize, usize)>>,
     deleted: Option<Vec<(usize, usize)>>,
+    pub diagnostics: Option<ProtocolDiagnostics>,
 }
 
 impl Success {
@@ -74,6 +76,18 @@ impl Success {
             updated: None,
             deleted: None,
             read: None,
+            diagnostics: None,
+        }
+    }
+
+    pub fn diagnostics(id: TransactionId, pd: ProtocolDiagnostics) -> Self {
+        Self {
+            id,
+            created: None,
+            updated: None,
+            deleted: None,
+            read: None,
+            diagnostics: Some(pd),
         }
     }
 
@@ -104,6 +118,7 @@ impl Success {
             updated,
             deleted,
             read,
+            diagnostics: None,
         }
     }
 

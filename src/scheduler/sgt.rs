@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::error::SerializationGraphError;
+use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::common::{Edge, Node};
 use crate::storage::access::{Access, TransactionId};
@@ -423,7 +424,7 @@ impl SerializationGraph {
     }
 
     /// Commit operation.
-    pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
+    pub fn commit(&self, database: &Database) -> Result<ProtocolDiagnostics, NonFatalError> {
         debug!("commit");
         let this = unsafe { &*self.get_transaction() };
 
@@ -455,7 +456,7 @@ impl SerializationGraph {
             break;
         }
 
-        Ok(())
+        Ok(ProtocolDiagnostics::Other)
     }
 
     /// Abort operation.

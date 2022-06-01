@@ -1,4 +1,5 @@
 use crate::common::error::{NonFatalError, SerializationGraphError};
+use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::common::{Edge, Node};
 use crate::storage::access::{Access, TransactionId};
@@ -470,7 +471,7 @@ impl MixedSerializationGraph {
     }
 
     /// Commit operation.
-    pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
+    pub fn commit(&self, database: &Database) -> Result<ProtocolDiagnostics, NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
 
         loop {
@@ -501,7 +502,7 @@ impl MixedSerializationGraph {
             break;
         }
 
-        Ok(())
+        Ok(ProtocolDiagnostics::Other)
     }
 
     pub fn abort(&self, database: &Database) -> NonFatalError {

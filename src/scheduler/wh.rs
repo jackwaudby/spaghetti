@@ -1,4 +1,5 @@
 use crate::common::error::{NonFatalError, WaitHitError};
+use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::wh::shared::Shared;
 use crate::scheduler::wh::shared::TransactionOutcome;
@@ -217,7 +218,7 @@ impl WaitHit {
         &self,
         meta: &TransactionId,
         database: &Database,
-    ) -> Result<(), NonFatalError> {
+    ) -> Result<ProtocolDiagnostics, NonFatalError> {
         let this_id = match meta {
             TransactionId::WaitHit(id) => id,
             _ => panic!("unexpected txn id"),
@@ -252,7 +253,7 @@ impl WaitHit {
                 }
             }
             drop(g);
-            Ok(())
+            Ok(ProtocolDiagnostics::Other)
         } else {
             drop(g);
             self.abort(meta, database);

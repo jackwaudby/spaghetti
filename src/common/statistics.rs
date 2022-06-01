@@ -2,6 +2,7 @@ use crate::common::error::{AttendezError, NonFatalError, SerializationGraphError
 use crate::common::message::{Message, Outcome};
 use crate::common::statistics::abort_breakdown::AbortBreakdown;
 use crate::common::statistics::protocol_abort_breakdown::ProtocolAbortBreakdown;
+use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::statistics::transaction_breakdown::TransactionBreakdown;
 use crate::common::statistics::workload_abort_breakdown::WorkloadAbortBreakdown;
 use crate::workloads::IsolationLevel;
@@ -16,6 +17,7 @@ use std::time::Instant;
 
 pub mod abort_breakdown;
 pub mod protocol_abort_breakdown;
+pub mod protocol_diagnostics;
 pub mod transaction_breakdown;
 pub mod workload_abort_breakdown;
 
@@ -32,6 +34,7 @@ pub struct GlobalStatistics {
     workload: String,
     transaction_breakdown: TransactionBreakdown,
     abort_breakdown: AbortBreakdown,
+    protocol_diagnostics: ProtocolDiagnostics,
     anomaly: Option<String>,
     theta: f64,
     update_rate: f64,
@@ -46,6 +49,8 @@ impl GlobalStatistics {
         let cores = config.get_int("cores").unwrap() as u32;
         let transaction_breakdown = TransactionBreakdown::new(&workload);
         let abort_breakdown = AbortBreakdown::new(&protocol, &workload);
+        let protocol_diagnostics = ProtocolDiagnostics::new(&protocol);
+
         let anomaly;
         if let Ok(a) = config.get_str("anomaly") {
             anomaly = Some(a);
@@ -69,6 +74,7 @@ impl GlobalStatistics {
             cores,
             transaction_breakdown,
             abort_breakdown,
+            protocol_diagnostics,
             anomaly,
             theta,
             update_rate,
@@ -99,6 +105,8 @@ impl GlobalStatistics {
         self.transaction_breakdown
             .merge(local.transaction_breakdown);
         self.abort_breakdown.merge(local.abort_breakdown);
+
+        self.protocol_diagnostics.merge(local.protocol_diagnostics);
     }
 
     pub fn write_to_file(&mut self) {
@@ -221,6 +229,16 @@ impl GlobalStatistics {
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
 
+        tracing::info!(
+            "{}",
+            serde_json::to_string_pretty(&self.abort_breakdown).unwrap()
+        );
+
+        tracing::info!(
+            "{}",
+            serde_json::to_string_pretty(&self.protocol_diagnostics).unwrap()
+        );
+
         // results.csv
         let file = OpenOptions::new()
             .create(true)
@@ -256,19 +274,21 @@ pub struct LocalStatistics {
     latency: u128,
     transaction_breakdown: TransactionBreakdown,
     abort_breakdown: AbortBreakdown,
+    protocol_diagnostics: ProtocolDiagnostics,
 }
 
 impl LocalStatistics {
     pub fn new(core_id: u32, workload: &str, protocol: &str) -> Self {
         let transaction_breakdown = TransactionBreakdown::new(workload);
         let abort_breakdown = AbortBreakdown::new(protocol, workload);
-
+        let protocol_diagnostics = ProtocolDiagnostics::new(protocol);
         LocalStatistics {
             core_id,
             total_time: 0,
             latency: 0,
             transaction_breakdown,
             abort_breakdown,
+            protocol_diagnostics,
         }
     }
 
@@ -295,6 +315,15 @@ impl LocalStatistics {
         } = response
         {
             self.transaction_breakdown.record(transaction, outcome);
+
+            if let Outcome::Committed(success) = outcome {
+                let pd = success.diagnostics.as_ref().unwrap();
+                if let ProtocolDiagnostics::Attendez(diag) = pd {
+                    if let ProtocolDiagnostics::Attendez(ref mut d) = self.protocol_diagnostics {
+                        d.merge(diag);
+                    }
+                }
+            }
 
             if let Outcome::Aborted(reason) = outcome {
                 use WorkloadAbortBreakdown::*;

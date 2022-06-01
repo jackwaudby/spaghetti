@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::scheduler::attendez::Attendez;
 use crate::scheduler::msgt::MixedSerializationGraph;
 use crate::scheduler::nocc::NoConcurrencyControl;
@@ -145,7 +146,7 @@ impl<'a> Scheduler<'a> {
         meta: &TransactionId,
         database: &Database,
         transaction_type: TransactionType,
-    ) -> Result<(), NonFatalError> {
+    ) -> Result<ProtocolDiagnostics, NonFatalError> {
         use Scheduler::*;
         match self {
             SerializationGraph(sg) => sg.commit(database),

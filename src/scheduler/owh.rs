@@ -1,4 +1,5 @@
 use crate::common::error::{NonFatalError, WaitHitError};
+use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::owh::transaction::{PredecessorUpon, Transaction, TransactionState};
 use crate::scheduler::{Database, TransactionType};
@@ -369,7 +370,7 @@ impl<'a> OptimisedWaitHit<'a> {
         &self,
         database: &Database,
         transaction_type: TransactionType,
-    ) -> Result<(), NonFatalError> {
+    ) -> Result<ProtocolDiagnostics, NonFatalError> {
         let transaction = self.get_transaction();
 
         // CHECK //
@@ -444,7 +445,7 @@ impl<'a> OptimisedWaitHit<'a> {
                     drop(guard)
                 });
 
-                Ok(())
+                Ok(ProtocolDiagnostics::Other)
             }
             Err(e) => {
                 self.abort(database);

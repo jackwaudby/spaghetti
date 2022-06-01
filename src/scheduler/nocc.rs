@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
@@ -132,10 +133,10 @@ impl NoConcurrencyControl {
     }
 
     /// Commit a transaction.
-    pub fn commit(&self, database: &Database) -> Result<(), NonFatalError> {
+    pub fn commit(&self, database: &Database) -> Result<ProtocolDiagnostics, NonFatalError> {
         self.tidy_up(database);
 
-        Ok(())
+        Ok(ProtocolDiagnostics::Other)
     }
 
     /// Abort a transaction.
