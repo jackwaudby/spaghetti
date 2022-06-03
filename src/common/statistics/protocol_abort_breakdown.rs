@@ -139,6 +139,18 @@ impl AttendezReasons {
         self.exceeded_watermark += 1;
     }
 
+    pub fn get_row_dirty(&self) -> u32 {
+        self.row_dirty
+    }
+
+    pub fn get_cascade(&self) -> u32 {
+        self.predecessor_aborted
+    }
+
+    pub fn get_exceeded_watermark(&self) -> u32 {
+        self.exceeded_watermark
+    }
+
     pub fn merge(&mut self, other: AttendezReasons) {
         self.row_dirty += other.row_dirty;
         self.predecessor_aborted += other.predecessor_aborted;

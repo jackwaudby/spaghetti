@@ -239,6 +239,18 @@ impl GlobalStatistics {
             serde_json::to_string_pretty(&self.protocol_diagnostics).unwrap()
         );
 
+        let mut row_dirty = 0;
+        let mut cascade = 0;
+        let mut watermark = 0;
+
+        if let ProtocolAbortBreakdown::Attendez(ref reasons) =
+            self.abort_breakdown.get_protocol_specific()
+        {
+            row_dirty = reasons.get_row_dirty();
+            cascade = reasons.get_cascade();
+            watermark = reasons.get_exceeded_watermark();
+        }
+
         // results.csv
         let file = OpenOptions::new()
             .create(true)
@@ -262,6 +274,9 @@ impl GlobalStatistics {
             self.theta,
             self.update_rate,
             self.serializable_rate,
+            row_dirty,
+            cascade,
+            watermark,
         ))
         .unwrap();
     }
