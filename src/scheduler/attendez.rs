@@ -356,13 +356,13 @@ impl<'a> Attendez<'a> {
     }
 
     pub fn commit<'g>(&self, database: &Database) -> Result<ProtocolDiagnostics, NonFatalError> {
-        let mut delta = self.delta;
-
         let transaction = self.get_transaction();
         let predecessors = transaction.get_predecessors();
         let num_predecessors = predecessors.len();
+        let mut delta = self.delta;
 
         loop {
+            // waited too long -- might be cycle
             if delta >= self.watermark {
                 self.abort(database);
                 return Err(AttendezError::ExceededWatermark.into());

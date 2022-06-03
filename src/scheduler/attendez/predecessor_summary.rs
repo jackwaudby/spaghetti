@@ -4,7 +4,6 @@ pub struct PredecessorSummary {
     aborted: u64,
     _active: u64,
     committed: u64,
-    cascade: bool,
 }
 
 impl PredecessorSummary {
@@ -21,7 +20,6 @@ pub fn scan_predecessors<'a>(predecessors: &PredecessorSet<'a>) -> PredecessorSu
     let mut aborted = 0;
     let mut active = 0;
     let mut committed = 0;
-    //    let mut cascade = false;
 
     for (predecessor, rw) in predecessors {
         match predecessor.get_state() {
@@ -47,6 +45,5 @@ pub fn scan_predecessors<'a>(predecessors: &PredecessorSet<'a>) -> PredecessorSu
         aborted,
         _active: active,
         committed,
-        cascade: false,
     }
 }
