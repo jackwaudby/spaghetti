@@ -359,36 +359,39 @@ impl<'a> Attendez<'a> {
         let transaction = self.get_transaction();
         let predecessors = transaction.get_predecessors();
         let num_predecessors = predecessors.len();
-        let mut delta = self.delta;
+        // let mut delta = self.delta
 
-        loop {
-            // waited too long -- might be cycle
-            if delta >= self.watermark {
-                self.abort(database);
-                return Err(AttendezError::ExceededWatermark.into());
-            }
-
-            // wait cycle
-            let summary = scan_predecessors(&predecessors);
-            let start_committed = summary.get_committed();
-
-            // all committed
-            if start_committed == num_predecessors as u64 {
-                break;
-            }
-
-            let outcome = wait_cycle(delta, start_committed, &predecessors);
-
-            match outcome {
-                WaitOutcome::Abort => {
+        if num_predecessors > 0 {
+            let mut delta = num_predecessors as u64;
+            loop {
+                // waited too long -- might be cycle
+                if delta >= self.watermark {
                     self.abort(database);
-                    return Err(AttendezError::PredecessorAborted.into());
+                    return Err(AttendezError::ExceededWatermark.into());
                 }
-                WaitOutcome::Change => {
-                    delta = delta / self.b;
+
+                // wait cycle
+                let summary = scan_predecessors(&predecessors);
+                let start_committed = summary.get_committed();
+
+                // all committed
+                if start_committed == num_predecessors as u64 {
+                    break;
                 }
-                WaitOutcome::NoChange => {
-                    delta += self.a;
+
+                let outcome = wait_cycle(delta, start_committed, &predecessors);
+
+                match outcome {
+                    WaitOutcome::Abort => {
+                        self.abort(database);
+                        return Err(AttendezError::PredecessorAborted.into());
+                    }
+                    WaitOutcome::Change => {
+                        delta = delta / self.b;
+                    }
+                    WaitOutcome::NoChange => {
+                        delta += self.a;
+                    }
                 }
             }
         }
