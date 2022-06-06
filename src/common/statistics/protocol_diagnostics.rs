@@ -26,23 +26,66 @@ impl ProtocolDiagnostics {
             _ => {}
         }
     }
+
+    pub fn set_commit_time(&mut self, dur: u128) {
+        match self {
+            ProtocolDiagnostics::Attendez(ref mut diag) => {
+                diag.set_commit_time(dur);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn get_commit_time(&mut self) -> u128 {
+        match self {
+            ProtocolDiagnostics::Attendez(ref mut diag) => diag.get_commit_time(),
+            _ => 0,
+        }
+    }
+
+    pub fn get_predecessors(&mut self) -> usize {
+        match self {
+            ProtocolDiagnostics::Attendez(ref mut diag) => diag.get_predecessors(),
+            _ => 0,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct AttendezDiagnostics {
     pub predecessors: usize,
+    pub commit_time: u128,
 }
 
 impl AttendezDiagnostics {
     pub fn default() -> Self {
-        Self { predecessors: 0 }
+        Self {
+            predecessors: 0,
+            commit_time: 0,
+        }
     }
 
     pub fn new(predecessors: usize) -> Self {
-        Self { predecessors }
+        Self {
+            predecessors,
+            commit_time: 0,
+        }
     }
 
     pub fn merge(&mut self, other: &AttendezDiagnostics) {
         self.predecessors += other.predecessors;
+        self.commit_time += other.commit_time;
+    }
+
+    pub fn set_commit_time(&mut self, commit_time: u128) {
+        self.commit_time = commit_time;
+    }
+
+    pub fn get_commit_time(&mut self) -> u128 {
+        self.commit_time
+    }
+
+    pub fn get_predecessors(&mut self) -> usize {
+        self.predecessors
     }
 }

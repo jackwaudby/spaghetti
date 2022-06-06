@@ -10,6 +10,7 @@ use crate::workloads::smallbank::paramgen::{
 use crate::workloads::IsolationLevel;
 
 use std::convert::TryFrom;
+use std::time::Instant;
 use tracing::instrument;
 
 /// Balance transaction.
@@ -30,7 +31,12 @@ pub fn balance<'a>(
             scheduler.read_value(0, 0, offset, &meta, database)?; // get customer id
             scheduler.read_value(1, 1, offset, &meta, database)?; // get checking balance
             scheduler.read_value(2, 1, offset, &meta, database)?; // get savings balance
-            let diag = scheduler.commit(&meta, database, TransactionType::ReadOnly)?;
+
+            let start = Instant::now();
+            let mut diag = scheduler.commit(&meta, database, TransactionType::ReadOnly)?;
+            let dur = start.elapsed().as_nanos();
+
+            diag.set_commit_time(dur);
 
             Ok(Success::diagnostics(meta, diag))
         }
@@ -58,7 +64,11 @@ pub fn deposit_checking<'a>(
             let mut new_balance =
                 Data::from(f64::try_from(current_balance).unwrap() + params.get_value());
             scheduler.write_value(&mut new_balance, 1, 1, offset, &meta, database)?; // update checking balance
-            let diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+            let start = Instant::now();
+            let mut diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+            let dur = start.elapsed().as_nanos();
+
+            diag.set_commit_time(dur);
 
             Ok(Success::diagnostics(meta, diag))
         }
@@ -89,7 +99,13 @@ pub fn transact_savings<'a>(
                 return Err(SmallBankError::InsufficientFunds.into());
             }
             scheduler.write_value(&mut Data::from(balance), 2, 1, offset, &meta, database)?; // write 1 -- update saving balance
-            let diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+
+            let start = Instant::now();
+
+            let mut diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+            let dur = start.elapsed().as_nanos();
+
+            diag.set_commit_time(dur);
 
             Ok(Success::diagnostics(meta, diag))
         }
@@ -124,7 +140,13 @@ pub fn amalgmate<'a>(
             let res3 = scheduler.read_value(1, 1, offset2, &meta, database)?; // read 5 -- current checking balance (customer2)
             let mut bal = Data::Double(sum + f64::try_from(res3)?);
             scheduler.write_value(&mut bal, 1, 1, offset2, &meta, database)?;
-            let diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+
+            let start = Instant::now();
+
+            let mut diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+            let dur = start.elapsed().as_nanos();
+
+            diag.set_commit_time(dur);
 
             Ok(Success::diagnostics(meta, diag))
         }
@@ -157,8 +179,12 @@ pub fn write_check<'a>(
             }
             let mut new_check = Data::Double(total - amount);
             scheduler.write_value(&mut new_check, 1, 1, offset, &meta, database)?; // update checking balance
-            let diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+            let start = Instant::now();
 
+            let mut diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+            let dur = start.elapsed().as_nanos();
+
+            diag.set_commit_time(dur);
             Ok(Success::diagnostics(meta, diag))
         }
         _ => panic!("unexpected database"),
@@ -197,7 +223,12 @@ pub fn send_payment<'a>(
             checking += params.value;
             let val2 = &mut Data::Double(checking);
             scheduler.write_value(val2, 1, 1, offset2, &meta, database)?; // update cust2 checking
-            let diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+            let start = Instant::now();
+
+            let mut diag = scheduler.commit(&meta, database, TransactionType::ReadWrite)?;
+            let dur = start.elapsed().as_nanos();
+
+            diag.set_commit_time(dur);
 
             Ok(Success::diagnostics(meta, diag))
         }
