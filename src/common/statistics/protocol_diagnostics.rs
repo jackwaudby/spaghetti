@@ -43,6 +43,22 @@ impl ProtocolDiagnostics {
         }
     }
 
+    pub fn set_write_time(&mut self, dur: u128) {
+        match self {
+            ProtocolDiagnostics::Attendez(ref mut diag) => {
+                diag.set_write_time(dur);
+            }
+            _ => {}
+        }
+    }
+
+    pub fn get_write_time(&mut self) -> u128 {
+        match self {
+            ProtocolDiagnostics::Attendez(ref mut diag) => diag.get_write_time(),
+            _ => 0,
+        }
+    }
+
     pub fn get_predecessors(&mut self) -> usize {
         match self {
             ProtocolDiagnostics::Attendez(ref mut diag) => diag.get_predecessors(),
@@ -55,6 +71,7 @@ impl ProtocolDiagnostics {
 pub struct AttendezDiagnostics {
     pub predecessors: usize,
     pub commit_time: u128,
+    pub write_time: u128,
 }
 
 impl AttendezDiagnostics {
@@ -62,6 +79,7 @@ impl AttendezDiagnostics {
         Self {
             predecessors: 0,
             commit_time: 0,
+            write_time: 0,
         }
     }
 
@@ -69,12 +87,14 @@ impl AttendezDiagnostics {
         Self {
             predecessors,
             commit_time: 0,
+            write_time: 0,
         }
     }
 
     pub fn merge(&mut self, other: &AttendezDiagnostics) {
         self.predecessors += other.predecessors;
         self.commit_time += other.commit_time;
+        self.write_time += other.write_time;
     }
 
     pub fn set_commit_time(&mut self, commit_time: u128) {
@@ -83,6 +103,14 @@ impl AttendezDiagnostics {
 
     pub fn get_commit_time(&mut self) -> u128 {
         self.commit_time
+    }
+
+    pub fn set_write_time(&mut self, write_time: u128) {
+        self.write_time = write_time;
+    }
+
+    pub fn get_write_time(&mut self) -> u128 {
+        self.write_time
     }
 
     pub fn get_predecessors(&mut self) -> usize {

@@ -262,7 +262,7 @@ impl GlobalStatistics {
         let mut wtr = csv::Writer::from_writer(file);
 
         let x = self.protocol_diagnostics.get_commit_time() as f64 / committed as f64;
-        // let y = self.protocol_diagnostics.get_predecessors() as u32 / committed;
+        let y = self.protocol_diagnostics.get_write_time() as f64 / committed as f64;
 
         wtr.serialize((
             self.scale_factor,
@@ -280,7 +280,7 @@ impl GlobalStatistics {
             row_dirty,
             cascade,
             watermark,
-            x,
+            y,
         ))
         .unwrap();
     }

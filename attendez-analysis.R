@@ -7,7 +7,7 @@ library(scales)
 
 col_names = c("sf","protocol","workload","cores","total_time",
               "commits","external","internal","total_latency",
-              "theta","update_rate","serializable_rate","row_dirty","cascade","exceeded_watermark")
+              "theta","update_rate","serializable_rate","row_dirty","cascade","exceeded_watermark","commit_time")
 
 raw = read_csv(file = "exp.csv", col_names = col_names)
 
@@ -18,6 +18,10 @@ raw$exceeded_watermark[2:5] = raw$exceeded_watermark[2:5] / raw$external[2:5]
 raw$thpt = raw$commits / (raw$total_time / raw$cores / 1000) / 1000000
 raw$abr = (raw$external / (raw$commits + raw$external+ raw$internal))*100
 raw$lat = raw$total_latency / (raw$commits + raw$external + raw$internal)
+
+(g0 = ggplot(data = raw, aes(x = cores,y = commit_time,group = protocol,colour = protocol)) + 
+    geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)))
 
 (g1 = ggplot(data = raw, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
     geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
