@@ -34,6 +34,7 @@ pub struct AttendezReasons {
     row_dirty: u32,
     predecessor_aborted: u32,
     exceeded_watermark: u32,
+    write_op_exceeded_watermark: u32,
 }
 
 impl SerializationGraphReasons {
@@ -124,6 +125,7 @@ impl AttendezReasons {
             row_dirty: 0,
             predecessor_aborted: 0,
             exceeded_watermark: 0,
+            write_op_exceeded_watermark: 0,
         }
     }
 
@@ -139,6 +141,10 @@ impl AttendezReasons {
         self.exceeded_watermark += 1;
     }
 
+    pub fn inc_write_op_exceeded_watermark(&mut self) {
+        self.write_op_exceeded_watermark += 1;
+    }
+
     pub fn get_row_dirty(&self) -> u32 {
         self.row_dirty
     }
@@ -151,13 +157,21 @@ impl AttendezReasons {
         self.exceeded_watermark
     }
 
+    pub fn get_write_op_exceeded_watermark(&self) -> u32 {
+        self.write_op_exceeded_watermark
+    }
+
     pub fn merge(&mut self, other: AttendezReasons) {
         self.row_dirty += other.row_dirty;
         self.predecessor_aborted += other.predecessor_aborted;
         self.exceeded_watermark += other.exceeded_watermark;
+        self.write_op_exceeded_watermark += other.write_op_exceeded_watermark;
     }
 
     pub fn aggregate(&self) -> u32 {
-        self.row_dirty + self.predecessor_aborted + self.exceeded_watermark
+        self.row_dirty
+            + self.predecessor_aborted
+            + self.exceeded_watermark
+            + self.write_op_exceeded_watermark
     }
 }

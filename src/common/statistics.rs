@@ -242,6 +242,7 @@ impl GlobalStatistics {
         let mut row_dirty = 0;
         let mut cascade = 0;
         let mut watermark = 0;
+        let mut write = 0;
 
         if let ProtocolAbortBreakdown::Attendez(ref reasons) =
             self.abort_breakdown.get_protocol_specific()
@@ -249,6 +250,7 @@ impl GlobalStatistics {
             row_dirty = reasons.get_row_dirty();
             cascade = reasons.get_cascade();
             watermark = reasons.get_exceeded_watermark();
+            write = reasons.get_write_op_exceeded_watermark();
         }
 
         // results.csv
@@ -261,8 +263,8 @@ impl GlobalStatistics {
 
         let mut wtr = csv::Writer::from_writer(file);
 
-        let x = self.protocol_diagnostics.get_commit_time() as f64 / committed as f64;
-        let y = self.protocol_diagnostics.get_write_time() as f64 / committed as f64;
+        // let x = self.protocol_diagnostics.get_commit_time() as f64 / committed as f64;
+        // let y = self.protocol_diagnostics.get_write_time() as f64 / committed as f64;
 
         wtr.serialize((
             self.scale_factor,
@@ -280,7 +282,7 @@ impl GlobalStatistics {
             row_dirty,
             cascade,
             watermark,
-            y,
+            write,
         ))
         .unwrap();
     }
@@ -411,6 +413,9 @@ impl LocalStatistics {
                         NonFatalError::AttendezError(owhe) => match owhe {
                             AttendezError::ExceededWatermark => metric.inc_exceeded_watermark(),
                             AttendezError::PredecessorAborted => metric.inc_predecessor_aborted(),
+                            AttendezError::WriteOpExceededWatermark => {
+                                metric.inc_write_op_exceeded_watermark()
+                            }
                         },
                         NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
                         _ => {}

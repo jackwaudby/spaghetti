@@ -32,6 +32,7 @@ pub enum WaitHitError {
 pub enum AttendezError {
     ExceededWatermark,
     PredecessorAborted,
+    WriteOpExceededWatermark,
 }
 
 impl std::error::Error for NonFatalError {}
@@ -113,6 +114,7 @@ impl fmt::Display for AttendezError {
         match *self {
             PredecessorAborted => write!(f, "predecessor aborted"),
             ExceededWatermark => write!(f, "exceeded wait watermark"),
+            WriteOpExceededWatermark => write!(f, "exceeded wait watermark"),
         }
     }
 }

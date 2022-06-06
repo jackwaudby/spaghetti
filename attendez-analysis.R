@@ -7,7 +7,7 @@ library(scales)
 
 col_names = c("sf","protocol","workload","cores","total_time",
               "commits","external","internal","total_latency",
-              "theta","update_rate","serializable_rate","row_dirty","cascade","exceeded_watermark","commit_time")
+              "theta","update_rate","serializable_rate","row_dirty","cascade","exceeded_watermark","write_time")
 
 raw = read_csv(file = "exp.csv", col_names = col_names)
 

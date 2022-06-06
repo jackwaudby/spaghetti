@@ -219,7 +219,9 @@ impl<'a> Attendez<'a> {
             loop {
                 if delta >= watermark {
                     self.abort(database);
-                    return Err(NonFatalError::RowDirty("todo".to_string()));
+                    return Err(NonFatalError::AttendezError(
+                        AttendezError::WriteOpExceededWatermark,
+                    ));
                 }
 
                 ticket = rw_table.push_front(Access::Write(meta.clone()));
