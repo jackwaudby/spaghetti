@@ -207,14 +207,10 @@ impl GlobalStatistics {
             &self.protocol,
             &self.workload,
             self.cores,
-            (self.total_time as f64 / 1000000.0), // ms
-            committed,
-            // external_aborts,
-            // internal_aborts,
-            (self.latency as f64 / 1000000.0), // ms
-            self.theta,
-            self.update_rate,
-            self.serializable_rate,
+            summary.get_thpt(self.total_time, self.cores),
+            summary.get_abort_rate(),
+            summary.get_transaction_av_latency(),
+            summary.get_write_av_latency(),
         ))
         .unwrap();
     }
