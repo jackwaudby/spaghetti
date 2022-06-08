@@ -1,12 +1,8 @@
-use crate::common::error::{AttendezError, NonFatalError, SerializationGraphError, WaitHitError};
-use crate::common::message::{Outcome, Response};
+use crate::common::message::Response;
 use crate::common::statistics::abort_breakdown::AbortBreakdown;
-use crate::common::statistics::protocol_abort_breakdown::ProtocolAbortBreakdown;
 use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::statistics::transaction_breakdown::GlobalSummary;
 use crate::common::statistics::transaction_breakdown::TransactionBreakdown;
-use crate::common::statistics::workload_abort_breakdown::WorkloadAbortBreakdown;
-use crate::workloads::IsolationLevel;
 
 use config::Config;
 use serde::{Deserialize, Serialize};
@@ -37,9 +33,6 @@ pub struct GlobalStatistics {
     workload: String,
     transaction_breakdown: TransactionBreakdown,
     anomaly: Option<String>,
-    theta: f64,
-    update_rate: f64,
-    serializable_rate: f64,
 }
 
 impl GlobalStatistics {
@@ -58,10 +51,6 @@ impl GlobalStatistics {
             anomaly = None;
         }
 
-        let theta = config.get_float("theta").unwrap();
-        let update_rate = config.get_float("update_rate").unwrap();
-        let serializable_rate = config.get_float("serializable_rate").unwrap();
-
         GlobalStatistics {
             scale_factor,
             data_generation: None,
@@ -74,9 +63,6 @@ impl GlobalStatistics {
             cores,
             transaction_breakdown,
             anomaly,
-            theta,
-            update_rate,
-            serializable_rate,
         }
     }
 
@@ -147,14 +133,14 @@ impl GlobalStatistics {
             .get_global_summary(&self.workload, &self.protocol);
 
         // sanity check
-        let mut completed = summary.get_completed();
-        let mut committed = summary.get_committed();
-        let mut aborted = summary.get_aborted();
+        let completed = summary.get_completed();
+        let committed = summary.get_committed();
+        let aborted = summary.get_aborted();
         assert_eq!(completed, committed + aborted);
 
         let internal = summary.get_internal_aborts();
         let external = summary.get_external_aborts();
-        assert_eq!(aborted, external + internal);
+        assert_eq!(aborted, external + internal, "{},{}", external, internal);
 
         // detailed file output
         let overview = json!({

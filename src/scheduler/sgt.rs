@@ -3,6 +3,8 @@ use crate::common::error::SerializationGraphError;
 use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::common::{Edge, Node};
+use crate::scheduler::StatsBucket;
+use crate::scheduler::ValueId;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::Database;
@@ -182,8 +184,7 @@ impl SerializationGraph {
         aborted || cascading_abort
     }
 
-    /// Begin a transaction.
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self) -> (TransactionId, ProtocolDiagnostics) {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
@@ -193,7 +194,10 @@ impl SerializationGraph {
 
         debug!("{} begin", unsafe { &*self.get_transaction() });
 
-        TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
+        (
+            TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr),
+            ProtocolDiagnostics::Other,
+        )
     }
 
     pub fn create_node(&self) -> (usize, usize, usize) {
@@ -210,16 +214,16 @@ impl SerializationGraph {
         (id, thread_id, thread_ctr)
     }
 
-    /// Read operation.
     pub fn read_value(
         &self,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
-        debug!("read");
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
+
         let this = unsafe { &*self.get_transaction() };
 
         if this.is_cascading_abort() {
@@ -229,7 +233,7 @@ impl SerializationGraph {
 
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
-        let prv = rw_table.push_front(Access::Read(meta.clone()));
+        let prv = rw_table.push_front(Access::Read(meta.get_transaction_id()));
         let lsn = table.get_lsn(offset);
 
         // Safety: ensures exculsive access to the record.
@@ -287,13 +291,13 @@ impl SerializationGraph {
     pub fn write_value(
         &self,
         value: &mut Data,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        debug!("write");
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
@@ -305,7 +309,7 @@ impl SerializationGraph {
                 return Err(SerializationGraphError::CascadingAbort.into()); // check for cascading abort
             }
 
-            prv = rw_table.push_front(Access::Write(meta.clone())); // get ticket
+            prv = rw_table.push_front(Access::Write(meta.get_transaction_id())); // get ticket
 
             unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
 
@@ -410,7 +414,7 @@ impl SerializationGraph {
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
                 "{} attempting to write over uncommitted value on ({},{},{})",
-                meta.clone(),
+                meta.get_transaction_id(),
                 table_id,
                 column_id,
                 offset,
@@ -424,7 +428,11 @@ impl SerializationGraph {
     }
 
     /// Commit operation.
-    pub fn commit(&self, database: &Database) -> Result<ProtocolDiagnostics, NonFatalError> {
+    pub fn commit(
+        &self,
+        _meta: &mut StatsBucket,
+        database: &Database,
+    ) -> Result<(), NonFatalError> {
         debug!("commit");
         let this = unsafe { &*self.get_transaction() };
 
@@ -456,7 +464,7 @@ impl SerializationGraph {
             break;
         }
 
-        Ok(ProtocolDiagnostics::Other)
+        Ok(())
     }
 
     /// Abort operation.

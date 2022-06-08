@@ -266,27 +266,27 @@ impl GlobalSummary {
     }
 
     pub fn get_committed_write_av_latency(&self) -> f64 {
-        let mut cum = self.committed_latency.get_write();
-        let mut cnt = self.committed_latency.get_write_cnt();
+        let cum = self.committed_latency.get_write();
+        let cnt = self.committed_latency.get_write_cnt();
 
         cum as f64 / cnt as f64 / 1000.0
     }
 
     pub fn get_aborted_write_av_latency(&self) -> f64 {
-        let mut cum = self.aborted_latency.get_write();
-        let mut cnt = self.aborted_latency.get_write_cnt();
+        let cum = self.aborted_latency.get_write();
+        let cnt = self.aborted_latency.get_write_cnt();
 
         cum as f64 / cnt as f64 / 1000.0
     }
 
     pub fn get_aborted_transaction_av_latency(&self) -> f64 {
-        let mut cum = self.aborted_latency.get_total();
+        let cum = self.aborted_latency.get_total();
 
         cum as f64 / self.aborted as f64 / 1000.0
     }
 
     pub fn get_committed_transaction_av_latency(&self) -> f64 {
-        let mut cum = self.committed_latency.get_total();
+        let cum = self.committed_latency.get_total();
 
         cum as f64 / self.committed as f64 / 1000.0
     }
@@ -299,7 +299,7 @@ impl GlobalSummary {
     }
 
     pub fn get_commit_av_latency(&self) -> f64 {
-        let mut cum = self.committed_latency.get_commit();
+        let cum = self.committed_latency.get_commit();
 
         cum as f64 / self.committed as f64 / 1000.0
     }
@@ -345,7 +345,7 @@ impl GlobalSummary {
     }
 
     pub fn get_internal_aborts(&mut self) -> u32 {
-        let mut w = self.get_mut_aborted_breakdown().get_mut_workload_specific();
+        let w = self.get_mut_aborted_breakdown().get_mut_workload_specific();
 
         match w {
             WorkloadAbortBreakdown::Tatp(ref reasons) => {

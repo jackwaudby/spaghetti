@@ -31,7 +31,6 @@ pub struct Attendez<'a> {
     b: u64,
     watermark: u64,
     no_wait_write: bool,
-    delta: u64,
 }
 
 impl<'a> Attendez<'a> {
@@ -39,19 +38,9 @@ impl<'a> Attendez<'a> {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
     }
 
-    pub fn new(
-        size: usize,
-        watermark: u64,
-        a: u64,
-        b: u64,
-        no_wait_write: bool,
-        delta: u64,
-    ) -> Self {
+    pub fn new(size: usize, watermark: u64, a: u64, b: u64, no_wait_write: bool) -> Self {
         info!("Initialise attendez scheduler with {} thread(s)", size);
-        info!(
-            "delta = {}, watermark = {}, a = {}, b = {}",
-            delta, watermark, a, b
-        );
+        info!("watermark = {}, a = {}, b = {}", watermark, a, b);
         info!("No wait write operation: {}", no_wait_write);
 
         Self {
@@ -62,7 +51,6 @@ impl<'a> Attendez<'a> {
             b,
             watermark,
             no_wait_write,
-            delta,
         }
     }
 
@@ -315,10 +303,9 @@ impl<'a> Attendez<'a> {
         Ok(())
     }
 
-    pub fn abort(&self, meta: &mut StatsBucket, database: &Database) -> NonFatalError {
+    pub fn abort(&self, _meta: &mut StatsBucket, database: &Database) -> NonFatalError {
         let this = self.get_transaction();
         let ops = self.get_operations();
-        let transaction = self.get_transaction();
 
         this.set_state(TransactionState::Aborted); // set state
 

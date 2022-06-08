@@ -5,7 +5,7 @@ use crate::scheduler::attendez::Attendez;
 // use crate::scheduler::msgt::MixedSerializationGraph;
 // use crate::scheduler::nocc::NoConcurrencyControl;
 // use crate::scheduler::owh::OptimisedWaitHit;
-// use crate::scheduler::sgt::SerializationGraph;
+use crate::scheduler::sgt::SerializationGraph;
 // use crate::scheduler::wh::WaitHit;
 use crate::storage::datatype::Data;
 use crate::storage::Database;
@@ -37,7 +37,7 @@ pub enum TransactionType {
 
 #[derive(Debug)]
 pub enum Scheduler<'a> {
-    // SerializationGraph(SerializationGraph),
+    SerializationGraph(SerializationGraph),
     // MixedSerializationGraph(MixedSerializationGraph),
     Attendez(Attendez<'a>),
     // WaitHit(WaitHit),
@@ -51,7 +51,7 @@ impl<'a> Scheduler<'a> {
         let p = config.get_str("protocol")?;
 
         let protocol = match p.as_str() {
-            // "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
+            "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
             // "msgt" => {
             //     let relevant_cycle_check = config.get_bool("relevant_dfs")?;
             //     Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(
@@ -68,11 +68,9 @@ impl<'a> Scheduler<'a> {
                 let watermark = config.get_int("watermark")? as u64;
                 let a = config.get_int("increase")? as u64;
                 let b = config.get_int("decrease")? as u64;
-                let delta = config.get_int("delta")? as u64;
-
                 let no_wait_write = config.get_bool("no_wait_write")?;
 
-                Scheduler::Attendez(Attendez::new(cores, watermark, a, b, no_wait_write, delta))
+                Scheduler::Attendez(Attendez::new(cores, watermark, a, b, no_wait_write))
             }
             // "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
             _ => panic!("unknown concurrency control protocol: {}", p),
@@ -85,7 +83,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
 
         let (transaction_id, diagnostics) = match self {
-            // SerializationGraph(sg) => sg.begin(),
+            SerializationGraph(sg) => sg.begin(),
             // MixedSerializationGraph(sg) => sg.begin(isolation_level),
             Attendez(w) => w.begin(),
             // WaitHit(wh) => wh.begin(),
@@ -107,7 +105,7 @@ impl<'a> Scheduler<'a> {
         let start = Instant::now();
 
         let res = match self {
-            // SerializationGraph(sg) => sg.read_value(table_id, column_id, offset, meta, database),
+            SerializationGraph(sg) => sg.read_value(vid, meta, database),
             // MixedSerializationGraph(sg) => {
             //     sg.read_value(table_id, column_id, offset, meta, database)
             // }
@@ -137,9 +135,7 @@ impl<'a> Scheduler<'a> {
         let start = Instant::now();
 
         let res = match self {
-            // SerializationGraph(sg) => {
-            //     sg.write_value(value, table_id, column_id, offset, meta, database)
-            // }
+            SerializationGraph(sg) => sg.write_value(value, vid, meta, database),
             // MixedSerializationGraph(sg) => {
             //     sg.write_value(value, table_id, column_id, offset, meta, database)
             // }
@@ -170,7 +166,7 @@ impl<'a> Scheduler<'a> {
         let start = Instant::now();
 
         let res = match self {
-            // SerializationGraph(sg) => sg.commit(database),
+            SerializationGraph(sg) => sg.commit(meta, database),
             // MixedSerializationGraph(sg) => sg.commit(database),
             // WaitHit(wh) => wh.commit(meta, database),
             Attendez(wh) => wh.commit(meta, database),
@@ -190,7 +186,7 @@ impl<'a> Scheduler<'a> {
         let start = Instant::now();
 
         let res = match self {
-            // SerializationGraph(sg) => sg.abort(database),
+            SerializationGraph(sg) => sg.abort(database),
             // MixedSerializationGraph(sg) => sg.abort(database),
             // WaitHit(wh) => wh.abort(meta, database),
             Attendez(wh) => wh.abort(meta, database),

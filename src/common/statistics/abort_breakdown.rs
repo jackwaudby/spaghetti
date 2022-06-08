@@ -90,20 +90,13 @@ impl AbortBreakdown {
         use ProtocolAbortBreakdown::*;
 
         match self.protocol_specific {
-            //         SerializationGraph(ref mut metric) => {
-            //             if let NonFatalError::SerializationGraphError(err) = reason {
-            //                 match err {
-            //                     CascadingAbort => metric.inc_cascading_abort(),
-            //                     CycleFound => metric.inc_cycle_found(),
-            //                 }
-
-            //                 match isolation {
-            //                     ReadCommitted => metric.inc_read_committed(),
-            //                     ReadUncommitted => metric.inc_read_uncommitted(),
-            //                     Serializable => metric.inc_serializable(),
-            //                 }
-            //             }
-            //         }
+            SerializationGraph(ref mut metric) => match reason {
+                NonFatalError::SerializationGraphError(err) => match err {
+                    CascadingAbort => metric.inc_cascading_abort(),
+                    CycleFound => metric.inc_cycle_found(),
+                },
+                _ => {}
+            },
 
             //         MixedSerializationGraph(ref mut metric) => {
             //             if let NonFatalError::SerializationGraphError(sge) = reason {

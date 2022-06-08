@@ -17,9 +17,6 @@ pub enum ProtocolAbortBreakdown {
 pub struct SerializationGraphReasons {
     cascading_abort: u32,
     cycle_found: u32,
-    read_uncommitted: u32, // TODO: these don't fit here
-    read_committed: u32,
-    serializable: u32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -43,9 +40,6 @@ impl SerializationGraphReasons {
         SerializationGraphReasons {
             cascading_abort: 0,
             cycle_found: 0,
-            read_uncommitted: 0,
-            read_committed: 0,
-            serializable: 0,
         }
     }
 
@@ -57,24 +51,9 @@ impl SerializationGraphReasons {
         self.cycle_found += 1;
     }
 
-    pub fn inc_read_uncommitted(&mut self) {
-        self.read_uncommitted += 1;
-    }
-
-    pub fn inc_read_committed(&mut self) {
-        self.read_committed += 1;
-    }
-
-    pub fn inc_serializable(&mut self) {
-        self.serializable += 1;
-    }
-
     pub fn merge(&mut self, other: &SerializationGraphReasons) {
         self.cascading_abort += other.cascading_abort;
         self.cycle_found += other.cycle_found;
-        self.read_uncommitted += other.read_uncommitted;
-        self.read_committed += other.read_committed;
-        self.serializable += other.serializable;
     }
 
     pub fn aggregate(&self) -> u32 {
