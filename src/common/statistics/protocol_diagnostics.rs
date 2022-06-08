@@ -14,7 +14,7 @@ impl ProtocolDiagnostics {
         }
     }
 
-    pub fn merge(&mut self, other: ProtocolDiagnostics) {
+    pub fn merge(&mut self, other: &ProtocolDiagnostics) {
         match self {
             ProtocolDiagnostics::Attendez(ref mut diag) => {
                 if let ProtocolDiagnostics::Attendez(other_diag) = other {
@@ -27,93 +27,44 @@ impl ProtocolDiagnostics {
         }
     }
 
-    pub fn set_commit_time(&mut self, dur: u128) {
-        match self {
-            ProtocolDiagnostics::Attendez(ref mut diag) => {
-                diag.set_commit_time(dur);
-            }
-            _ => {}
-        }
-    }
-
-    pub fn get_commit_time(&mut self) -> u128 {
-        match self {
-            ProtocolDiagnostics::Attendez(ref mut diag) => diag.get_commit_time(),
-            _ => 0,
-        }
-    }
-
-    pub fn set_write_time(&mut self, dur: u128) {
-        match self {
-            ProtocolDiagnostics::Attendez(ref mut diag) => {
-                diag.set_write_time(dur);
-            }
-            _ => {}
-        }
-    }
-
-    pub fn get_write_time(&mut self) -> u128 {
-        match self {
-            ProtocolDiagnostics::Attendez(ref mut diag) => diag.get_write_time(),
-            _ => 0,
-        }
-    }
-
     pub fn get_predecessors(&mut self) -> usize {
         match self {
             ProtocolDiagnostics::Attendez(ref mut diag) => diag.get_predecessors(),
             _ => 0,
         }
     }
+
+    pub fn set_predecessors(&mut self, p: usize) {
+        match self {
+            ProtocolDiagnostics::Attendez(ref mut diag) => diag.set_predecessors(p),
+            _ => {}
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct AttendezDiagnostics {
-    pub predecessors: usize,
-    pub commit_time: u128,
-    pub write_time: u128,
+    predecessors: usize,
 }
 
 impl AttendezDiagnostics {
     pub fn default() -> Self {
-        Self {
-            predecessors: 0,
-            commit_time: 0,
-            write_time: 0,
-        }
+        Self { predecessors: 0 }
     }
 
     pub fn new(predecessors: usize) -> Self {
-        Self {
-            predecessors,
-            commit_time: 0,
-            write_time: 0,
-        }
+        Self { predecessors }
     }
 
     pub fn merge(&mut self, other: &AttendezDiagnostics) {
         self.predecessors += other.predecessors;
-        self.commit_time += other.commit_time;
-        self.write_time += other.write_time;
-    }
-
-    pub fn set_commit_time(&mut self, commit_time: u128) {
-        self.commit_time = commit_time;
-    }
-
-    pub fn get_commit_time(&mut self) -> u128 {
-        self.commit_time
-    }
-
-    pub fn set_write_time(&mut self, write_time: u128) {
-        self.write_time = write_time;
-    }
-
-    pub fn get_write_time(&mut self) -> u128 {
-        self.write_time
     }
 
     pub fn get_predecessors(&mut self) -> usize {
         self.predecessors
+    }
+
+    pub fn set_predecessors(&mut self, p: usize) {
+        self.predecessors = p;
     }
 }

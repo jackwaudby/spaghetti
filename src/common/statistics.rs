@@ -1,13 +1,15 @@
 use crate::common::error::{AttendezError, NonFatalError, SerializationGraphError, WaitHitError};
-use crate::common::message::{Message, Outcome};
+use crate::common::message::{Outcome, Response};
 use crate::common::statistics::abort_breakdown::AbortBreakdown;
 use crate::common::statistics::protocol_abort_breakdown::ProtocolAbortBreakdown;
 use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
+use crate::common::statistics::transaction_breakdown::GlobalSummary;
 use crate::common::statistics::transaction_breakdown::TransactionBreakdown;
 use crate::common::statistics::workload_abort_breakdown::WorkloadAbortBreakdown;
 use crate::workloads::IsolationLevel;
 
 use config::Config;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::fs::{self, OpenOptions};
 use std::path::Path;
@@ -16,6 +18,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 pub mod abort_breakdown;
+pub mod latency_breakdown;
 pub mod protocol_abort_breakdown;
 pub mod protocol_diagnostics;
 pub mod transaction_breakdown;
@@ -33,8 +36,6 @@ pub struct GlobalStatistics {
     protocol: String,
     workload: String,
     transaction_breakdown: TransactionBreakdown,
-    abort_breakdown: AbortBreakdown,
-    protocol_diagnostics: ProtocolDiagnostics,
     anomaly: Option<String>,
     theta: f64,
     update_rate: f64,
@@ -47,9 +48,8 @@ impl GlobalStatistics {
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
         let cores = config.get_int("cores").unwrap() as u32;
-        let transaction_breakdown = TransactionBreakdown::new(&workload);
-        let abort_breakdown = AbortBreakdown::new(&protocol, &workload);
-        let protocol_diagnostics = ProtocolDiagnostics::new(&protocol);
+
+        let transaction_breakdown = TransactionBreakdown::new(&workload, &protocol);
 
         let anomaly;
         if let Ok(a) = config.get_str("anomaly") {
@@ -73,8 +73,6 @@ impl GlobalStatistics {
             latency: 0,
             cores,
             transaction_breakdown,
-            abort_breakdown,
-            protocol_diagnostics,
             anomaly,
             theta,
             update_rate,
@@ -101,12 +99,8 @@ impl GlobalStatistics {
     pub fn merge_into(&mut self, local: LocalStatistics) {
         self.total_time += local.total_time;
         self.latency += local.latency;
-
         self.transaction_breakdown
             .merge(local.transaction_breakdown);
-        self.abort_breakdown.merge(local.abort_breakdown);
-
-        self.protocol_diagnostics.merge(local.protocol_diagnostics);
     }
 
     pub fn write_to_file(&mut self) {
@@ -148,49 +142,21 @@ impl GlobalStatistics {
             .open(&file)
             .expect("cannot open file"); // create new file
 
-        let mut completed = 0;
-        let mut committed = 0;
-        let mut aborted = 0; // total aborts
+        let mut summary = self
+            .transaction_breakdown
+            .get_global_summary(&self.workload, &self.protocol);
 
-        for transaction in self.transaction_breakdown.get_transactions() {
-            completed += transaction.get_completed();
-            committed += transaction.get_committed();
-            aborted += transaction.get_aborted();
-        }
-
+        // sanity check
+        let mut completed = summary.get_completed();
+        let mut committed = summary.get_committed();
+        let mut aborted = summary.get_aborted();
         assert_eq!(completed, committed + aborted);
 
-        let internal_aborts = match self.abort_breakdown.get_workload_specific() {
-            WorkloadAbortBreakdown::Tatp(ref reasons) => {
-                // row not found is the only internal abort
-                // but these count as committed in this workload
-                committed += reasons.get_row_not_found();
-                aborted -= reasons.get_row_not_found();
-                0
-            }
-            WorkloadAbortBreakdown::SmallBank(ref reasons) => reasons.get_insufficient_funds(),
-            WorkloadAbortBreakdown::Acid(ref reasons) => reasons.get_non_serializable(),
-            WorkloadAbortBreakdown::Dummy(ref reasons) => reasons.get_non_serializable(),
-            WorkloadAbortBreakdown::Ycsb => 0,
-        }; // aborts due to integrity constraints/manual aborts
+        let internal = summary.get_internal_aborts();
+        let external = summary.get_external_aborts();
+        assert_eq!(aborted, external + internal);
 
-        let external_aborts = match self.abort_breakdown.get_protocol_specific() {
-            ProtocolAbortBreakdown::SerializationGraph(ref reasons) => reasons.aggregate(),
-            ProtocolAbortBreakdown::MixedSerializationGraph(ref reasons) => reasons.aggregate(),
-            ProtocolAbortBreakdown::WaitHit(ref reasons) => reasons.aggregate(),
-            ProtocolAbortBreakdown::Attendez(ref reasons) => reasons.aggregate(),
-            ProtocolAbortBreakdown::OptimisticWaitHit(ref reasons) => reasons.aggregate(),
-            ProtocolAbortBreakdown::NoConcurrencyControl => 0,
-        }; // aborts due to system implementation
-
-        assert_eq!(aborted, external_aborts + internal_aborts);
-
-        let abort_rate = external_aborts as f64 / (committed + external_aborts) as f64;
-        let throughput = committed as f64
-            / (((self.total_time as f64 / 1000000.0) / 1000.0) / self.cores as f64);
-        let mean = self.latency as f64 / (completed as f64) / 1000000.0;
-
-        // detailed execution summary
+        // detailed file output
         let overview = json!({
             "workload": self.workload,
             "sf": self.scale_factor,
@@ -201,13 +167,12 @@ impl GlobalStatistics {
             "completed": completed,
             "committed": committed,
             "aborted": aborted,
-            "internal_aborts": internal_aborts,
-            "external_aborts": external_aborts,
-            "abort_rate": format!("{:.3}", abort_rate),
-            "throughput": format!("{:.3}", throughput),
-            "latency": mean,
-            "abort_breakdown": self.abort_breakdown,
-            "transaction_breakdown": self.transaction_breakdown,
+            // "internal_aborts": internal_aborts,
+            // "external_aborts": external_aborts,
+            // "abort_rate": format!("{:.3}", abort_rate),
+            // "throughput": format!("{:.3}", throughput),
+            // "abort_breakdown": summary.get_aborted_breakdown(),
+            // "transaction_breakdown": summary.get_transaction_breakdown(),
         });
         serde_json::to_writer_pretty(file, &overview).unwrap();
 
@@ -220,40 +185,14 @@ impl GlobalStatistics {
             "total_time(ms)":  format!("{:.0}", (self.total_time as f64 / 1000000.0)),
             "completed": completed,
             "committed": committed,
-            "aborted": aborted,
-            "internal_aborts": internal_aborts,
-            "external_aborts": external_aborts,
-            "throughput": format!("{:.3}", throughput),
-            "abort_rate": format!("{:.3}", abort_rate),
-            "av_latency(ms)":format!("{:.5}", mean),
+            "aborted": summary.get_abort_summary(),
+            "throughput": format!("{:.2}", summary.get_thpt(self.total_time, self.cores)),
+            "av_latency (us)":  summary.get_lat_summary(),
+            "diagnostics": summary.get_diagnostics()
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
 
-        tracing::info!(
-            "{}",
-            serde_json::to_string_pretty(&self.abort_breakdown).unwrap()
-        );
-
-        tracing::info!(
-            "{}",
-            serde_json::to_string_pretty(&self.protocol_diagnostics).unwrap()
-        );
-
-        let mut row_dirty = 0;
-        let mut cascade = 0;
-        let mut watermark = 0;
-        let mut write = 0;
-
-        if let ProtocolAbortBreakdown::Attendez(ref reasons) =
-            self.abort_breakdown.get_protocol_specific()
-        {
-            row_dirty = reasons.get_row_dirty();
-            cascade = reasons.get_cascade();
-            watermark = reasons.get_exceeded_watermark();
-            write = reasons.get_write_op_exceeded_watermark();
-        }
-
-        // results.csv
+        // summary file output
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -263,9 +202,6 @@ impl GlobalStatistics {
 
         let mut wtr = csv::Writer::from_writer(file);
 
-        // let x = self.protocol_diagnostics.get_commit_time() as f64 / committed as f64;
-        // let y = self.protocol_diagnostics.get_write_time() as f64 / committed as f64;
-
         wtr.serialize((
             self.scale_factor,
             &self.protocol,
@@ -273,43 +209,34 @@ impl GlobalStatistics {
             self.cores,
             (self.total_time as f64 / 1000000.0), // ms
             committed,
-            external_aborts,
-            internal_aborts,
+            // external_aborts,
+            // internal_aborts,
             (self.latency as f64 / 1000000.0), // ms
             self.theta,
             self.update_rate,
             self.serializable_rate,
-            row_dirty,
-            cascade,
-            watermark,
-            write,
         ))
         .unwrap();
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LocalStatistics {
     core_id: u32,
-    total_time: u128,
-    latency: u128,
-    transaction_breakdown: TransactionBreakdown,
-    abort_breakdown: AbortBreakdown,
-    protocol_diagnostics: ProtocolDiagnostics,
+    pub total_time: u128,
+    pub latency: u128,
+    pub transaction_breakdown: TransactionBreakdown,
 }
 
 impl LocalStatistics {
     pub fn new(core_id: u32, workload: &str, protocol: &str) -> Self {
-        let transaction_breakdown = TransactionBreakdown::new(workload);
-        let abort_breakdown = AbortBreakdown::new(protocol, workload);
-        let protocol_diagnostics = ProtocolDiagnostics::new(protocol);
+        let transaction_breakdown = TransactionBreakdown::new(workload, protocol);
+
         LocalStatistics {
             core_id,
             total_time: 0,
             latency: 0,
             transaction_breakdown,
-            abort_breakdown,
-            protocol_diagnostics,
         }
     }
 
@@ -327,123 +254,120 @@ impl LocalStatistics {
         self.latency += start.elapsed().as_nanos();
     }
 
-    pub fn record(&mut self, response: &Message) {
-        if let Message::Response {
-            transaction,
-            outcome,
-            isolation,
-            ..
-        } = response
-        {
-            self.transaction_breakdown.record(transaction, outcome);
+    pub fn get_global_summary(&mut self, workload: &str, protocol: &str) -> GlobalSummary {
+        self.transaction_breakdown
+            .get_global_summary(workload, protocol)
+    }
 
-            if let Outcome::Committed(success) = outcome {
-                let pd = success.diagnostics.as_ref().unwrap();
-                if let ProtocolDiagnostics::Attendez(diag) = pd {
-                    if let ProtocolDiagnostics::Attendez(ref mut d) = self.protocol_diagnostics {
-                        d.merge(diag);
-                    }
-                }
-            }
+    pub fn record(&mut self, response: &Response) {
+        self.transaction_breakdown.record(response);
 
-            if let Outcome::Aborted(reason) = outcome {
-                use WorkloadAbortBreakdown::*;
-                match self.abort_breakdown.get_workload_specific() {
-                    SmallBank(ref mut metric) => {
-                        if let NonFatalError::SmallBankError(_) = reason {
-                            metric.inc_insufficient_funds();
-                        }
-                    }
+        // if let Outcome::Committed(success) = outcome {
+        //     let pd = success.diagnostics.as_ref().unwrap();
+        //     if let ProtocolDiagnostics::Attendez(diag) = pd {
+        //         if let ProtocolDiagnostics::Attendez(ref mut d) = self.protocol_diagnostics {
+        //             d.merge(diag);
+        //         }
+        //     }
+        // }
 
-                    Acid(ref mut metric) => {
-                        if let NonFatalError::NonSerializable = reason {
-                            metric.inc_non_serializable();
-                        }
-                    }
+        // if let Outcome::Aborted(reason) = outcome {
+        //     use WorkloadAbortBreakdown::*;
+        //     match self.abort_breakdown.get_workload_specific() {
+        //         SmallBank(ref mut metric) => {
+        //             if let NonFatalError::SmallBankError(_) = reason {
+        //                 metric.inc_insufficient_funds();
+        //             }
+        //         }
 
-                    Dummy(ref mut metric) => {
-                        if let NonFatalError::NonSerializable = reason {
-                            metric.inc_non_serializable();
-                        }
-                    }
+        //         Acid(ref mut metric) => {
+        //             if let NonFatalError::NonSerializable = reason {
+        //                 metric.inc_non_serializable();
+        //             }
+        //         }
 
-                    Tatp(ref mut metric) => {
-                        if let NonFatalError::RowNotFound(_, _) = reason {
-                            metric.inc_not_found();
-                        }
-                    }
-                    Ycsb => {}
-                }
+        //         Dummy(ref mut metric) => {
+        //             if let NonFatalError::NonSerializable = reason {
+        //                 metric.inc_non_serializable();
+        //             }
+        //         }
 
-                use IsolationLevel::*;
-                use ProtocolAbortBreakdown::*;
-                use SerializationGraphError::*;
+        //         Tatp(ref mut metric) => {
+        //             if let NonFatalError::RowNotFound(_, _) = reason {
+        //                 metric.inc_not_found();
+        //             }
+        //         }
+        //         Ycsb => {}
+        //     }
 
-                match self.abort_breakdown.get_protocol_specific() {
-                    SerializationGraph(ref mut metric) => {
-                        if let NonFatalError::SerializationGraphError(err) = reason {
-                            match err {
-                                CascadingAbort => metric.inc_cascading_abort(),
-                                CycleFound => metric.inc_cycle_found(),
-                            }
+        //     use IsolationLevel::*;
+        //     use ProtocolAbortBreakdown::*;
+        //     use SerializationGraphError::*;
 
-                            match isolation {
-                                ReadCommitted => metric.inc_read_committed(),
-                                ReadUncommitted => metric.inc_read_uncommitted(),
-                                Serializable => metric.inc_serializable(),
-                            }
-                        }
-                    }
+        //     match self.abort_breakdown.get_protocol_specific() {
+        //         SerializationGraph(ref mut metric) => {
+        //             if let NonFatalError::SerializationGraphError(err) = reason {
+        //                 match err {
+        //                     CascadingAbort => metric.inc_cascading_abort(),
+        //                     CycleFound => metric.inc_cycle_found(),
+        //                 }
 
-                    MixedSerializationGraph(ref mut metric) => {
-                        if let NonFatalError::SerializationGraphError(sge) = reason {
-                            match sge {
-                                CascadingAbort => metric.inc_cascading_abort(),
-                                CycleFound => metric.inc_cycle_found(),
-                            }
-                            match isolation {
-                                ReadCommitted => metric.inc_read_committed(),
-                                ReadUncommitted => metric.inc_read_uncommitted(),
-                                Serializable => metric.inc_serializable(),
-                            }
-                        }
-                    }
+        //                 match isolation {
+        //                     ReadCommitted => metric.inc_read_committed(),
+        //                     ReadUncommitted => metric.inc_read_uncommitted(),
+        //                     Serializable => metric.inc_serializable(),
+        //                 }
+        //             }
+        //         }
 
-                    Attendez(ref mut metric) => match reason {
-                        NonFatalError::AttendezError(owhe) => match owhe {
-                            AttendezError::ExceededWatermark => metric.inc_exceeded_watermark(),
-                            AttendezError::PredecessorAborted => metric.inc_predecessor_aborted(),
-                            AttendezError::WriteOpExceededWatermark => {
-                                metric.inc_write_op_exceeded_watermark()
-                            }
-                        },
-                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-                        _ => {}
-                    },
+        //         MixedSerializationGraph(ref mut metric) => {
+        //             if let NonFatalError::SerializationGraphError(sge) = reason {
+        //                 match sge {
+        //                     CascadingAbort => metric.inc_cascading_abort(),
+        //                     CycleFound => metric.inc_cycle_found(),
+        //                 }
+        //                 match isolation {
+        //                     ReadCommitted => metric.inc_read_committed(),
+        //                     ReadUncommitted => metric.inc_read_uncommitted(),
+        //                     Serializable => metric.inc_serializable(),
+        //                 }
+        //             }
+        //         }
 
-                    WaitHit(ref mut metric) => match reason {
-                        NonFatalError::WaitHitError(owhe) => match owhe {
-                            WaitHitError::Hit => metric.inc_hit(),
-                            WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-                            WaitHitError::PredecessorActive => metric.inc_pur_active(),
-                        },
-                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-                        _ => {}
-                    },
+        //         Attendez(ref mut metric) => match reason {
+        //             NonFatalError::AttendezError(owhe) => match owhe {
+        //                 AttendezError::ExceededWatermark => metric.inc_exceeded_watermark(),
+        //                 AttendezError::PredecessorAborted => metric.inc_predecessor_aborted(),
+        //                 AttendezError::WriteOpExceededWatermark => {
+        //                     metric.inc_write_op_exceeded_watermark()
+        //                 }
+        //             },
+        //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+        //             _ => {}
+        //         },
 
-                    OptimisticWaitHit(ref mut metric) => match reason {
-                        NonFatalError::WaitHitError(err) => match err {
-                            WaitHitError::Hit => metric.inc_hit(),
-                            WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-                            WaitHitError::PredecessorActive => metric.inc_pur_active(),
-                        },
-                        NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-                        _ => {}
-                    },
+        //         WaitHit(ref mut metric) => match reason {
+        //             NonFatalError::WaitHitError(owhe) => match owhe {
+        //                 WaitHitError::Hit => metric.inc_hit(),
+        //                 WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+        //                 WaitHitError::PredecessorActive => metric.inc_pur_active(),
+        //             },
+        //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+        //             _ => {}
+        //         },
 
-                    _ => {}
-                }
-            }
-        }
+        //         OptimisticWaitHit(ref mut metric) => match reason {
+        //             NonFatalError::WaitHitError(err) => match err {
+        //                 WaitHitError::Hit => metric.inc_hit(),
+        //                 WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+        //                 WaitHitError::PredecessorActive => metric.inc_pur_active(),
+        //             },
+        //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+        //             _ => {}
+        //         },
+
+        //         _ => {}
+        //     }
+        // }
     }
 }

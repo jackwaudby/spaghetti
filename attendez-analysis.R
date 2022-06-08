@@ -19,7 +19,7 @@ raw$thpt = raw$commits / (raw$total_time / raw$cores / 1000) / 1000000
 raw$abr = (raw$external / (raw$commits + raw$external+ raw$internal))*100
 raw$lat = raw$total_latency / (raw$commits + raw$external + raw$internal)
 
-(g0 = ggplot(data = raw, aes(x = cores,y = commit_time,group = protocol,colour = protocol)) + 
+(g0 = ggplot(data = raw, aes(x = cores,y = write_time,group = protocol,colour = protocol)) + 
     geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
     theme(legend.position="top",text = element_text(size = 18)))
 

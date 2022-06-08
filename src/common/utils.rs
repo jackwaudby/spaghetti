@@ -1,14 +1,16 @@
-use crate::common::message::{Message, Outcome, Parameters, Transaction};
+use crate::common::message::{Parameters, Request, Response};
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
 use crate::scheduler::Scheduler;
 use crate::storage::Database;
-use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
-use crate::workloads::dummy::paramgen::{DummyGenerator, DummyTransactionProfile};
+// use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
+// use crate::workloads::dummy::paramgen::{DummyGenerator, DummyTransactionProfile};
 use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
-use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
-use crate::workloads::ycsb::paramgen::{YcsbGenerator, YcsbTransactionProfile};
-use crate::workloads::{acid, dummy, smallbank, tatp, ycsb};
+// use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
+// use crate::workloads::ycsb::paramgen::{YcsbGenerator, YcsbTransactionProfil
+// e};
+// use crate::workloads::{acid, dummy, smallbank, tatp, ycsb};
+use crate::workloads::smallbank;
 
 use config::Config;
 use std::fs::{self, OpenOptions};
@@ -153,207 +155,104 @@ pub fn run(
             debug!("Timeout reached: {} minute(s)", timeout);
             break;
         } else {
-            let txn = generator.get_next(); // generate txn
+            let request = generator.get_next(); // generate txn
             let start_latency = Instant::now(); // start measuring latency
-            let response = execute(txn.clone(), scheduler, database); // execute txn
+            let mut response = execute(request, scheduler, database); // execute txn
+            response.set_total_latency(start_latency.elapsed().as_nanos());
 
             stats.record(&response); // record response
+
             if log_results {
                 log_result(&mut fh, &response); // log response
             }
-            stats.stop_latency(start_latency); // stop measuring latency
+
             completed += 1;
         }
     }
 
     stats.stop_worker(start_worker);
 
+    // let thread_summary = stats.aggregate(&w, &p);
+    // tracing::info!("{}", serde_json::to_string_pretty(&thread_summary).unwrap());
+
     if record {
         tx.send(stats).unwrap();
     }
 }
 
-/// Execute a transaction.
-pub fn execute<'a>(txn: Message, scheduler: &'a Scheduler, workload: &'a Database) -> Message {
-    if let Message::Request {
-        request_no,
-        transaction,
-        parameters,
-        isolation,
-    } = txn
-    {
-        let res = match transaction {
-            Transaction::Tatp(_) => {
-                if let Parameters::Tatp(params) = parameters {
-                    match params {
-                        TatpTransactionProfile::GetSubscriberData(params) => {
-                            tatp::procedures::get_subscriber_data(
-                                params, scheduler, workload, isolation,
-                            )
-                        }
-                        TatpTransactionProfile::GetAccessData(params) => {
-                            tatp::procedures::get_access_data(
-                                params, scheduler, workload, isolation,
-                            )
-                        }
-                        TatpTransactionProfile::GetNewDestination(params) => {
-                            tatp::procedures::get_new_destination(
-                                params, scheduler, workload, isolation,
-                            )
-                        }
-                        TatpTransactionProfile::UpdateLocationData(params) => {
-                            tatp::procedures::update_location(
-                                params, scheduler, workload, isolation,
-                            )
-                        }
-                        TatpTransactionProfile::UpdateSubscriberData(params) => {
-                            tatp::procedures::update_subscriber_data(
-                                params, scheduler, workload, isolation,
-                            )
-                        }
-                    }
-                } else {
-                    panic!("transaction type and parameters do not match");
-                }
+pub fn execute<'a>(request: Request, scheduler: &'a Scheduler, workload: &'a Database) -> Response {
+    let request_no = request.get_request_no();
+    let transaction = request.get_transaction();
+    let isolation = request.get_isolation_level();
+
+    let result = match request.get_parameters() {
+        // Parameters::Tatp(params) => match params {
+        //     TatpTransactionProfile::GetSubscriberData(params) => {
+        //         tatp::procedures::get_subscriber_data(
+        //             params.clone(),
+        //             scheduler,
+        //             workload,
+        //             isolation,
+        //         )
+        //     }
+        //     TatpTransactionProfile::GetAccessData(params) => {
+        //         tatp::procedures::get_access_data(params.clone(), scheduler, workload, isolation)
+        //     }
+        //     TatspTransactionProfile::GetNewDestination(params) => {
+        //         tatp::procedures::get_new_destination(
+        //             params.clone(),
+        //             scheduler,
+        //             workload,
+        //             isolation,
+        //         )
+        //     }
+        //     TatpTransactionProfile::UpdateLocationData(params) => {
+        //         tatp::procedures::update_location(params.clone(), scheduler, workload, isolation)
+        //     }
+        //     TatpTransactionProfile::UpdateSubscriberData(params) => {
+        //         tatp::procedures::update_subscriber_data(
+        //             params.clone(),
+        //             scheduler,
+        //             workload,
+        //             isolation,
+        //         )
+        //     }
+        // },
+        Parameters::SmallBank(params) => match params {
+            SmallBankTransactionProfile::Amalgamate(params) => {
+                smallbank::procedures::amalgmate(params.clone(), scheduler, workload, isolation)
             }
-
-            Transaction::Dummy(_) => {
-                if let Parameters::Dummy(params) = parameters {
-                    match params {
-                        DummyTransactionProfile::Read(_params) => {
-                            unimplemented!()
-                            // tatp::procedures::get_subscriber_data(
-                            //     params, scheduler, workload, isolation,
-                            // )
-                        }
-                        DummyTransactionProfile::ReadWrite(_params) => {
-                            unimplemented!()
-                            // tatp::procedures::get_subscriber_data(
-                            //     params, scheduler, workload, isolation,
-                            // )
-                        }
-                        DummyTransactionProfile::Write(params) => {
-                            dummy::procedures::write_only(params, scheduler, workload)
-                        }
-
-                        DummyTransactionProfile::WriteAbort(params) => {
-                            dummy::procedures::write_only_abort(params, scheduler, workload)
-                        }
-                    }
-                } else {
-                    panic!("transaction type and parameters do not match");
-                }
+            SmallBankTransactionProfile::Balance(params) => {
+                smallbank::procedures::balance(params.clone(), scheduler, workload, isolation)
             }
-
-            Transaction::Ycsb(_) => {
-                if let Parameters::Ycsb(params) = parameters {
-                    match params {
-                        YcsbTransactionProfile::General(params) => {
-                            ycsb::procedures::transaction(params, scheduler, workload, isolation)
-                        }
-                    }
-                } else {
-                    panic!("transaction type and parameters do not match");
-                }
+            SmallBankTransactionProfile::DepositChecking(params) => {
+                smallbank::procedures::deposit_checking(
+                    params.clone(),
+                    scheduler,
+                    workload,
+                    isolation,
+                )
             }
-
-            Transaction::Acid(_) => {
-                if let Parameters::Acid(params) = parameters {
-                    match params {
-                        AcidTransactionProfile::G0Write(params) => {
-                            acid::procedures::g0_write(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::G0Read(params) => {
-                            acid::procedures::g0_read(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::G1aRead(params) => {
-                            acid::procedures::g1a_read(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::G1aWrite(params) => {
-                            acid::procedures::g1a_write(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::G1cReadWrite(params) => {
-                            acid::procedures::g1c_read_write(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::ImpRead(params) => {
-                            acid::procedures::imp_read(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::ImpWrite(params) => {
-                            acid::procedures::imp_write(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::OtvRead(params) => {
-                            acid::procedures::otv_read(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::OtvWrite(params) => {
-                            acid::procedures::otv_write(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::LostUpdateRead(params) => {
-                            acid::procedures::lu_read(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::LostUpdateWrite(params) => {
-                            acid::procedures::lu_write(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::G2itemRead(params) => {
-                            acid::procedures::g2_item_read(params, scheduler, workload)
-                        }
-                        AcidTransactionProfile::G2itemWrite(params) => {
-                            acid::procedures::g2_item_write(params, scheduler, workload)
-                        }
-                    }
-                } else {
-                    panic!("transaction type and parameters do not match");
-                }
+            SmallBankTransactionProfile::SendPayment(params) => {
+                smallbank::procedures::send_payment(params.clone(), scheduler, workload, isolation)
             }
-            Transaction::SmallBank(_) => {
-                if let Parameters::SmallBank(params) = parameters {
-                    match params {
-                        SmallBankTransactionProfile::Amalgamate(params) => {
-                            smallbank::procedures::amalgmate(params, scheduler, workload, isolation)
-                        }
-                        SmallBankTransactionProfile::Balance(params) => {
-                            smallbank::procedures::balance(params, scheduler, workload, isolation)
-                        }
-                        SmallBankTransactionProfile::DepositChecking(params) => {
-                            smallbank::procedures::deposit_checking(
-                                params, scheduler, workload, isolation,
-                            )
-                        }
-                        SmallBankTransactionProfile::SendPayment(params) => {
-                            smallbank::procedures::send_payment(
-                                params, scheduler, workload, isolation,
-                            )
-                        }
-                        SmallBankTransactionProfile::TransactSaving(params) => {
-                            smallbank::procedures::transact_savings(
-                                params, scheduler, workload, isolation,
-                            )
-                        }
-                        SmallBankTransactionProfile::WriteCheck(params) => {
-                            smallbank::procedures::write_check(
-                                params, scheduler, workload, isolation,
-                            )
-                        }
-                    }
-                } else {
-                    panic!("transaction type and parameters do not match");
-                }
+            SmallBankTransactionProfile::TransactSaving(params) => {
+                smallbank::procedures::transact_savings(
+                    params.clone(),
+                    scheduler,
+                    workload,
+                    isolation,
+                )
             }
-        };
+            SmallBankTransactionProfile::WriteCheck(params) => {
+                smallbank::procedures::write_check(params.clone(), scheduler, workload, isolation)
+            }
+        },
 
-        let outcome = match res {
-            Ok(success) => Outcome::Committed(success),
-            Err(failed) => Outcome::Aborted(failed),
-        };
+        _ => unimplemented!(),
+    };
 
-        Message::Response {
-            request_no,
-            transaction,
-            isolation,
-            outcome,
-        }
-    } else {
-        panic!("expected message request");
-    }
+    Response::new(request_no, transaction.clone(), result)
 }
 
 pub fn get_transaction_generator(thread_id: u32, config: &Config) -> ParameterGenerator {
@@ -381,60 +280,47 @@ pub fn get_transaction_generator(thread_id: u32, config: &Config) -> ParameterGe
             );
             ParameterGenerator::SmallBank(gen)
         }
-        "acid" => {
-            let anomaly = config.get_str("anomaly").unwrap();
-            let delay = config.get_int("delay").unwrap() as u64;
-            let gen = AcidGenerator::new(thread_id, sf, set_seed, seed, &anomaly, delay);
+        // "acid" => {
+        //     let anomaly = config.get_str("anomaly").unwrap();
+        //     let delay = config.get_int("delay").unwrap() as u64;
+        //     let gen = AcidGenerator::new(thread_id, sf, set_seed, seed, &anomaly, delay);
 
-            ParameterGenerator::Acid(gen)
-        }
-        "dummy" => {
-            let gen = DummyGenerator::new(thread_id, sf, set_seed, seed);
+        //     ParameterGenerator::Acid(gen)
+        // }
+        // "dummy" => {
+        //     let gen = DummyGenerator::new(thread_id, sf, set_seed, seed);
 
-            ParameterGenerator::Dummy(gen)
-        }
-        "tatp" => {
-            let use_nurand = config.get_bool("nurand").unwrap();
-            let gen = TatpGenerator::new(thread_id, sf, set_seed, seed, use_nurand);
-            ParameterGenerator::Tatp(gen)
-        }
-        "ycsb" => {
-            let theta = config.get_float("theta").unwrap();
-            let update_rate = config.get_float("update_rate").unwrap();
-            let serializable_rate = config.get_float("serializable_rate").unwrap();
+        //     ParameterGenerator::Dummy(gen)
+        // }
+        // "tatp" => {
+        //     let use_nurand = config.get_bool("nurand").unwrap();
+        //     let gen = TatpGenerator::new(thread_id, sf, set_seed, seed, use_nurand);
+        //     ParameterGenerator::Tatp(gen)
+        // }
+        // "ycsb" => {
+        //     let theta = config.get_float("theta").unwrap();
+        //     let update_rate = config.get_float("update_rate").unwrap();
+        //     let serializable_rate = config.get_float("serializable_rate").unwrap();
 
-            let gen = YcsbGenerator::new(
-                thread_id,
-                sf,
-                set_seed,
-                seed,
-                theta,
-                update_rate,
-                serializable_rate,
-            );
-            ParameterGenerator::Ycsb(gen)
-        }
+        //     let gen = YcsbGenerator::new(
+        //         thread_id,
+        //         sf,
+        //         set_seed,
+        //         seed,
+        //         theta,
+        //         update_rate,
+        //         serializable_rate,
+        //     );
+        //     ParameterGenerator::Ycsb(gen)
+        // }
         _ => unimplemented!(),
     }
 }
 
-pub fn log_result(fh: &mut Option<std::fs::File>, response: &Message) {
-    if let Message::Response { .. } = response {
-        if let Some(ref mut fh) = fh {
-            let res = serde_json::to_string(response).unwrap();
-            writeln!(fh, "{}", res).unwrap();
-
-            // match outcome {
-            //     Outcome::Committed(value) => {
-            //         writeln!(fh, "{}", &value.unwrap()).unwrap();
-            //     }
-            //     Outcome::Aborted(reason) => {
-            //         let x = format!("{}", reason);
-            //         let value = serde_json::to_string(&x).unwrap();
-            //         writeln!(fh, "{{\"id\":{},\"aborted\":{}}}", request_no, &value).unwrap();
-            //     }
-            // }
-        }
+pub fn log_result(fh: &mut Option<std::fs::File>, response: &Response) {
+    if let Some(ref mut fh) = fh {
+        let res = serde_json::to_string(response).unwrap();
+        writeln!(fh, "{}", res).unwrap();
     }
 }
 
@@ -447,3 +333,152 @@ pub fn spin(prv: u64, lsn: &AtomicU64) {
         }
     }
 }
+
+//    Transaction::Tatp(_) => {
+//         if let Parameters::Tatp(params) = parameters {
+//             match params {
+//                 TatpTransactionProfile::GetSubscriberData(params) => {
+//                     tatp::procedures::get_subscriber_data(
+//                         params, scheduler, workload, isolation,
+//                     )
+//                 }
+//                 TatpTransactionProfile::GetAccessData(params) => {
+//                     tatp::procedures::get_access_data(params, scheduler, workload, isolation)
+//                 }
+//                 TatpTransactionProfile::GetNewDestination(params) => {
+//                     tatp::procedures::get_new_destination(
+//                         params, scheduler, workload, isolation,
+//                     )
+//                 }
+//                 TatpTransactionProfile::UpdateLocationData(params) => {
+//                     tatp::procedures::update_location(params, scheduler, workload, isolation)
+//                 }
+//                 TatpTransactionProfile::UpdateSubscriberData(params) => {
+//                     tatp::procedures::update_subscriber_data(
+//                         params, scheduler, workload, isolation,
+//                     )
+//                 }
+//             }
+//         } else {
+//             panic!("transaction type and parameters do not match");
+//         }
+//     }
+
+//     Transaction::Dummy(_) => {
+//         if let Parameters::Dummy(params) = parameters {
+//             match params {
+//                 DummyTransactionProfile::Read(_params) => {
+//                     unimplemented!()
+//                     // tatp::procedures::get_subscriber_data(
+//                     //     params, scheduler, workload, isolation,
+//                     // )
+//                 }
+//                 DummyTransactionProfile::ReadWrite(_params) => {
+//                     unimplemented!()
+//                     // tatp::procedures::get_subscriber_data(
+//                     //     params, scheduler, workload, isolation,
+//                     // )
+//                 }
+//                 DummyTransactionProfile::Write(params) => {
+//                     dummy::procedures::write_only(params, scheduler, workload)
+//                 }
+
+//                 DummyTransactionProfile::WriteAbort(params) => {
+//                     dummy::procedures::write_only_abort(params, scheduler, workload)
+//                 }
+//             }
+//         } else {
+//             panic!("transaction type and parameters do not match");
+//         }
+//     }
+
+//     Transaction::Ycsb(_) => {
+//         if let Parameters::Ycsb(params) = parameters {
+//             match params {
+//                 YcsbTransactionProfile::General(params) => {
+//                     ycsb::procedures::transaction(params, scheduler, workload, isolation)
+//                 }
+//             }
+//         } else {
+//             panic!("transaction type and parameters do not match");
+//         }
+//     }
+
+//     Transaction::Acid(_) => {
+//         if let Parameters::Acid(params) = parameters {
+//             match params {
+//                 AcidTransactionProfile::G0Write(params) => {
+//                     acid::procedures::g0_write(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::G0Read(params) => {
+//                     acid::procedures::g0_read(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::G1aRead(params) => {
+//                     acid::procedures::g1a_read(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::G1aWrite(params) => {
+//                     acid::procedures::g1a_write(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::G1cReadWrite(params) => {
+//                     acid::procedures::g1c_read_write(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::ImpRead(params) => {
+//                     acid::procedures::imp_read(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::ImpWrite(params) => {
+//                     acid::procedures::imp_write(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::OtvRead(params) => {
+//                     acid::procedures::otv_read(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::OtvWrite(params) => {
+//                     acid::procedures::otv_write(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::LostUpdateRead(params) => {
+//                     acid::procedures::lu_read(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::LostUpdateWrite(params) => {
+//                     acid::procedures::lu_write(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::G2itemRead(params) => {
+//                     acid::procedures::g2_item_read(params, scheduler, workload)
+//                 }
+//                 AcidTransactionProfile::G2itemWrite(params) => {
+//                     acid::procedures::g2_item_write(params, scheduler, workload)
+//                 }
+//             }
+//         } else {
+//             panic!("transaction type and parameters do not match");
+//         }
+//     }
+//     Transaction::SmallBank(_) => {
+//         if let Parameters::SmallBank(params) = parameters {
+//             match params {
+//                 SmallBankTransactionProfile::Amalgamate(params) => {
+//                     smallbank::procedures::amalgmate(params, scheduler, workload, isolation)
+//                 }
+//                 SmallBankTransactionProfile::Balance(params) => {
+//                     smallbank::procedures::balance(params, scheduler, workload, isolation)
+//                 }
+//                 SmallBankTransactionProfile::DepositChecking(params) => {
+//                     smallbank::procedures::deposit_checking(
+//                         params, scheduler, workload, isolation,
+//                     )
+//                 }
+//                 SmallBankTransactionProfile::SendPayment(params) => {
+//                     smallbank::procedures::send_payment(params, scheduler, workload, isolation)
+//                 }
+//                 SmallBankTransactionProfile::TransactSaving(params) => {
+//                     smallbank::procedures::transact_savings(
+//                         params, scheduler, workload, isolation,
+//                     )
+//                 }
+//                 SmallBankTransactionProfile::WriteCheck(params) => {
+//                     smallbank::procedures::write_check(params, scheduler, workload, isolation)
+//                 }
+//             }
+//         } else {
+//             panic!("transaction type and parameters do not match");
+//         }
+//     }
+// };

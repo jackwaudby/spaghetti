@@ -40,7 +40,7 @@ impl TatpReasons {
         self.row_not_found += 1;
     }
 
-    pub fn merge(&mut self, other: TatpReasons) {
+    pub fn merge(&mut self, other: &TatpReasons) {
         self.row_not_found += other.row_not_found;
     }
 
@@ -60,7 +60,7 @@ impl SmallBankReasons {
         self.insufficient_funds += 1;
     }
 
-    pub fn merge(&mut self, other: SmallBankReasons) {
+    pub fn merge(&mut self, other: &SmallBankReasons) {
         self.insufficient_funds += other.insufficient_funds;
     }
 
@@ -80,7 +80,7 @@ impl AcidReasons {
         self.non_serializable += 1;
     }
 
-    pub fn merge(&mut self, other: AcidReasons) {
+    pub fn merge(&mut self, other: &AcidReasons) {
         self.non_serializable += other.non_serializable;
     }
 
@@ -100,7 +100,7 @@ impl DummyReasons {
         self.non_serializable += 1;
     }
 
-    pub fn merge(&mut self, other: DummyReasons) {
+    pub fn merge(&mut self, other: &DummyReasons) {
         self.non_serializable += other.non_serializable;
     }
 

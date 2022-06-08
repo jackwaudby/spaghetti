@@ -1,4 +1,4 @@
-use crate::common::message::{Message, Parameters, Transaction};
+use crate::common::message::{Parameters, Request, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::smallbank::SmallBankTransaction;
 use crate::workloads::smallbank::*;
@@ -61,7 +61,7 @@ impl SmallBankGenerator {
 }
 
 impl Generator for SmallBankGenerator {
-    fn generate(&mut self) -> Message {
+    fn generate(&mut self) -> Request {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
@@ -82,12 +82,12 @@ impl Generator for SmallBankGenerator {
             _ => unimplemented!(),
         };
 
-        Message::Request {
-            request_no: (self.thread_id, self.generated),
-            transaction: Transaction::SmallBank(transaction),
-            parameters: Parameters::SmallBank(parameters),
+        Request::new(
+            (self.thread_id, self.generated),
+            Transaction::SmallBank(transaction),
+            Parameters::SmallBank(parameters),
             isolation,
-        }
+        )
     }
 
     fn get_generated(&self) -> u32 {

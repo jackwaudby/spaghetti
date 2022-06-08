@@ -1,4 +1,4 @@
-use crate::common::message::{Message, Parameters, Transaction};
+use crate::common::message::{Parameters, Request, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::acid::{AcidTransaction, ACID_SF_MAP};
 use crate::workloads::IsolationLevel;
@@ -49,17 +49,17 @@ impl AcidGenerator {
 
 impl Generator for AcidGenerator {
     /// Generate a transaction request.
-    fn generate(&mut self) -> Message {
+    fn generate(&mut self) -> Request {
         self.generated += 1; //  increment generated counter
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
-        Message::Request {
-            request_no: (self.thread_id, self.generated),
-            transaction: Transaction::Acid(transaction),
-            parameters: Parameters::Acid(parameters),
-            isolation: IsolationLevel::Serializable,
-        }
+        Request::new(
+            (self.thread_id, self.generated),
+            Transaction::Acid(transaction),
+            Parameters::Acid(parameters),
+            IsolationLevel::Serializable,
+        )
     }
 
     fn get_generated(&self) -> u32 {

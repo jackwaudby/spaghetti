@@ -1,4 +1,4 @@
-use crate::common::message::{Message, Parameters, Transaction};
+use crate::common::message::{Parameters, Request, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::tatp::helper;
 use crate::workloads::tatp::{TatpTransaction, TATP_SF_MAP};
@@ -46,7 +46,7 @@ impl TatpGenerator {
 }
 
 impl Generator for TatpGenerator {
-    fn generate(&mut self) -> Message {
+    fn generate(&mut self) -> Request {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
@@ -57,12 +57,12 @@ impl Generator for TatpGenerator {
             _ => IsolationLevel::Serializable,
         };
 
-        Message::Request {
-            request_no: (self.thread_id, self.generated),
-            transaction: Transaction::Tatp(transaction),
-            parameters: Parameters::Tatp(parameters),
+        Request::new(
+            (self.thread_id, self.generated),
+            Transaction::Tatp(transaction),
+            Parameters::Tatp(parameters),
             isolation,
-        }
+        )
     }
 
     fn get_generated(&self) -> u32 {

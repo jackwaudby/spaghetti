@@ -12,6 +12,7 @@ pub enum TransactionId {
     NoConcurrencyControl,
     SerializationGraph(usize, usize, usize),
     OptimisticWaitHit(usize),
+    Attendez(usize),
     WaitHit(u64),
     TwoPhaseLocking(u64),
 }
@@ -39,6 +40,7 @@ impl fmt::Display for TransactionId {
                     ref_id, thread_id, thread_ctr
                 )
             }
+            Attendez(txn) => write!(f, "{}", txn),
             OptimisticWaitHit(txn) => write!(f, "{}", txn),
             WaitHit(txn) => write!(f, "{}", txn),
             TwoPhaseLocking(txn) => write!(f, "{}", txn),

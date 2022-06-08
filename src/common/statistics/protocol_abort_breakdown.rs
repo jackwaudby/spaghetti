@@ -68,7 +68,7 @@ impl SerializationGraphReasons {
         self.serializable += 1;
     }
 
-    pub fn merge(&mut self, other: SerializationGraphReasons) {
+    pub fn merge(&mut self, other: &SerializationGraphReasons) {
         self.cascading_abort += other.cascading_abort;
         self.cycle_found += other.cycle_found;
         self.read_uncommitted += other.read_uncommitted;
@@ -107,7 +107,7 @@ impl WaitHitReasons {
         self.pur_aborted += 1;
     }
 
-    pub fn merge(&mut self, other: WaitHitReasons) {
+    pub fn merge(&mut self, other: &WaitHitReasons) {
         self.row_dirty += other.row_dirty;
         self.hit += other.hit;
         self.pur_aborted += other.pur_aborted;
@@ -161,7 +161,7 @@ impl AttendezReasons {
         self.write_op_exceeded_watermark
     }
 
-    pub fn merge(&mut self, other: AttendezReasons) {
+    pub fn merge(&mut self, other: &AttendezReasons) {
         self.row_dirty += other.row_dirty;
         self.predecessor_aborted += other.predecessor_aborted;
         self.exceeded_watermark += other.exceeded_watermark;

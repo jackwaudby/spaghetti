@@ -11,3 +11,9 @@ pub mod parameter_generation;
 pub mod error;
 
 pub mod transaction_information;
+
+pub mod value_id;
+
+pub mod stored_procedure_result;
+
+pub mod stats_bucket;

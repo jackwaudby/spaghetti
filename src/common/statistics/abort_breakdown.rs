@@ -1,3 +1,4 @@
+use crate::common::error::{AttendezError, NonFatalError};
 use crate::common::statistics::protocol_abort_breakdown::{
     AttendezReasons, ProtocolAbortBreakdown, SerializationGraphReasons, WaitHitReasons,
 };
@@ -42,21 +43,123 @@ impl AbortBreakdown {
         }
     }
 
-    pub fn get_workload_specific(&mut self) -> &mut WorkloadAbortBreakdown {
+    pub fn get_workload_specific(&self) -> &WorkloadAbortBreakdown {
+        &self.workload_specific
+    }
+
+    pub fn get_protocol_specific(&self) -> &ProtocolAbortBreakdown {
+        &self.protocol_specific
+    }
+
+    pub fn get_mut_workload_specific(&mut self) -> &mut WorkloadAbortBreakdown {
         &mut self.workload_specific
     }
 
-    pub fn get_protocol_specific(&mut self) -> &mut ProtocolAbortBreakdown {
+    pub fn get_mut_protocol_specific(&mut self) -> &mut ProtocolAbortBreakdown {
         &mut self.protocol_specific
     }
 
-    pub fn merge(&mut self, other: AbortBreakdown) {
+    pub fn record(&mut self, reason: &NonFatalError) {
+        use WorkloadAbortBreakdown::*;
+        match self.workload_specific {
+            SmallBank(ref mut metric) => {
+                if let NonFatalError::SmallBankError(_) = reason {
+                    metric.inc_insufficient_funds();
+                }
+            } //         Acid(ref mut metric) => {
+            //             if let NonFatalError::NonSerializable = reason {
+            //                 metric.inc_non_serializable();
+            //             }
+            //         }
+
+            //         Dummy(ref mut metric) => {
+            //             if let NonFatalError::NonSerializable = reason {
+            //                 metric.inc_non_serializable();
+            //             }
+            //         }
+
+            //         Tatp(ref mut metric) => {
+            //             if let NonFatalError::RowNotFound(_, _) = reason {
+            //                 metric.inc_not_found();
+            //             }
+            //         }
+            //         Ycsb => {}
+            _ => unimplemented!(),
+        }
+
+        use ProtocolAbortBreakdown::*;
+
+        match self.protocol_specific {
+            //         SerializationGraph(ref mut metric) => {
+            //             if let NonFatalError::SerializationGraphError(err) = reason {
+            //                 match err {
+            //                     CascadingAbort => metric.inc_cascading_abort(),
+            //                     CycleFound => metric.inc_cycle_found(),
+            //                 }
+
+            //                 match isolation {
+            //                     ReadCommitted => metric.inc_read_committed(),
+            //                     ReadUncommitted => metric.inc_read_uncommitted(),
+            //                     Serializable => metric.inc_serializable(),
+            //                 }
+            //             }
+            //         }
+
+            //         MixedSerializationGraph(ref mut metric) => {
+            //             if let NonFatalError::SerializationGraphError(sge) = reason {
+            //                 match sge {
+            //                     CascadingAbort => metric.inc_cascading_abort(),
+            //                     CycleFound => metric.inc_cycle_found(),
+            //                 }
+            //                 match isolation {
+            //                     ReadCommitted => metric.inc_read_committed(),
+            //                     ReadUncommitted => metric.inc_read_uncommitted(),
+            //                     Serializable => metric.inc_serializable(),
+            //                 }
+            //             }
+            //         }
+            Attendez(ref mut metric) => match reason {
+                NonFatalError::AttendezError(owhe) => match owhe {
+                    AttendezError::ExceededWatermark => metric.inc_exceeded_watermark(),
+                    AttendezError::PredecessorAborted => metric.inc_predecessor_aborted(),
+                    AttendezError::WriteOpExceededWatermark => {
+                        metric.inc_write_op_exceeded_watermark()
+                    }
+                },
+                NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                _ => {}
+            },
+
+            //         WaitHit(ref mut metric) => match reason {
+            //             NonFatalError::WaitHitError(owhe) => match owhe {
+            //                 WaitHitError::Hit => metric.inc_hit(),
+            //                 WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+            //                 WaitHitError::PredecessorActive => metric.inc_pur_active(),
+            //             },
+            //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+            //             _ => {}
+            //         },
+
+            //         OptimisticWaitHit(ref mut metric) => match reason {
+            //             NonFatalError::WaitHitError(err) => match err {
+            //                 WaitHitError::Hit => metric.inc_hit(),
+            //                 WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+            //                 WaitHitError::PredecessorActive => metric.inc_pur_active(),
+            //             },
+            //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+            //             _ => {}
+            //         },
+            _ => {}
+        }
+    }
+
+    pub fn merge(&mut self, other: &AbortBreakdown) {
         use ProtocolAbortBreakdown::*;
         use WorkloadAbortBreakdown::*;
 
         match self.protocol_specific {
             SerializationGraph(ref mut reasons) => {
-                if let SerializationGraph(other_reasons) = other.protocol_specific {
+                if let SerializationGraph(other_reasons) = &other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -64,7 +167,7 @@ impl AbortBreakdown {
             }
 
             MixedSerializationGraph(ref mut reasons) => {
-                if let MixedSerializationGraph(other_reasons) = other.protocol_specific {
+                if let MixedSerializationGraph(other_reasons) = &other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -72,7 +175,7 @@ impl AbortBreakdown {
             }
 
             Attendez(ref mut reasons) => {
-                if let Attendez(other_reasons) = other.protocol_specific {
+                if let Attendez(other_reasons) = &other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -80,14 +183,14 @@ impl AbortBreakdown {
             }
 
             WaitHit(ref mut reasons) => {
-                if let WaitHit(other_reasons) = other.protocol_specific {
+                if let WaitHit(other_reasons) = &other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
                 }
             }
             OptimisticWaitHit(ref mut reasons) => {
-                if let OptimisticWaitHit(other_reasons) = other.protocol_specific {
+                if let OptimisticWaitHit(other_reasons) = &other.protocol_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("protocol abort breakdowns do not match");
@@ -99,7 +202,7 @@ impl AbortBreakdown {
 
         match self.workload_specific {
             SmallBank(ref mut reasons) => {
-                if let SmallBank(other_reasons) = other.workload_specific {
+                if let SmallBank(other_reasons) = &other.workload_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("workload abort breakdowns do not match");
@@ -107,7 +210,7 @@ impl AbortBreakdown {
             }
 
             Tatp(ref mut reasons) => {
-                if let Tatp(other_reasons) = other.workload_specific {
+                if let Tatp(other_reasons) = &other.workload_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("workload abort breakdowns do not match");
@@ -115,7 +218,7 @@ impl AbortBreakdown {
             }
 
             Acid(ref mut reasons) => {
-                if let Acid(other_reasons) = other.workload_specific {
+                if let Acid(other_reasons) = &other.workload_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("workload abort breakdowns do not match");
@@ -123,7 +226,7 @@ impl AbortBreakdown {
             }
 
             Dummy(ref mut reasons) => {
-                if let Dummy(other_reasons) = other.workload_specific {
+                if let Dummy(other_reasons) = &other.workload_specific {
                     reasons.merge(other_reasons);
                 } else {
                     panic!("workload abort breakdowns do not match");

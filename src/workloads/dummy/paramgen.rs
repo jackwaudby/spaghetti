@@ -1,4 +1,4 @@
-use crate::common::message::{Message, Parameters, Transaction};
+use crate::common::message::{Parameters, Request, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::dummy::DummyTransaction;
 use crate::workloads::dummy::*;
@@ -38,7 +38,7 @@ impl DummyGenerator {
 }
 
 impl Generator for DummyGenerator {
-    fn generate(&mut self) -> Message {
+    fn generate(&mut self) -> Request {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
@@ -49,12 +49,12 @@ impl Generator for DummyGenerator {
             _ => IsolationLevel::Serializable,
         };
 
-        Message::Request {
-            request_no: (self.thread_id, self.generated),
-            transaction: Transaction::Dummy(transaction),
-            parameters: Parameters::Dummy(parameters),
+        Request::new(
+            (self.thread_id, self.generated),
+            Transaction::Dummy(transaction),
+            Parameters::Dummy(parameters),
             isolation,
-        }
+        )
     }
 
     fn get_generated(&self) -> u32 {

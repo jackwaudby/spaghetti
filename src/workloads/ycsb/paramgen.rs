@@ -1,4 +1,4 @@
-use crate::common::message::{Message, Parameters, Transaction};
+use crate::common::message::{Parameters, Request, Transaction};
 use crate::common::parameter_generation::Generator;
 use crate::workloads::ycsb::helper;
 use crate::workloads::ycsb::YcsbTransaction;
@@ -69,18 +69,18 @@ impl YcsbGenerator {
 }
 
 impl Generator for YcsbGenerator {
-    fn generate(&mut self) -> Message {
+    fn generate(&mut self) -> Request {
         self.inc_generated();
 
         let parameters = self.get_parameters();
         let isolation = self.get_isolation_level();
 
-        Message::Request {
-            request_no: (self.thread_id, self.generated),
-            transaction: Transaction::Ycsb(YcsbTransaction::General),
-            parameters: Parameters::Ycsb(parameters),
+        Request::new(
+            (self.thread_id, self.generated),
+            Transaction::Ycsb(YcsbTransaction::General),
+            Parameters::Ycsb(parameters),
             isolation,
-        }
+        )
     }
 
     fn get_generated(&self) -> u32 {

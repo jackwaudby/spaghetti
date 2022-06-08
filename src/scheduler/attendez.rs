@@ -5,6 +5,8 @@ use crate::common::utils;
 use crate::scheduler::attendez::predecessor_summary::scan_predecessors;
 use crate::scheduler::attendez::transaction::{PredecessorSet, Transaction, TransactionState};
 use crate::scheduler::Database;
+use crate::scheduler::StatsBucket;
+use crate::scheduler::ValueId;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
@@ -101,7 +103,7 @@ impl<'a> Attendez<'a> {
             .get()
     }
 
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self) -> (TransactionId, ProtocolDiagnostics) {
         *self
             .transaction_info
             .get_or(|| RefCell::new(None))
@@ -121,21 +123,26 @@ impl<'a> Attendez<'a> {
 
         Attendez::EG.with(|x| x.borrow_mut().replace(guard));
 
-        TransactionId::OptimisticWaitHit(id)
+        (
+            TransactionId::Attendez(id),
+            ProtocolDiagnostics::Attendez(AttendezDiagnostics::default()),
+        )
     }
 
     pub fn read_value(
         &self,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
+
         let transaction = self.get_transaction(); // transaction active on this thread
         let table: &Table = database.get_table(table_id); // handle to table
         let rw_table = table.get_rwtable(offset); // handle to rwtable
-        let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
+        let prv = rw_table.push_front(Access::Read(meta.get_transaction_id())); // append access
         let lsn = table.get_lsn(offset); // handle to lsn
 
         utils::spin(prv, lsn); // delay until prv == lsn
@@ -148,7 +155,7 @@ impl<'a> Attendez<'a> {
             if id < &prv {
                 match access {
                     Access::Write(txn_info) => match txn_info {
-                        TransactionId::OptimisticWaitHit(pred_addr) => {
+                        TransactionId::Attendez(pred_addr) => {
                             let pred = transaction::from_usize(*pred_addr); // convert to ptr
 
                             if std::ptr::eq(transaction, pred) {
@@ -181,12 +188,14 @@ impl<'a> Attendez<'a> {
     pub fn write_value(
         &self,
         value: &mut Data,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<(), NonFatalError> {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
+
         let transaction: &'a Transaction<'a> = self.get_transaction(); // transaction active on this thread
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
@@ -194,7 +203,7 @@ impl<'a> Attendez<'a> {
 
         let mut ticket;
         if self.no_wait_write {
-            ticket = rw_table.push_front(Access::Write(meta.clone()));
+            ticket = rw_table.push_front(Access::Write(meta.get_transaction_id()));
             utils::spin(ticket, lsn);
             let tuple = table.get_tuple(column_id, offset); // handle to tuple
             let dirty = tuple.get().is_dirty();
@@ -205,7 +214,7 @@ impl<'a> Attendez<'a> {
                 // ok to have state change under feet here
                 rw_table.erase(ticket); // remove from rwtable
                 lsn.store(ticket + 1, Ordering::Release); // update lsn
-                self.abort(database); // abort this transaction
+                self.abort(meta, database); // abort this transaction
                 return Err(NonFatalError::RowDirty("todo".to_string()));
             }
         } else {
@@ -218,13 +227,15 @@ impl<'a> Attendez<'a> {
             let mut diff: i64 = 0;
             loop {
                 if delta >= watermark {
-                    self.abort(database);
+                    let predecessors = transaction.get_predecessors();
+                    meta.get_diagnostics().set_predecessors(predecessors.len());
+                    self.abort(meta, database);
                     return Err(NonFatalError::AttendezError(
                         AttendezError::WriteOpExceededWatermark,
                     ));
                 }
 
-                ticket = rw_table.push_front(Access::Write(meta.clone()));
+                ticket = rw_table.push_front(Access::Write(meta.get_transaction_id()));
 
                 if attempt > 0 {
                     window = ticket - prv_ticket;
@@ -267,7 +278,7 @@ impl<'a> Attendez<'a> {
             if id < &ticket {
                 match access {
                     Access::Read(txn_info) => match txn_info {
-                        TransactionId::OptimisticWaitHit(pred_addr) => {
+                        TransactionId::Attendez(pred_addr) => {
                             let pred = transaction::from_usize(*pred_addr); // convert to ptr
                             if std::ptr::eq(transaction, pred) {
                                 continue;
@@ -278,7 +289,7 @@ impl<'a> Attendez<'a> {
                         _ => panic!("unexpected transaction information"),
                     },
                     Access::Write(txn_info) => match txn_info {
-                        TransactionId::OptimisticWaitHit(pred_addr) => {
+                        TransactionId::Attendez(pred_addr) => {
                             let pred: &'a Transaction<'a> = transaction::from_usize(*pred_addr); // convert to ptr
                             if std::ptr::eq(transaction, pred) {
                                 continue;
@@ -304,9 +315,10 @@ impl<'a> Attendez<'a> {
         Ok(())
     }
 
-    pub fn abort(&self, database: &Database) -> NonFatalError {
+    pub fn abort(&self, meta: &mut StatsBucket, database: &Database) -> NonFatalError {
         let this = self.get_transaction();
         let ops = self.get_operations();
+        let transaction = self.get_transaction();
 
         this.set_state(TransactionState::Aborted); // set state
 
@@ -357,10 +369,15 @@ impl<'a> Attendez<'a> {
         NonFatalError::NonSerializable // placeholder
     }
 
-    pub fn commit<'g>(&self, database: &Database) -> Result<ProtocolDiagnostics, NonFatalError> {
+    pub fn commit<'g>(
+        &self,
+        meta: &mut StatsBucket,
+        database: &Database,
+    ) -> Result<(), NonFatalError> {
         let transaction = self.get_transaction();
         let predecessors = transaction.get_predecessors();
         let num_predecessors = predecessors.len();
+        meta.get_diagnostics().set_predecessors(num_predecessors);
         // let mut delta = self.delta
 
         if num_predecessors > 0 {
@@ -368,7 +385,7 @@ impl<'a> Attendez<'a> {
             loop {
                 // waited too long -- might be cycle
                 if delta >= self.watermark {
-                    self.abort(database);
+                    self.abort(meta, database);
                     return Err(AttendezError::ExceededWatermark.into());
                 }
 
@@ -385,7 +402,7 @@ impl<'a> Attendez<'a> {
 
                 match outcome {
                     WaitOutcome::Abort => {
-                        self.abort(database);
+                        self.abort(meta, database);
                         return Err(AttendezError::PredecessorAborted.into());
                     }
                     WaitOutcome::Change => {
@@ -447,12 +464,10 @@ impl<'a> Attendez<'a> {
                     drop(guard)
                 });
 
-                Ok(ProtocolDiagnostics::Attendez(AttendezDiagnostics::new(
-                    num_predecessors,
-                )))
+                Ok(())
             }
             Err(e) => {
-                self.abort(database);
+                self.abort(meta, database);
                 Err(e)
             }
         }

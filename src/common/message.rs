@@ -1,55 +1,123 @@
 use crate::common::error::NonFatalError;
-use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
+use crate::common::stored_procedure_result::StoredProcedureResult;
 use crate::storage::access::TransactionId;
 use crate::storage::datatype::Data;
-use crate::workloads::acid::paramgen::AcidTransactionProfile;
-use crate::workloads::acid::AcidTransaction;
-use crate::workloads::dummy::paramgen::DummyTransactionProfile;
-use crate::workloads::dummy::DummyTransaction;
+// use crate::workloads::acid::paramgen::AcidTransactionProfile;
+// use crate::workloads::acid::AcidTransaction;
+// use crate::workloads::dummy::paramgen::DummyTransactionProfile;
+// use crate::workloads::dummy::DummyTransaction;
 use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
 use crate::workloads::smallbank::SmallBankTransaction;
-use crate::workloads::tatp::paramgen::TatpTransactionProfile;
-use crate::workloads::tatp::TatpTransaction;
-use crate::workloads::ycsb::paramgen::YcsbTransactionProfile;
-use crate::workloads::ycsb::YcsbTransaction;
+// use crate::workloads::tatp::paramgen::TatpTransactionProfile;
+// use crate::workloads::tatp::TatpTransaction;
+// use crate::workloads::ycsb::paramgen::YcsbTransactionProfile;
+// use crate::workloads::ycsb::YcsbTransaction;
 use crate::workloads::IsolationLevel;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum Message {
-    Request {
+pub struct Request {
+    request_no: (u32, u32),
+    transaction: Transaction,
+    parameters: Parameters,
+    isolation: IsolationLevel,
+}
+
+impl Request {
+    pub fn new(
         request_no: (u32, u32),
         transaction: Transaction,
         parameters: Parameters,
         isolation: IsolationLevel,
-    },
+    ) -> Self {
+        Self {
+            request_no,
+            transaction,
+            parameters,
+            isolation,
+        }
+    }
 
-    Response {
+    pub fn get_request_no(&self) -> (u32, u32) {
+        self.request_no
+    }
+
+    pub fn get_transaction(&self) -> &Transaction {
+        &self.transaction
+    }
+
+    pub fn get_parameters(&self) -> &Parameters {
+        &self.parameters
+    }
+
+    pub fn get_isolation_level(&self) -> IsolationLevel {
+        self.isolation
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub struct Response {
+    request_no: (u32, u32),
+    transaction: Transaction,
+    result: StoredProcedureResult,
+}
+
+impl Response {
+    pub fn new(
         request_no: (u32, u32),
         transaction: Transaction,
-        isolation: IsolationLevel,
-        outcome: Outcome,
-    },
+        result: StoredProcedureResult,
+    ) -> Self {
+        Self {
+            request_no,
+            transaction,
+            result,
+        }
+    }
+
+    pub fn get_request_no(&self) -> (u32, u32) {
+        self.request_no
+    }
+
+    pub fn get_transaction(&self) -> &Transaction {
+        &self.transaction
+    }
+
+    pub fn get_isolation_level(&self) -> &IsolationLevel {
+        &self.result.get_isolation_level()
+    }
+
+    pub fn get_outcome(&self) -> &Outcome {
+        &self.result.get_outcome()
+    }
+
+    pub fn get_result(&self) -> &StoredProcedureResult {
+        &self.result
+    }
+
+    pub fn set_total_latency(&mut self, dur: u128) {
+        self.result.set_total_latency(dur);
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Transaction {
-    Dummy(DummyTransaction),
-    Acid(AcidTransaction),
-    Tatp(TatpTransaction),
+    // Dummy(DummyTransaction),
+    // Acid(AcidTransaction),
+    // Tatp(TatpTransaction),
     SmallBank(SmallBankTransaction),
-    Ycsb(YcsbTransaction),
+    // Ycsb(YcsbTransaction),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Parameters {
-    Dummy(DummyTransactionProfile),
-    Acid(AcidTransactionProfile),
-    Tatp(TatpTransactionProfile),
+    // Dummy(DummyTransactionProfile),
+    // Acid(AcidTransactionProfile),
+    // Tatp(TatpTransactionProfile),
     SmallBank(SmallBankTransactionProfile),
-    Ycsb(YcsbTransactionProfile),
+    // Ycsb(YcsbTransactionProfile),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -61,41 +129,22 @@ pub enum Outcome {
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Success {
     id: TransactionId,
-    created: Option<Vec<(usize, usize)>>,
     read: Option<BTreeMap<String, String>>,
     updated: Option<Vec<(usize, usize)>>,
-    deleted: Option<Vec<(usize, usize)>>,
-    pub diagnostics: Option<ProtocolDiagnostics>,
 }
 
 impl Success {
     pub fn default(id: TransactionId) -> Self {
         Self {
             id,
-            created: None,
             updated: None,
-            deleted: None,
             read: None,
-            diagnostics: None,
-        }
-    }
-
-    pub fn diagnostics(id: TransactionId, pd: ProtocolDiagnostics) -> Self {
-        Self {
-            id,
-            created: None,
-            updated: None,
-            deleted: None,
-            read: None,
-            diagnostics: Some(pd),
         }
     }
 
     pub fn new(
         id: TransactionId,
-        created: Option<Vec<(usize, usize)>>,
         updated: Option<Vec<(usize, usize)>>,
-        deleted: Option<Vec<(usize, usize)>>,
         columns: Option<&[&str]>,
         values: Option<&Vec<Data>>,
     ) -> Self {
@@ -112,14 +161,7 @@ impl Success {
             read = None;
         }
 
-        Self {
-            id,
-            created,
-            updated,
-            deleted,
-            read,
-            diagnostics: None,
-        }
+        Self { id, updated, read }
     }
 
     pub fn get_values(&self) -> Option<&BTreeMap<String, String>> {
