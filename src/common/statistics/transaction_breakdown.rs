@@ -256,33 +256,24 @@ impl GlobalSummary {
         self.aborted
     }
 
-    pub fn get_write_av_latency(&self) -> f64 {
+    pub fn get_write_operation_av_latency(&self) -> f64 {
         let mut cum = self.committed_latency.get_write();
         cum += self.aborted_latency.get_write();
+
         let mut cnt = self.committed_latency.get_write_cnt();
         cnt += self.aborted_latency.get_write_cnt();
 
         cum as f64 / cnt as f64 / 1000.0
     }
 
-    pub fn get_committed_write_av_latency(&self) -> f64 {
-        let cum = self.committed_latency.get_write();
-        let cnt = self.committed_latency.get_write_cnt();
+    pub fn get_commit_operation_av_latency(&self) -> f64 {
+        let mut cum = self.committed_latency.get_commit();
+        cum += self.aborted_latency.get_commit();
+
+        let mut cnt = self.committed_latency.get_commit_cnt();
+        cnt += self.aborted_latency.get_commit_cnt();
 
         cum as f64 / cnt as f64 / 1000.0
-    }
-
-    pub fn get_aborted_write_av_latency(&self) -> f64 {
-        let cum = self.aborted_latency.get_write();
-        let cnt = self.aborted_latency.get_write_cnt();
-
-        cum as f64 / cnt as f64 / 1000.0
-    }
-
-    pub fn get_aborted_transaction_av_latency(&self) -> f64 {
-        let cum = self.aborted_latency.get_total();
-
-        cum as f64 / self.aborted as f64 / 1000.0
     }
 
     pub fn get_committed_transaction_av_latency(&self) -> f64 {
@@ -291,17 +282,17 @@ impl GlobalSummary {
         cum as f64 / self.committed as f64 / 1000.0
     }
 
+    pub fn get_aborted_transaction_av_latency(&self) -> f64 {
+        let cum = self.aborted_latency.get_total();
+
+        cum as f64 / self.aborted as f64 / 1000.0
+    }
+
     pub fn get_transaction_av_latency(&self) -> f64 {
         let mut cum = self.committed_latency.get_total();
         cum += self.aborted_latency.get_total();
 
         cum as f64 / self.completed as f64 / 1000.0
-    }
-
-    pub fn get_commit_av_latency(&self) -> f64 {
-        let cum = self.committed_latency.get_commit();
-
-        cum as f64 / self.committed as f64 / 1000.0
     }
 
     pub fn get_aborted_breakdown(&self) -> &AbortBreakdown {
@@ -329,10 +320,8 @@ impl GlobalSummary {
             completed: format!("{:.2}", self.get_transaction_av_latency()),
             committed: format!("{:.2}", self.get_committed_transaction_av_latency()),
             aborted: format!("{:.2}", self.get_aborted_transaction_av_latency()),
-            write_op: format!("{:.2}", self.get_write_av_latency()),
-            write_op_in_committed: format!("{:.2}", self.get_committed_write_av_latency()),
-            write_op_in_aborted: format!("{:.2}", self.get_aborted_write_av_latency()),
-            commit_op_in_committed: format!("{:.2}", self.get_commit_av_latency()),
+            write_op: format!("{:.2}", self.get_write_operation_av_latency()),
+            commit_op: format!("{:.2}", self.get_commit_operation_av_latency()),
         }
     }
 
@@ -418,9 +407,7 @@ pub struct LatencySummary {
     committed: String,
     aborted: String,
     write_op: String,
-    write_op_in_committed: String,
-    write_op_in_aborted: String,
-    commit_op_in_committed: String,
+    commit_op: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

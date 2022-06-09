@@ -8,7 +8,7 @@ pub struct LatencyBreakdown {
     read: u128,
     read_cnt: u32,
     commit: u128,
-    abort: u128,
+    commit_cnt: u32,
 }
 
 impl LatencyBreakdown {
@@ -20,7 +20,7 @@ impl LatencyBreakdown {
             read: 0,
             read_cnt: 0,
             commit: 0,
-            abort: 0,
+            commit_cnt: 0,
         }
     }
 
@@ -52,14 +52,15 @@ impl LatencyBreakdown {
 
     pub fn add_commit(&mut self, dur: u128) {
         self.commit += dur;
+        self.commit_cnt += 1;
     }
 
     pub fn get_commit(&self) -> u128 {
         self.commit
     }
 
-    pub fn add_abort(&mut self, dur: u128) {
-        self.abort += dur;
+    pub fn get_commit_cnt(&self) -> u32 {
+        self.commit_cnt
     }
 
     pub fn merge(&mut self, other: &LatencyBreakdown) {
@@ -69,6 +70,6 @@ impl LatencyBreakdown {
         self.read += other.read;
         self.read_cnt += other.read_cnt;
         self.commit += other.commit;
-        self.abort += other.abort;
+        self.commit_cnt += other.commit_cnt;
     }
 }

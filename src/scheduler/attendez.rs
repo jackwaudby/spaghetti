@@ -4,12 +4,11 @@ use crate::common::transaction_information::{Operation, OperationType, Transacti
 use crate::common::utils;
 use crate::scheduler::attendez::predecessor_summary::scan_predecessors;
 use crate::scheduler::attendez::transaction::{PredecessorSet, Transaction, TransactionState};
-use crate::scheduler::Database;
-use crate::scheduler::StatsBucket;
-use crate::scheduler::ValueId;
+use crate::scheduler::{StatsBucket, ValueId};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
+use crate::storage::Database;
 
 use crossbeam_epoch as epoch;
 use crossbeam_epoch::Guard;
@@ -365,7 +364,6 @@ impl<'a> Attendez<'a> {
         let predecessors = transaction.get_predecessors();
         let num_predecessors = predecessors.len();
         meta.get_diagnostics().set_predecessors(num_predecessors);
-        // let mut delta = self.delta
 
         if num_predecessors > 0 {
             let mut delta = num_predecessors as u64;

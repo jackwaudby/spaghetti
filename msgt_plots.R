@@ -8,30 +8,42 @@ library(latex2exp)
 
 dir_root = "../msgt/paper/figures/"
 
+# scalability
+# read only
+# cores=1-40; U=0.0; omega=0.0; theta=0.0
 file = "./data/22_02_03_ycsb_scalabilty_1.csv"
+
+# medium contention
+# cores=1-40; U=0.5; omega=0.5; theta=0.6
 file = "./data/22_02_03_ycsb_scalabilty_2.csv"
+
+# high contention
+# cores=1-40; U=0.5; omega=0.5; theta=0.7
 file = "./data/22_02_03_ycsb_scalabilty_3.csv"
+
+# high update rate, contention. low serializable rate
+# cores=1-40; U=0.9; omega=0.2; theta=0.7
 file = "./data/22_02_03_ycsb_scalability_4.csv"
+
+# isolation
+# cores=40; U=0.5; omega=0.0-1.0; theta=0.7
 file = "./data/22_02_03_ycsb_isolation_1.csv"
+
+# update rate
+# cores=40; U=0.0-1.0; omega=0.2; theta=0.6
 file = "./data/22_02_03_ycsb_update_rate_1.csv"
+
+# contention
+# cores=40; U=0.5; omega=0.2; theta=0.6-0.9
 file = "./data/22_02_03_ycsb_contention_1.csv"
 
 # load data
-col_names = c(
-  "sf",
-  "protocol",
-  "workload",
-  "cores",
-  "total_time",
-  "commits",
-  "external",
-  "internal",
-  "total_latency",
-  "theta",
-  "update_rate",
-  "serializable_rate"
-)
+col_names = c("sf","protocol","workload","cores","total_time","commits",
+              "external","internal","total_latency","theta","update_rate",
+              "serializable_rate")
 raw = read_csv(file = file, col_names = col_names)
+
+raw
 
 raw = raw %>% filter(cores <= 40)
 workload = str_to_title(raw$workload[1])

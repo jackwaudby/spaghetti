@@ -173,8 +173,6 @@ impl<'a> Scheduler<'a> {
     pub fn abort(&self, meta: &mut StatsBucket, database: &Database) -> NonFatalError {
         use Scheduler::*;
 
-        let start = Instant::now();
-
         let res = match self {
             SerializationGraph(sg) => sg.abort(database),
             MixedSerializationGraph(sg) => sg.abort(database),
@@ -183,9 +181,6 @@ impl<'a> Scheduler<'a> {
             OptimisedWaitHit(owh) => owh.abort(meta, database),
             NoConcurrencyControl(nocc) => nocc.abort(meta, database),
         };
-
-        let duration = start.elapsed().as_nanos();
-        meta.get_mut_latency_breakdown().add_abort(duration);
 
         res
     }

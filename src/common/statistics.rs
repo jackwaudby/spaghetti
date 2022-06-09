@@ -195,8 +195,10 @@ impl GlobalStatistics {
             self.cores,
             summary.get_thpt(self.total_time, self.cores),
             summary.get_abort_rate(),
-            summary.get_transaction_av_latency(),
-            summary.get_write_av_latency(),
+            summary.get_committed_transaction_av_latency(),
+            summary.get_aborted_transaction_av_latency(),
+            summary.get_write_operation_av_latency(),
+            summary.get_commit_operation_av_latency(),
         ))
         .unwrap();
     }
@@ -243,113 +245,5 @@ impl LocalStatistics {
 
     pub fn record(&mut self, response: &Response) {
         self.transaction_breakdown.record(response);
-
-        // if let Outcome::Committed(success) = outcome {
-        //     let pd = success.diagnostics.as_ref().unwrap();
-        //     if let ProtocolDiagnostics::Attendez(diag) = pd {
-        //         if let ProtocolDiagnostics::Attendez(ref mut d) = self.protocol_diagnostics {
-        //             d.merge(diag);
-        //         }
-        //     }
-        // }
-
-        // if let Outcome::Aborted(reason) = outcome {
-        //     use WorkloadAbortBreakdown::*;
-        //     match self.abort_breakdown.get_workload_specific() {
-        //         SmallBank(ref mut metric) => {
-        //             if let NonFatalError::SmallBankError(_) = reason {
-        //                 metric.inc_insufficient_funds();
-        //             }
-        //         }
-
-        //         Acid(ref mut metric) => {
-        //             if let NonFatalError::NonSerializable = reason {
-        //                 metric.inc_non_serializable();
-        //             }
-        //         }
-
-        //         Dummy(ref mut metric) => {
-        //             if let NonFatalError::NonSerializable = reason {
-        //                 metric.inc_non_serializable();
-        //             }
-        //         }
-
-        //         Tatp(ref mut metric) => {
-        //             if let NonFatalError::RowNotFound(_, _) = reason {
-        //                 metric.inc_not_found();
-        //             }
-        //         }
-        //         Ycsb => {}
-        //     }
-
-        //     use IsolationLevel::*;
-        //     use ProtocolAbortBreakdown::*;
-        //     use SerializationGraphError::*;
-
-        //     match self.abort_breakdown.get_protocol_specific() {
-        //         SerializationGraph(ref mut metric) => {
-        //             if let NonFatalError::SerializationGraphError(err) = reason {
-        //                 match err {
-        //                     CascadingAbort => metric.inc_cascading_abort(),
-        //                     CycleFound => metric.inc_cycle_found(),
-        //                 }
-
-        //                 match isolation {
-        //                     ReadCommitted => metric.inc_read_committed(),
-        //                     ReadUncommitted => metric.inc_read_uncommitted(),
-        //                     Serializable => metric.inc_serializable(),
-        //                 }
-        //             }
-        //         }
-
-        //         MixedSerializationGraph(ref mut metric) => {
-        //             if let NonFatalError::SerializationGraphError(sge) = reason {
-        //                 match sge {
-        //                     CascadingAbort => metric.inc_cascading_abort(),
-        //                     CycleFound => metric.inc_cycle_found(),
-        //                 }
-        //                 match isolation {
-        //                     ReadCommitted => metric.inc_read_committed(),
-        //                     ReadUncommitted => metric.inc_read_uncommitted(),
-        //                     Serializable => metric.inc_serializable(),
-        //                 }
-        //             }
-        //         }
-
-        //         Attendez(ref mut metric) => match reason {
-        //             NonFatalError::AttendezError(owhe) => match owhe {
-        //                 AttendezError::ExceededWatermark => metric.inc_exceeded_watermark(),
-        //                 AttendezError::PredecessorAborted => metric.inc_predecessor_aborted(),
-        //                 AttendezError::WriteOpExceededWatermark => {
-        //                     metric.inc_write_op_exceeded_watermark()
-        //                 }
-        //             },
-        //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-        //             _ => {}
-        //         },
-
-        //         WaitHit(ref mut metric) => match reason {
-        //             NonFatalError::WaitHitError(owhe) => match owhe {
-        //                 WaitHitError::Hit => metric.inc_hit(),
-        //                 WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-        //                 WaitHitError::PredecessorActive => metric.inc_pur_active(),
-        //             },
-        //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-        //             _ => {}
-        //         },
-
-        //         OptimisticWaitHit(ref mut metric) => match reason {
-        //             NonFatalError::WaitHitError(err) => match err {
-        //                 WaitHitError::Hit => metric.inc_hit(),
-        //                 WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-        //                 WaitHitError::PredecessorActive => metric.inc_pur_active(),
-        //             },
-        //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-        //             _ => {}
-        //         },
-
-        //         _ => {}
-        //     }
-        // }
     }
 }
