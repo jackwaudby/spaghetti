@@ -2,6 +2,8 @@ use crate::common::error::{NonFatalError, WaitHitError};
 use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::owh::transaction::{PredecessorUpon, Transaction, TransactionState};
+use crate::scheduler::StatsBucket;
+use crate::scheduler::ValueId;
 use crate::scheduler::{Database, TransactionType};
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
@@ -82,7 +84,7 @@ impl<'a> OptimisedWaitHit<'a> {
             .get()
     }
 
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self) -> (TransactionId, ProtocolDiagnostics) {
         *self
             .transaction_info
             .get_or(|| RefCell::new(None))
@@ -102,21 +104,26 @@ impl<'a> OptimisedWaitHit<'a> {
 
         OptimisedWaitHit::EG.with(|x| x.borrow_mut().replace(guard));
 
-        TransactionId::OptimisticWaitHit(id)
+        (
+            TransactionId::OptimisticWaitHit(id),
+            ProtocolDiagnostics::Other,
+        )
     }
 
     pub fn read_value(
         &self,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
+
         let transaction = self.get_transaction(); // transaction active on this thread
         let table: &Table = database.get_table(table_id); // handle to table
         let rw_table = table.get_rwtable(offset); // handle to rwtable
-        let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
+        let prv = rw_table.push_front(Access::Read(meta.get_transaction_id())); // append access
         let lsn = table.get_lsn(offset); // handle to lsn
 
         spin(prv, lsn); // delay until prv == lsn
@@ -162,16 +169,18 @@ impl<'a> OptimisedWaitHit<'a> {
     pub fn write_value(
         &self,
         value: &mut Data,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<(), NonFatalError> {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
+
         let transaction: &'a Transaction<'a> = self.get_transaction(); // transaction active on this thread
         let table = database.get_table(table_id); // handle to table
         let rw_table = table.get_rwtable(offset); // handle to rwtable
-        let prv = rw_table.push_front(Access::Write(meta.clone())); // append access
+        let prv = rw_table.push_front(Access::Write(meta.get_transaction_id())); // append access
         let lsn = table.get_lsn(offset); // handle to lsn
         spin(prv, lsn); // delay until prv == lsn
 
@@ -184,7 +193,7 @@ impl<'a> OptimisedWaitHit<'a> {
             // ok to have state change under feet here
             rw_table.erase(prv); // remove from rwtable
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(database); // abort this transaction
+            self.abort(meta, database); // abort this transaction
             return Err(NonFatalError::RowDirty("todo".to_string()));
         } else {
             let guard = &epoch::pin(); // pin thread
@@ -232,7 +241,7 @@ impl<'a> OptimisedWaitHit<'a> {
         }
     }
 
-    pub fn abort(&self, database: &Database) -> NonFatalError {
+    pub fn abort(&self, _meta: &mut StatsBucket, database: &Database) -> NonFatalError {
         let this = self.get_transaction();
         let ops = self.get_operations();
 
@@ -319,6 +328,7 @@ impl<'a> OptimisedWaitHit<'a> {
 
     fn wait_phase(
         &self,
+        meta: &mut StatsBucket,
         database: &Database,
         transaction_type: TransactionType,
     ) -> Result<(), NonFatalError> {
@@ -332,11 +342,11 @@ impl<'a> OptimisedWaitHit<'a> {
                         // if active or aborted then abort
                         match predecessor.get_state() {
                             TransactionState::Active => {
-                                self.abort(database);
+                                self.abort(meta, database);
                                 return Err(WaitHitError::PredecessorActive.into());
                             }
                             TransactionState::Aborted => {
-                                self.abort(database);
+                                self.abort(meta, database);
                                 return Err(WaitHitError::PredecessorAborted.into());
                             }
                             TransactionState::Committed => {}
@@ -351,11 +361,11 @@ impl<'a> OptimisedWaitHit<'a> {
                 // if active or aborted then abort
                 match predecessor.get_state() {
                     TransactionState::Active => {
-                        self.abort(database);
+                        self.abort(meta, database);
                         return Err(WaitHitError::PredecessorActive.into());
                     }
                     TransactionState::Aborted => {
-                        self.abort(database);
+                        self.abort(meta, database);
                         return Err(WaitHitError::PredecessorAborted.into());
                     }
                     TransactionState::Committed => {}
@@ -368,14 +378,15 @@ impl<'a> OptimisedWaitHit<'a> {
     /// Commit a transaction.
     pub fn commit<'g>(
         &self,
+        meta: &mut StatsBucket,
         database: &Database,
         transaction_type: TransactionType,
-    ) -> Result<ProtocolDiagnostics, NonFatalError> {
+    ) -> Result<(), NonFatalError> {
         let transaction = self.get_transaction();
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database);
+            self.abort(meta, database);
             return Err(WaitHitError::Hit.into());
         }
 
@@ -383,15 +394,15 @@ impl<'a> OptimisedWaitHit<'a> {
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database);
+            self.abort(meta, database);
             return Err(WaitHitError::Hit.into());
         }
 
-        self.wait_phase(database, transaction_type)?;
+        self.wait_phase(meta, database, transaction_type)?;
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {
-            self.abort(database);
+            self.abort(meta, database);
             return Err(WaitHitError::Hit.into());
         }
 
@@ -445,10 +456,10 @@ impl<'a> OptimisedWaitHit<'a> {
                     drop(guard)
                 });
 
-                Ok(ProtocolDiagnostics::Other)
+                Ok(())
             }
             Err(e) => {
-                self.abort(database);
+                self.abort(meta, database);
                 Err(e)
             }
         }

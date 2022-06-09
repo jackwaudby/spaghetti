@@ -3,6 +3,8 @@ use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::wh::shared::Shared;
 use crate::scheduler::wh::shared::TransactionOutcome;
+use crate::scheduler::StatsBucket;
+use crate::scheduler::ValueId;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
@@ -56,7 +58,7 @@ impl WaitHit {
         res.add(op_type, table_id, column_id, offset, prv); // record operation
     }
 
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self) -> (TransactionId, ProtocolDiagnostics) {
         *self
             .txn_info
             .get_or(|| RefCell::new(Some(TransactionInformation::new())))
@@ -74,25 +76,27 @@ impl WaitHit {
 
         let id = self.shared.get_id(); // get txn id
 
-        TransactionId::WaitHit(id)
+        (TransactionId::WaitHit(id), ProtocolDiagnostics::Other)
     }
 
     pub fn read_value(
         &self,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
-        let this_id = match meta {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
+
+        let this_id = match meta.get_transaction_id() {
             TransactionId::WaitHit(id) => id,
             _ => panic!("unexpected txn id"),
         };
 
         let table: &Table = database.get_table(table_id); // get table
         let rw_table = table.get_rwtable(offset); // get rwtable
-        let prv = rw_table.push_front(Access::Read(meta.clone())); // append access
+        let prv = rw_table.push_front(Access::Read(meta.get_transaction_id())); // append access
         let lsn = table.get_lsn(offset);
 
         unsafe { spin(prv, lsn) };
@@ -106,7 +110,7 @@ impl WaitHit {
                 match access {
                     Access::Write(txn_info) => match txn_info {
                         TransactionId::WaitHit(pred_id) => {
-                            if this_id == pred_id {
+                            if this_id == *pred_id {
                                 continue; // skip self predecessors
                             } else {
                                 self.pur.get().unwrap().borrow_mut().insert(*pred_id);
@@ -136,13 +140,15 @@ impl WaitHit {
     pub fn write_value(
         &self,
         value: &mut Data,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        let this_id = match meta {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
+
+        let this_id = match meta.get_transaction_id() {
             TransactionId::WaitHit(id) => id,
             _ => panic!("unexpected txn id"),
         };
@@ -150,7 +156,7 @@ impl WaitHit {
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
-        let prv = rw_table.push_front(Access::Write(meta.clone()));
+        let prv = rw_table.push_front(Access::Write(meta.get_transaction_id()));
 
         unsafe { spin(prv, lsn) };
 
@@ -174,7 +180,7 @@ impl WaitHit {
                     match access {
                         Access::Read(txn_info) => match txn_info {
                             TransactionId::WaitHit(pred_id) => {
-                                if this_id == pred_id {
+                                if this_id == *pred_id {
                                     continue; // skip self predecessors
                                 } else {
                                     self.puw.get().unwrap().borrow_mut().insert(*pred_id);
@@ -184,7 +190,7 @@ impl WaitHit {
                         },
                         Access::Write(txn_info) => match txn_info {
                             TransactionId::WaitHit(pred_id) => {
-                                if this_id == pred_id {
+                                if this_id == *pred_id {
                                     continue; // skip self predecessors
                                 } else {
                                     self.puw.get().unwrap().borrow_mut().insert(*pred_id);
@@ -216,10 +222,10 @@ impl WaitHit {
     /// Hit phase: if not in hit list then commit and merge all (active) puw into the hit list; else in hit list then abort
     pub fn commit<'g>(
         &self,
-        meta: &TransactionId,
+        meta: &mut StatsBucket,
         database: &Database,
-    ) -> Result<ProtocolDiagnostics, NonFatalError> {
-        let this_id = match meta {
+    ) -> Result<(), NonFatalError> {
+        let this_id = match meta.get_transaction_id() {
             TransactionId::WaitHit(id) => id,
             _ => panic!("unexpected txn id"),
         };
@@ -242,7 +248,7 @@ impl WaitHit {
             }
         }
 
-        if !g.is_in_hit_list(*this_id) {
+        if !g.is_in_hit_list(this_id) {
             self.tidyup(database, true);
 
             let puw = self.puw.get().unwrap().borrow().clone(); // TODO: avoid clone
@@ -253,7 +259,7 @@ impl WaitHit {
                 }
             }
             drop(g);
-            Ok(ProtocolDiagnostics::Other)
+            Ok(())
         } else {
             drop(g);
             self.abort(meta, database);
@@ -263,16 +269,16 @@ impl WaitHit {
 
     /// Abort operation.
     /// Remove transaction from the hit list and add to the terminated list.
-    pub fn abort<'g>(&self, meta: &TransactionId, database: &Database) -> NonFatalError {
-        let this_id = match meta {
+    pub fn abort<'g>(&self, meta: &mut StatsBucket, database: &Database) -> NonFatalError {
+        let this_id = match meta.get_transaction_id() {
             TransactionId::WaitHit(id) => id,
             _ => panic!("unexpected txn id"),
         };
 
         let mut g = self.shared.get_lock();
 
-        g.remove_from_hit_list(*this_id);
-        g.add_to_terminated_list(*this_id, TransactionOutcome::Aborted);
+        g.remove_from_hit_list(this_id);
+        g.add_to_terminated_list(this_id, TransactionOutcome::Aborted);
 
         self.tidyup(database, false);
 

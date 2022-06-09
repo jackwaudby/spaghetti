@@ -1,6 +1,8 @@
 use crate::common::error::NonFatalError;
 use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
+use crate::scheduler::StatsBucket;
+use crate::scheduler::ValueId;
 use crate::storage::access::{Access, TransactionId};
 use crate::storage::datatype::Data;
 use crate::storage::table::Table;
@@ -28,27 +30,31 @@ impl NoConcurrencyControl {
     }
 
     /// Begin a transaction.
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self) -> (TransactionId, ProtocolDiagnostics) {
         *self
             .txn_info
             .get_or(|| RefCell::new(TransactionInformation::new()))
             .borrow_mut() = TransactionInformation::new();
 
-        TransactionId::NoConcurrencyControl
+        (
+            TransactionId::NoConcurrencyControl,
+            ProtocolDiagnostics::Other,
+        )
     }
 
     /// Read a value in a column at some offset.
     pub fn read_value(
         &self,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
         let table: &Table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
-        let prv = rw_table.push_front(Access::Read(meta.clone()));
+        let prv = rw_table.push_front(Access::Read(meta.get_transaction_id()));
         let lsn = table.get_lsn(offset);
 
         spin(prv, lsn);
@@ -75,16 +81,17 @@ impl NoConcurrencyControl {
     pub fn write_value(
         &self,
         value: &mut Data,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        meta: &TransactionId,
+        vid: ValueId,
+        meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<(), NonFatalError> {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
         let table = database.get_table(table_id); // index into a vector
         let rw_table = table.get_rwtable(offset); // index into a vector
         let lsn = table.get_lsn(offset); // index into a vector
-        let prv = rw_table.push_front(Access::Write(meta.clone()));
+        let prv = rw_table.push_front(Access::Write(meta.get_transaction_id()));
 
         spin(prv, lsn);
 
@@ -133,14 +140,18 @@ impl NoConcurrencyControl {
     }
 
     /// Commit a transaction.
-    pub fn commit(&self, database: &Database) -> Result<ProtocolDiagnostics, NonFatalError> {
+    pub fn commit(
+        &self,
+        _meta: &mut StatsBucket,
+        database: &Database,
+    ) -> Result<(), NonFatalError> {
         self.tidy_up(database);
 
-        Ok(ProtocolDiagnostics::Other)
+        Ok(())
     }
 
     /// Abort a transaction.
-    pub fn abort(&self, database: &Database) -> NonFatalError {
+    pub fn abort(&self, _meta: &mut StatsBucket, database: &Database) -> NonFatalError {
         self.tidy_up(database);
 
         NonFatalError::NonSerializable

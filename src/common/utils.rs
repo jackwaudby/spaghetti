@@ -155,12 +155,11 @@ pub fn run(
             debug!("Timeout reached: {} minute(s)", timeout);
             break;
         } else {
-            let request = generator.get_next(); // generate txn
-            let start_latency = Instant::now(); // start measuring latency
-            let mut response = execute(request, scheduler, database); // execute txn
-            response.set_total_latency(start_latency.elapsed().as_nanos());
-
-            stats.record(&response); // record response
+            let request = generator.get_next();
+            let start = Instant::now();
+            let mut response = execute(request, scheduler, database);
+            response.set_total_latency(start.elapsed().as_nanos());
+            stats.record(&response);
 
             if log_results {
                 log_result(&mut fh, &response); // log response
@@ -171,9 +170,6 @@ pub fn run(
     }
 
     stats.stop_worker(start_worker);
-
-    // let thread_summary = stats.aggregate(&w, &p);
-    // tracing::info!("{}", serde_json::to_string_pretty(&thread_summary).unwrap());
 
     if record {
         tx.send(stats).unwrap();

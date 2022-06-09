@@ -1,4 +1,4 @@
-use crate::common::error::{AttendezError, NonFatalError};
+use crate::common::error::{AttendezError, NonFatalError, SerializationGraphError, WaitHitError};
 use crate::common::statistics::protocol_abort_breakdown::{
     AttendezReasons, ProtocolAbortBreakdown, SerializationGraphReasons, WaitHitReasons,
 };
@@ -92,25 +92,20 @@ impl AbortBreakdown {
         match self.protocol_specific {
             SerializationGraph(ref mut metric) => match reason {
                 NonFatalError::SerializationGraphError(err) => match err {
-                    CascadingAbort => metric.inc_cascading_abort(),
-                    CycleFound => metric.inc_cycle_found(),
+                    SerializationGraphError::CascadingAbort => metric.inc_cascading_abort(),
+                    SerializationGraphError::CycleFound => metric.inc_cycle_found(),
                 },
                 _ => {}
             },
 
-            //         MixedSerializationGraph(ref mut metric) => {
-            //             if let NonFatalError::SerializationGraphError(sge) = reason {
-            //                 match sge {
-            //                     CascadingAbort => metric.inc_cascading_abort(),
-            //                     CycleFound => metric.inc_cycle_found(),
-            //                 }
-            //                 match isolation {
-            //                     ReadCommitted => metric.inc_read_committed(),
-            //                     ReadUncommitted => metric.inc_read_uncommitted(),
-            //                     Serializable => metric.inc_serializable(),
-            //                 }
-            //             }
-            //         }
+            MixedSerializationGraph(ref mut metric) => match reason {
+                NonFatalError::SerializationGraphError(sge) => match sge {
+                    SerializationGraphError::CascadingAbort => metric.inc_cascading_abort(),
+                    SerializationGraphError::CycleFound => metric.inc_cycle_found(),
+                },
+                _ => {}
+            },
+
             Attendez(ref mut metric) => match reason {
                 NonFatalError::AttendezError(owhe) => match owhe {
                     AttendezError::ExceededWatermark => metric.inc_exceeded_watermark(),
@@ -123,25 +118,25 @@ impl AbortBreakdown {
                 _ => {}
             },
 
-            //         WaitHit(ref mut metric) => match reason {
-            //             NonFatalError::WaitHitError(owhe) => match owhe {
-            //                 WaitHitError::Hit => metric.inc_hit(),
-            //                 WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-            //                 WaitHitError::PredecessorActive => metric.inc_pur_active(),
-            //             },
-            //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-            //             _ => {}
-            //         },
+            WaitHit(ref mut metric) => match reason {
+                NonFatalError::WaitHitError(owhe) => match owhe {
+                    WaitHitError::Hit => metric.inc_hit(),
+                    WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+                    WaitHitError::PredecessorActive => metric.inc_pur_active(),
+                },
+                NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                _ => {}
+            },
 
-            //         OptimisticWaitHit(ref mut metric) => match reason {
-            //             NonFatalError::WaitHitError(err) => match err {
-            //                 WaitHitError::Hit => metric.inc_hit(),
-            //                 WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
-            //                 WaitHitError::PredecessorActive => metric.inc_pur_active(),
-            //             },
-            //             NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
-            //             _ => {}
-            //         },
+            OptimisticWaitHit(ref mut metric) => match reason {
+                NonFatalError::WaitHitError(err) => match err {
+                    WaitHitError::Hit => metric.inc_hit(),
+                    WaitHitError::PredecessorAborted => metric.inc_pur_aborted(),
+                    WaitHitError::PredecessorActive => metric.inc_pur_active(),
+                },
+                NonFatalError::RowDirty(_) => metric.inc_row_dirty(),
+                _ => {}
+            },
             _ => {}
         }
     }

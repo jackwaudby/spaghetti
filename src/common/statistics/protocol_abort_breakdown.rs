@@ -1,7 +1,4 @@
-//! Breakdown of protocol-specific reasons why transactions aborted (external aborts).
-
 use serde::{Deserialize, Serialize};
-use std::fmt;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum ProtocolAbortBreakdown {
