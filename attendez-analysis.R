@@ -5,7 +5,7 @@ library(dplyr)
 library(patchwork)
 library(scales)
 
-col_names = c("sf","protocol","workload","cores","thpt","abr","lat","write_lat")
+col_names = c("sf","protocol","workload","cores","thpt","abr","committed_lat","aborted_lat","write_op","commit_op")
 
 raw = read_csv(file = "exp.csv", col_names = col_names)
 
@@ -17,13 +17,22 @@ raw = read_csv(file = "exp.csv", col_names = col_names)
     geom_line()  + ylab("abort rate") + labs(color="") + theme_bw() + 
     theme(legend.position="top",text = element_text(size = 18)))
 
-(g3 = ggplot(data = raw, aes(x = cores, y = lat, group = protocol, colour = protocol)) +
+(g3 = ggplot(data = raw, aes(x = cores, y = committed_lat, group = protocol, colour = protocol)) +
     geom_line() + ylab("av latency (us)") + scale_y_log10() + labs(color="") + theme_bw() + 
     theme(legend.position="top",text = element_text(size = 18)))
 
-(g4 = ggplot(data = raw, aes(x = cores, y = write_lat, group = protocol, colour = protocol)) +
+(g4 = ggplot(data = raw, aes(x = cores, y = aborted_lat, group = protocol, colour = protocol)) +
     geom_line() + ylab("av write op (us)") + scale_y_log10() + labs(color="") + theme_bw() + 
     theme(legend.position="top",text = element_text(size = 18)))
+
+(g5 = ggplot(data = raw, aes(x = cores, y = write_op, group = protocol, colour = protocol)) +
+        geom_line() + ylab("av write op (us)") + scale_y_log10() + labs(color="") + theme_bw() + 
+        theme(legend.position="top",text = element_text(size = 18)))
+
+(g5 = ggplot(data = raw, aes(x = cores, y = commit_op, group = protocol, colour = protocol)) +
+        geom_line() + ylab("av write op (us)") + scale_y_log10() + labs(color="") + theme_bw() + 
+        theme(legend.position="top",text = element_text(size = 18)))
+
 
 (combined <- g1 + g2 + g3 + g4 & theme(legend.position = "top", text = element_text(size = 20)))
 (g = combined + plot_layout(guides = "collect"))

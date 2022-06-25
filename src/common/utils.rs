@@ -1,4 +1,5 @@
-use crate::common::message::{Parameters, Request, Response};
+use crate::common::error::NonFatalError;
+use crate::common::message::{Outcome, Parameters, Request, Response};
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::LocalStatistics;
 use crate::scheduler::Scheduler;
@@ -157,9 +158,36 @@ pub fn run(
         } else {
             let request = generator.get_next();
             let start = Instant::now();
-            let mut response = execute(request, scheduler, database);
+
+            // restart loop
+            let mut response;
+            loop {
+                response = execute(request.clone(), scheduler, database);
+
+                let outcome = response.get_outcome();
+
+                stats.record(&response);
+
+                match outcome {
+                    Outcome::Committed(_) => break,
+                    Outcome::Aborted(err) => match err {
+                        NonFatalError::RowNotFound(_, _) => break,
+                        NonFatalError::RowDirty(_) => {}
+                        NonFatalError::UnableToConvertFromDataType(_, _) => break,
+                        NonFatalError::NonSerializable => {}
+                        NonFatalError::SmallBankError(_) => break,
+                        NonFatalError::SerializationGraphError(_) => {}
+                        NonFatalError::WaitHitError(_) => {}
+                        NonFatalError::AttendezError(_) => {}
+                    },
+                }
+
+                stats.start_wait_manager();
+                wm.wait(tid, neighbours);
+                stats.stop_wait_manager();
+            }
+
             response.set_total_latency(start.elapsed().as_nanos());
-            stats.record(&response);
 
             if log_results {
                 log_result(&mut fh, &response); // log response
