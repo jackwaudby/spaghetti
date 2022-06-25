@@ -1,12 +1,58 @@
-use spin::Mutex;
-
-struct WaitManager {
-    locks: Vec<Mutex>,
-    thread_id: u64,
+use std::collections::hash_map::DefaultHasher;
+use std::collections::BTreeSet;
+use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
+use std::sync::Mutex;
+use std::sync::MutexGuard;
+#[derive(Debug)]
+pub struct WaitManager {
+    locks: Vec<Mutex<u8>>,
+    cores: usize,
 }
 
 impl WaitManager {
-    fn wait(&self) {}
+    pub fn new(cores: usize) -> Self {
+        let mut locks = Vec::with_capacity(cores);
 
-    fn release(&self) {}
+        for i in 0..cores {
+            locks.push(Mutex::new(i as u8));
+        }
+
+        Self { locks, cores }
+    }
+
+    pub fn wait(&self, tid: u64, neighbours: HashSet<u64>) -> Vec<MutexGuard<'_, u8>> {
+        let mut oset = BTreeSet::new();
+        for nid in &neighbours {
+            let offset = self.calculate_offset(nid);
+            oset.insert(offset);
+            println!("{} -> {}", nid, offset);
+        }
+        let offset = self.calculate_offset(&tid);
+        oset.insert(offset);
+        println!("id: {} -> offset: {}", tid, offset);
+        let mut guards = Vec::new();
+        for t in oset {
+            guards.push(self.locks[t].lock().unwrap());
+            println!("id: {} got lock on offset: {}", tid, t);
+
+        }
+        guards
+    }
+
+    pub fn release(&self, tid: u64, guards: Vec<MutexGuard<'_, u8>>) {
+        println!("id: {} dropping lock on offset {:?}", tid, guards);
+
+        for guard in guards {
+            drop(guard);
+        }
+    }
+    fn calculate_hash<T: Hash>(&self, t: &T) -> u64 {
+        let mut s = DefaultHasher::new();
+        t.hash(&mut s);
+        s.finish()
+    }
+    fn calculate_offset(&self, tid: &u64) -> usize {
+        (self.calculate_hash(tid) % 4) as usize
+    }
 }

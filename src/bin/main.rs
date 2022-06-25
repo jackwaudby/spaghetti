@@ -1,5 +1,6 @@
 use spaghetti::common::statistics::GlobalStatistics;
 use spaghetti::common::utils;
+use spaghetti::common::wait_manager::WaitManager;
 use spaghetti::scheduler::Scheduler;
 use spaghetti::storage::Database;
 
@@ -139,9 +140,12 @@ fn main() {
     let cores = config.get_int("cores").unwrap() as usize;
     let core_ids = core_affinity::get_core_ids().unwrap();
 
+    let wm = WaitManager::new(cores);
+
     thread::scope(|s| {
         let scheduler = &scheduler;
         let database = &database;
+        let wm = &wm;
         let config = &config;
 
         let mut shutdown_channels = Vec::new();
@@ -157,7 +161,7 @@ fn main() {
                 .name(thread_id.to_string())
                 .spawn(move |_| {
                     core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                    utils::run(thread_id, config, scheduler, database, txc);
+                    utils::run(thread_id, config, scheduler, database, txc, wm);
                 })
                 .unwrap();
         }

@@ -13,6 +13,7 @@ pub struct StoredProcedureResult {
     outcome: Outcome,
     diagnostics: ProtocolDiagnostics,
     latency: LatencyBreakdown,
+    internal_id: u64,
 }
 
 impl StoredProcedureResult {
@@ -25,11 +26,14 @@ impl StoredProcedureResult {
         let latency = meta.take_latency_breakdown();
         let diagnostics = meta.take_diagnostics();
 
+        let internal_id = meta.get_transaction_id().extract();
+
         StoredProcedureResult {
             isolation,
             outcome,
             diagnostics,
             latency,
+            internal_id,
         }
     }
 
@@ -41,13 +45,19 @@ impl StoredProcedureResult {
         let outcome = Outcome::Committed(success);
         let latency = meta.take_latency_breakdown();
         let diagnostics = meta.take_diagnostics();
+        let internal_id = meta.get_transaction_id().extract();
 
         StoredProcedureResult {
             isolation,
             outcome,
             diagnostics,
             latency,
+            internal_id,
         }
+    }
+
+    pub fn get_internal_id(&self) -> u64 {
+        self.internal_id
     }
 
     pub fn get_isolation_level(&self) -> &IsolationLevel {

@@ -17,3 +17,5 @@ pub mod value_id;
 pub mod stored_procedure_result;
 
 pub mod stats_bucket;
+
+pub mod wait_manager;

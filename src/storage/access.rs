@@ -17,6 +17,16 @@ pub enum TransactionId {
     TwoPhaseLocking(u64),
 }
 
+impl TransactionId {
+    pub fn extract(&self) -> u64 {
+        if let TransactionId::SerializationGraph(id, _, _) = &self {
+             *id as u64
+        } else {
+            0
+        }
+    }
+}
+
 impl fmt::Display for Access {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use Access::*;

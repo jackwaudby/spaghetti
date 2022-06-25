@@ -16,6 +16,7 @@ use crate::workloads::IsolationLevel;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Request {
@@ -99,6 +100,13 @@ impl Response {
 
     pub fn set_total_latency(&mut self, dur: u128) {
         self.result.set_total_latency(dur);
+    }
+
+    pub fn get_transaction_id(&self) -> u64 {
+        self.result.get_internal_id()
+    }
+    pub fn get_aborted_transactions(&self) -> HashSet<u64> {
+        HashSet::new()
     }
 }
 

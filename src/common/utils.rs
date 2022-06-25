@@ -11,9 +11,11 @@ use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransac
 // use crate::workloads::ycsb::paramgen::{YcsbGenerator, YcsbTransactionProfil
 // e};
 // use crate::workloads::{acid, dummy, smallbank, tatp, ycsb};
+use crate::common::wait_manager::WaitManager;
 use crate::workloads::smallbank;
 
 use config::Config;
+use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
@@ -90,6 +92,7 @@ pub fn run(
     scheduler: &Scheduler,
     database: &Database,
     tx: mpsc::Sender<LocalStatistics>,
+    wm: &WaitManager,
 ) {
     let timeout = config.get_int("timeout").unwrap() as u64;
     let p = config.get_str("protocol").unwrap();
@@ -156,35 +159,62 @@ pub fn run(
             debug!("Timeout reached: {} minute(s)", timeout);
             break;
         } else {
+            // generate transaction request
             let request = generator.get_next();
+
             let start = Instant::now();
 
             // restart loop
             let mut response;
+            let mut restarted = false;
+            let mut txn = 0;
+            let mut old_txn = 0;
+            let mut aborted_txns: HashSet<u64> = HashSet::new();
+            let mut guards = None;
             loop {
+                // execute transaction request
                 response = execute(request.clone(), scheduler, database);
 
+                // get tid
+                txn = response.get_transaction_id();
+
+                // extract outcome
                 let outcome = response.get_outcome();
+
+                if restarted && guards.is_some() {
+                    restarted = false;
+                    wm.release(old_txn, guards.unwrap());
+                }
 
                 stats.record(&response);
 
                 match outcome {
+                    // case 1: committed
                     Outcome::Committed(_) => break,
+
                     Outcome::Aborted(err) => match err {
                         NonFatalError::RowNotFound(_, _) => break,
-                        NonFatalError::RowDirty(_) => {}
-                        NonFatalError::UnableToConvertFromDataType(_, _) => break,
-                        NonFatalError::NonSerializable => {}
                         NonFatalError::SmallBankError(_) => break,
+                        NonFatalError::UnableToConvertFromDataType(_, _) => break,
+                        NonFatalError::RowDirty(_) => {}
+                        NonFatalError::NonSerializable => {}
                         NonFatalError::SerializationGraphError(_) => {}
                         NonFatalError::WaitHitError(_) => {}
                         NonFatalError::AttendezError(_) => {}
                     },
                 }
+                println!("external abort: {}", txn);
 
-                stats.start_wait_manager();
-                wm.wait(tid, neighbours);
-                stats.stop_wait_manager();
+                // if gets here then transaction must be restarted
+                aborted_txns = response.get_aborted_transactions();
+            
+
+                // stats.start_wait_manager();
+                guards = Some(wm.wait(txn as u64, aborted_txns.clone()));
+                // stats.stop_wait_manager();
+
+                old_txn = txn;
+                restarted = true;
             }
 
             response.set_total_latency(start.elapsed().as_nanos());
@@ -204,7 +234,7 @@ pub fn run(
     }
 }
 
-pub fn execute<'a>(request: Request, scheduler: &'a Scheduler, workload: &'a Database) -> Response {
+pub fn execute<'a>(request: Request, scheduler: &'a Scheduler, database: &'a Database) -> Response {
     let request_no = request.get_request_no();
     let transaction = request.get_transaction();
     let isolation = request.get_isolation_level();
@@ -215,61 +245,61 @@ pub fn execute<'a>(request: Request, scheduler: &'a Scheduler, workload: &'a Dat
         //         tatp::procedures::get_subscriber_data(
         //             params.clone(),
         //             scheduler,
-        //             workload,
+        //             database,
         //             isolation,
         //         )
         //     }
         //     TatpTransactionProfile::GetAccessData(params) => {
-        //         tatp::procedures::get_access_data(params.clone(), scheduler, workload, isolation)
+        //         tatp::procedures::get_access_data(params.clone(), scheduler, database, isolation)
         //     }
         //     TatspTransactionProfile::GetNewDestination(params) => {
         //         tatp::procedures::get_new_destination(
         //             params.clone(),
         //             scheduler,
-        //             workload,
+        //             database,
         //             isolation,
         //         )
         //     }
         //     TatpTransactionProfile::UpdateLocationData(params) => {
-        //         tatp::procedures::update_location(params.clone(), scheduler, workload, isolation)
+        //         tatp::procedures::update_location(params.clone(), scheduler, database, isolation)
         //     }
         //     TatpTransactionProfile::UpdateSubscriberData(params) => {
         //         tatp::procedures::update_subscriber_data(
         //             params.clone(),
         //             scheduler,
-        //             workload,
+        //             database,
         //             isolation,
         //         )
         //     }
         // },
         Parameters::SmallBank(params) => match params {
             SmallBankTransactionProfile::Amalgamate(params) => {
-                smallbank::procedures::amalgmate(params.clone(), scheduler, workload, isolation)
+                smallbank::procedures::amalgmate(params.clone(), scheduler, database, isolation)
             }
             SmallBankTransactionProfile::Balance(params) => {
-                smallbank::procedures::balance(params.clone(), scheduler, workload, isolation)
+                smallbank::procedures::balance(params.clone(), scheduler, database, isolation)
             }
             SmallBankTransactionProfile::DepositChecking(params) => {
                 smallbank::procedures::deposit_checking(
                     params.clone(),
                     scheduler,
-                    workload,
+                    database,
                     isolation,
                 )
             }
             SmallBankTransactionProfile::SendPayment(params) => {
-                smallbank::procedures::send_payment(params.clone(), scheduler, workload, isolation)
+                smallbank::procedures::send_payment(params.clone(), scheduler, database, isolation)
             }
             SmallBankTransactionProfile::TransactSaving(params) => {
                 smallbank::procedures::transact_savings(
                     params.clone(),
                     scheduler,
-                    workload,
+                    database,
                     isolation,
                 )
             }
             SmallBankTransactionProfile::WriteCheck(params) => {
-                smallbank::procedures::write_check(params.clone(), scheduler, workload, isolation)
+                smallbank::procedures::write_check(params.clone(), scheduler, database, isolation)
             }
         },
 
