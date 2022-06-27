@@ -29,6 +29,7 @@ pub struct GlobalStatistics {
     cores: u32,
     total_time: u128,
     latency: u128,
+    wait: u128,
     protocol: String,
     workload: String,
     transaction_breakdown: TransactionBreakdown,
@@ -60,6 +61,7 @@ impl GlobalStatistics {
             workload,
             total_time: 0,
             latency: 0,
+            wait: 0,
             cores,
             transaction_breakdown,
             anomaly,
@@ -85,6 +87,7 @@ impl GlobalStatistics {
     pub fn merge_into(&mut self, local: LocalStatistics) {
         self.total_time += local.total_time;
         self.latency += local.latency;
+        self.wait += local.wait;
         self.transaction_breakdown
             .merge(local.transaction_breakdown);
     }
@@ -174,7 +177,8 @@ impl GlobalStatistics {
             "aborted": summary.get_abort_summary(),
             "throughput": format!("{:.2}", summary.get_thpt(self.total_time, self.cores)),
             "av_latency (us)":  summary.get_lat_summary(),
-            "diagnostics": summary.get_diagnostics()
+            "diagnostics": summary.get_diagnostics(),
+            "wait(ms)":  format!("{:.0}", (self.wait as f64 / 1000000.0)),
         });
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
 
@@ -209,6 +213,7 @@ pub struct LocalStatistics {
     core_id: usize,
     pub total_time: u128,
     pub latency: u128,
+    pub wait: u128,
     pub transaction_breakdown: TransactionBreakdown,
 }
 
@@ -222,6 +227,7 @@ impl LocalStatistics {
             core_id,
             total_time: 0,
             latency: 0,
+            wait: 0,
             transaction_breakdown,
         }
     }
@@ -238,6 +244,10 @@ impl LocalStatistics {
     /// Per-transaction latency
     pub fn stop_latency(&mut self, start: Instant) {
         self.latency += start.elapsed().as_nanos();
+    }
+
+    pub fn stop_wait_manager(&mut self, start: Instant) {
+        self.wait += start.elapsed().as_nanos();
     }
 
     pub fn get_global_summary(&mut self, workload: &str, protocol: &str) -> GlobalSummary {

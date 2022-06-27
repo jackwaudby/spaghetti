@@ -35,7 +35,6 @@ impl WaitManager {
         for t in oset {
             guards.push(self.locks[t].lock().unwrap());
             // println!("id: {} got lock on offset: {}", tid, t);
-
         }
         guards
     }
