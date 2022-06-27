@@ -53,6 +53,6 @@ impl WaitManager {
         s.finish()
     }
     fn calculate_offset(&self, tid: &u64) -> usize {
-        (self.calculate_hash(tid) % 4) as usize
+        (self.calculate_hash(tid) % self.cores as u64) as usize
     }
 }

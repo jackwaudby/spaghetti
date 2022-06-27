@@ -4,7 +4,7 @@ use spaghetti::common::wait_manager::WaitManager;
 use spaghetti::scheduler::Scheduler;
 use spaghetti::storage::Database;
 
-use clap::{arg, App};
+use clap::{arg, Command};
 use crossbeam_utils::thread;
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -17,7 +17,7 @@ fn main() {
     let mut config = utils::init_config("Settings.toml");
 
     // command line
-    let matches = App::new("MyApp")
+    let matches = Command::new("MyApp")
         .version("0.1.0")
         .author("j. waudby <j.waudby2@newcastle.ac.uk>")
         .about("spaghetti")
@@ -44,68 +44,68 @@ fn main() {
         .arg(arg!(-o --types <TYPES> "Transaction types optimization (OWH only)").required(false))
         .get_matches();
 
-    if let Some(w) = matches.value_of("workload") {
-        config.set("workload", w).unwrap();
+    if let Some(w) = matches.get_one::<String>("workload") {
+        config.set("workload", w.clone()).unwrap();
     }
 
-    if let Some(p) = matches.value_of("protocol") {
-        config.set("protocol", p).unwrap();
+    if let Some(p) = matches.get_one::<String>("protocol") {
+        config.set("protocol", p.clone()).unwrap();
     }
 
-    if let Some(s) = matches.value_of("scalefactor") {
-        config.set("scale_factor", s).unwrap();
+    if let Some(s) = matches.get_one::<String>("scalefactor") {
+        config.set("scale_factor", s.clone()).unwrap();
     }
 
-    if let Some(t) = matches.value_of("transactions") {
-        config.set("transactions", t).unwrap();
+    if let Some(t) = matches.get_one::<String>("transactions") {
+        config.set("transactions", t.clone()).unwrap();
     }
 
-    if let Some(c) = matches.value_of("cores") {
-        config.set("cores", c).unwrap();
+    if let Some(c) = matches.get_one::<String>("cores") {
+        config.set("cores", c.clone()).unwrap();
     }
 
-    if let Some(l) = matches.value_of("log") {
-        config.set("log", l).unwrap();
+    if let Some(l) = matches.get_one::<String>("log") {
+        config.set("log", l.clone()).unwrap();
     }
 
     // YCSB
-    if let Some(theta) = matches.value_of("theta") {
-        config.set("theta", theta).unwrap();
+    if let Some(theta) = matches.get_one::<String>("theta") {
+        config.set("theta", theta.clone()).unwrap();
     }
 
-    if let Some(ur) = matches.value_of("updaterate") {
-        config.set("update_rate", ur).unwrap();
+    if let Some(ur) = matches.get_one::<String>("updaterate") {
+        config.set("update_rate", ur.clone()).unwrap();
     }
 
-    if let Some(sr) = matches.value_of("serializablerate") {
-        config.set("serializable_rate", sr).unwrap();
+    if let Some(sr) = matches.get_one::<String>("serializablerate") {
+        config.set("serializable_rate", sr.clone()).unwrap();
     }
 
     // Attendez
-    if let Some(wm) = matches.value_of("watermark") {
-        config.set("watermark", wm).unwrap();
+    if let Some(wm) = matches.get_one::<String>("watermark") {
+        config.set("watermark", wm.clone()).unwrap();
     }
 
-    if let Some(a) = matches.value_of("increase") {
-        config.set("increase", a).unwrap();
+    if let Some(a) = matches.get_one::<String>("increase") {
+        config.set("increase", a.clone()).unwrap();
     }
 
-    if let Some(b) = matches.value_of("decrease") {
-        config.set("decrease", b).unwrap();
+    if let Some(b) = matches.get_one::<String>("decrease") {
+        config.set("decrease", b.clone()).unwrap();
     }
 
-    if let Some(d) = matches.value_of("nowait") {
-        config.set("no_wait_write", d).unwrap();
+    if let Some(d) = matches.get_one::<String>("nowait") {
+        config.set("no_wait_write", d.clone()).unwrap();
     }
 
     // MSGT
-    if let Some(dfs) = matches.value_of("relevant") {
-        config.set("relevant_dfs", dfs).unwrap();
+    if let Some(dfs) = matches.get_one::<String>("relevant") {
+        config.set("relevant_dfs", dfs.clone()).unwrap();
     }
 
     // OWH
-    if let Some(ta) = matches.value_of("types") {
-        config.set("type_aware", ta).unwrap();
+    if let Some(ta) = matches.get_one::<String>("types") {
+        config.set("type_aware", ta.clone()).unwrap();
     }
 
     // logging
