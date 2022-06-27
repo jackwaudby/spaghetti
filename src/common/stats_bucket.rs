@@ -2,10 +2,13 @@ use crate::common::statistics::latency_breakdown::LatencyBreakdown;
 use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::storage::access::TransactionId;
 
+use std::collections::HashSet;
+
 pub struct StatsBucket {
     tid: TransactionId,
     latency: LatencyBreakdown,
     diagnostics: ProtocolDiagnostics,
+    problem_transactions: HashSet<u64>,
 }
 
 impl StatsBucket {
@@ -14,6 +17,7 @@ impl StatsBucket {
             tid,
             latency: LatencyBreakdown::new(),
             diagnostics,
+            problem_transactions: HashSet::new(),
         }
     }
 
@@ -35,5 +39,13 @@ impl StatsBucket {
 
     pub fn get_diagnostics(&mut self) -> &mut ProtocolDiagnostics {
         &mut self.diagnostics
+    }
+
+    pub fn get_problem_transactions(&self) -> HashSet<u64> {
+        self.problem_transactions.clone()
+    }
+
+    pub fn add_problem_transaction(&mut self, id: u64) {
+        self.problem_transactions.insert(id);
     }
 }

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Success};
@@ -14,6 +15,7 @@ pub struct StoredProcedureResult {
     diagnostics: ProtocolDiagnostics,
     latency: LatencyBreakdown,
     internal_id: u64,
+    problem_transactions: HashSet<u64>,
 }
 
 impl StoredProcedureResult {
@@ -28,12 +30,15 @@ impl StoredProcedureResult {
 
         let internal_id = meta.get_transaction_id().extract();
 
+        let problem_transactions = meta.get_problem_transactions();
+
         StoredProcedureResult {
             isolation,
             outcome,
             diagnostics,
             latency,
             internal_id,
+            problem_transactions,
         }
     }
 
@@ -53,6 +58,7 @@ impl StoredProcedureResult {
             diagnostics,
             latency,
             internal_id,
+            problem_transactions: HashSet::new(),
         }
     }
 
@@ -78,5 +84,9 @@ impl StoredProcedureResult {
 
     pub fn set_total_latency(&mut self, dur: u128) {
         self.latency.set_total(dur);
+    }
+
+    pub fn get_problem_transactions(&self) -> HashSet<u64> {
+        self.problem_transactions.clone()
     }
 }

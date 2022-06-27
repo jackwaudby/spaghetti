@@ -6,6 +6,7 @@ use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use std::cell::UnsafeCell;
 use std::fmt;
+use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 unsafe impl<'a> Send for Node {}
@@ -19,6 +20,18 @@ pub enum Edge {
     ReadWrite(usize),
     WriteWrite(usize),
     WriteRead(usize),
+}
+
+impl Edge {
+    pub fn extract_id(&self) -> u64 {
+        let id = match &self {
+            Edge::ReadWrite(id) => id,
+            Edge::WriteRead(id) => id,
+            Edge::WriteWrite(id) => id,
+        };
+
+        *id as u64
+    }
 }
 
 #[derive(Debug)]
@@ -36,6 +49,7 @@ pub struct Node {
     checked: AtomicBool,
     early: AtomicBool,
     lock: RwLock<u32>,
+    abort_through: UnsafeCell<usize>,
 }
 
 impl Node {
@@ -68,6 +82,7 @@ impl Node {
             checked: AtomicBool::new(false),
             early: AtomicBool::new(false),
             lock: RwLock::new(0),
+            abort_through: UnsafeCell::new(0),
         }
     }
 
@@ -282,6 +297,13 @@ impl Node {
 
     pub fn set_cleaned(&self) {
         self.cleaned.store(true, Ordering::Release);
+    }
+
+    pub fn set_abort_through(&self, id: usize) {
+        unsafe { *self.abort_through.get() = id };
+    }
+    pub fn get_abort_through(&self) -> u64 {
+        unsafe { *self.abort_through.get() as u64 }
     }
 }
 

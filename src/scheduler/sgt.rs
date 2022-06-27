@@ -99,6 +99,7 @@ impl SerializationGraph {
             let from_ref = unsafe { &*(from_id as *const Node) };
             if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
                 this_ref.set_cascading_abort();
+                this_ref.set_abort_through(from_id);
                 return false; // cascadingly abort (this)
             }
 
@@ -227,7 +228,7 @@ impl SerializationGraph {
         let this = unsafe { &*self.get_transaction() };
 
         if this.is_cascading_abort() {
-            self.abort(database);
+            self.abort(meta, database);
             return Err(SerializationGraphError::CascadingAbort.into());
         }
 
@@ -267,7 +268,7 @@ impl SerializationGraph {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(database); // abort
+            self.abort(meta, database); // abort
             return Err(SerializationGraphError::CycleFound.into());
         }
 
@@ -305,7 +306,7 @@ impl SerializationGraph {
 
         loop {
             if self.needs_abort() {
-                self.abort(database);
+                self.abort(meta, database);
                 return Err(SerializationGraphError::CascadingAbort.into()); // check for cascading abort
             }
 
@@ -353,7 +354,7 @@ impl SerializationGraph {
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                self.abort(database);
+                self.abort(meta, database);
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
@@ -370,7 +371,7 @@ impl SerializationGraph {
             // check for cascading abort
             if self.needs_abort() {
                 rw_table.erase(prv); // remove from rw table
-                self.abort(database);
+                self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
 
                 return Err(SerializationGraphError::CascadingAbort.into());
@@ -406,7 +407,7 @@ impl SerializationGraph {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(database);
+            self.abort(meta, database);
 
             return Err(SerializationGraphError::CycleFound.into());
         }
@@ -428,17 +429,13 @@ impl SerializationGraph {
     }
 
     /// Commit operation.
-    pub fn commit(
-        &self,
-        _meta: &mut StatsBucket,
-        database: &Database,
-    ) -> Result<(), NonFatalError> {
+    pub fn commit(&self, meta: &mut StatsBucket, database: &Database) -> Result<(), NonFatalError> {
         debug!("commit");
         let this = unsafe { &*self.get_transaction() };
 
         loop {
             if this.is_cascading_abort() || this.is_aborted() {
-                self.abort(database);
+                self.abort(meta, database);
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
@@ -468,9 +465,24 @@ impl SerializationGraph {
     }
 
     /// Abort operation.
-    pub fn abort(&self, database: &Database) -> NonFatalError {
+    pub fn abort(&self, meta: &mut StatsBucket, database: &Database) -> NonFatalError {
         debug!("abort");
+
         let this = unsafe { &*self.get_transaction() };
+        let incoming = this.get_incoming();
+        for edge in incoming {
+            match edge {
+                Edge::WriteWrite(id) => {
+                    meta.add_problem_transaction(id as u64);
+                }
+                Edge::WriteRead(id) => {
+                    meta.add_problem_transaction(id as u64);
+                }
+                Edge::ReadWrite(id) => {}
+            }
+        }
+        meta.add_problem_transaction(this.get_abort_through());
+
         this.set_aborted();
         self.cleanup();
         self.tidyup(database, false);

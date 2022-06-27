@@ -174,7 +174,7 @@ impl<'a> Scheduler<'a> {
         use Scheduler::*;
 
         let res = match self {
-            SerializationGraph(sg) => sg.abort(database),
+            SerializationGraph(sg) => sg.abort(meta, database),
             MixedSerializationGraph(sg) => sg.abort(database),
             WaitHit(wh) => wh.abort(meta, database),
             Attendez(wh) => wh.abort(meta, database),
