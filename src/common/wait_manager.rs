@@ -26,22 +26,22 @@ impl WaitManager {
         for nid in &neighbours {
             let offset = self.calculate_offset(nid);
             oset.insert(offset);
-            println!("{} -> {}", nid, offset);
+            // println!("{} -> {}", nid, offset);
         }
         let offset = self.calculate_offset(&tid);
         oset.insert(offset);
-        println!("id: {} -> offset: {}", tid, offset);
+        // println!("id: {} -> offset: {}", tid, offset);
         let mut guards = Vec::new();
         for t in oset {
             guards.push(self.locks[t].lock().unwrap());
-            println!("id: {} got lock on offset: {}", tid, t);
+            // println!("id: {} got lock on offset: {}", tid, t);
 
         }
         guards
     }
 
     pub fn release(&self, tid: u64, guards: Vec<MutexGuard<'_, u8>>) {
-        println!("id: {} dropping lock on offset {:?}", tid, guards);
+        // println!("id: {} dropping lock on offset {:?}", tid, guards);
 
         for guard in guards {
             drop(guard);

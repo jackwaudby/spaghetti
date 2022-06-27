@@ -1,12 +1,11 @@
-use crate::common::message::Success;
-use crate::common::stored_procedure_result::StoredProcedureResult;
-use crate::common::value_id::ValueId;
+use crate::common::{
+    message::Success, stored_procedure_result::StoredProcedureResult, value_id::ValueId,
+};
 use crate::scheduler::{Scheduler, TransactionType};
-use crate::storage::datatype::Data;
-use crate::storage::Database;
-use crate::workloads::smallbank::error::SmallBankError;
-use crate::workloads::smallbank::paramgen::{
-    Amalgamate, Balance, DepositChecking, SendPayment, TransactSaving, WriteCheck,
+use crate::storage::{datatype::Data, Database};
+use crate::workloads::smallbank::{
+    error::SmallBankError,
+    paramgen::{Amalgamate, Balance, DepositChecking, SendPayment, TransactSaving, WriteCheck},
 };
 use crate::workloads::IsolationLevel;
 

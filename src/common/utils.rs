@@ -1,29 +1,19 @@
-use crate::common::error::NonFatalError;
-use crate::common::message::{Outcome, Parameters, Request, Response};
-use crate::common::parameter_generation::ParameterGenerator;
-use crate::common::statistics::LocalStatistics;
-use crate::scheduler::Scheduler;
+use crate::common::message::Response;
 use crate::storage::Database;
 // use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
 // use crate::workloads::dummy::paramgen::{DummyGenerator, DummyTransactionProfile};
-use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
 // use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
 // use crate::workloads::ycsb::paramgen::{YcsbGenerator, YcsbTransactionProfil
 // e};
 // use crate::workloads::{acid, dummy, smallbank, tatp, ycsb};
-use crate::common::wait_manager::WaitManager;
-use crate::workloads::smallbank;
 
 use config::Config;
-use std::collections::HashSet;
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use tracing::info;
 use tracing::Level;
-use tracing::{debug, info};
 use tracing_subscriber::FmtSubscriber;
 
 pub fn init_config(file: &str) -> Config {
@@ -82,296 +72,7 @@ pub fn init_database(config: &Config) -> Database {
     Database::new(config).unwrap()
 }
 
-pub fn init_scheduler(config: &Config) -> Scheduler {
-    Scheduler::new(config).unwrap()
-}
-
-pub fn run(
-    thread_id: usize,
-    config: &Config,
-    scheduler: &Scheduler,
-    database: &Database,
-    tx: mpsc::Sender<LocalStatistics>,
-    wm: &WaitManager,
-) {
-    let timeout = config.get_int("timeout").unwrap() as u64;
-    let p = config.get_str("protocol").unwrap();
-    let w = config.get_str("workload").unwrap();
-    let max_transactions = config.get_int("transactions").unwrap() as u32;
-    let record = config.get_bool("record").unwrap();
-    let log_results = config.get_bool("log_results").unwrap();
-    let mut stats = LocalStatistics::new(thread_id as u32, &w, &p);
-    let mut generator = get_transaction_generator(thread_id as u32, config); // initialise transaction generator
-
-    // create results file -- dir created by this point
-    let mut fh;
-    if log_results {
-        let workload = config.get_str("workload").unwrap();
-        let protocol = config.get_str("protocol").unwrap();
-
-        let dir;
-        let file;
-        if workload.as_str() == "acid" {
-            let anomaly = config.get_str("anomaly").unwrap();
-            dir = format!("./log/{}/{}/{}/", workload, protocol, anomaly);
-            file = format!(
-                "./log/acid/{}/{}/thread-{}.json",
-                protocol, anomaly, thread_id
-            );
-        } else {
-            dir = format!("./log/{}/{}/", workload, protocol);
-            file = format!("./log/{}/{}/thread-{}.json", workload, protocol, thread_id);
-        }
-
-        if Path::new(&dir).exists() {
-            if Path::new(&file).exists() {
-                fs::remove_file(&file).unwrap(); // remove file if already exists
-            }
-        } else {
-            panic!("dir should exist");
-        }
-
-        fh = Some(
-            OpenOptions::new()
-                .write(true)
-                .append(true)
-                .create(true)
-                .open(&file)
-                .expect("cannot open file"),
-        );
-    } else {
-        fh = None;
-    }
-
-    let mut completed = 0;
-
-    let timeout_start = Instant::now(); // timeout
-    let runtime = Duration::new(timeout * 60, 0);
-    let timeout_end = timeout_start + runtime;
-
-    let start_worker = Instant::now();
-
-    loop {
-        if completed == max_transactions {
-            debug!("All transactions sent: {} ", completed);
-            break;
-        } else if Instant::now() > timeout_end {
-            debug!("Timeout reached: {} minute(s)", timeout);
-            break;
-        } else {
-            // generate transaction request
-            let request = generator.get_next();
-
-            let start = Instant::now();
-
-            // restart loop
-            let mut response;
-            let mut restarted = false;
-            let mut txn = 0;
-            let mut old_txn = 0;
-            let mut aborted_txns: HashSet<u64> = HashSet::new();
-            let mut guards = None;
-            loop {
-                // execute transaction request
-                response = execute(request.clone(), scheduler, database);
-
-                // get tid
-                txn = response.get_transaction_id();
-
-                // extract outcome
-                let outcome = response.get_outcome();
-
-                if restarted && guards.is_some() {
-                    restarted = false;
-                    wm.release(old_txn, guards.unwrap());
-                }
-
-                stats.record(&response);
-
-                match outcome {
-                    // case 1: committed
-                    Outcome::Committed(_) => break,
-
-                    Outcome::Aborted(err) => match err {
-                        NonFatalError::RowNotFound(_, _) => break,
-                        NonFatalError::SmallBankError(_) => break,
-                        NonFatalError::UnableToConvertFromDataType(_, _) => break,
-                        NonFatalError::RowDirty(_) => {}
-                        NonFatalError::NonSerializable => {}
-                        NonFatalError::SerializationGraphError(_) => {}
-                        NonFatalError::WaitHitError(_) => {}
-                        NonFatalError::AttendezError(_) => {}
-                    },
-                }
-                println!("external abort: {}", txn);
-
-                // if gets here then transaction must be restarted
-                aborted_txns = response.get_aborted_transactions();
-            
-
-                // stats.start_wait_manager();
-                guards = Some(wm.wait(txn as u64, aborted_txns.clone()));
-                // stats.stop_wait_manager();
-
-                old_txn = txn;
-                restarted = true;
-            }
-
-            response.set_total_latency(start.elapsed().as_nanos());
-
-            if log_results {
-                log_result(&mut fh, &response); // log response
-            }
-
-            completed += 1;
-        }
-    }
-
-    stats.stop_worker(start_worker);
-
-    if record {
-        tx.send(stats).unwrap();
-    }
-}
-
-pub fn execute<'a>(request: Request, scheduler: &'a Scheduler, database: &'a Database) -> Response {
-    let request_no = request.get_request_no();
-    let transaction = request.get_transaction();
-    let isolation = request.get_isolation_level();
-
-    let result = match request.get_parameters() {
-        // Parameters::Tatp(params) => match params {
-        //     TatpTransactionProfile::GetSubscriberData(params) => {
-        //         tatp::procedures::get_subscriber_data(
-        //             params.clone(),
-        //             scheduler,
-        //             database,
-        //             isolation,
-        //         )
-        //     }
-        //     TatpTransactionProfile::GetAccessData(params) => {
-        //         tatp::procedures::get_access_data(params.clone(), scheduler, database, isolation)
-        //     }
-        //     TatspTransactionProfile::GetNewDestination(params) => {
-        //         tatp::procedures::get_new_destination(
-        //             params.clone(),
-        //             scheduler,
-        //             database,
-        //             isolation,
-        //         )
-        //     }
-        //     TatpTransactionProfile::UpdateLocationData(params) => {
-        //         tatp::procedures::update_location(params.clone(), scheduler, database, isolation)
-        //     }
-        //     TatpTransactionProfile::UpdateSubscriberData(params) => {
-        //         tatp::procedures::update_subscriber_data(
-        //             params.clone(),
-        //             scheduler,
-        //             database,
-        //             isolation,
-        //         )
-        //     }
-        // },
-        Parameters::SmallBank(params) => match params {
-            SmallBankTransactionProfile::Amalgamate(params) => {
-                smallbank::procedures::amalgmate(params.clone(), scheduler, database, isolation)
-            }
-            SmallBankTransactionProfile::Balance(params) => {
-                smallbank::procedures::balance(params.clone(), scheduler, database, isolation)
-            }
-            SmallBankTransactionProfile::DepositChecking(params) => {
-                smallbank::procedures::deposit_checking(
-                    params.clone(),
-                    scheduler,
-                    database,
-                    isolation,
-                )
-            }
-            SmallBankTransactionProfile::SendPayment(params) => {
-                smallbank::procedures::send_payment(params.clone(), scheduler, database, isolation)
-            }
-            SmallBankTransactionProfile::TransactSaving(params) => {
-                smallbank::procedures::transact_savings(
-                    params.clone(),
-                    scheduler,
-                    database,
-                    isolation,
-                )
-            }
-            SmallBankTransactionProfile::WriteCheck(params) => {
-                smallbank::procedures::write_check(params.clone(), scheduler, database, isolation)
-            }
-        },
-
-        _ => unimplemented!(),
-    };
-
-    Response::new(request_no, transaction.clone(), result)
-}
-
-pub fn get_transaction_generator(thread_id: u32, config: &Config) -> ParameterGenerator {
-    let sf = config.get_int("scale_factor").unwrap() as u64;
-    let set_seed = config.get_bool("set_seed").unwrap();
-    let seed;
-    if set_seed {
-        let s = config.get_int("seed").unwrap() as u64;
-        seed = Some(s);
-    } else {
-        seed = None;
-    }
-    match config.get_str("workload").unwrap().as_str() {
-        "smallbank" => {
-            let use_balance_mix = config.get_bool("use_balance_mix").unwrap();
-            let isolation_mix = config.get_str("isolation_mix").unwrap();
-
-            let gen = SmallBankGenerator::new(
-                thread_id,
-                sf,
-                set_seed,
-                seed,
-                use_balance_mix,
-                isolation_mix,
-            );
-            ParameterGenerator::SmallBank(gen)
-        }
-        // "acid" => {
-        //     let anomaly = config.get_str("anomaly").unwrap();
-        //     let delay = config.get_int("delay").unwrap() as u64;
-        //     let gen = AcidGenerator::new(thread_id, sf, set_seed, seed, &anomaly, delay);
-
-        //     ParameterGenerator::Acid(gen)
-        // }
-        // "dummy" => {
-        //     let gen = DummyGenerator::new(thread_id, sf, set_seed, seed);
-
-        //     ParameterGenerator::Dummy(gen)
-        // }
-        // "tatp" => {
-        //     let use_nurand = config.get_bool("nurand").unwrap();
-        //     let gen = TatpGenerator::new(thread_id, sf, set_seed, seed, use_nurand);
-        //     ParameterGenerator::Tatp(gen)
-        // }
-        // "ycsb" => {
-        //     let theta = config.get_float("theta").unwrap();
-        //     let update_rate = config.get_float("update_rate").unwrap();
-        //     let serializable_rate = config.get_float("serializable_rate").unwrap();
-
-        //     let gen = YcsbGenerator::new(
-        //         thread_id,
-        //         sf,
-        //         set_seed,
-        //         seed,
-        //         theta,
-        //         update_rate,
-        //         serializable_rate,
-        //     );
-        //     ParameterGenerator::Ycsb(gen)
-        // }
-        _ => unimplemented!(),
-    }
-}
-
-pub fn log_result(fh: &mut Option<std::fs::File>, response: &Response) {
+pub fn append_to_log(fh: &mut Option<std::fs::File>, response: &Response) {
     if let Some(ref mut fh) = fh {
         let res = serde_json::to_string(response).unwrap();
         writeln!(fh, "{}", res).unwrap();
@@ -536,3 +237,46 @@ pub fn spin(prv: u64, lsn: &AtomicU64) {
 //         }
 //     }
 // };
+
+pub fn create_transaction_log(config: &Config, core_id: usize) -> Option<File> {
+    // assumes directory created by this point
+    let log_response = config.get_bool("log_results").unwrap();
+
+    if log_response {
+        let workload = config.get_str("workload").unwrap();
+        let protocol = config.get_str("protocol").unwrap();
+
+        let dir;
+        let file;
+        if workload.as_str() == "acid" {
+            let anomaly = config.get_str("anomaly").unwrap();
+            dir = format!("./log/{}/{}/{}/", workload, protocol, anomaly);
+            file = format!(
+                "./log/acid/{}/{}/thread-{}.json",
+                protocol, anomaly, core_id
+            );
+        } else {
+            dir = format!("./log/{}/{}/", workload, protocol);
+            file = format!("./log/{}/{}/thread-{}.json", workload, protocol, core_id);
+        }
+
+        if Path::new(&dir).exists() {
+            if Path::new(&file).exists() {
+                fs::remove_file(&file).unwrap(); // remove file if already exists
+            }
+        } else {
+            panic!("dir should exist");
+        }
+
+        Some(
+            OpenOptions::new()
+                .write(true)
+                .append(true)
+                .create(true)
+                .open(&file)
+                .expect("cannot open file"),
+        )
+    } else {
+        None
+    }
+}

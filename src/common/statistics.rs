@@ -206,15 +206,17 @@ impl GlobalStatistics {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct LocalStatistics {
-    core_id: u32,
+    core_id: usize,
     pub total_time: u128,
     pub latency: u128,
     pub transaction_breakdown: TransactionBreakdown,
 }
 
 impl LocalStatistics {
-    pub fn new(core_id: u32, workload: &str, protocol: &str) -> Self {
-        let transaction_breakdown = TransactionBreakdown::new(workload, protocol);
+    pub fn new(config: &Config, core_id: usize) -> Self {
+        let protocol = config.get_str("protocol").unwrap();
+        let workload = config.get_str("workload").unwrap();
+        let transaction_breakdown = TransactionBreakdown::new(&workload, &protocol);
 
         LocalStatistics {
             core_id,
@@ -224,7 +226,7 @@ impl LocalStatistics {
         }
     }
 
-    pub fn get_core_id(&self) -> u32 {
+    pub fn get_core_id(&self) -> usize {
         self.core_id
     }
 

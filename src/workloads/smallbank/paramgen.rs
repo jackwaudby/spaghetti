@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 pub struct SmallBankGenerator {
-    thread_id: u32,
+    core_id: usize,
     rng: StdRng,
     pub generated: u32,
     accounts: u32,
@@ -24,7 +24,7 @@ pub struct SmallBankGenerator {
 
 impl SmallBankGenerator {
     pub fn new(
-        thread_id: u32,
+        core_id: usize,
         sf: u64,
         set_seed: bool,
         seed: Option<u64>,
@@ -46,7 +46,7 @@ impl SmallBankGenerator {
         let write_check_amount = WRITE_CHECK_AMOUNT;
 
         SmallBankGenerator {
-            thread_id,
+            core_id,
             rng,
             generated: 0,
             accounts,
@@ -83,7 +83,7 @@ impl Generator for SmallBankGenerator {
         };
 
         Request::new(
-            (self.thread_id, self.generated),
+            (self.core_id as u32, self.generated),
             Transaction::SmallBank(transaction),
             Parameters::SmallBank(parameters),
             isolation,

@@ -1,3 +1,5 @@
+use spaghetti::common::coordinator;
+use spaghetti::common::global_state::GlobalState;
 use spaghetti::common::statistics::GlobalStatistics;
 use spaghetti::common::utils;
 use spaghetti::common::wait_manager::WaitManager;
@@ -132,7 +134,7 @@ fn main() {
     let dg_end = dg_start.elapsed();
     global_stats.set_data_generation(dg_end);
 
-    let scheduler: Scheduler = utils::init_scheduler(&config);
+    let scheduler: Scheduler = Scheduler::new(&config).unwrap();
 
     info!("Starting execution");
     global_stats.start();
@@ -140,18 +142,16 @@ fn main() {
     let cores = config.get_int("cores").unwrap() as usize;
     let core_ids = core_affinity::get_core_ids().unwrap();
 
-    let wm = WaitManager::new(cores);
+    let wait_manager = WaitManager::new(cores);
+
+    let global_state = GlobalState::new(config, scheduler, database, wait_manager);
 
     thread::scope(|s| {
-        let scheduler = &scheduler;
-        let database = &database;
-        let wm = &wm;
-        let config = &config;
-
+        let global_state = &global_state;
         let mut shutdown_channels = Vec::new();
 
         for (thread_id, core_id) in core_ids[..cores].iter().enumerate() {
-            let txc = tx.clone();
+            let stats_tx = tx.clone();
 
             // Coordinator to thread shutdown
             let (tx, _): (Sender<i32>, Receiver<i32>) = mpsc::channel();
@@ -160,8 +160,8 @@ fn main() {
             s.builder()
                 .name(thread_id.to_string())
                 .spawn(move |_| {
-                    core_affinity::set_for_current(*core_id); // pin thread to cpu core
-                    utils::run(thread_id, config, scheduler, database, txc, wm);
+                    core_affinity::set_for_current(*core_id);
+                    coordinator::run(thread_id, stats_tx, global_state);
                 })
                 .unwrap();
         }
