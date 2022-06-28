@@ -71,8 +71,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::RowNotFound(_, _) => break,
                         NonFatalError::SmallBankError(_) => break,
                         NonFatalError::UnableToConvertFromDataType(_, _) => break,
-                        NonFatalError::RowDirty(_) => {}
-                        NonFatalError::NonSerializable => {}
+                        NonFatalError::RowDirty(_) => panic!("dont get here for sgt"),
+                        NonFatalError::NonSerializable => panic!("dont get here for sgt"),
                         NonFatalError::SerializationGraphError(_) => {}
                         NonFatalError::WaitHitError(_) => {}
                         NonFatalError::AttendezError(_) => {}
