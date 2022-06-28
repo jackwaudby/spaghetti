@@ -469,18 +469,18 @@ impl SerializationGraph {
         debug!("abort");
 
         let this = unsafe { &*self.get_transaction() };
-        let incoming = this.get_incoming();
-        for edge in incoming {
-            match edge {
-                Edge::WriteWrite(id) => {
-                    meta.add_problem_transaction(id as u64);
-                }
-                Edge::WriteRead(id) => {
-                    meta.add_problem_transaction(id as u64);
-                }
-                Edge::ReadWrite(id) => {}
-            }
-        }
+        // let incoming = this.get_incoming();
+        // for edge in incoming {
+        //     match edge {
+        //         Edge::WriteWrite(id) => {
+        //             meta.add_problem_transaction(id as u64);
+        //         }
+        //         Edge::WriteRead(id) => {
+        //             meta.add_problem_transaction(id as u64);
+        //         }
+        //         Edge::ReadWrite(id) => {}
+        //     }
+        // }
         meta.add_problem_transaction(this.get_abort_through());
 
         this.set_aborted();

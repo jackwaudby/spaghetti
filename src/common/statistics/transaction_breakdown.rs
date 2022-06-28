@@ -364,8 +364,9 @@ impl GlobalSummary {
         }
     }
 
-    pub fn get_abort_rate(&self) -> f64 {
-        (self.get_external_aborts() as f64 / (self.committed + self.get_external_aborts()) as f64)
+    pub fn get_abort_rate(&mut self) -> f64 {
+        (self.get_external_aborts() as f64
+            / (self.committed + self.get_internal_aborts() + self.get_external_aborts()) as f64)
             * 100.0
     }
 
@@ -392,8 +393,9 @@ impl GlobalSummary {
         }
     }
 
-    pub fn get_thpt(&self, total_time: u128, cores: u32) -> f64 {
-        self.committed as f64 / (((total_time as f64 / 1000000.0) / 1000.0) / cores as f64)
+    pub fn get_thpt(&mut self, total_time: u128, cores: u32) -> f64 {
+        (self.committed + self.get_internal_aborts()) as f64
+            / (((total_time as f64 / 1000000.0) / 1000.0) / cores as f64)
     }
 
     pub fn get_diagnostics(&self) -> &ProtocolDiagnostics {
