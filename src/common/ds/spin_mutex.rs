@@ -20,7 +20,7 @@ impl Mutex {
         loop {
             if !self
                 .locked
-                .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+                .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
                 .is_err()
             {
                 break MutexGuard { mutex: self };
