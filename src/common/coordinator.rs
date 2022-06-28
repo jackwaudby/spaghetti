@@ -73,7 +73,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::UnableToConvertFromDataType(_, _) => break,
                         NonFatalError::RowDirty(_) => panic!("dont get here for sgt"),
                         NonFatalError::NonSerializable => panic!("dont get here for sgt"),
-                        NonFatalError::SerializationGraphError(_) => {}
+                        NonFatalError::SerializationGraphError(_) => break,
                         NonFatalError::WaitHitError(_) => {}
                         NonFatalError::AttendezError(_) => {}
                     },
