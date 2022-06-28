@@ -81,9 +81,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
                 let problem_transactions = response.get_problem_transactions();
 
-                let wait_start = Instant::now();
+                // let wait_start = Instant::now();
                 guards = Some(wait_manager.wait(transaction_id as u64, problem_transactions));
-                stats.stop_wait_manager(wait_start);
+                // stats.stop_wait_manager(wait_start);
 
                 old_transaction_id = transaction_id;
             }
