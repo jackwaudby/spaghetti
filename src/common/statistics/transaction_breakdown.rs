@@ -364,8 +364,9 @@ impl GlobalSummary {
         }
     }
 
-    pub fn get_abort_rate(&self) -> f64 {
-        (self.get_external_aborts() as f64 / (self.committed + self.get_external_aborts()) as f64)
+    pub fn get_abort_rate(&mut self) -> f64 {
+        (self.get_external_aborts() as f64
+            / (self.committed + self.get_internal_aborts() + self.get_external_aborts()) as f64)
             * 100.0
     }
 
