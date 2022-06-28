@@ -73,7 +73,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::UnableToConvertFromDataType(_, _) => break,
                         NonFatalError::RowDirty(_) => panic!("dont get here for sgt"),
                         NonFatalError::NonSerializable => panic!("dont get here for sgt"),
-                        NonFatalError::SerializationGraphError(_) => break,
+                        NonFatalError::SerializationGraphError(_) => {}
                         NonFatalError::WaitHitError(_) => {}
                         NonFatalError::AttendezError(_) => {}
                     },
@@ -82,8 +82,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                 let problem_transactions = response.get_problem_transactions();
 
                 // let wait_start = Instant::now();
-                // guards = Some(wait_manager.wait(transaction_id as u64, problem_transactions));
-                guards = None;
+                guards = Some(wait_manager.wait(transaction_id as u64, problem_transactions));
+                // guards = None;
                 // stats.stop_wait_manager(wait_start);
 
                 old_transaction_id = transaction_id;
