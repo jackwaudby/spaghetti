@@ -17,7 +17,7 @@ use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
-use tracing::{debug, info};
+use tracing::info;
 
 #[derive(Debug)]
 pub struct SerializationGraph {
@@ -99,7 +99,7 @@ impl SerializationGraph {
             let from_ref = unsafe { &*(from_id as *const Node) };
             if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
                 this_ref.set_cascading_abort();
-                this_ref.set_abort_through(from_id);
+                // this_ref.set_abort_through(from_id);
                 return false; // cascadingly abort (this)
             }
 
@@ -192,8 +192,6 @@ impl SerializationGraph {
         let (ref_id, thread_id, thread_ctr) = self.create_node(); // create node
         let guard = epoch::pin(); // pin thread
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
-
-        debug!("{} begin", unsafe { &*self.get_transaction() });
 
         (
             TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr),
@@ -430,7 +428,6 @@ impl SerializationGraph {
 
     /// Commit operation.
     pub fn commit(&self, meta: &mut StatsBucket, database: &Database) -> Result<(), NonFatalError> {
-        debug!("commit");
         let this = unsafe { &*self.get_transaction() };
 
         loop {
@@ -466,8 +463,6 @@ impl SerializationGraph {
 
     /// Abort operation.
     pub fn abort(&self, meta: &mut StatsBucket, database: &Database) -> NonFatalError {
-        debug!("abort");
-
         let this = unsafe { &*self.get_transaction() };
         // let incoming = this.get_incoming();
         // for edge in incoming {
