@@ -481,7 +481,7 @@ impl SerializationGraph {
         //         Edge::ReadWrite(id) => {}
         //     }
         // }
-        meta.add_problem_transaction(this.get_abort_through());
+        // meta.add_problem_transaction(this.get_abort_through());
 
         this.set_aborted();
         self.cleanup();
