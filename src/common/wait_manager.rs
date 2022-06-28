@@ -2,15 +2,9 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
-<<<<<<< HEAD
 // use std::sync::Mutex;
 // use std::sync::MutexGuard;
 use crate::common::ds::spin_mutex::{Mutex, MutexGuard};
-=======
-//use std::sync::Mutex;
-//use std::sync::MutexGuard;
-        // use spin::{Mutex, MutexGuard};
->>>>>>> c599291b4f726500e1dc1bc26e3a793b297d2b7a
 
 #[derive(Debug)]
 pub struct WaitManager {
@@ -44,10 +38,7 @@ impl WaitManager {
         // println!("id: {} -> offset: {}", tid, offset);
         let mut guards = Vec::new();
         for t in oset {
-<<<<<<< HEAD
             // guards.push(self.locks[t].lock().unwrap());
-=======
->>>>>>> c599291b4f726500e1dc1bc26e3a793b297d2b7a
             guards.push(self.locks[t].lock());
             // println!("id: {} got lock on offset: {}", tid, t);
         }
