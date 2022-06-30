@@ -1,22 +1,11 @@
 use crate::common::error::NonFatalError;
 use crate::common::stored_procedure_result::StoredProcedureResult;
-use crate::storage::access::TransactionId;
-use crate::storage::datatype::Data;
-// use crate::workloads::acid::paramgen::AcidTransactionProfile;
-// use crate::workloads::acid::AcidTransaction;
-// use crate::workloads::dummy::paramgen::DummyTransactionProfile;
-// use crate::workloads::dummy::DummyTransaction;
-use crate::workloads::smallbank::paramgen::SmallBankTransactionProfile;
-use crate::workloads::smallbank::SmallBankTransaction;
-// use crate::workloads::tatp::paramgen::TatpTransactionProfile;
-// use crate::workloads::tatp::TatpTransaction;
-// use crate::workloads::ycsb::paramgen::YcsbTransactionProfile;
-// use crate::workloads::ycsb::YcsbTransaction;
+use crate::storage::{access::TransactionId, datatype::Data};
+use crate::workloads::smallbank::{paramgen::SmallBankTransactionProfile, SmallBankTransaction};
 use crate::workloads::IsolationLevel;
 
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Request {
@@ -105,14 +94,6 @@ impl Response {
         &self.result
     }
 
-    pub fn set_total_latency(&mut self, dur: u128) {
-        self.result.set_total_latency(dur);
-    }
-
-    pub fn set_txn_latency(&mut self, dur: u128) {
-        self.result.set_txn_latency(dur);
-    }
-
     pub fn get_transaction_id(&self) -> u64 {
         self.result.get_internal_id()
     }
@@ -131,12 +112,15 @@ pub enum Transaction {
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub enum Parameters {
-    // Dummy(DummyTransactionProfile),
-    // Acid(AcidTransactionProfile),
-    // Tatp(TatpTransactionProfile),
-    SmallBank(SmallBankTransactionProfile),
-    // Ycsb(YcsbTransactionProfile),
+pub struct Parameters(pub SmallBankTransactionProfile);
+
+impl Parameters {
+    pub fn new(profile: SmallBankTransactionProfile) -> Self {
+        Self(profile)
+    }
+    pub fn get(&self) -> &SmallBankTransactionProfile {
+        &self.0
+    }
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]

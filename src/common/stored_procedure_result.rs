@@ -3,8 +3,6 @@ use std::collections::HashSet;
 
 use crate::common::error::NonFatalError;
 use crate::common::message::{Outcome, Success};
-use crate::common::statistics::latency_breakdown::LatencyBreakdown;
-use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::stats_bucket::StatsBucket;
 use crate::storage::access::TransactionId;
 use crate::workloads::IsolationLevel;
@@ -13,8 +11,6 @@ use crate::workloads::IsolationLevel;
 pub struct StoredProcedureResult {
     isolation: IsolationLevel,
     outcome: Outcome,
-    diagnostics: ProtocolDiagnostics,
-    latency: LatencyBreakdown,
     internal_id: u64,
     problem_transactions: HashSet<TransactionId>,
 }
@@ -26,18 +22,12 @@ impl StoredProcedureResult {
         meta: &mut StatsBucket,
     ) -> StoredProcedureResult {
         let outcome = Outcome::Aborted(error);
-        let latency = meta.take_latency_breakdown();
-        let diagnostics = meta.take_diagnostics();
-
         let internal_id = meta.get_transaction_id().extract();
-
         let problem_transactions = meta.get_problem_transactions();
 
         StoredProcedureResult {
             isolation,
             outcome,
-            diagnostics,
-            latency,
             internal_id,
             problem_transactions,
         }
@@ -49,15 +39,11 @@ impl StoredProcedureResult {
         meta: &mut StatsBucket,
     ) -> StoredProcedureResult {
         let outcome = Outcome::Committed(success);
-        let latency = meta.take_latency_breakdown();
-        let diagnostics = meta.take_diagnostics();
         let internal_id = meta.get_transaction_id().extract();
 
         StoredProcedureResult {
             isolation,
             outcome,
-            diagnostics,
-            latency,
             internal_id,
             problem_transactions: HashSet::new(),
         }
@@ -73,22 +59,6 @@ impl StoredProcedureResult {
 
     pub fn get_outcome(&self) -> &Outcome {
         &self.outcome
-    }
-
-    pub fn get_latency(&self) -> &LatencyBreakdown {
-        &self.latency
-    }
-
-    pub fn get_diagnostics(&self) -> &ProtocolDiagnostics {
-        &self.diagnostics
-    }
-
-    pub fn set_total_latency(&mut self, dur: u128) {
-        self.latency.set_total(dur);
-    }
-
-    pub fn set_txn_latency(&mut self, dur: u128) {
-        self.latency.set_txn_total(dur);
     }
 
     pub fn get_problem_transactions(&self) -> HashSet<TransactionId> {

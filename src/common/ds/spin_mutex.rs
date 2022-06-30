@@ -31,8 +31,14 @@ impl Mutex {
 
 impl<'a> Drop for MutexGuard<'a> {
     fn drop(&mut self) {
-        self.mutex
-            .locked
-            .compare_exchange_weak(true, false, Ordering::Acquire, Ordering::Relaxed);
+        match self.mutex.locked.compare_exchange_weak(
+            true,
+            false,
+            Ordering::Acquire,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => {}
+            Err(_) => {}
+        }
     }
 }

@@ -2,17 +2,17 @@ use super::wait_manager::WaitManager;
 use crate::{scheduler::Scheduler, storage::Database};
 use config::Config;
 
-pub struct GlobalState<'a> {
+pub struct GlobalState {
     config: Config,
-    scheduler: Scheduler<'a>,
+    scheduler: Scheduler,
     database: Database,
     wait_manager: WaitManager,
 }
 
-impl<'a> GlobalState<'a> {
+impl GlobalState {
     pub fn new(
         config: Config,
-        scheduler: Scheduler<'a>,
+        scheduler: Scheduler,
         database: Database,
         wait_manager: WaitManager,
     ) -> Self {
@@ -28,7 +28,7 @@ impl<'a> GlobalState<'a> {
         &self.config
     }
 
-    pub fn get_scheduler(&self) -> &Scheduler<'a> {
+    pub fn get_scheduler(&self) -> &Scheduler {
         &self.scheduler
     }
 

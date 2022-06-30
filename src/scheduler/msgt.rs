@@ -1,5 +1,4 @@
 use crate::common::error::{NonFatalError, SerializationGraphError};
-use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::common::{Edge, Node};
 use crate::scheduler::StatsBucket;
@@ -235,7 +234,7 @@ impl MixedSerializationGraph {
         aborted || cascading_abort
     }
 
-    pub fn begin(&self, isolation_level: IsolationLevel) -> (TransactionId, ProtocolDiagnostics) {
+    pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
@@ -243,10 +242,7 @@ impl MixedSerializationGraph {
         let guard = epoch::pin(); // pin thread
         MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard)); // add to guard
 
-        (
-            TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr),
-            ProtocolDiagnostics::Other,
-        )
+        TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
 
     pub fn create_node(&self, isolation_level: IsolationLevel) -> (usize, usize, usize) {

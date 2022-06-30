@@ -52,10 +52,7 @@ impl WaitManager {
         guards
     }
 
-    // pub fn release(&self, tid: u64, guards: Vec<MutexGuard<'_>>) {
-    pub fn release(&self, tid: u64, guards: Vec<MutexGuard<'_, u8>>) {
-        // println!("id: {} dropping lock on offset {:?}", tid, guards);
-
+    pub fn release(&self, guards: Vec<MutexGuard<'_, u8>>) {
         for guard in guards {
             drop(guard);
         }

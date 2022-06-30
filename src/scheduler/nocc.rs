@@ -1,5 +1,4 @@
 use crate::common::error::NonFatalError;
-use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::StatsBucket;
 use crate::scheduler::ValueId;
@@ -30,16 +29,13 @@ impl NoConcurrencyControl {
     }
 
     /// Begin a transaction.
-    pub fn begin(&self) -> (TransactionId, ProtocolDiagnostics) {
+    pub fn begin(&self) -> TransactionId {
         *self
             .txn_info
             .get_or(|| RefCell::new(TransactionInformation::new()))
             .borrow_mut() = TransactionInformation::new();
 
-        (
-            TransactionId::NoConcurrencyControl,
-            ProtocolDiagnostics::Other,
-        )
+        TransactionId::NoConcurrencyControl
     }
 
     /// Read a value in a column at some offset.

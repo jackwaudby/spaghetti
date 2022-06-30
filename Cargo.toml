@@ -16,10 +16,6 @@ debug = true
 name = "spag"
 path = "src/bin/main.rs"
 
-[[bench]]
-name = "core_bench"
-harness = false
-
 [dev-dependencies]
 criterion = {version="0.3", features= ["html_reports"]}
 petgraph = "0.5.1"

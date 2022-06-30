@@ -1,6 +1,6 @@
 use spaghetti::common::coordinator;
 use spaghetti::common::global_state::GlobalState;
-use spaghetti::common::statistics::GlobalStatistics;
+use spaghetti::common::statistics::global::GlobalStatistics;
 use spaghetti::common::utils;
 use spaghetti::common::wait_manager::WaitManager;
 use spaghetti::scheduler::Scheduler;
@@ -10,7 +10,6 @@ use clap::{arg, Command};
 use crossbeam_utils::thread;
 use std::sync::mpsc;
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::Instant;
 use tracing::{info, Level};
 use tracing_subscriber::fmt;
 
@@ -28,22 +27,7 @@ fn main() {
         .arg(arg!(-s --scalefactor <SF> "Set a scale factor").required(false))
         .arg(arg!(-t --transactions <TRANSACTIONS> "Transactions per core").required(false))
         .arg(arg!(-c --cores <CORES> "Number of cores to use").required(false))
-        .arg(arg!(-l --log <LOG> "Log level").required(false))
-        .arg(arg!(-h --theta <THETA> "Contention (YCSB only)").required(false))
-        .arg(arg!(-u --updaterate <UPDATERATE> "Update rate (YCSB only)").required(false))
-        .arg(
-            arg!(-i --serializablerate <SERIALIZABLERATE> "Serializable rate (YCSB only)")
-                .required(false),
-        )
-        .arg(arg!(-m --watermark <WATERMARK> "Watermark (Attendez only)").required(false))
-        .arg(arg!(-a --increase <INCREASE> "Additive increase (Attendez only)").required(false))
-        .arg(
-            arg!(-b --decrease <DECREASE> "Multiplicative decrease (Attendez only)")
-                .required(false),
-        )
-        .arg(arg!(-d --nowait <NOWAIT> "No wait write (Attendez only)").required(false))
         .arg(arg!(-r --relevant <RELEVANT> "Reduced relevant DFS (MSGT only)").required(false))
-        .arg(arg!(-o --types <TYPES> "Transaction types optimization (OWH only)").required(false))
         .get_matches();
 
     if let Some(w) = matches.get_one::<String>("workload") {
@@ -66,48 +50,9 @@ fn main() {
         config.set("cores", c.clone()).unwrap();
     }
 
-    if let Some(l) = matches.get_one::<String>("log") {
-        config.set("log", l.clone()).unwrap();
-    }
-
-    // YCSB
-    if let Some(theta) = matches.get_one::<String>("theta") {
-        config.set("theta", theta.clone()).unwrap();
-    }
-
-    if let Some(ur) = matches.get_one::<String>("updaterate") {
-        config.set("update_rate", ur.clone()).unwrap();
-    }
-
-    if let Some(sr) = matches.get_one::<String>("serializablerate") {
-        config.set("serializable_rate", sr.clone()).unwrap();
-    }
-
-    // Attendez
-    if let Some(wm) = matches.get_one::<String>("watermark") {
-        config.set("watermark", wm.clone()).unwrap();
-    }
-
-    if let Some(a) = matches.get_one::<String>("increase") {
-        config.set("increase", a.clone()).unwrap();
-    }
-
-    if let Some(b) = matches.get_one::<String>("decrease") {
-        config.set("decrease", b.clone()).unwrap();
-    }
-
-    if let Some(d) = matches.get_one::<String>("nowait") {
-        config.set("no_wait_write", d.clone()).unwrap();
-    }
-
     // MSGT
     if let Some(dfs) = matches.get_one::<String>("relevant") {
         config.set("relevant_dfs", dfs.clone()).unwrap();
-    }
-
-    // OWH
-    if let Some(ta) = matches.get_one::<String>("types") {
-        config.set("type_aware", ta.clone()).unwrap();
     }
 
     // logging
@@ -128,23 +73,15 @@ fn main() {
     let mut global_stats = GlobalStatistics::new(&config);
     let (tx, rx) = mpsc::channel(); // channel for thread local stats
 
-    // data generation
-    let dg_start = Instant::now();
+    let cores = config.get_int("cores").unwrap() as usize;
+    let core_ids = core_affinity::get_core_ids().unwrap();
     let database: Database = utils::init_database(&config);
-    let dg_end = dg_start.elapsed();
-    global_stats.set_data_generation(dg_end);
-
     let scheduler: Scheduler = Scheduler::new(&config).unwrap();
+    let wait_manager = WaitManager::new(cores);
+    let global_state = GlobalState::new(config, scheduler, database, wait_manager);
 
     info!("Starting execution");
     global_stats.start();
-
-    let cores = config.get_int("cores").unwrap() as usize;
-    let core_ids = core_affinity::get_core_ids().unwrap();
-
-    let wait_manager = WaitManager::new(cores);
-
-    let global_state = GlobalState::new(config, scheduler, database, wait_manager);
 
     thread::scope(|s| {
         let global_state = &global_state;
@@ -175,7 +112,7 @@ fn main() {
 
     info!("Collecting statistics..");
     while let Ok(local_stats) = rx.recv() {
-        global_stats.merge_into(local_stats);
+        global_stats.merge(local_stats);
     }
-    global_stats.write_to_file();
+    global_stats.print_to_console();
 }

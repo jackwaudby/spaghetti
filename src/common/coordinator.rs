@@ -1,23 +1,15 @@
 use crate::common::error::NonFatalError;
-use crate::common::message::{Outcome, Parameters, Request, Response};
+use crate::common::global_state::GlobalState;
+use crate::common::message::{Outcome, Request, Response};
 use crate::common::parameter_generation::ParameterGenerator;
-use crate::common::statistics::LocalStatistics;
+use crate::common::statistics::local::LocalStatistics;
 use crate::scheduler::Scheduler;
 use crate::storage::Database;
-// use crate::workloads::acid::paramgen::{AcidGenerator, AcidTransactionProfile};
-// use crate::workloads::dummy::paramgen::{DummyGenerator, DummyTransactionProfile};
-use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
-// use crate::workloads::tatp::paramgen::{TatpGenerator, TatpTransactionProfile};
-// use crate::workloads::ycsb::paramgen::{YcsbGenerator, YcsbTransactionProfil
-// e};
-// use crate::workloads::{acid, dummy, smallbank, tatp, ycsb};
-use crate::common::global_state::GlobalState;
-use crate::common::utils;
 use crate::workloads::smallbank;
+use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
 
 use config::Config;
 use std::sync::mpsc;
-use std::time::{Duration, Instant};
 use tracing::debug;
 
 pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state: &GlobalState) {
@@ -28,14 +20,10 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
     let wait_manager = global_state.get_wait_manager();
 
     // local state
-    let mut stats = LocalStatistics::new(config, core_id);
+    let mut stats = LocalStatistics::new();
     let mut transaction_generator = get_transaction_generator(config, core_id);
-    let mut txn_log_handle = utils::create_transaction_log(config, core_id);
 
-    let max_runtime = config.get_int("timeout").unwrap() as u64;
-    let timeout = compute_timeout(max_runtime);
-
-    let worker_start = Instant::now();
+    stats.start_worker();
 
     let max_transactions = config.get_int("transactions").unwrap() as u32;
     let mut completed_transactions = 0;
@@ -44,66 +32,37 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
         if completed_transactions == max_transactions {
             debug!("Max transactions completed: {} ", completed_transactions);
             break;
-        } else if Instant::now() > timeout {
-            debug!("Timeout reached: {} minute(s)", max_runtime);
-            break;
         } else {
             let request = transaction_generator.get_next();
-            let txn_start = Instant::now();
+
+            stats.start_latency();
+
             let mut response;
-            let mut old_transaction_id = 0;
             let mut guards = None;
 
-            let mut retries = 0;
-
             loop {
-                let req_start = Instant::now();
-
                 response = execute_transaction(request.clone(), scheduler, database);
-                let req_end = req_start.elapsed().as_millis();
-                response.set_txn_latency(req_end);
-
-                response.set_retries(retries);
-                // response.set_total_latency(txn_start.elapsed().as_nanos());
 
                 let transaction_id = response.get_transaction_id();
                 let transaction_outcome = response.get_outcome();
 
-                // if let Outcome::Aborted(_) = transaction_outcome {
-                //     if req_end > 20 {
-                //         println!(
-                //             "latency: {}, {:?}, {:?}",
-                //             req_end,
-                //             response.get_result().get_latency(),
-                //             response.get_outcome()
-                //         );
-                //     }
-                // }
-
-                if retries > 100 {
-                    println!(
-                        "core: {}, txn: {}, retries: {}, aborted txns: {:?}",
-                        core_id,
-                        transaction_id,
-                        retries,
-                        response.get_problem_transactions()
-                    );
-                }
-
                 // if transaction was restarted and had some locks
                 if guards.is_some() {
-                    wait_manager.release(old_transaction_id, guards.unwrap());
+                    wait_manager.release(guards.unwrap());
                 }
 
-                stats.record(&response);
-                utils::append_to_log(&mut txn_log_handle, &response);
-
                 match transaction_outcome {
-                    Outcome::Committed(_) => break,
+                    Outcome::Committed(_) => {
+                        stats.inc_commits();
+                        break;
+                    }
                     Outcome::Aborted(err) => match err {
                         NonFatalError::RowNotFound(_, _) => break,
-                        NonFatalError::SmallBankError(_) => break,
-                        NonFatalError::UnableToConvertFromDataType(_, _) => break,
+                        NonFatalError::SmallBankError(_) => {
+                            stats.inc_not_found();
+                            break;
+                        }
+                        NonFatalError::UnableToConvertFromDataType(_, _) => panic!("oh no"),
                         NonFatalError::RowDirty(_) => {}
                         NonFatalError::NonSerializable => {}
                         NonFatalError::SerializationGraphError(_) => {}
@@ -111,43 +70,24 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::AttendezError(_) => {}
                     },
                 }
+                stats.inc_aborts();
 
                 let problem_transactions = response.get_problem_transactions();
 
-                // let wait_start = Instant::now();
+                stats.start_wait_manager();
                 guards = Some(wait_manager.wait(transaction_id as u64, problem_transactions));
-                // guards = None;
-                // stats.stop_wait_manager(wait_start);
-
-                old_transaction_id = transaction_id;
-                retries += 1;
+                stats.stop_wait_manager();
             }
 
-            // if retries > 100 {
-            //     println!(
-            //         "retries: {}, {}, {:?}, {:?}",
-            //         retries,
-            //         core_id,
-            //         response.get_transaction(),
-            //         response.get_outcome()
-            //     );
-            // }
+            stats.stop_latency();
 
-            response.set_total_latency(txn_start.elapsed().as_nanos());
-            // utils::append_to_log(&mut txn_log_handle, &response);
             completed_transactions += 1;
         }
     }
 
-    stats.stop_worker(worker_start);
+    stats.stop_worker();
 
     stats_tx.send(stats).unwrap();
-}
-
-fn compute_timeout(max_runtime: u64) -> Instant {
-    let start = Instant::now();
-    let duration = Duration::new(max_runtime * 60, 0);
-    start + duration
 }
 
 pub fn execute_transaction<'a>(
@@ -159,71 +99,27 @@ pub fn execute_transaction<'a>(
     let transaction = request.get_transaction();
     let isolation = request.get_isolation_level();
 
-    let result = match request.get_parameters() {
-        // Parameters::Tatp(params) => match params {
-        //     TatpTransactionProfile::GetSubscriberData(params) => {
-        //         tatp::procedures::get_subscriber_data(
-        //             params.clone(),
-        //             scheduler,
-        //             database,
-        //             isolation,
-        //         )
-        //     }
-        //     TatpTransactionProfile::GetAccessData(params) => {
-        //         tatp::procedures::get_access_data(params.clone(), scheduler, database, isolation)
-        //     }
-        //     TatspTransactionProfile::GetNewDestination(params) => {
-        //         tatp::procedures::get_new_destination(
-        //             params.clone(),
-        //             scheduler,
-        //             database,
-        //             isolation,
-        //         )
-        //     }
-        //     TatpTransactionProfile::UpdateLocationData(params) => {
-        //         tatp::procedures::update_location(params.clone(), scheduler, database, isolation)
-        //     }
-        //     TatpTransactionProfile::UpdateSubscriberData(params) => {
-        //         tatp::procedures::update_subscriber_data(
-        //             params.clone(),
-        //             scheduler,
-        //             database,
-        //             isolation,
-        //         )
-        //     }
-        // },
-        Parameters::SmallBank(params) => match params {
-            SmallBankTransactionProfile::Amalgamate(params) => {
-                smallbank::procedures::amalgmate(params.clone(), scheduler, database, isolation)
-            }
-            SmallBankTransactionProfile::Balance(params) => {
-                smallbank::procedures::balance(params.clone(), scheduler, database, isolation)
-            }
-            SmallBankTransactionProfile::DepositChecking(params) => {
-                smallbank::procedures::deposit_checking(
-                    params.clone(),
-                    scheduler,
-                    database,
-                    isolation,
-                )
-            }
-            SmallBankTransactionProfile::SendPayment(params) => {
-                smallbank::procedures::send_payment(params.clone(), scheduler, database, isolation)
-            }
-            SmallBankTransactionProfile::TransactSaving(params) => {
-                smallbank::procedures::transact_savings(
-                    params.clone(),
-                    scheduler,
-                    database,
-                    isolation,
-                )
-            }
-            SmallBankTransactionProfile::WriteCheck(params) => {
-                smallbank::procedures::write_check(params.clone(), scheduler, database, isolation)
-            }
-        },
+    let parameters = request.get_parameters();
 
-        _ => unimplemented!(),
+    let result = match parameters.get() {
+        SmallBankTransactionProfile::Amalgamate(params) => {
+            smallbank::procedures::amalgmate(params.clone(), scheduler, database, isolation)
+        }
+        SmallBankTransactionProfile::Balance(params) => {
+            smallbank::procedures::balance(params.clone(), scheduler, database, isolation)
+        }
+        SmallBankTransactionProfile::DepositChecking(params) => {
+            smallbank::procedures::deposit_checking(params.clone(), scheduler, database, isolation)
+        }
+        SmallBankTransactionProfile::SendPayment(params) => {
+            smallbank::procedures::send_payment(params.clone(), scheduler, database, isolation)
+        }
+        SmallBankTransactionProfile::TransactSaving(params) => {
+            smallbank::procedures::transact_savings(params.clone(), scheduler, database, isolation)
+        }
+        SmallBankTransactionProfile::WriteCheck(params) => {
+            smallbank::procedures::write_check(params.clone(), scheduler, database, isolation)
+        }
     };
 
     Response::new(request_no, transaction.clone(), result, 0)

@@ -7,7 +7,6 @@ use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use std::cell::UnsafeCell;
 use std::fmt;
-use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 unsafe impl<'a> Send for Node {}

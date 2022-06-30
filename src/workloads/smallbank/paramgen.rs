@@ -85,7 +85,7 @@ impl Generator for SmallBankGenerator {
         Request::new(
             (self.core_id as u32, self.generated),
             Transaction::SmallBank(transaction),
-            Parameters::SmallBank(parameters),
+            Parameters::new(parameters),
             isolation,
         )
     }
