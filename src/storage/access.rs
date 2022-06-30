@@ -7,7 +7,7 @@ pub enum Access {
     Write(TransactionId),
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+#[derive(Serialize, Deserialize, Eq, Hash, PartialEq, Debug, Clone, Copy)]
 pub enum TransactionId {
     NoConcurrencyControl,
     SerializationGraph(usize, usize, usize),
@@ -20,7 +20,7 @@ pub enum TransactionId {
 impl TransactionId {
     pub fn extract(&self) -> u64 {
         if let TransactionId::SerializationGraph(id, _, _) = &self {
-             *id as u64
+            *id as u64
         } else {
             0
         }

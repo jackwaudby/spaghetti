@@ -1,3 +1,4 @@
+use crate::storage::access::TransactionId;
 use crate::workloads::IsolationLevel;
 
 use parking_lot::Mutex;
@@ -49,7 +50,7 @@ pub struct Node {
     checked: AtomicBool,
     early: AtomicBool,
     lock: RwLock<u32>,
-    abort_through: UnsafeCell<usize>,
+    abort_through: UnsafeCell<TransactionId>,
 }
 
 impl Node {
@@ -82,7 +83,7 @@ impl Node {
             checked: AtomicBool::new(false),
             early: AtomicBool::new(false),
             lock: RwLock::new(0),
-            abort_through: UnsafeCell::new(0),
+            abort_through: UnsafeCell::new(TransactionId::SerializationGraph(0, 0, 0)),
         }
     }
 
@@ -299,11 +300,18 @@ impl Node {
         self.cleaned.store(true, Ordering::Release);
     }
 
-    pub fn set_abort_through(&self, id: usize) {
+    pub fn set_abort_through(&self, id: TransactionId) {
         unsafe { *self.abort_through.get() = id };
     }
-    pub fn get_abort_through(&self) -> u64 {
-        unsafe { *self.abort_through.get() as u64 }
+    pub fn get_abort_through(&self) -> TransactionId {
+        unsafe { *self.abort_through.get() }
+    }
+
+    pub fn get_full_id(&self) -> TransactionId {
+        let ref_id = self.get_id();
+        let thread_id = self.get_thread_id();
+        let thread_ctr = self.get_thread_ctr();
+        TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
 }
 

@@ -53,10 +53,42 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             let mut response;
             let mut old_transaction_id = 0;
             let mut guards = None;
+
+            let mut retries = 0;
+
             loop {
+                let req_start = Instant::now();
+
                 response = execute_transaction(request.clone(), scheduler, database);
+                let req_end = req_start.elapsed().as_millis();
+                response.set_txn_latency(req_end);
+
+                response.set_retries(retries);
+                // response.set_total_latency(txn_start.elapsed().as_nanos());
+
                 let transaction_id = response.get_transaction_id();
                 let transaction_outcome = response.get_outcome();
+
+                // if let Outcome::Aborted(_) = transaction_outcome {
+                //     if req_end > 20 {
+                //         println!(
+                //             "latency: {}, {:?}, {:?}",
+                //             req_end,
+                //             response.get_result().get_latency(),
+                //             response.get_outcome()
+                //         );
+                //     }
+                // }
+
+                if retries > 100 {
+                    println!(
+                        "core: {}, txn: {}, retries: {}, aborted txns: {:?}",
+                        core_id,
+                        transaction_id,
+                        retries,
+                        response.get_problem_transactions()
+                    );
+                }
 
                 // if transaction was restarted and had some locks
                 if guards.is_some() {
@@ -64,6 +96,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                 }
 
                 stats.record(&response);
+                utils::append_to_log(&mut txn_log_handle, &response);
 
                 match transaction_outcome {
                     Outcome::Committed(_) => break,
@@ -71,8 +104,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::RowNotFound(_, _) => break,
                         NonFatalError::SmallBankError(_) => break,
                         NonFatalError::UnableToConvertFromDataType(_, _) => break,
-                        NonFatalError::RowDirty(_) => panic!("dont get here for sgt"),
-                        NonFatalError::NonSerializable => panic!("dont get here for sgt"),
+                        NonFatalError::RowDirty(_) => {}
+                        NonFatalError::NonSerializable => {}
                         NonFatalError::SerializationGraphError(_) => {}
                         NonFatalError::WaitHitError(_) => {}
                         NonFatalError::AttendezError(_) => {}
@@ -87,10 +120,21 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                 // stats.stop_wait_manager(wait_start);
 
                 old_transaction_id = transaction_id;
+                retries += 1;
             }
 
+            // if retries > 100 {
+            //     println!(
+            //         "retries: {}, {}, {:?}, {:?}",
+            //         retries,
+            //         core_id,
+            //         response.get_transaction(),
+            //         response.get_outcome()
+            //     );
+            // }
+
             response.set_total_latency(txn_start.elapsed().as_nanos());
-            utils::append_to_log(&mut txn_log_handle, &response);
+            // utils::append_to_log(&mut txn_log_handle, &response);
             completed_transactions += 1;
         }
     }
@@ -182,7 +226,7 @@ pub fn execute_transaction<'a>(
         _ => unimplemented!(),
     };
 
-    Response::new(request_no, transaction.clone(), result)
+    Response::new(request_no, transaction.clone(), result, 0)
 }
 
 pub fn get_transaction_generator(config: &Config, core_id: usize) -> ParameterGenerator {

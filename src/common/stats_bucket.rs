@@ -1,5 +1,6 @@
 use crate::common::statistics::latency_breakdown::LatencyBreakdown;
 use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
+use crate::scheduler::sgt::SerializationGraph;
 use crate::storage::access::TransactionId;
 
 use std::collections::HashSet;
@@ -8,7 +9,7 @@ pub struct StatsBucket {
     tid: TransactionId,
     latency: LatencyBreakdown,
     diagnostics: ProtocolDiagnostics,
-    problem_transactions: HashSet<u64>,
+    problem_transactions: HashSet<TransactionId>,
 }
 
 impl StatsBucket {
@@ -41,11 +42,11 @@ impl StatsBucket {
         &mut self.diagnostics
     }
 
-    pub fn get_problem_transactions(&self) -> HashSet<u64> {
+    pub fn get_problem_transactions(&self) -> HashSet<TransactionId> {
         self.problem_transactions.clone()
     }
 
-    pub fn add_problem_transaction(&mut self, id: u64) {
+    pub fn add_problem_transaction(&mut self, id: TransactionId) {
         self.problem_transactions.insert(id);
     }
 }

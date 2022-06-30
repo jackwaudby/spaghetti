@@ -102,7 +102,7 @@ impl<'a> Scheduler<'a> {
     ) -> Result<Data, NonFatalError> {
         use Scheduler::*;
 
-        // let start = Instant::now();
+        let start = Instant::now();
 
         let res = match self {
             SerializationGraph(sg) => sg.read_value(vid, meta, database),
@@ -113,7 +113,7 @@ impl<'a> Scheduler<'a> {
             NoConcurrencyControl(nocc) => nocc.read_value(vid, meta, database),
         };
 
-        let duration = 0; // start.elapsed().as_nanos();
+        let duration = start.elapsed().as_millis();
         meta.get_mut_latency_breakdown().add_read(duration);
 
         res
@@ -128,7 +128,7 @@ impl<'a> Scheduler<'a> {
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
 
-        // let start = Instant::now();
+        let start = Instant::now();
 
         let res = match self {
             SerializationGraph(sg) => sg.write_value(value, vid, meta, database),
@@ -139,7 +139,7 @@ impl<'a> Scheduler<'a> {
             NoConcurrencyControl(nocc) => nocc.write_value(value, vid, meta, database),
         };
 
-        let duration = 0; //start.elapsed().as_nanos();
+        let duration = start.elapsed().as_millis();
         meta.get_mut_latency_breakdown().add_write(duration);
 
         res
@@ -153,7 +153,7 @@ impl<'a> Scheduler<'a> {
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
 
-        // let start = Instant::now();
+        let start = Instant::now();
 
         let res = match self {
             SerializationGraph(sg) => sg.commit(meta, database),
@@ -164,7 +164,7 @@ impl<'a> Scheduler<'a> {
             NoConcurrencyControl(nocc) => nocc.commit(meta, database),
         };
 
-        let duration = 0; // start.elapsed().as_nanos();
+        let duration = start.elapsed().as_millis();
         meta.get_mut_latency_breakdown().add_commit(duration);
 
         res

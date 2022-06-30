@@ -97,9 +97,11 @@ impl SerializationGraph {
             };
 
             let from_ref = unsafe { &*(from_id as *const Node) };
+
             if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
                 this_ref.set_cascading_abort();
-                // this_ref.set_abort_through(from_id);
+                let fid = from_ref.get_full_id();
+                this_ref.set_abort_through(fid);
                 return false; // cascadingly abort (this)
             }
 
@@ -431,9 +433,14 @@ impl SerializationGraph {
         let this = unsafe { &*self.get_transaction() };
 
         loop {
-            if this.is_cascading_abort() || this.is_aborted() {
+            if this.is_cascading_abort() {
                 self.abort(meta, database);
                 return Err(SerializationGraphError::CascadingAbort.into());
+            }
+
+            if this.is_aborted() {
+                self.abort(meta, database);
+                return Err(SerializationGraphError::CycleFound.into());
             }
 
             let this_wlock = this.write();
@@ -476,7 +483,7 @@ impl SerializationGraph {
         //         Edge::ReadWrite(id) => {}
         //     }
         // }
-        // meta.add_problem_transaction(this.get_abort_through());
+        meta.add_problem_transaction(this.get_abort_through());
 
         this.set_aborted();
         self.cleanup();
@@ -521,6 +528,8 @@ impl SerializationGraph {
                 Edge::WriteWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
                     if this.is_aborted() {
+                        let fid = this.get_full_id();
+                        that.set_abort_through(fid);
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
@@ -534,6 +543,8 @@ impl SerializationGraph {
                 Edge::WriteRead(that) => {
                     let that = unsafe { &*(*that as *const Node) };
                     if this.is_aborted() {
+                        let fid = this.get_full_id();
+                        that.set_abort_through(fid);
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();

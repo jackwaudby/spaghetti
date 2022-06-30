@@ -63,6 +63,7 @@ pub struct Response {
     request_no: (u32, u32),
     transaction: Transaction,
     result: StoredProcedureResult,
+    retries: u64,
 }
 
 impl Response {
@@ -70,12 +71,18 @@ impl Response {
         request_no: (u32, u32),
         transaction: Transaction,
         result: StoredProcedureResult,
+        retries: u64,
     ) -> Self {
         Self {
             request_no,
             transaction,
             result,
+            retries,
         }
+    }
+
+    pub fn set_retries(&mut self, r: u64) {
+        self.retries = r
     }
 
     pub fn get_request_no(&self) -> (u32, u32) {
@@ -102,10 +109,14 @@ impl Response {
         self.result.set_total_latency(dur);
     }
 
+    pub fn set_txn_latency(&mut self, dur: u128) {
+        self.result.set_txn_latency(dur);
+    }
+
     pub fn get_transaction_id(&self) -> u64 {
         self.result.get_internal_id()
     }
-    pub fn get_problem_transactions(&self) -> HashSet<u64> {
+    pub fn get_problem_transactions(&self) -> HashSet<TransactionId> {
         self.result.get_problem_transactions()
     }
 }

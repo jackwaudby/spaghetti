@@ -240,7 +240,8 @@ pub fn spin(prv: u64, lsn: &AtomicU64) {
 
 pub fn create_transaction_log(config: &Config, core_id: usize) -> Option<File> {
     // assumes directory created by this point
-    let log_response = config.get_bool("log_results").unwrap();
+    // let log_response = config.get_bool("log_results").unwrap();
+    let log_response = true;
 
     if log_response {
         let workload = config.get_str("workload").unwrap();

@@ -6,6 +6,7 @@ use crate::common::message::{Outcome, Success};
 use crate::common::statistics::latency_breakdown::LatencyBreakdown;
 use crate::common::statistics::protocol_diagnostics::ProtocolDiagnostics;
 use crate::common::stats_bucket::StatsBucket;
+use crate::storage::access::TransactionId;
 use crate::workloads::IsolationLevel;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -15,7 +16,7 @@ pub struct StoredProcedureResult {
     diagnostics: ProtocolDiagnostics,
     latency: LatencyBreakdown,
     internal_id: u64,
-    problem_transactions: HashSet<u64>,
+    problem_transactions: HashSet<TransactionId>,
 }
 
 impl StoredProcedureResult {
@@ -86,7 +87,11 @@ impl StoredProcedureResult {
         self.latency.set_total(dur);
     }
 
-    pub fn get_problem_transactions(&self) -> HashSet<u64> {
+    pub fn set_txn_latency(&mut self, dur: u128) {
+        self.latency.set_txn_total(dur);
+    }
+
+    pub fn get_problem_transactions(&self) -> HashSet<TransactionId> {
         self.problem_transactions.clone()
     }
 }

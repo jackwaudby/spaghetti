@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct LatencyBreakdown {
     total: u128,
+    txn_total: u128,
+
     write: u128,
     write_cnt: u32,
     read: u128,
@@ -15,6 +17,7 @@ impl LatencyBreakdown {
     pub fn new() -> Self {
         Self {
             total: 0,
+            txn_total: 0,
             write: 0,
             write_cnt: 0,
             read: 0,
@@ -26,6 +29,10 @@ impl LatencyBreakdown {
 
     pub fn set_total(&mut self, total: u128) {
         self.total = total;
+    }
+
+    pub fn set_txn_total(&mut self, total: u128) {
+        self.txn_total = total;
     }
 
     pub fn get_total(&self) -> u128 {

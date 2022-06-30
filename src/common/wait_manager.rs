@@ -8,6 +8,8 @@ use std::hash::{Hash, Hasher};
 
 use spin::{Mutex, MutexGuard};
 
+use crate::storage::access::TransactionId;
+
 #[derive(Debug)]
 pub struct WaitManager {
     locks: Vec<Mutex<u8>>,
@@ -27,12 +29,15 @@ impl WaitManager {
         Self { locks, cores }
     }
 
-    pub fn wait(&self, tid: u64, neighbours: HashSet<u64>) -> Vec<MutexGuard<'_, u8>> {
+    pub fn wait(&self, tid: u64, neighbours: HashSet<TransactionId>) -> Vec<MutexGuard<'_, u8>> {
         // pub fn wait(&self, tid: u64, neighbours: HashSet<u64>) -> Vec<MutexGuard<'_>> {
         let mut oset = BTreeSet::new();
         for nid in &neighbours {
-            let offset = self.calculate_offset(nid);
-            oset.insert(offset);
+            let e = nid.extract();
+            if e != 0 {
+                let offset = self.calculate_offset(&e);
+                oset.insert(offset);
+            }
             // println!("{} -> {}", nid, offset);
         }
         let offset = self.calculate_offset(&tid);
