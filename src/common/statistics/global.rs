@@ -83,6 +83,10 @@ impl GlobalStatistics {
         (self.total_time / 1000000) as u64
     }
 
+    fn get_wait_time(&self) -> u64 {
+        (self.wait_manager / 1000000) as u64
+    }
+
     fn get_latency(&self) -> u64 {
         (self.latency / 1000000) as u64
     }
@@ -100,7 +104,7 @@ impl GlobalStatistics {
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.tx as u64,
             "commit_time (ms)": self.commit as u64,
-            "wait_time (ms)": self.wait_manager as u64,
+            "wait_time (ms)": self.get_wait_time(),
             "latency (ms)": self.get_latency()
         });
 
