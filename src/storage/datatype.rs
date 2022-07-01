@@ -106,10 +106,11 @@ impl TryFrom<Data> for u64 {
         if let Data::Uint(int) = value {
             Ok(int)
         } else {
-            Err(NonFatalError::UnableToConvertFromDataType(
+            panic!(
+                "unable to convert from data type: {} to {}",
                 value.to_string(),
-                "u64".to_string(),
-            ))
+                "u64".to_string()
+            );
         }
     }
 }
@@ -121,10 +122,11 @@ impl TryFrom<Data> for i64 {
         if let Data::Int(int) = value {
             Ok(int)
         } else {
-            Err(NonFatalError::UnableToConvertFromDataType(
+            panic!(
+                "unable to convert from data type: {} to {}",
                 value.to_string(),
-                "i64".to_string(),
-            ))
+                "i64".to_string()
+            );
         }
     }
 }
@@ -136,10 +138,11 @@ impl TryFrom<Data> for f64 {
         if let Data::Double(int) = value {
             Ok(int)
         } else {
-            Err(NonFatalError::UnableToConvertFromDataType(
+            panic!(
+                "unable to convert from data type: {} to {}",
                 value.to_string(),
-                "f64".to_string(),
-            ))
+                "f64".to_string()
+            );
         }
     }
 }
@@ -151,10 +154,11 @@ impl TryFrom<Data> for String {
         if let Data::VarChar(int) = value {
             Ok(int)
         } else {
-            Err(NonFatalError::UnableToConvertFromDataType(
+            panic!(
+                "unable to convert from data type: {} to {}",
                 value.to_string(),
-                "string".to_string(),
-            ))
+                "string".to_string()
+            );
         }
     }
 }

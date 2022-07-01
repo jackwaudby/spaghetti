@@ -1,16 +1,30 @@
 use crate::common::error::NonFatalError;
 use crate::common::global_state::GlobalState;
-use crate::common::message::{Outcome, Request, Response};
+use crate::common::message::Request;
 use crate::common::parameter_generation::ParameterGenerator;
 use crate::common::statistics::local::LocalStatistics;
 use crate::scheduler::Scheduler;
 use crate::storage::Database;
-use crate::workloads::smallbank;
-use crate::workloads::smallbank::paramgen::{SmallBankGenerator, SmallBankTransactionProfile};
+use crate::workloads::smallbank::{
+    self,
+    paramgen::{SmallBankGenerator, SmallBankTransactionProfile},
+};
 
 use config::Config;
 use std::sync::mpsc;
 use tracing::debug;
+
+use super::stats_bucket::StatsBucket;
+
+struct WaitGuards<'a> {
+    guards: Option<Vec<spin::MutexGuard<'a, u8>>>,
+}
+
+impl<'a> WaitGuards<'a> {
+    fn new() -> Self {
+        Self { guards: None }
+    }
+}
 
 pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state: &GlobalState) {
     // global state
@@ -34,52 +48,74 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             break;
         } else {
             let request = transaction_generator.get_next();
-
+            let isolation_level = request.get_isolation_level();
             stats.start_latency();
 
             let mut response;
-            let mut guards = None;
+            let mut guards = WaitGuards::new();
+            let mut restart = false;
 
             loop {
-                response = execute_transaction(request.clone(), scheduler, database);
+                let mut meta = scheduler.begin(isolation_level);
 
-                let transaction_id = response.get_transaction_id();
-                let transaction_outcome = response.get_outcome();
+                stats.start_tx();
+                let transaction_id = meta.get_transaction_id();
 
-                // if transaction was restarted and had some locks
-                if guards.is_some() {
-                    wait_manager.release(guards.unwrap());
+                response = execute_logic(&mut meta, request.clone(), scheduler, database);
+
+                //                if transaction was restarted and had some locks
+                if guards.guards.is_some() {
+                    let g = guards.guards.take().unwrap();
+                    wait_manager.release(g);
                 }
 
-                match transaction_outcome {
-                    Outcome::Committed(_) => {
-                        stats.inc_commits();
-                        break;
-                    }
-                    Outcome::Aborted(err) => match err {
-                        NonFatalError::RowNotFound(_, _) => break,
-                        NonFatalError::SmallBankError(_) => {
-                            stats.inc_not_found();
-                            break;
+                match response {
+                    Ok(_) => {
+                        stats.start_commit();
+                        let commit_res = scheduler.commit(&mut meta, database);
+                        stats.stop_commit();
+
+                        match commit_res {
+                            Ok(_) => {
+                                stats.inc_commits();
+                                break;
+                            }
+                            Err(_) => {
+                                stats.inc_aborts();
+
+                                restart = true;
+                                stats.start_wait_manager();
+                                let problem_transactions = meta.get_problem_transactions();
+                                let g = wait_manager
+                                    .wait(transaction_id.extract(), problem_transactions);
+                                guards.guards.replace(g);
+
+                                stats.stop_wait_manager();
+                            }
                         }
-                        NonFatalError::UnableToConvertFromDataType(_, _) => panic!("oh no"),
-                        NonFatalError::RowDirty(_) => {}
-                        NonFatalError::NonSerializable => {}
-                        NonFatalError::SerializationGraphError(_) => {}
-                        NonFatalError::WaitHitError(_) => {}
-                        NonFatalError::AttendezError(_) => {}
+                    }
+                    Err(e) => match e {
+                        NonFatalError::SerializationGraphError(_) | NonFatalError::NoccError => {
+                            restart = true;
+                            stats.start_wait_manager();
+                            let problem_transactions = meta.get_problem_transactions();
+                            wait_manager.wait(transaction_id.extract(), problem_transactions);
+                            stats.start_wait_manager();
+                        }
+                        NonFatalError::SmallBankError(_) => {
+                            // not found
+                            stats.inc_not_found();
+                            // TODO: abort then commit
+                        }
                     },
                 }
-                stats.inc_aborts();
 
-                let problem_transactions = response.get_problem_transactions();
-
-                stats.start_wait_manager();
-                guards = Some(wait_manager.wait(transaction_id as u64, problem_transactions));
-                stats.stop_wait_manager();
+                if !restart {
+                    break;
+                }
             }
-
-            stats.stop_latency();
+            let tx = stats.stop_tx();
+            stats.stop_latency(tx);
 
             completed_transactions += 1;
         }
@@ -90,39 +126,35 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
     stats_tx.send(stats).unwrap();
 }
 
-pub fn execute_transaction<'a>(
+pub fn execute_logic<'a>(
+    meta: &mut StatsBucket,
     request: Request,
     scheduler: &'a Scheduler,
     database: &'a Database,
-) -> Response {
-    let request_no = request.get_request_no();
-    let transaction = request.get_transaction();
-    let isolation = request.get_isolation_level();
-
+) -> Result<(), NonFatalError> {
+    use SmallBankTransactionProfile::*;
     let parameters = request.get_parameters();
 
-    let result = match parameters.get() {
-        SmallBankTransactionProfile::Amalgamate(params) => {
-            smallbank::procedures::amalgmate(params.clone(), scheduler, database, isolation)
+    match parameters.get() {
+        Amalgamate(params) => {
+            smallbank::procedures::amalgmate(meta, params.clone(), scheduler, database)
         }
-        SmallBankTransactionProfile::Balance(params) => {
-            smallbank::procedures::balance(params.clone(), scheduler, database, isolation)
+        Balance(params) => {
+            smallbank::procedures::balance(meta, params.clone(), scheduler, database)
         }
         SmallBankTransactionProfile::DepositChecking(params) => {
-            smallbank::procedures::deposit_checking(params.clone(), scheduler, database, isolation)
+            smallbank::procedures::deposit_checking(meta, params.clone(), scheduler, database)
         }
         SmallBankTransactionProfile::SendPayment(params) => {
-            smallbank::procedures::send_payment(params.clone(), scheduler, database, isolation)
+            smallbank::procedures::send_payment(meta, params.clone(), scheduler, database)
         }
         SmallBankTransactionProfile::TransactSaving(params) => {
-            smallbank::procedures::transact_savings(params.clone(), scheduler, database, isolation)
+            smallbank::procedures::transact_savings(meta, params.clone(), scheduler, database)
         }
         SmallBankTransactionProfile::WriteCheck(params) => {
-            smallbank::procedures::write_check(params.clone(), scheduler, database, isolation)
+            smallbank::procedures::write_check(meta, params.clone(), scheduler, database)
         }
-    };
-
-    Response::new(request_no, transaction.clone(), result, 0)
+    }
 }
 
 pub fn get_transaction_generator(config: &Config, core_id: usize) -> ParameterGenerator {
@@ -152,39 +184,7 @@ pub fn get_transaction_generator(config: &Config, core_id: usize) -> ParameterGe
             );
             ParameterGenerator::SmallBank(gen)
         }
-        // "acid" => {
-        //     let anomaly = config.get_str("anomaly").unwrap();
-        //     let delay = config.get_int("delay").unwrap() as u64;
-        //     let gen = AcidGenerator::new(thread_id, sf, set_seed, seed, &anomaly, delay);
 
-        //     ParameterGenerator::Acid(gen)
-        // }
-        // "dummy" => {
-        //     let gen = DummyGenerator::new(thread_id, sf, set_seed, seed);
-
-        //     ParameterGenerator::Dummy(gen)
-        // }
-        // "tatp" => {
-        //     let use_nurand = config.get_bool("nurand").unwrap();
-        //     let gen = TatpGenerator::new(thread_id, sf, set_seed, seed, use_nurand);
-        //     ParameterGenerator::Tatp(gen)
-        // }
-        // "ycsb" => {
-        //     let theta = config.get_float("theta").unwrap();
-        //     let update_rate = config.get_float("update_rate").unwrap();
-        //     let serializable_rate = config.get_float("serializable_rate").unwrap();
-
-        //     let gen = YcsbGenerator::new(
-        //         thread_id,
-        //         sf,
-        //         set_seed,
-        //         seed,
-        //         theta,
-        //         update_rate,
-        //         serializable_rate,
-        //     );
-        //     ParameterGenerator::Ycsb(gen)
-        // }
         _ => unimplemented!(),
     }
 }

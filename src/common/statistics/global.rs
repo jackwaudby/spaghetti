@@ -83,8 +83,16 @@ impl GlobalStatistics {
         (self.total_time / 1000000) as u64
     }
 
+    fn get_txn_time(&self) -> u64 {
+        (self.tx / 1000000) as u64
+    }
+
     fn get_wait_time(&self) -> u64 {
         (self.wait_manager / 1000000) as u64
+    }
+
+    fn get_commit_time(&self) -> u64 {
+        (self.commit / 1000000) as u64
     }
 
     fn get_latency(&self) -> u64 {
@@ -98,12 +106,12 @@ impl GlobalStatistics {
             "cores": self.cores,
             "protocol": self.protocol,
             "runtime (ms)": self.get_runtime(),
-            "total_time (ms)":  self.get_total_time(),
+            "cum_runtime (ms)":  self.get_total_time(),
             "commits": self.commits,
             "aborts": self.aborts,
             "not_found": self.not_found as u64,
-            "txn_time (ms)": self.tx as u64,
-            "commit_time (ms)": self.commit as u64,
+            "txn_time (ms)": self.get_txn_time(),
+            "commit_time (ms)": self.get_commit_time(),
             "wait_time (ms)": self.get_wait_time(),
             "latency (ms)": self.get_latency()
         });

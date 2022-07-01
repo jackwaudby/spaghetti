@@ -520,7 +520,7 @@ impl MixedSerializationGraph {
         self.cleanup();
         self.tidyup(database, false);
 
-        NonFatalError::NonSerializable // TODO: return the why
+        SerializationGraphError::CycleFound.into() // TODO: return the why
     }
 
     pub fn cleanup(&self) {

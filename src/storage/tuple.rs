@@ -67,7 +67,7 @@ impl Internal {
 
     pub fn set_value(&mut self, value: &mut Data) -> Result<OpResult, NonFatalError> {
         match self.state {
-            State::Modified => Err(NonFatalError::RowDirty("TODO".to_string())),
+            State::Modified => panic!("dirty row"),
 
             State::Clean => {
                 self.state = State::Modified; // set state

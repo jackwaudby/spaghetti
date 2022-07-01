@@ -485,7 +485,7 @@ impl SerializationGraph {
         self.cleanup();
         self.tidyup(database, false);
 
-        NonFatalError::NonSerializable // TODO: return the why
+        SerializationGraphError::CycleFound.into() // TODO: return the why
     }
 
     /// Cleanup node after committed or aborted.

@@ -114,10 +114,11 @@ impl LocalStatistics {
         self.latency_start = Instant::now();
     }
 
-    // pub fn stop_latency(&mut self, tx_time: u128) {
-    // let add = self.latency_start.elapsed().as_nanos() - tx_time;
-    pub fn stop_latency(&mut self) {
-        self.latency_cum += self.latency_start.elapsed().as_nanos();
+    pub fn stop_latency(&mut self, tx_time: u128) {
+        let add = self.latency_start.elapsed().as_nanos() - tx_time;
+        // pub fn stop_latency(&mut self) {
+        // self.latency_cum += self.latency_start.elapsed().as_nanos();
+        self.latency_cum += add;
     }
 
     pub fn get_latency_cum(&self) -> u128 {

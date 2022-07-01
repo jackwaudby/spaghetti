@@ -1,202 +1,131 @@
-use crate::common::{
-    message::Success, stored_procedure_result::StoredProcedureResult, value_id::ValueId,
-};
+use crate::common::error::NonFatalError;
+use crate::common::stats_bucket::StatsBucket;
+use crate::common::value_id::ValueId;
 use crate::scheduler::Scheduler;
 use crate::storage::{datatype::Data, Database};
 use crate::workloads::smallbank::{
     error::SmallBankError,
     paramgen::{Amalgamate, Balance, DepositChecking, SendPayment, TransactSaving, WriteCheck},
 };
-use crate::workloads::IsolationLevel;
 
 use std::convert::TryFrom;
-use tracing::instrument;
 
 /// Balance transaction.
 ///
 /// Sum the balances of a customer's checking and savings accounts.
-#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn balance<'a>(
+    meta: &mut StatsBucket,
     params: Balance,
     scheduler: &'a Scheduler,
     database: &'a Database,
-    isolation: IsolationLevel,
-) -> StoredProcedureResult {
+) -> Result<(), NonFatalError> {
     let offset = params.get_name();
-    let mut meta = scheduler.begin(isolation);
 
     // get customer id
     let cust = ValueId::new(0, 0, offset);
-    if let Err(error) = scheduler.read_value(cust, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(cust, meta, database)?;
 
     // get checking balance
     let checking = ValueId::new(1, 1, offset);
-    if let Err(error) = scheduler.read_value(checking, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(checking, meta, database)?;
 
     // get checking balance
     let savings = ValueId::new(2, 1, offset);
-    if let Err(error) = scheduler.read_value(savings, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(savings, meta, database)?;
 
-    if let Err(error) = scheduler.commit(&mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
-
-    let success = Success::default(meta.get_transaction_id());
-    StoredProcedureResult::from_success(success, isolation, &mut meta)
+    Ok(())
 }
 
 /// Deposit checking transaction
 ///
 /// Increase checking balance by X amount.
-#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn deposit_checking<'a>(
+    meta: &mut StatsBucket,
     params: DepositChecking,
     scheduler: &'a Scheduler,
     database: &'a Database,
-    isolation: IsolationLevel,
-) -> StoredProcedureResult {
+) -> Result<(), NonFatalError> {
     let offset = params.get_name();
-
-    let mut meta = scheduler.begin(isolation);
 
     // get customer id
     let cust = ValueId::new(0, 0, offset);
-    if let Err(error) = scheduler.read_value(cust, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(cust, meta, database)?;
 
     // get current balance
     let bal = ValueId::new(1, 1, offset);
-    let current_balance = match scheduler.read_value(bal.clone(), &mut meta, database) {
-        Ok(bal) => bal,
-        Err(error) => {
-            return StoredProcedureResult::from_error(error, isolation, &mut meta);
-        }
-    };
+    let current_balance = scheduler.read_value(bal.clone(), meta, database)?;
 
     // update checking balance
     let mut new_val = Data::from(f64::try_from(current_balance).unwrap() + params.get_value());
-    if let Err(error) = scheduler.write_value(&mut new_val, bal, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.write_value(&mut new_val, bal, meta, database)?;
 
-    if let Err(error) = scheduler.commit(&mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
-
-    let success = Success::default(meta.get_transaction_id());
-    StoredProcedureResult::from_success(success, isolation, &mut meta)
+    Ok(())
 }
 
 /// TransactSavings transaction.
 ///
 /// TODO: logic as per Durner, but does not make sense.
-#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn transact_savings<'a>(
+    meta: &mut StatsBucket,
     params: TransactSaving,
     scheduler: &'a Scheduler,
     database: &'a Database,
-    isolation: IsolationLevel,
-) -> StoredProcedureResult {
+) -> Result<(), NonFatalError> {
     let offset = params.name;
-
-    let mut meta = scheduler.begin(isolation);
 
     // get customer id
     let cust = ValueId::new(0, 0, offset);
-    if let Err(error) = scheduler.read_value(cust, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(cust, meta, database)?;
 
     // get current balance
     let savings = ValueId::new(2, 1, offset);
-    let res = match scheduler.read_value(savings.clone(), &mut meta, database) {
-        Ok(bal) => bal,
-        Err(error) => {
-            return StoredProcedureResult::from_error(error, isolation, &mut meta);
-        }
-    };
+    let res = scheduler.read_value(savings.clone(), meta, database)?;
 
     // abort if balance would be negative
     let balance = f64::try_from(res).unwrap() + params.value;
     if balance < 0.0 {
-        scheduler.abort(&mut meta, database);
-        let error = SmallBankError::InsufficientFunds.into();
-
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
+        scheduler.abort(meta, database);
+        return Err(SmallBankError::InsufficientFunds.into());
     }
 
     //  update saving balance
     let val = &mut Data::from(balance);
-    if let Err(error) = scheduler.write_value(val, savings, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.write_value(val, savings, meta, database)?;
 
-    if let Err(error) = scheduler.commit(&mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
-
-    let success = Success::default(meta.get_transaction_id());
-    StoredProcedureResult::from_success(success, isolation, &mut meta)
+    Ok(())
 }
 
 /// Amalgamate transaction.
 ///
 /// Move all the funds from one customer to another.
-#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn amalgmate<'a>(
+    meta: &mut StatsBucket,
     params: Amalgamate,
     scheduler: &'a Scheduler,
     database: &'a Database,
-    isolation: IsolationLevel,
-) -> StoredProcedureResult {
+) -> Result<(), NonFatalError> {
     let offset1 = params.name1;
     let offset2 = params.name2;
-
-    let mut meta = scheduler.begin(isolation);
 
     // cust1
     let cust1 = ValueId::new(0, 0, offset1);
     let savings1 = ValueId::new(2, 1, offset1);
     let checking1 = ValueId::new(1, 1, offset1);
 
-    if let Err(error) = scheduler.read_value(cust1, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(cust1, meta, database)?;
 
     // read 2 -- current savings balance (customer1)
-    let res1 = match scheduler.read_value(savings1, &mut meta, database) {
-        Ok(bal) => bal,
-        Err(error) => {
-            return StoredProcedureResult::from_error(error, isolation, &mut meta);
-        }
-    };
+    let res1 = scheduler.read_value(savings1, meta, database)?;
 
     // read 3 -- current checking balance (customer1)
-    let res2 = match scheduler.read_value(checking1, &mut meta, database) {
-        Ok(bal) => bal,
-        Err(error) => {
-            return StoredProcedureResult::from_error(error, isolation, &mut meta);
-        }
-    };
-
-    let val = &mut Data::Double(0.0);
+    let res2 = scheduler.read_value(checking1, meta, database)?;
 
     // write 1 -- update saving balance (cust1)
-    if let Err(error) = scheduler.write_value(val, savings1, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    let val = &mut Data::Double(0.0);
+    scheduler.write_value(val, savings1, meta, database)?;
 
     // write 2 -- update checking balance (cust1)
-    if let Err(error) = scheduler.write_value(val, checking1, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.write_value(val, checking1, meta, database)?;
 
     // amount to send
     let sum = f64::try_from(res1).unwrap() + f64::try_from(res2).unwrap();
@@ -206,72 +135,41 @@ pub fn amalgmate<'a>(
     let checking2 = ValueId::new(1, 1, offset2);
 
     // read 4 -- get customer2 id
-    if let Err(error) = scheduler.read_value(cust2, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(cust2, meta, database)?;
 
     // read 5 -- current checking balance (customer2)
-    let res3 = match scheduler.read_value(checking2, &mut meta, database) {
-        Ok(bal) => bal,
-        Err(error) => {
-            return StoredProcedureResult::from_error(error, isolation, &mut meta);
-        }
-    };
-
-    let bal = &mut Data::Double(sum + f64::try_from(res3).unwrap());
+    let res3 = scheduler.read_value(checking2, meta, database)?;
 
     // write 3 -- update checking balance (cust2)
-    if let Err(error) = scheduler.write_value(bal, checking2, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    let bal = &mut Data::Double(sum + f64::try_from(res3).unwrap());
+    scheduler.write_value(bal, checking2, meta, database)?;
 
-    // commit
-    if let Err(error) = scheduler.commit(&mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
-
-    let success = Success::default(meta.get_transaction_id());
-    StoredProcedureResult::from_success(success, isolation, &mut meta)
+    Ok(())
 }
 
 /// Write check transaction.
 ///
 /// Write a check against an account taking funds from checking; applying overdraft charge if needed.
-#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn write_check<'a>(
+    meta: &mut StatsBucket,
     params: WriteCheck,
     scheduler: &'a Scheduler,
     database: &'a Database,
-    isolation: IsolationLevel,
-) -> StoredProcedureResult {
+) -> Result<(), NonFatalError> {
     let offset = params.name as usize;
-
-    let mut meta = scheduler.begin(isolation);
 
     // get customer id
     let cust = ValueId::new(0, 0, offset);
-    if let Err(error) = scheduler.read_value(cust, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(cust, meta, database)?;
 
     // get savings balance
     let savings = ValueId::new(2, 1, offset);
-    let bal1 = match scheduler.read_value(savings, &mut meta, database) {
-        Ok(bal) => bal,
-        Err(error) => {
-            return StoredProcedureResult::from_error(error, isolation, &mut meta);
-        }
-    };
+    let bal1 = scheduler.read_value(savings, meta, database)?;
     let bal1 = f64::try_from(bal1).unwrap();
 
     // get checking balance
     let checking = ValueId::new(1, 1, offset);
-    let bal2 = match scheduler.read_value(checking, &mut meta, database) {
-        Ok(bal) => bal,
-        Err(error) => {
-            return StoredProcedureResult::from_error(error, isolation, &mut meta);
-        }
-    };
+    let bal2 = scheduler.read_value(checking, meta, database)?;
     let bal2 = f64::try_from(bal2).unwrap();
 
     // apply overdraft charge
@@ -283,93 +181,57 @@ pub fn write_check<'a>(
 
     // update checking balance
     let new_check = &mut Data::Double(total - amount);
-    if let Err(error) = scheduler.write_value(new_check, checking, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.write_value(new_check, checking, meta, database)?;
 
-    // commit
-    if let Err(error) = scheduler.commit(&mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
-
-    let success = Success::default(meta.get_transaction_id());
-    StoredProcedureResult::from_success(success, isolation, &mut meta)
+    Ok(())
 }
 
 /// Send payment transaction.
 ///
 /// Transfer money between accounts; if there is sufficient funds in the checking account.
-#[instrument(level = "debug", skip(params, scheduler, database, isolation))]
 pub fn send_payment<'a>(
+    meta: &mut StatsBucket,
     params: SendPayment,
     scheduler: &'a Scheduler,
     database: &'a Database,
-    isolation: IsolationLevel,
-) -> StoredProcedureResult {
+) -> Result<(), NonFatalError> {
     let offset1 = params.name1;
     let offset2 = params.name2;
 
-    let mut meta = scheduler.begin(isolation);
-
     // get cust1 id
     let cust1 = ValueId::new(0, 0, offset1);
-    if let Err(error) = scheduler.read_value(cust1, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(cust1, meta, database)?;
 
     // get cust1 checking
     let checking1 = ValueId::new(1, 1, offset1);
-    let bal1 = match scheduler.read_value(checking1.clone(), &mut meta, database) {
-        Ok(bal) => bal,
-        Err(error) => {
-            return StoredProcedureResult::from_error(error, isolation, &mut meta);
-        }
-    };
+    let bal1 = scheduler.read_value(checking1.clone(), meta, database)?;
 
     // if balance would be negative then abort
     let mut bal1 = f64::try_from(bal1).unwrap();
     bal1 -= params.value;
     if bal1 < 0.0 {
-        scheduler.abort(&mut meta, database);
-        let error = SmallBankError::InsufficientFunds.into();
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
+        scheduler.abort(meta, database);
+        return Err(SmallBankError::InsufficientFunds.into());
     }
 
     // update value cust1 checking balance to new balance
     let val1 = &mut Data::Double(bal1);
-    if let Err(error) = scheduler.write_value(val1, checking1, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.write_value(val1, checking1, meta, database)?;
 
     // get cust2 id
     let cust2 = ValueId::new(0, 0, offset2);
-    if let Err(error) = scheduler.read_value(cust2, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.read_value(cust2, meta, database)?;
 
     // get cust2 checking
     let checking2 = ValueId::new(1, 1, offset2);
-    let bal2 = match scheduler.read_value(checking2.clone(), &mut meta, database) {
-        Ok(bal) => bal,
-        Err(error) => {
-            return StoredProcedureResult::from_error(error, isolation, &mut meta);
-        }
-    };
+    let bal2 = scheduler.read_value(checking2.clone(), meta, database)?;
 
     let mut bal2 = f64::try_from(bal2).unwrap();
     bal2 += params.value;
 
     // update cust2 checking balance
     let val2 = &mut Data::Double(bal2);
-    if let Err(error) = scheduler.write_value(val2, checking2, &mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
+    scheduler.write_value(val2, checking2, meta, database)?;
 
-    // commit
-    if let Err(error) = scheduler.commit(&mut meta, database) {
-        return StoredProcedureResult::from_error(error, isolation, &mut meta);
-    }
-
-    let success = Success::default(meta.get_transaction_id());
-    StoredProcedureResult::from_success(success, isolation, &mut meta)
+    Ok(())
 }

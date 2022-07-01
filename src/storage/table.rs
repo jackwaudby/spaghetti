@@ -73,10 +73,7 @@ impl Table {
 
         match offset {
             Some(offset) => Ok(*offset),
-            None => Err(NonFatalError::RowNotFound(
-                "todo".to_string(),
-                "todo".to_string(),
-            )),
+            None => panic!("not found"),
         }
     }
 

@@ -150,7 +150,7 @@ impl NoConcurrencyControl {
     pub fn abort(&self, _meta: &mut StatsBucket, database: &Database) -> NonFatalError {
         self.tidy_up(database);
 
-        NonFatalError::NonSerializable
+        NonFatalError::NoccError
     }
 }
 
