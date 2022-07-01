@@ -88,7 +88,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 let problem_transactions = meta.get_problem_transactions();
                                 let g = wait_manager
                                     .wait(transaction_id.extract(), problem_transactions);
-                                guards.guards.replace(g);
+                                // guards.guards.replace(g);
 
                                 stats.stop_wait_manager();
                             }
