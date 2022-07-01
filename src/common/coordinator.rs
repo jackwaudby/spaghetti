@@ -64,10 +64,10 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                 response = execute_logic(&mut meta, request.clone(), scheduler, database);
 
                 //                if transaction was restarted and had some locks
-                if guards.guards.is_some() {
-                    let g = guards.guards.take().unwrap();
-                    wait_manager.release(g);
-                }
+                // if guards.guards.is_some() {
+                //     let g = guards.guards.take().unwrap();
+                //     wait_manager.release(g);
+                // }
 
                 match response {
                     Ok(_) => {
@@ -85,9 +85,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
                                 restart = true;
                                 stats.start_wait_manager();
-                                let problem_transactions = meta.get_problem_transactions();
-                                let g = wait_manager
-                                    .wait(transaction_id.extract(), problem_transactions);
+                                // let problem_transactions = meta.get_problem_transactions();
+                                // let g = wait_manager
+                                //     .wait(transaction_id.extract(), problem_transactions);
                                 // guards.guards.replace(g);
 
                                 stats.stop_wait_manager();
@@ -97,9 +97,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     Err(e) => match e {
                         NonFatalError::SerializationGraphError(_) | NonFatalError::NoccError => {
                             restart = true;
-                            stats.start_wait_manager();
-                            let problem_transactions = meta.get_problem_transactions();
-                            wait_manager.wait(transaction_id.extract(), problem_transactions);
+                            // stats.start_wait_manager();
+                            // let problem_transactions = meta.get_problem_transactions();
+                            // wait_manager.wait(transaction_id.extract(), problem_transactions);
                             stats.start_wait_manager();
                         }
                         NonFatalError::SmallBankError(_) => {
