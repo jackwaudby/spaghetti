@@ -100,7 +100,7 @@ impl SerializationGraph {
             if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
                 this_ref.set_cascading_abort();
                 let fid = from_ref.get_full_id();
-                this_ref.set_abort_through(fid);
+                // this_ref.set_abort_through(fid);
                 return false; // cascadingly abort (this)
             }
 
@@ -525,7 +525,7 @@ impl SerializationGraph {
                     let that = unsafe { &*(*that_id as *const Node) };
                     if this.is_aborted() {
                         let fid = this.get_full_id();
-                        that.set_abort_through(fid);
+                        // that.set_abort_through(fid);
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
@@ -540,7 +540,7 @@ impl SerializationGraph {
                     let that = unsafe { &*(*that as *const Node) };
                     if this.is_aborted() {
                         let fid = this.get_full_id();
-                        that.set_abort_through(fid);
+                        // that.set_abort_through(fid);
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
