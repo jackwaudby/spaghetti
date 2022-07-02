@@ -1,9 +1,11 @@
 use crate::storage::access::TransactionId;
 use crate::workloads::IsolationLevel;
 
+use crate::cpp::{Mutex as RwLock, MutexGuard, SharedMutexGuard};
+
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
-use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+// use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use std::cell::UnsafeCell;
 use std::fmt;
@@ -48,17 +50,18 @@ pub struct Node {
     cleaned: AtomicBool,
     checked: AtomicBool,
     early: AtomicBool,
-    lock: RwLock<u32>,
+    //    lock: RwLock<u32>,
+    lock: RwLock<u8>,
     abort_through: UnsafeCell<TransactionId>,
 }
 
 impl Node {
-    pub fn read(&self) -> RwLockReadGuard<u32> {
-        self.lock.read()
+    pub fn read(&self) -> SharedMutexGuard<u8> {
+        self.lock.acquire_shared()
     }
 
-    pub fn write(&self) -> RwLockWriteGuard<u32> {
-        self.lock.write()
+    pub fn write(&self) -> MutexGuard<u8> {
+        self.lock.acquire()
     }
 
     pub fn new(

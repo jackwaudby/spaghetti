@@ -52,14 +52,14 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             stats.start_latency();
 
             let mut response;
-            let mut guards = WaitGuards::new();
+            // let mut guard s = WaitGuards::new();
             let mut restart = false;
 
             loop {
                 let mut meta = scheduler.begin(isolation_level);
 
                 stats.start_tx();
-                let transaction_id = meta.get_transaction_id();
+                // let transaction_id = meta.get_transaction_id();
 
                 response = execute_logic(&mut meta, request.clone(), scheduler, database);
 
