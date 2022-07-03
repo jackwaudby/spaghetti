@@ -58,9 +58,7 @@ impl NoConcurrencyControl {
         let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
         let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
-        let s = std::time::Instant::now();
         let n = Node::new(thread_id, thread_ctr, incoming, outgoing, None);
-        let d = s.elapsed().as_nanos();
         let node = Box::new(n); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
         let id = ptr as usize; // get id
