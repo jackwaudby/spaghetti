@@ -191,9 +191,7 @@ impl SerializationGraph {
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
 
-        // let s = std::time::Instant::now();
         let (ref_id, thread_id, thread_ctr, d) = self.create_node(); // create node
-                                                                     // let d = s.elapsed().as_nanos();
 
         let guard = epoch::pin(); // pin thread
 

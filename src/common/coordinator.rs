@@ -14,6 +14,7 @@ use config::Config;
 use std::sync::mpsc;
 use tracing::debug;
 
+use super::error::SerializationGraphError;
 use super::stats_bucket::StatsBucket;
 
 // struct WaitGuards<'a> {
@@ -97,11 +98,16 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         }
                     }
                     Err(e) => match e {
-                        NonFatalError::SerializationGraphError(_) | NonFatalError::NoccError => {
+                        NonFatalError::NoccError => {}
+                        NonFatalError::SerializationGraphError(e) => {
                             // case 2 when logic fails
 
                             stats.inc_aborts();
-                            stats.inc_logic_aborts();
+
+                            if let SerializationGraphError::CascadingAbort = e {
+                                stats.inc_logic_aborts();
+                            }
+
                             stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
