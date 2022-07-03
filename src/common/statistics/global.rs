@@ -141,7 +141,7 @@ impl GlobalStatistics {
         (self.a_commit_cum / 1000000) as u64
     }
 
-    fn get_thpt(&self) -> f64 {
+    fn get_thpt(&mut self) -> f64 {
         let total = (self.commits + self.not_found) as f64;
         total / (self.get_runtime() as f64 / 1000.0)
     }
