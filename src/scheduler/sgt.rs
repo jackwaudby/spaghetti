@@ -206,18 +206,20 @@ impl SerializationGraph {
     }
 
     pub fn create_node(&self) -> (usize, usize, usize, u128) {
+        let s = std::time::Instant::now();
+
         let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
         let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
-        let s = std::time::Instant::now();
 
         let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
-        let d = s.elapsed().as_nanos();
 
         let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing, None)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
         let id = ptr as usize; // get id
         unsafe { (*ptr).set_id(id) }; // set id on node
+        let d = s.elapsed().as_nanos();
+
         SerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
         (id, thread_id, thread_ctr, d)
