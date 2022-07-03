@@ -75,7 +75,12 @@ impl GlobalStatistics {
         let completed = self.commits + self.not_found;
         let expected = self.cores * self.txn_per_core;
 
-        assert!(completed == expected);
+        assert!(
+            completed == expected,
+            "completed: {}, expected: {}",
+            completed,
+            expected
+        );
     }
 
     pub fn merge(&mut self, local: LocalStatistics) {
