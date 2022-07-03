@@ -474,10 +474,17 @@ impl SerializationGraph {
             }
 
             // no incoming edges and no cycle so commit
-            self.tidyup(database, true);
-            this.set_committed();
-            self.cleanup();
+            let ops = self.get_operations();
 
+            self.commit_writes(database, true, &ops);
+            this.set_committed();
+            self.cleanup(this);
+            self.remove_accesses(database, &ops);
+
+            SerializationGraph::EG.with(|x| {
+                let guard = x.borrow_mut().take();
+                drop(guard)
+            });
             break;
         }
 
@@ -486,29 +493,25 @@ impl SerializationGraph {
 
     /// Abort operation.
     pub fn abort(&self, _meta: &mut StatsBucket, database: &Database) {
-        let this = unsafe { &*self.get_transaction() };
-        // let incoming = this.get_incoming();
-        // for edge in incoming {
-        //     match edge {
-        //         Edge::WriteWrite(id) => {
-        //             meta.add_problem_transaction(id as u64);
-        //         }
-        //         Edge::WriteRead(id) => {
-        //             meta.add_problem_transaction(id as u64);
-        //         }
-        //         Edge::ReadWrite(id) => {}
-        //     }
-        // }
-        // meta.add_problem_transaction(this.get_abort_through());
+        let ops = self.get_operations();
 
+        self.commit_writes(database, false, &ops);
+
+        let this = unsafe { &*self.get_transaction() };
         this.set_aborted();
-        self.cleanup();
-        self.tidyup(database, false);
+
+        self.cleanup(this);
+
+        self.remove_accesses(database, &ops);
+
+        SerializationGraph::EG.with(|x| {
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
     }
 
     /// Cleanup node after committed or aborted.
-    pub fn cleanup(&self) {
-        let this = unsafe { &*self.get_transaction() }; // shared reference to node
+    pub fn cleanup(&self, this: &Node) {
         let this_id = self.get_transaction() as usize; // node id
 
         // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)
@@ -590,17 +593,13 @@ impl SerializationGraph {
                 x.borrow().as_ref().unwrap().flush();
             }
 
-            let guard = x.borrow_mut().take();
-            drop(guard)
+            // let guard = x.borrow_mut().take();
+            // drop(guard)
         });
     }
 
-    /// Tidyup rwtables and tuples
-    pub fn tidyup(&self, database: &Database, commit: bool) {
-        let ops = self.get_operations();
-
-        // commit and revert state
-        for op in &ops {
+    fn commit_writes(&self, database: &Database, commit: bool, ops: &Vec<Operation>) {
+        for op in ops {
             let Operation {
                 op_type,
                 table_id,
@@ -620,7 +619,9 @@ impl SerializationGraph {
                 }
             }
         }
+    }
 
+    fn remove_accesses(&self, database: &Database, ops: &Vec<Operation>) {
         // remove accesses
         for op in ops {
             let Operation {
@@ -631,15 +632,15 @@ impl SerializationGraph {
                 ..
             } = op;
 
-            let table = database.get_table(table_id);
-            let rwtable = table.get_rwtable(offset);
+            let table = database.get_table(*table_id);
+            let rwtable = table.get_rwtable(*offset);
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv);
+                    rwtable.erase(*prv);
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv);
+                    rwtable.erase(*prv);
                 }
             }
         }
