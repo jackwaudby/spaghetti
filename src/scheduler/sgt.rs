@@ -186,15 +186,23 @@ impl SerializationGraph {
         aborted || cascading_abort
     }
 
-    pub fn begin(&self) -> TransactionId {
+    pub fn begin(&self) -> (TransactionId, u128) {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
+
+        let s = std::time::Instant::now();
         let (ref_id, thread_id, thread_ctr) = self.create_node(); // create node
+        let d = s.elapsed().as_nanos();
+
         let guard = epoch::pin(); // pin thread
+
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
-        TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
+        (
+            TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr),
+            d,
+        )
     }
 
     pub fn create_node(&self) -> (usize, usize, usize) {
