@@ -181,9 +181,9 @@ impl NoConcurrencyControl {
                 drop(boxed_node);
             });
 
-            // if cnt % 64 == 0 {
-            // x.borrow().as_ref().unwrap().flush();
-            // }
+            if cnt % 64 == 0 {
+                x.borrow().as_ref().unwrap().flush();
+            }
 
             let guard = x.borrow_mut().take();
             drop(guard)
