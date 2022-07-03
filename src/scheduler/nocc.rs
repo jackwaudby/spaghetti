@@ -1,6 +1,7 @@
 use crate::common::error::NonFatalError;
 use crate::common::error::SerializationGraphError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
+use crate::scheduler::common::Edge;
 use crate::scheduler::common::Node;
 use crate::scheduler::StatsBucket;
 use crate::scheduler::ValueId;
@@ -23,6 +24,8 @@ use tracing::info;
 pub struct NoConcurrencyControl {
     txn_info: ThreadLocal<RefCell<TransactionInformation>>,
     txn_ctr: ThreadLocal<RefCell<usize>>,
+    visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
+    stack: ThreadLocal<RefCell<Vec<Edge>>>,
 }
 
 impl NoConcurrencyControl {
@@ -43,6 +46,8 @@ impl NoConcurrencyControl {
         Self {
             txn_ctr: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
+            visited: ThreadLocal::new(),
+            stack: ThreadLocal::new(),
         }
     }
 
@@ -72,6 +77,109 @@ impl NoConcurrencyControl {
         NoConcurrencyControl::EG.with(|x| x.borrow_mut().replace(guard));
 
         TransactionId::NoConcurrencyControl
+    }
+
+    /// Insert an edge: (from) --> (this)
+    pub fn insert_and_check(&self, from: Edge) -> bool {
+        let this_ref = unsafe { &*self.get_transaction() };
+        let this_id = self.get_transaction() as usize;
+
+        // prepare
+        let (from_id, rw, out_edge) = match from {
+            Edge::ReadWrite(from_id) => (from_id, true, Edge::ReadWrite(this_id)),
+            Edge::WriteRead(from_id) => (from_id, false, Edge::WriteRead(this_id)),
+            Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
+        };
+
+        if this_id == from_id {
+            return true; // check for (this) --> (this)
+        }
+
+        loop {
+            if this_ref.incoming_edge_exists(&from) {
+                return true; // check if (from) --> (this) already exists
+            };
+
+            let from_ref = unsafe { &*(from_id as *const Node) };
+
+            if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
+                this_ref.set_cascading_abort();
+                // let fid = from_ref.get_full_id();
+                // this_ref.set_abort_through(fid);
+                return false; // cascadingly abort (this)
+            }
+
+            let from_rlock = from_ref.read();
+            if from_ref.is_cleaned() {
+                drop(from_rlock);
+                return true; // if from is cleaned then it has terminated do not insert edge
+            }
+
+            if from_ref.is_checked() {
+                drop(from_rlock);
+                continue; // if (from) checked in process of terminating so try again
+            }
+
+            from_ref.insert_outgoing(out_edge); // (from)
+            this_ref.insert_incoming(from); // (to)
+            drop(from_rlock);
+            let is_cycle = self.cycle_check(); // cycle check
+            return !is_cycle;
+        }
+    }
+
+    pub fn cycle_check(&self) -> bool {
+        let start_id = self.get_transaction() as usize;
+        let this = unsafe { &*self.get_transaction() };
+
+        let mut visited = self
+            .visited
+            .get_or(|| RefCell::new(FxHashSet::default()))
+            .borrow_mut();
+
+        let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
+
+        visited.clear();
+        stack.clear();
+
+        let this_rlock = this.read();
+        let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
+        let mut out = outgoing.into_iter().collect();
+        stack.append(&mut out);
+        drop(this_rlock);
+
+        while let Some(edge) = stack.pop() {
+            let current = match edge {
+                Edge::ReadWrite(node) => node,
+                Edge::WriteWrite(node) => node,
+                Edge::WriteRead(node) => node,
+            };
+
+            if start_id == current {
+                return true; // cycle found
+            }
+
+            if visited.contains(&current) {
+                continue; // already visited
+            }
+
+            visited.insert(current);
+
+            let current = unsafe { &*(current as *const Node) };
+
+            let rlock = current.read();
+            let val1 =
+                !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
+            if val1 {
+                let outgoing = current.get_outgoing();
+                let mut out = outgoing.into_iter().collect();
+                stack.append(&mut out);
+            }
+
+            drop(rlock);
+        }
+
+        false
     }
 
     /// Read a value in a column at some offset.
