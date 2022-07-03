@@ -81,6 +81,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 break;
                             }
                             Err(_) => {
+                                // case 1 when commit fails
                                 stats.inc_aborts();
 
                                 restart = true;
@@ -96,6 +97,10 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     }
                     Err(e) => match e {
                         NonFatalError::SerializationGraphError(_) | NonFatalError::NoccError => {
+                            // case 2 when logic fails
+
+                            stats.inc_aborts();
+
                             restart = true;
                             // stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
