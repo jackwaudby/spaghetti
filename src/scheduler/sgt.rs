@@ -263,9 +263,13 @@ impl SerializationGraph {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id, _, _) = from {
-                            if !self.insert_and_check(Edge::WriteRead(*from_id)) {
-                                cyclic = true;
-                                break;
+                            let from = unsafe { &*(*from_id as *const Node) };
+
+                            if !from.is_committed() {
+                                if !self.insert_and_check(Edge::WriteRead(*from_id)) {
+                                    cyclic = true;
+                                    break;
+                                }
                             }
                         }
                     }
@@ -400,9 +404,12 @@ impl SerializationGraph {
                 match access {
                     Access::Read(from) => {
                         if let TransactionId::SerializationGraph(from_addr, _, _) = from {
-                            if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
-                                cyclic = true;
-                                break;
+                            let from = unsafe { &*(*from_addr as *const Node) };
+                            if !from.is_committed() {
+                                if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
+                                    cyclic = true;
+                                    break;
+                                }
                             }
                         }
                     }
