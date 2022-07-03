@@ -63,7 +63,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
                 response = execute_logic(&mut meta, request.clone(), scheduler, database);
 
-                //                if transaction was restarted and had some locks
+                // if transaction was restarted and had some locks
                 // if guards.guards.is_some() {
                 //     let g = guards.guards.take().unwrap();
                 //     wait_manager.release(g);

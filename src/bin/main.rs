@@ -114,5 +114,8 @@ fn main() {
     while let Ok(local_stats) = rx.recv() {
         global_stats.merge(local_stats);
     }
+
+    global_stats.validate();
+
     global_stats.print_to_console();
 }

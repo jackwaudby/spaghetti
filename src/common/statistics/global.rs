@@ -11,7 +11,8 @@ pub struct GlobalStatistics {
     scale_factor: u64,
     protocol: String,
     workload: String,
-    cores: u32,
+    cores: u64,
+    txn_per_core: u64,
     start: Option<Instant>,
     end: Option<Duration>,
     total_time: u128,
@@ -29,13 +30,15 @@ impl GlobalStatistics {
         let scale_factor = config.get_int("scale_factor").unwrap() as u64;
         let protocol = config.get_str("protocol").unwrap();
         let workload = config.get_str("workload").unwrap();
-        let cores = config.get_int("cores").unwrap() as u32;
+        let cores = config.get_int("cores").unwrap() as u64;
+        let txn_per_core = config.get_int("transactions").unwrap() as u64;
 
         GlobalStatistics {
             scale_factor,
             protocol,
             workload,
             cores,
+            txn_per_core,
             start: None,
             end: None,
             total_time: 0,
@@ -66,6 +69,13 @@ impl GlobalStatistics {
             Some(elasped) => elasped.as_millis() as u64,
             None => 0,
         }
+    }
+
+    pub fn validate(&self) {
+        let completed = self.commits + self.not_found;
+        let expected = self.cores * self.txn_per_core;
+
+        assert!(completed == expected);
     }
 
     pub fn merge(&mut self, local: LocalStatistics) {
