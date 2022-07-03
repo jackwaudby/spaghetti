@@ -8,6 +8,8 @@ pub struct LocalStatistics {
     aborts: u64,
     logic_aborts: u64,
     commit_aborts: u64,
+    read_cf: u64,
+    read_ca: u64,
     not_found: u64,
     tx_start: Instant,
     tx_cum: u128,
@@ -28,6 +30,8 @@ impl LocalStatistics {
             aborts: 0,
             logic_aborts: 0,
             commit_aborts: 0,
+            read_cf: 0,
+            read_ca: 0,
             not_found: 0,
             tx_start: Instant::now(),
             tx_cum: 0,
@@ -58,6 +62,22 @@ impl LocalStatistics {
 
     pub fn get_commits(&self) -> u64 {
         self.commits
+    }
+
+    pub fn inc_read_cf(&mut self) {
+        self.read_cf += 1;
+    }
+
+    pub fn get_read_cf(&self) -> u64 {
+        self.read_cf
+    }
+
+    pub fn inc_read_ca(&mut self) {
+        self.read_ca += 1;
+    }
+
+    pub fn get_read_ca(&self) -> u64 {
+        self.read_ca
     }
 
     pub fn inc_commit_aborts(&mut self) {

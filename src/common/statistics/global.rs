@@ -20,6 +20,8 @@ pub struct GlobalStatistics {
     aborts: u64,
     logic_aborts: u64,
     commit_aborts: u64,
+    read_cf: u64,
+    read_ca: u64,
     not_found: u64,
     tx: u128,
     commit: u128,
@@ -48,6 +50,8 @@ impl GlobalStatistics {
             aborts: 0,
             logic_aborts: 0,
             commit_aborts: 0,
+            read_cf: 0,
+            read_ca: 0,
             not_found: 0,
             tx: 0,
             commit: 0,
@@ -98,6 +102,8 @@ impl GlobalStatistics {
         self.commit += local.get_commit_cum();
         self.wait_manager += local.get_wait_manager_cum();
         self.latency += local.get_latency_cum();
+        self.read_cf += local.get_read_cf();
+        self.read_ca += local.get_read_ca();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -141,13 +147,15 @@ impl GlobalStatistics {
             "aborts": self.aborts,
             "   commits": self.commit_aborts,
             "   logic": self.logic_aborts,
+            "   read_cf": self.read_cf,
+            "   read_ca": self.read_ca,
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.get_txn_time(),
             "commit_time (ms)": self.get_commit_time(),
             "wait_time (ms)": self.get_wait_time(),
             "latency (ms)": self.get_latency(),
-            "thpt: ": self.get_thpt(),
-            "abr: ": self.get_abr()
+            "thpt": format!("{:.2}",self.get_thpt()),
+            "abr": format!("{:.2}",self.get_abr())
 
         });
 

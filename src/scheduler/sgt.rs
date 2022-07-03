@@ -238,7 +238,7 @@ impl SerializationGraph {
 
         if this.is_cascading_abort() {
             self.abort(meta, database);
-            return Err(SerializationGraphError::CascadingAbort.into());
+            return Err(SerializationGraphError::ReadOpCycleFound.into());
         }
 
         let table = database.get_table(table_id);
@@ -282,7 +282,7 @@ impl SerializationGraph {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
             self.abort(meta, database); // abort
-            return Err(SerializationGraphError::CycleFound.into());
+            return Err(SerializationGraphError::ReadOpCycleFound.into());
         }
 
         let vals = table

@@ -99,6 +99,18 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::SerializationGraphError(e) => {
                             // case 2 when logic fails
 
+                            match e {
+                                SerializationGraphError::ReadOpCycleFound => {
+                                    stats.inc_logic_aborts();
+                                    stats.inc_read_cf();
+                                }
+                                SerializationGraphError::ReadOpCascasde => {
+                                    stats.inc_logic_aborts();
+                                    stats.inc_read_cf();
+                                }
+                                _ => {}
+                            }
+
                             stats.inc_aborts();
 
                             if let SerializationGraphError::CycleFound = e {
