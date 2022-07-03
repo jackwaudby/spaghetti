@@ -55,7 +55,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             // let mut guard s = WaitGuards::new();
 
             loop {
+                stats.start_begin();
                 let mut meta = scheduler.begin(isolation_level);
+                stats.stop_begin();
 
                 stats.start_tx();
                 // let transaction_id = meta.get_transaction_id();
@@ -72,7 +74,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     Ok(_) => {
                         stats.start_commit();
                         let commit_res = scheduler.commit(&mut meta, database);
-                        stats.stop_commit();
+                        let t = stats.stop_commit();
 
                         match commit_res {
                             Ok(_) => {
@@ -83,7 +85,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 // case 1 when commit fails
                                 stats.inc_aborts();
                                 stats.inc_commit_aborts();
-
                                 stats.start_wait_manager();
                                 // let problem_transactions = meta.get_problem_transactions();
                                 // let g = wait_manager
@@ -91,6 +92,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 // guards.guards.replace(g);
 
                                 stats.stop_wait_manager();
+                                stats.stop_a_commit_cum(t);
                             }
                         }
                     }
@@ -104,6 +106,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
                             stats.stop_wait_manager();
+
+                            let d = stats.stop_tx();
+                            stats.stop_logic_cum(d);
                         }
                         NonFatalError::SmallBankError(_) => {
                             // not found

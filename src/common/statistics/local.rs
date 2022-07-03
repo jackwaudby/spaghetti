@@ -8,7 +8,6 @@ pub struct LocalStatistics {
     aborts: u64,
     logic_aborts: u64,
     commit_aborts: u64,
-
     not_found: u64,
     tx_start: Instant,
     tx_cum: u128,
@@ -18,6 +17,10 @@ pub struct LocalStatistics {
     wait_manager_cum: u128,
     latency_start: Instant,
     latency_cum: u128,
+    logic_cum: u128,
+    a_commit_cum: u128,
+    begin_start: Instant,
+    begin_cum: u128,
 }
 
 impl LocalStatistics {
@@ -32,12 +35,16 @@ impl LocalStatistics {
             not_found: 0,
             tx_start: Instant::now(),
             tx_cum: 0,
+            logic_cum: 0,
             commit_start: Instant::now(),
             commit_cum: 0,
             wait_manager_start: Instant::now(),
             wait_manager_cum: 0,
             latency_start: Instant::now(),
             latency_cum: 0,
+            a_commit_cum: 0,
+            begin_start: Instant::now(),
+            begin_cum: 0,
         }
     }
 
@@ -111,8 +118,10 @@ impl LocalStatistics {
         self.commit_start = Instant::now();
     }
 
-    pub fn stop_commit(&mut self) {
-        self.commit_cum += self.commit_start.elapsed().as_nanos();
+    pub fn stop_commit(&mut self) -> u128 {
+        let cum = self.commit_start.elapsed().as_nanos();
+        self.commit_cum += cum;
+        cum
     }
 
     pub fn get_commit_cum(&self) -> u128 {
@@ -144,5 +153,38 @@ impl LocalStatistics {
 
     pub fn get_latency_cum(&self) -> u128 {
         self.latency_cum
+    }
+    pub fn stop_logic_cum(&mut self, tx_time: u128) {
+        // let add = self.latencyx_start.elapsed().as_nanos() - tx_time;
+        // pub fn stop_latency(&mut self) {
+        // self.latency_cum += self.latency_start.elapsed().as_nanos();
+        self.logic_cum += tx_time;
+    }
+
+    pub fn stop_a_commit_cum(&mut self, tx_time: u128) {
+        // let add = self.latencyx_start.elapsed().as_nanos() - tx_time;
+        // pub fn stop_latency(&mut self) {
+        // self.latency_cum += self.latency_start.elapsed().as_nanos();
+        self.a_commit_cum += tx_time;
+    }
+
+    pub fn get_logic_cum(&self) -> u128 {
+        self.logic_cum
+    }
+
+    pub fn start_begin(&mut self) {
+        self.begin_start = Instant::now();
+    }
+
+    pub fn stop_begin(&mut self) {
+        self.begin_cum += self.begin_start.elapsed().as_nanos();
+    }
+
+    pub fn get_begin_cum(&self) -> u128 {
+        self.begin_cum
+    }
+
+    pub fn get_a_commit_cum(&self) -> u128 {
+        self.a_commit_cum
     }
 }

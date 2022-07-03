@@ -25,6 +25,9 @@ pub struct GlobalStatistics {
     commit: u128,
     wait_manager: u128,
     latency: u128,
+    logic_cum: u128,
+    begin_cum: u128,
+    a_commit_cum: u128,
 }
 
 impl GlobalStatistics {
@@ -53,6 +56,9 @@ impl GlobalStatistics {
             commit: 0,
             wait_manager: 0,
             latency: 0,
+            logic_cum: 0,
+            begin_cum: 0,
+            a_commit_cum: 0,
         }
     }
 
@@ -98,6 +104,9 @@ impl GlobalStatistics {
         self.commit += local.get_commit_cum();
         self.wait_manager += local.get_wait_manager_cum();
         self.latency += local.get_latency_cum();
+        self.logic_cum += local.get_logic_cum();
+        self.begin_cum += local.get_begin_cum();
+        self.a_commit_cum += local.get_a_commit_cum();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -120,6 +129,18 @@ impl GlobalStatistics {
         (self.latency / 1000000) as u64
     }
 
+    fn get_logic_time(&self) -> u64 {
+        (self.logic_cum / 1000000) as u64
+    }
+
+    fn get_begim_time(&self) -> u64 {
+        (self.begin_cum / 1000000) as u64
+    }
+
+    fn get_a_commit_time(&self) -> u64 {
+        (self.a_commit_cum / 1000000) as u64
+    }
+
     pub fn print_to_console(&mut self) {
         let pr = json!({
             "workload": self.workload,
@@ -137,6 +158,9 @@ impl GlobalStatistics {
             "commit_time (ms)": self.get_commit_time(),
             "wait_time (ms)": self.get_wait_time(),
             "latency (ms)": self.get_latency(),
+            "   begin time (ms)": self.get_begim_time(),
+            "   logic time in aborts (ms)": self.get_logic_time(),
+            "   commit time in aborts (ms)": self.get_a_commit_time(),
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
