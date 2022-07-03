@@ -6,7 +6,9 @@ pub struct LocalStatistics {
     worker_cum: u128,
     commits: u64,
     aborts: u64,
-    aborted_commits: u64,
+    logic_aborts: u64,
+    commit_aborts: u64,
+
     not_found: u64,
     tx_start: Instant,
     tx_cum: u128,
@@ -16,8 +18,6 @@ pub struct LocalStatistics {
     wait_manager_cum: u128,
     latency_start: Instant,
     latency_cum: u128,
-    aborted_tx_cum: u128,
-    aborted_tx_max: u128,
 }
 
 impl LocalStatistics {
@@ -27,7 +27,8 @@ impl LocalStatistics {
             worker_cum: 0,
             commits: 0,
             aborts: 0,
-            aborted_commits: 0,
+            logic_aborts: 0,
+            commit_aborts: 0,
             not_found: 0,
             tx_start: Instant::now(),
             tx_cum: 0,
@@ -37,8 +38,6 @@ impl LocalStatistics {
             wait_manager_cum: 0,
             latency_start: Instant::now(),
             latency_cum: 0,
-            aborted_tx_cum: 0,
-            aborted_tx_max: 0,
         }
     }
 
@@ -62,12 +61,20 @@ impl LocalStatistics {
         self.commits
     }
 
-    pub fn inc_aborted_commits(&mut self) {
-        self.aborted_commits += 1;
+    pub fn inc_commit_aborts(&mut self) {
+        self.commit_aborts += 1;
     }
 
-    pub fn get_aborted_commits(&self) -> u64 {
-        self.aborted_commits
+    pub fn get_commit_aborts(&self) -> u64 {
+        self.commit_aborts
+    }
+
+    pub fn get_logic_aborts(&self) -> u64 {
+        self.logic_aborts
+    }
+
+    pub fn inc_logic_aborts(&mut self) {
+        self.logic_aborts += 1;
     }
 
     pub fn inc_aborts(&mut self) {
@@ -137,22 +144,5 @@ impl LocalStatistics {
 
     pub fn get_latency_cum(&self) -> u128 {
         self.latency_cum
-    }
-
-    pub fn stop_aborted_txn(&mut self) {
-        let cum = self.tx_start.elapsed().as_nanos();
-        self.aborted_tx_cum += cum;
-
-        if cum > self.aborted_tx_max {
-            self.aborted_tx_max = cum;
-        }
-    }
-
-    pub fn get_aborted_txn_cum(&self) -> u128 {
-        self.aborted_tx_cum
-    }
-
-    pub fn get_aborted_txn_max(&self) -> u128 {
-        self.aborted_tx_max
     }
 }

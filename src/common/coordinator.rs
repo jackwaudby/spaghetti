@@ -82,8 +82,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             Err(_) => {
                                 // case 1 when commit fails
                                 stats.inc_aborts();
-                                stats.inc_aborted_commits();
-                                stats.stop_aborted_txn();
+                                stats.inc_commit_aborts();
 
                                 stats.start_wait_manager();
                                 // let problem_transactions = meta.get_problem_transactions();
@@ -100,9 +99,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             // case 2 when logic fails
 
                             stats.inc_aborts();
-
-                            stats.stop_aborted_txn();
-
+                            stats.inc_logic_aborts();
                             stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
@@ -111,6 +108,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::SmallBankError(_) => {
                             // not found
                             stats.inc_not_found();
+
                             // TODO: abort then commit
                             break;
                         }

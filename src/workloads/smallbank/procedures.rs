@@ -29,7 +29,7 @@ pub fn balance<'a>(
     let checking = ValueId::new(1, 1, offset);
     scheduler.read_value(checking, meta, database)?;
 
-    // get checking balance
+    // get savings balance
     let savings = ValueId::new(2, 1, offset);
     scheduler.read_value(savings, meta, database)?;
 
@@ -74,23 +74,23 @@ pub fn transact_savings<'a>(
     let offset = params.name;
 
     // get customer id
-    let cust = ValueId::new(0, 0, offset);
-    scheduler.read_value(cust, meta, database)?;
+    let c_vid = ValueId::new(0, 0, offset);
+    scheduler.read_value(c_vid, meta, database)?;
 
-    // get current balance
-    let savings = ValueId::new(2, 1, offset);
-    let res = scheduler.read_value(savings.clone(), meta, database)?;
+    // get savings balance
+    let s_vid = ValueId::new(2, 1, offset);
+    let saving = scheduler.read_value(s_vid.clone(), meta, database)?;
 
     // abort if balance would be negative
-    let balance = f64::try_from(res).unwrap() + params.value;
-    if balance < 0.0 {
+    let new_saving = f64::try_from(saving).unwrap() + params.value;
+    if new_saving < 0.0 {
         scheduler.abort(meta, database);
         return Err(SmallBankError::InsufficientFunds.into());
     }
 
     //  update saving balance
-    let val = &mut Data::from(balance);
-    scheduler.write_value(val, savings, meta, database)?;
+    let val = &mut Data::from(new_saving);
+    scheduler.write_value(val, s_vid, meta, database)?;
 
     Ok(())
 }
@@ -108,41 +108,41 @@ pub fn amalgmate<'a>(
     let offset2 = params.name2;
 
     // cust1
-    let cust1 = ValueId::new(0, 0, offset1);
-    let savings1 = ValueId::new(2, 1, offset1);
-    let checking1 = ValueId::new(1, 1, offset1);
+    let c_vid1 = ValueId::new(0, 0, offset1);
+    let ch_vid1 = ValueId::new(1, 1, offset1);
+    let s_vid1 = ValueId::new(2, 1, offset1);
 
-    scheduler.read_value(cust1, meta, database)?;
+    // read 1: get customer 1 id
+    scheduler.read_value(c_vid1, meta, database)?;
 
-    // read 2 -- current savings balance (customer1)
-    let res1 = scheduler.read_value(savings1, meta, database)?;
+    // read 2: get customer 1 savings balance
+    let res1 = scheduler.read_value(s_vid1, meta, database)?;
 
-    // read 3 -- current checking balance (customer1)
-    let res2 = scheduler.read_value(checking1, meta, database)?;
-
-    // write 1 -- update saving balance (cust1)
+    // write 1: set customer 1 saving balance to 0
     let val = &mut Data::Double(0.0);
-    scheduler.write_value(val, savings1, meta, database)?;
+    scheduler.write_value(val, s_vid1, meta, database)?;
 
-    // write 2 -- update checking balance (cust1)
-    scheduler.write_value(val, checking1, meta, database)?;
+    // read 3: get customer 2 checking balance
+    let res2 = scheduler.read_value(ch_vid1, meta, database)?;
+
+    // write 2: set customer 1 checking balance to 0
+    scheduler.write_value(val, ch_vid1, meta, database)?;
 
     // amount to send
     let sum = f64::try_from(res1).unwrap() + f64::try_from(res2).unwrap();
 
-    // cust2
-    let cust2 = ValueId::new(0, 0, offset2);
-    let checking2 = ValueId::new(1, 1, offset2);
+    let c_vid2 = ValueId::new(0, 0, offset2);
+    let ch_vid2 = ValueId::new(1, 1, offset2);
 
-    // read 4 -- get customer2 id
-    scheduler.read_value(cust2, meta, database)?;
+    // read 4: get customer 2 id
+    scheduler.read_value(c_vid2, meta, database)?;
 
     // read 5 -- current checking balance (customer2)
-    let res3 = scheduler.read_value(checking2, meta, database)?;
+    let res3 = scheduler.read_value(ch_vid2, meta, database)?;
 
     // write 3 -- update checking balance (cust2)
     let bal = &mut Data::Double(sum + f64::try_from(res3).unwrap());
-    scheduler.write_value(bal, checking2, meta, database)?;
+    scheduler.write_value(bal, ch_vid2, meta, database)?;
 
     Ok(())
 }
@@ -159,20 +159,21 @@ pub fn write_check<'a>(
     let offset = params.name as usize;
 
     // get customer id
-    let cust = ValueId::new(0, 0, offset);
-    scheduler.read_value(cust, meta, database)?;
+    let c_vid = ValueId::new(0, 0, offset);
+    scheduler.read_value(c_vid, meta, database)?;
 
     // get savings balance
-    let savings = ValueId::new(2, 1, offset);
-    let bal1 = scheduler.read_value(savings, meta, database)?;
-    let bal1 = f64::try_from(bal1).unwrap();
+    let s_vid = ValueId::new(2, 1, offset);
+    let bal1 = scheduler.read_value(s_vid, meta, database)?;
 
     // get checking balance
-    let checking = ValueId::new(1, 1, offset);
-    let bal2 = scheduler.read_value(checking, meta, database)?;
-    let bal2 = f64::try_from(bal2).unwrap();
+    let ch_vid = ValueId::new(1, 1, offset);
+    let bal2 = scheduler.read_value(ch_vid, meta, database)?;
 
     // apply overdraft charge
+    let bal1 = f64::try_from(bal1).unwrap();
+    let bal2 = f64::try_from(bal2).unwrap();
+
     let total = bal1 + bal2; // total balance
     let mut amount = params.value;
     if total < amount {
@@ -181,7 +182,7 @@ pub fn write_check<'a>(
 
     // update checking balance
     let new_check = &mut Data::Double(total - amount);
-    scheduler.write_value(new_check, checking, meta, database)?;
+    scheduler.write_value(new_check, ch_vid, meta, database)?;
 
     Ok(())
 }
@@ -199,8 +200,8 @@ pub fn send_payment<'a>(
     let offset2 = params.name2;
 
     // get cust1 id
-    let cust1 = ValueId::new(0, 0, offset1);
-    scheduler.read_value(cust1, meta, database)?;
+    let c_vid = ValueId::new(0, 0, offset1);
+    scheduler.read_value(c_vid, meta, database)?;
 
     // get cust1 checking
     let checking1 = ValueId::new(1, 1, offset1);

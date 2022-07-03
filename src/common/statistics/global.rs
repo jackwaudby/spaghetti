@@ -18,14 +18,13 @@ pub struct GlobalStatistics {
     total_time: u128,
     commits: u64,
     aborts: u64,
-    aborted_commits: u64,
+    logic_aborts: u64,
+    commit_aborts: u64,
     not_found: u64,
     tx: u128,
     commit: u128,
     wait_manager: u128,
     latency: u128,
-    aborted_tx_cum: u128,
-    aborted_tx_max: u128,
 }
 
 impl GlobalStatistics {
@@ -46,15 +45,14 @@ impl GlobalStatistics {
             end: None,
             total_time: 0,
             commits: 0,
-            aborted_commits: 0,
             aborts: 0,
+            logic_aborts: 0,
+            commit_aborts: 0,
             not_found: 0,
             tx: 0,
             commit: 0,
             wait_manager: 0,
             latency: 0,
-            aborted_tx_cum: 0,
-            aborted_tx_max: 0,
         }
     }
 
@@ -93,17 +91,13 @@ impl GlobalStatistics {
         self.total_time += local.get_worker_cum();
         self.commits += local.get_commits();
         self.aborts += local.get_aborts();
-        self.aborted_commits += local.get_aborted_commits();
+        self.commit_aborts += local.get_commit_aborts();
+        self.logic_aborts += local.get_logic_aborts();
         self.not_found += local.get_not_found();
         self.tx += local.get_tx_cum();
         self.commit += local.get_commit_cum();
         self.wait_manager += local.get_wait_manager_cum();
         self.latency += local.get_latency_cum();
-        self.aborted_tx_cum += local.get_aborted_txn_cum();
-
-        if self.aborted_tx_max < local.get_aborted_txn_max() {
-            self.aborted_tx_max = local.get_aborted_txn_max();
-        }
     }
 
     fn get_total_time(&self) -> u64 {
@@ -136,14 +130,13 @@ impl GlobalStatistics {
             "cum_runtime (ms)":  self.get_total_time(),
             "commits": self.commits,
             "aborts": self.aborts,
-            "aborted_commits": self.aborted_commits,
+            "   commits aborts": self.commit_aborts,
+            "   logic aborts": self.logic_aborts,
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.get_txn_time(),
             "commit_time (ms)": self.get_commit_time(),
             "wait_time (ms)": self.get_wait_time(),
             "latency (ms)": self.get_latency(),
-            "aborted_txn_latency (ms)": ((self.aborted_tx_cum / 1000000) as u64),
-            "max_aborted": ((self.aborted_tx_max / 1000000) as u64)
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
