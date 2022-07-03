@@ -1,4 +1,5 @@
 use crate::common::error::NonFatalError;
+use crate::common::error::SerializationGraphError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::common::Node;
 use crate::scheduler::StatsBucket;
@@ -89,6 +90,39 @@ impl NoConcurrencyControl {
         let lsn = table.get_lsn(offset);
 
         spin(prv, lsn);
+
+        // On acquiring the 'lock' on the record can be clean or dirty.
+        // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
+        let guard = &epoch::pin(); // pin thread
+        let snapshot = rw_table.iter(guard);
+
+        let mut cyclic = false;
+
+        for (id, access) in snapshot {
+            // only interested in accesses before this one and that are write operations.
+            if id < &prv {
+                match access {
+                    // W-R conflict
+                    Access::Write(from) => {
+                        if let TransactionId::SerializationGraph(from_id, _, _) = from {
+                            let from = unsafe { &*(*from_id as *const Node) };
+                            // if !self.insert_and_check(Edge::WriteRead(*from_id)) {
+                            //     cyclic = true;
+                            //     break;
+                            // }
+                        }
+                    }
+                    Access::Read(_) => {}
+                }
+            }
+        }
+
+        if cyclic {
+            rw_table.erase(prv); // remove from rw table
+            lsn.store(prv + 1, Ordering::Release); // update lsn
+            self.abort(meta, database); // abort
+            return Err(SerializationGraphError::CycleFound.into());
+        }
 
         let tuple = table.get_tuple(column_id, offset).get();
         let value = tuple.get_value().unwrap().get_value();
