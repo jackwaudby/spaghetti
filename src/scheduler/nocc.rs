@@ -182,7 +182,7 @@ impl NoConcurrencyControl {
             });
 
             // if cnt % 64 == 0 {
-            x.borrow().as_ref().unwrap().flush();
+            // x.borrow().as_ref().unwrap().flush();
             // }
 
             let guard = x.borrow_mut().take();
