@@ -141,6 +141,11 @@ impl GlobalStatistics {
         (self.a_commit_cum / 1000000) as u64
     }
 
+    fn get_thpt(&self) -> f64 {
+        let total = (self.commits + self.not_found) as f64;
+        total / (self.get_total_time() as f64 / 1000.0)
+    }
+
     pub fn print_to_console(&mut self) {
         let pr = json!({
             "workload": self.workload,
@@ -161,6 +166,7 @@ impl GlobalStatistics {
             "   begin time (ms)": self.get_begim_time(),
             "   logic time in aborts (ms)": self.get_logic_time(),
             "   commit time in aborts (ms)": self.get_a_commit_time(),
+            "thpt: {}": self.get_thpt()
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());

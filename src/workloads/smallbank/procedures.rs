@@ -84,7 +84,7 @@ pub fn transact_savings<'a>(
     // abort if balance would be negative
     let new_saving = f64::try_from(saving).unwrap() + params.value;
     if new_saving < 0.0 {
-        // scheduler.abort(meta, database);
+        scheduler.abort(meta, database);
         return Err(SmallBankError::InsufficientFunds.into());
     }
 
@@ -211,7 +211,7 @@ pub fn send_payment<'a>(
     let mut bal1 = f64::try_from(bal1).unwrap();
     bal1 -= params.value;
     if bal1 < 0.0 {
-        // scheduler.abort(meta, database);
+        scheduler.abort(meta, database);
         return Err(SmallBankError::InsufficientFunds.into());
     }
 
