@@ -107,6 +107,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         }
                         NonFatalError::SmallBankError(_) => {
                             // not found
+                            scheduler.abort(&mut meta, database);
                             stats.inc_not_found();
 
                             // TODO: abort then commit
