@@ -193,9 +193,8 @@ impl SerializationGraph {
 
         let s = std::time::Instant::now();
         let (ref_id, thread_id, thread_ctr) = self.create_node(); // create node
-        let d = s.elapsed().as_nanos();
-
         let guard = epoch::pin(); // pin thread
+        let d = s.elapsed().as_nanos();
 
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
