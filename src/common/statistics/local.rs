@@ -176,9 +176,9 @@ impl LocalStatistics {
         self.begin_start = Instant::now();
     }
 
-    pub fn stop_begin(&mut self, tx_time: u128) {
-        // self.begin_cum += self.begin_start.elapsed().as_nanos();
-        self.begin_cum += tx_time;
+    pub fn stop_begin(&mut self, _tx_time: u128) {
+        self.begin_cum += self.begin_start.elapsed().as_nanos();
+        // self.begin_cum += tx_time;
     }
 
     pub fn get_begin_cum(&self) -> u128 {

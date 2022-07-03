@@ -58,7 +58,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             loop {
                 stats.start_begin();
                 let (mut meta, d) = scheduler.begin(isolation_level);
-                stats.stop_begin(d);
+                stats.stop_begin(0);
 
                 stats.start_tx();
                 // let transaction_id = meta.get_transaction_id();
