@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
+use crate::scheduler::common::Node;
 use crate::scheduler::StatsBucket;
 use crate::scheduler::ValueId;
 use crate::storage::access::{Access, TransactionId};
@@ -9,6 +10,8 @@ use crate::storage::Database;
 
 use crossbeam_epoch as epoch;
 use crossbeam_epoch::Guard;
+use parking_lot::Mutex;
+use rustc_hash::FxHashSet;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -18,12 +21,18 @@ use tracing::info;
 #[derive(Debug)]
 pub struct NoConcurrencyControl {
     txn_info: ThreadLocal<RefCell<TransactionInformation>>,
+    txn_ctr: ThreadLocal<RefCell<usize>>,
 }
 
 impl NoConcurrencyControl {
     thread_local! {
         static EG: RefCell<Option<Guard>> = RefCell::new(None);
+        static NODE: RefCell<Option<*mut Node>> = RefCell::new(None);
 
+    }
+
+    pub fn get_transaction(&self) -> *mut Node {
+        NoConcurrencyControl::NODE.with(|x| *x.borrow().as_ref().unwrap())
     }
 
     /// Create a scheduler with no concurrency control mechanism.
@@ -31,16 +40,33 @@ impl NoConcurrencyControl {
         info!("No concurrency control: {} core(s)", size);
 
         Self {
+            txn_ctr: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
         }
     }
 
     /// Begin a transaction.
     pub fn begin(&self) -> TransactionId {
+        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
+
         *self
             .txn_info
             .get_or(|| RefCell::new(TransactionInformation::new()))
             .borrow_mut() = TransactionInformation::new();
+
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+        let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
+        let incoming = Mutex::new(FxHashSet::default());
+        let outgoing = Mutex::new(FxHashSet::default());
+        let s = std::time::Instant::now();
+        let n = Node::new(thread_id, thread_ctr, incoming, outgoing, None);
+        let d = s.elapsed().as_nanos();
+        let node = Box::new(n); // allocate node
+        let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
+        let id = ptr as usize; // get id
+        unsafe { (*ptr).set_id(id) }; // set id on node
+
+        NoConcurrencyControl::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
         let guard = epoch::pin(); // pin thread
 
@@ -148,7 +174,19 @@ impl NoConcurrencyControl {
 
     /// Cleanup node after committed or aborted.
     pub fn cleanup(&self) {
+        let this = self.get_transaction();
+        let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
+
         NoConcurrencyControl::EG.with(|x| unsafe {
+            x.borrow().as_ref().unwrap().defer_unchecked(move || {
+                let boxed_node = Box::from_raw(this); // garbage collect
+                drop(boxed_node);
+            });
+
+            if cnt % 64 == 0 {
+                x.borrow().as_ref().unwrap().flush();
+            }
+
             let guard = x.borrow_mut().take();
             drop(guard)
         });
