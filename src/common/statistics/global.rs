@@ -24,6 +24,8 @@ pub struct GlobalStatistics {
     commit: u128,
     wait_manager: u128,
     latency: u128,
+    aborted_tx_cum: u128,
+    aborted_tx_max: u128,
 }
 
 impl GlobalStatistics {
@@ -51,6 +53,8 @@ impl GlobalStatistics {
             commit: 0,
             wait_manager: 0,
             latency: 0,
+            aborted_tx_cum: 0,
+            aborted_tx_max: 0,
         }
     }
 
@@ -95,6 +99,11 @@ impl GlobalStatistics {
         self.commit += local.get_commit_cum();
         self.wait_manager += local.get_wait_manager_cum();
         self.latency += local.get_latency_cum();
+        self.aborted_tx_cum += local.get_aborted_txn_cum();
+
+        if self.aborted_tx_max < local.get_aborted_txn_max() {
+            self.aborted_tx_max = local.get_aborted_txn_max();
+        }
     }
 
     fn get_total_time(&self) -> u64 {
@@ -132,7 +141,9 @@ impl GlobalStatistics {
             "txn_time (ms)": self.get_txn_time(),
             "commit_time (ms)": self.get_commit_time(),
             "wait_time (ms)": self.get_wait_time(),
-            "latency (ms)": self.get_latency()
+            "latency (ms)": self.get_latency(),
+            "aborted_txn_latency (ms)": ((self.aborted_tx_cum / 1000000) as u64),
+            "max_aborted": ((self.aborted_tx_max / 1000000) as u64)
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());

@@ -16,6 +16,8 @@ pub struct LocalStatistics {
     wait_manager_cum: u128,
     latency_start: Instant,
     latency_cum: u128,
+    aborted_tx_cum: u128,
+    aborted_tx_max: u128,
 }
 
 impl LocalStatistics {
@@ -35,6 +37,8 @@ impl LocalStatistics {
             wait_manager_cum: 0,
             latency_start: Instant::now(),
             latency_cum: 0,
+            aborted_tx_cum: 0,
+            aborted_tx_max: 0,
         }
     }
 
@@ -133,5 +137,22 @@ impl LocalStatistics {
 
     pub fn get_latency_cum(&self) -> u128 {
         self.latency_cum
+    }
+
+    pub fn stop_aborted_txn(&mut self) {
+        let cum = self.tx_start.elapsed().as_nanos();
+        self.aborted_tx_cum += cum;
+
+        if cum > self.aborted_tx_max {
+            self.aborted_tx_max = cum;
+        }
+    }
+
+    pub fn get_aborted_txn_cum(&self) -> u128 {
+        self.aborted_tx_cum
+    }
+
+    pub fn get_aborted_txn_max(&self) -> u128 {
+        self.aborted_tx_max
     }
 }

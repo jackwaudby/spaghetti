@@ -83,6 +83,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 // case 1 when commit fails
                                 stats.inc_aborts();
                                 stats.inc_aborted_commits();
+                                stats.stop_aborted_txn();
+
                                 stats.start_wait_manager();
                                 // let problem_transactions = meta.get_problem_transactions();
                                 // let g = wait_manager
@@ -98,6 +100,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             // case 2 when logic fails
 
                             stats.inc_aborts();
+
+                            stats.stop_aborted_txn();
 
                             stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
