@@ -47,24 +47,24 @@ impl NoConcurrencyControl {
 
     /// Begin a transaction.
     pub fn begin(&self) -> TransactionId {
-        // *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
+        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
 
         *self
             .txn_info
             .get_or(|| RefCell::new(TransactionInformation::new()))
             .borrow_mut() = TransactionInformation::new();
 
-        // let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-        // let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
-        // let incoming = Mutex::new(FxHashSet::default());
-        // let outgoing = Mutex::new(FxHashSet::default());
-        // let n = Node::new(thread_id, thread_ctr, incoming, outgoing, None);
-        // let node = Box::new(n); // allocate node
-        // let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
-        // let id = ptr as usize; // get id
-        // unsafe { (*ptr).set_id(id) }; // set id on node
+        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
+        let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
+        let incoming = Mutex::new(FxHashSet::default());
+        let outgoing = Mutex::new(FxHashSet::default());
+        let n = Node::new(thread_id, thread_ctr, incoming, outgoing, None);
+        let node = Box::new(n); // allocate node
+        let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
+        let id = ptr as usize; // get id
+        unsafe { (*ptr).set_id(id) }; // set id on node
 
-        // NoConcurrencyControl::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
+        NoConcurrencyControl::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
         let guard = epoch::pin(); // pin thread
 
@@ -172,14 +172,14 @@ impl NoConcurrencyControl {
 
     /// Cleanup node after committed or aborted.
     pub fn cleanup(&self) {
-        // let this = self.get_transaction();
-        // let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
+        let this = self.get_transaction();
+        let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
 
         NoConcurrencyControl::EG.with(|x| unsafe {
-            // x.borrow().as_ref().unwrap().defer_unchecked(move || {
-            //     let boxed_node = Box::from_raw(this); // garbage collect
-            //     drop(boxed_node);
-            // });
+            x.borrow().as_ref().unwrap().defer_unchecked(move || {
+                let boxed_node = Box::from_raw(this); // garbage collect
+                drop(boxed_node);
+            });
 
             // if cnt % 64 == 0 {
             // x.borrow().as_ref().unwrap().flush();
