@@ -104,7 +104,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
                             stats.inc_aborts();
 
-                            if let SerializationGraphError::CascadingAbort = e {
+                            if let SerializationGraphError::CycleFound = e {
                                 stats.inc_logic_aborts();
                             }
 
