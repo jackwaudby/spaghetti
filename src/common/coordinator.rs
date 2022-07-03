@@ -102,10 +102,10 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             stats.inc_aborts();
 
                             restart = true;
-                            // stats.start_wait_manager();
+                            stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
-                            stats.start_wait_manager();
+                            stats.stop_wait_manager();
                         }
                         NonFatalError::SmallBankError(_) => {
                             // not found
