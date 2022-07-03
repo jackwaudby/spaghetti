@@ -106,13 +106,17 @@ impl Scheduler {
         }
     }
 
-    pub fn abort(&self, meta: &mut StatsBucket, database: &Database) -> NonFatalError {
+    pub fn abort(&self, meta: &mut StatsBucket, database: &Database) {
         use Scheduler::*;
 
         let res = match self {
             SerializationGraph(sg) => sg.abort(meta, database),
-            MixedSerializationGraph(sg) => sg.abort(database),
-            NoConcurrencyControl(nocc) => nocc.abort(meta, database),
+            MixedSerializationGraph(sg) => {
+                sg.abort(database);
+            }
+            NoConcurrencyControl(nocc) => {
+                nocc.abort(meta, database);
+            }
         };
 
         res

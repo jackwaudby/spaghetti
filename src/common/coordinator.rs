@@ -16,22 +16,22 @@ use tracing::debug;
 
 use super::stats_bucket::StatsBucket;
 
-struct WaitGuards<'a> {
-    guards: Option<Vec<spin::MutexGuard<'a, u8>>>,
-}
+// struct WaitGuards<'a> {
+//     guards: Option<Vec<spin::MutexGuard<'a, u8>>>,
+// }
 
-impl<'a> WaitGuards<'a> {
-    fn new() -> Self {
-        Self { guards: None }
-    }
-}
+// impl<'a> WaitGuards<'a> {
+//     fn new() -> Self {
+//         Self { guards: None }
+//     }
+// }
 
 pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state: &GlobalState) {
     // global state
     let config = global_state.get_config();
     let scheduler = global_state.get_scheduler();
     let database = global_state.get_database();
-    let wait_manager = global_state.get_wait_manager();
+    // let wait_manager = global_state.get_wait_manager();
 
     // local state
     let mut stats = LocalStatistics::new();

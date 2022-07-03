@@ -99,7 +99,7 @@ impl SerializationGraph {
 
             if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
                 this_ref.set_cascading_abort();
-                let fid = from_ref.get_full_id();
+                // let fid = from_ref.get_full_id();
                 // this_ref.set_abort_through(fid);
                 return false; // cascadingly abort (this)
             }
@@ -465,7 +465,7 @@ impl SerializationGraph {
     }
 
     /// Abort operation.
-    pub fn abort(&self, meta: &mut StatsBucket, database: &Database) -> NonFatalError {
+    pub fn abort(&self, _meta: &mut StatsBucket, database: &Database) {
         let this = unsafe { &*self.get_transaction() };
         // let incoming = this.get_incoming();
         // for edge in incoming {
@@ -484,8 +484,6 @@ impl SerializationGraph {
         this.set_aborted();
         self.cleanup();
         self.tidyup(database, false);
-
-        SerializationGraphError::CycleFound.into() // TODO: return the why
     }
 
     /// Cleanup node after committed or aborted.
@@ -524,7 +522,7 @@ impl SerializationGraph {
                 Edge::WriteWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
                     if this.is_aborted() {
-                        let fid = this.get_full_id();
+                        // let fid = this.get_full_id();
                         // that.set_abort_through(fid);
                         that.set_cascading_abort();
                     } else {
@@ -539,7 +537,7 @@ impl SerializationGraph {
                 Edge::WriteRead(that) => {
                     let that = unsafe { &*(*that as *const Node) };
                     if this.is_aborted() {
-                        let fid = this.get_full_id();
+                        // let fid = this.get_full_id();
                         // that.set_abort_through(fid);
                         that.set_cascading_abort();
                     } else {

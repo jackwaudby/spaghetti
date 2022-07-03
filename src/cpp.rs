@@ -1,7 +1,6 @@
 use cxx::UniquePtr;
 use std::cell::UnsafeCell;
 use std::ops::{Deref, DerefMut};
-use std::sync::Arc;
 
 #[cxx::bridge]
 mod ffi {
