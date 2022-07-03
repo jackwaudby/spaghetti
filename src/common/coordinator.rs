@@ -53,7 +53,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
             let mut response;
             // let mut guard s = WaitGuards::new();
-            let mut restart = false;
 
             loop {
                 let mut meta = scheduler.begin(isolation_level);
@@ -84,7 +83,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 // case 1 when commit fails
                                 stats.inc_aborts();
 
-                                restart = true;
                                 stats.start_wait_manager();
                                 // let problem_transactions = meta.get_problem_transactions();
                                 // let g = wait_manager
@@ -101,7 +99,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
                             stats.inc_aborts();
 
-                            restart = true;
                             stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
@@ -111,14 +108,12 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             // not found
                             stats.inc_not_found();
                             // TODO: abort then commit
+                            break;
                         }
                     },
                 }
-
-                if !restart {
-                    break;
-                }
             }
+
             let tx = stats.stop_tx();
             stats.stop_latency(tx);
 
