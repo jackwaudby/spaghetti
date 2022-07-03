@@ -7,6 +7,8 @@ use crate::storage::datatype::Data;
 use crate::storage::table::Table;
 use crate::storage::Database;
 
+use crossbeam_epoch as epoch;
+use crossbeam_epoch::Guard;
 use std::cell::RefCell;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -19,6 +21,11 @@ pub struct NoConcurrencyControl {
 }
 
 impl NoConcurrencyControl {
+    thread_local! {
+        static EG: RefCell<Option<Guard>> = RefCell::new(None);
+
+    }
+
     /// Create a scheduler with no concurrency control mechanism.
     pub fn new(size: usize) -> Self {
         info!("No concurrency control: {} core(s)", size);
@@ -34,6 +41,10 @@ impl NoConcurrencyControl {
             .txn_info
             .get_or(|| RefCell::new(TransactionInformation::new()))
             .borrow_mut() = TransactionInformation::new();
+
+        let guard = epoch::pin(); // pin thread
+
+        NoConcurrencyControl::EG.with(|x| x.borrow_mut().replace(guard));
 
         TransactionId::NoConcurrencyControl
     }
@@ -133,6 +144,14 @@ impl NoConcurrencyControl {
                 }
             }
         }
+    }
+
+    /// Cleanup node after committed or aborted.
+    pub fn cleanup(&self) {
+        NoConcurrencyControl::EG.with(|x| unsafe {
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
     }
 
     /// Commit a transaction.
