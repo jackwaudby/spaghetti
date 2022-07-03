@@ -368,7 +368,7 @@ impl SerializationGraph {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 self.abort(meta, database);
-                return Err(SerializationGraphError::CycleFound.into());
+                return Err(SerializationGraphError::WriteOpCycleFound.into());
             }
 
             // (ii) there is an uncommitted write (wait = T)

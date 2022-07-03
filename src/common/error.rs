@@ -14,6 +14,7 @@ pub enum NonFatalError {
 pub enum SerializationGraphError {
     ReadOpCascasde,
     ReadOpCycleFound,
+    WriteOpCycleFound,
     CycleFound,
     CascadingAbort,
 }
@@ -50,6 +51,7 @@ impl fmt::Display for SerializationGraphError {
         let err_msg = match *self {
             ReadOpCascasde => "",
             ReadOpCycleFound => "",
+            WriteOpCycleFound => "",
             CycleFound => "cycle found",
             CascadingAbort => "cascading abort",
         };

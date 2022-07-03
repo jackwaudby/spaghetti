@@ -20,6 +20,7 @@ pub struct GlobalStatistics {
     aborts: u64,
     logic_aborts: u64,
     commit_aborts: u64,
+    write_cf: u64,
     read_cf: u64,
     read_ca: u64,
     not_found: u64,
@@ -50,6 +51,7 @@ impl GlobalStatistics {
             aborts: 0,
             logic_aborts: 0,
             commit_aborts: 0,
+            write_cf: 0,
             read_cf: 0,
             read_ca: 0,
             not_found: 0,
@@ -103,6 +105,7 @@ impl GlobalStatistics {
         self.wait_manager += local.get_wait_manager_cum();
         self.latency += local.get_latency_cum();
         self.read_cf += local.get_read_cf();
+        self.write_cf += local.get_write_cf();
         self.read_ca += local.get_read_ca();
     }
 
@@ -148,6 +151,7 @@ impl GlobalStatistics {
             "   commits": self.commit_aborts,
             "   logic": self.logic_aborts,
             "   read_cf": self.read_cf,
+            "   write_cf": self.write_cf,
             "   read_ca": self.read_ca,
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.get_txn_time(),
