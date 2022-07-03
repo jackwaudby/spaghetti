@@ -25,9 +25,6 @@ pub struct GlobalStatistics {
     commit: u128,
     wait_manager: u128,
     latency: u128,
-    logic_cum: u128,
-    begin_cum: u128,
-    a_commit_cum: u128,
 }
 
 impl GlobalStatistics {
@@ -56,9 +53,6 @@ impl GlobalStatistics {
             commit: 0,
             wait_manager: 0,
             latency: 0,
-            logic_cum: 0,
-            begin_cum: 0,
-            a_commit_cum: 0,
         }
     }
 
@@ -104,9 +98,6 @@ impl GlobalStatistics {
         self.commit += local.get_commit_cum();
         self.wait_manager += local.get_wait_manager_cum();
         self.latency += local.get_latency_cum();
-        self.logic_cum += local.get_logic_cum();
-        self.begin_cum += local.get_begin_cum();
-        self.a_commit_cum += local.get_a_commit_cum();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -129,21 +120,13 @@ impl GlobalStatistics {
         (self.latency / 1000000) as u64
     }
 
-    fn get_logic_time(&self) -> u64 {
-        (self.logic_cum / 1000000) as u64
-    }
-
-    fn get_begim_time(&self) -> u64 {
-        (self.begin_cum / 1000000) as u64
-    }
-
-    fn get_a_commit_time(&self) -> u64 {
-        (self.a_commit_cum / 1000000) as u64
-    }
-
     fn get_thpt(&mut self) -> f64 {
         let total = (self.commits + self.not_found) as f64;
         total / (self.get_runtime() as f64 / 1000.0)
+    }
+
+    fn get_abr(&mut self) -> f64 {
+        (self.aborts as f64 / (self.commits + self.not_found + self.aborts) as f64) * 100.0
     }
 
     pub fn print_to_console(&mut self) {
@@ -156,17 +139,16 @@ impl GlobalStatistics {
             "cum_runtime (ms)":  self.get_total_time(),
             "commits": self.commits,
             "aborts": self.aborts,
-            "   commits aborts": self.commit_aborts,
-            "   logic aborts": self.logic_aborts,
+            "   commits": self.commit_aborts,
+            "   logic": self.logic_aborts,
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.get_txn_time(),
             "commit_time (ms)": self.get_commit_time(),
             "wait_time (ms)": self.get_wait_time(),
             "latency (ms)": self.get_latency(),
-            "   begin time (ms)": self.get_begim_time(),
-            "   logic time in aborts (ms)": self.get_logic_time(),
-            "   commit time in aborts (ms)": self.get_a_commit_time(),
-            "thpt: ": self.get_thpt()
+            "thpt: ": self.get_thpt(),
+            "abr: ": self.get_abr()
+
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());

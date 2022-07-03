@@ -56,9 +56,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             // let mut guard s = WaitGuards::new();
 
             loop {
-                stats.start_begin();
                 let (mut meta, _d) = scheduler.begin(isolation_level);
-                stats.stop_begin(0);
 
                 stats.start_tx();
                 // let transaction_id = meta.get_transaction_id();
@@ -75,7 +73,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     Ok(_) => {
                         stats.start_commit();
                         let commit_res = scheduler.commit(&mut meta, database);
-                        let t = stats.stop_commit();
+                        stats.stop_commit();
 
                         match commit_res {
                             Ok(_) => {
@@ -93,7 +91,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 // guards.guards.replace(g);
 
                                 stats.stop_wait_manager();
-                                stats.stop_a_commit_cum(t);
                             }
                         }
                     }
@@ -112,12 +109,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
                             stats.stop_wait_manager();
-
-                            let d = stats.stop_tx();
-                            stats.stop_logic_cum(d);
                         }
                         NonFatalError::SmallBankError(_) => {
-                            // not found
                             scheduler.abort(&mut meta, database);
                             stats.inc_not_found();
 
