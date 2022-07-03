@@ -82,7 +82,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             Err(_) => {
                                 // case 1 when commit fails
                                 stats.inc_aborts();
-
+                                stats.inc_aborted_commits();
                                 stats.start_wait_manager();
                                 // let problem_transactions = meta.get_problem_transactions();
                                 // let g = wait_manager
