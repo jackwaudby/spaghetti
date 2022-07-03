@@ -115,7 +115,7 @@ fn main() {
         global_stats.merge(local_stats);
     }
 
-    global_stats.validate();
-
     global_stats.print_to_console();
+
+    global_stats.validate();
 }
