@@ -18,6 +18,7 @@ pub struct GlobalStatistics {
     total_time: u128,
     commits: u64,
     aborts: u64,
+    aborted_commits: u64,
     not_found: u64,
     tx: u128,
     commit: u128,
@@ -43,6 +44,7 @@ impl GlobalStatistics {
             end: None,
             total_time: 0,
             commits: 0,
+            aborted_commits: 0,
             aborts: 0,
             not_found: 0,
             tx: 0,
@@ -87,6 +89,7 @@ impl GlobalStatistics {
         self.total_time += local.get_worker_cum();
         self.commits += local.get_commits();
         self.aborts += local.get_aborts();
+        self.aborted_commits += local.get_aborted_commits();
         self.not_found += local.get_not_found();
         self.tx += local.get_tx_cum();
         self.commit += local.get_commit_cum();
@@ -124,6 +127,7 @@ impl GlobalStatistics {
             "cum_runtime (ms)":  self.get_total_time(),
             "commits": self.commits,
             "aborts": self.aborts,
+            "aborted_commits": self.aborted_commits,
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.get_txn_time(),
             "commit_time (ms)": self.get_commit_time(),

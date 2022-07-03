@@ -6,6 +6,7 @@ pub struct LocalStatistics {
     worker_cum: u128,
     commits: u64,
     aborts: u64,
+    aborted_commits: u64,
     not_found: u64,
     tx_start: Instant,
     tx_cum: u128,
@@ -24,6 +25,7 @@ impl LocalStatistics {
             worker_cum: 0,
             commits: 0,
             aborts: 0,
+            aborted_commits: 0,
             not_found: 0,
             tx_start: Instant::now(),
             tx_cum: 0,
@@ -54,6 +56,14 @@ impl LocalStatistics {
 
     pub fn get_commits(&self) -> u64 {
         self.commits
+    }
+
+    pub fn inc_aborted_commits(&mut self) {
+        self.aborted_commits += 1;
+    }
+
+    pub fn get_aborted_commits(&self) -> u64 {
+        self.aborted_commits
     }
 
     pub fn inc_aborts(&mut self) {
