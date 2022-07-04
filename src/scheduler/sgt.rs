@@ -413,7 +413,7 @@ impl SerializationGraph {
                                     // if not in cycle then wait
                                     // println!("added 1 edge: {} --> X", from.get_full_id());
 
-                                    if !self.insert_and_check(Edge::WriteWrite(*from_addr), stats) {
+                                    if self.insert_and_check(Edge::WriteWrite(*from_addr), stats) {
                                         cyclic = true;
                                         break; // no reason to check other accesses
                                     }
