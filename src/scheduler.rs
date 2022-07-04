@@ -1,12 +1,11 @@
-use crate::common::error::NonFatalError;
-use crate::common::statistics::local::LocalStatistics;
-use crate::common::stats_bucket::StatsBucket;
-use crate::common::value_id::ValueId;
-use crate::scheduler::msgt::MixedSerializationGraph;
-use crate::scheduler::nocc::NoConcurrencyControl;
-use crate::scheduler::sgt::SerializationGraph;
-use crate::storage::datatype::Data;
-use crate::storage::Database;
+use crate::common::{
+    error::NonFatalError, statistics::local::LocalStatistics, stats_bucket::StatsBucket,
+    value_id::ValueId,
+};
+use crate::scheduler::{
+    msgt::MixedSerializationGraph, nocc::NoConcurrencyControl, sgt::SerializationGraph,
+};
+use crate::storage::{datatype::Data, Database};
 use crate::workloads::IsolationLevel;
 
 use config::Config;
