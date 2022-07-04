@@ -320,7 +320,7 @@ impl SerializationGraph {
         loop {
             if self.needs_abort() {
                 self.abort(meta, database);
-                return Err(SerializationGraphError::CascadingAbort.into()); // check for cascading abort
+                return Err(SerializationGraphError::WriteOpCascasde.into()); // check for cascading abort
             }
 
             prv = rw_table.push_front(Access::Write(meta.get_transaction_id())); // get ticket
@@ -387,7 +387,7 @@ impl SerializationGraph {
                 self.abort(meta, database);
                 lsn.store(prv + 1, Ordering::Release); // update lsn
 
-                return Err(SerializationGraphError::CascadingAbort.into());
+                return Err(SerializationGraphError::WriteOpCascasde.into());
             }
 
             break;

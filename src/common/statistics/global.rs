@@ -22,7 +22,9 @@ pub struct GlobalStatistics {
     commit_aborts: u64,
     write_cf: u64,
     read_cf: u64,
+    rwrite_cf: u64,
     read_ca: u64,
+    write_ca: u64,
     not_found: u64,
     tx: u128,
     commit: u128,
@@ -54,6 +56,8 @@ impl GlobalStatistics {
             write_cf: 0,
             read_cf: 0,
             read_ca: 0,
+            rwrite_cf: 0,
+            write_ca: 0,
             not_found: 0,
             tx: 0,
             commit: 0,
@@ -107,6 +111,8 @@ impl GlobalStatistics {
         self.read_cf += local.get_read_cf();
         self.write_cf += local.get_write_cf();
         self.read_ca += local.get_read_ca();
+        self.write_ca += local.get_write_ca();
+        self.rwrite_cf += local.get_rwrite_cf();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -153,6 +159,9 @@ impl GlobalStatistics {
             "   read_cf": self.read_cf,
             "   write_cf": self.write_cf,
             "   read_ca": self.read_ca,
+            "   write_ca": self.write_ca,
+            "   rwrite_ca": self.rwrite_cf,
+
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.get_txn_time(),
             "commit_time (ms)": self.get_commit_time(),

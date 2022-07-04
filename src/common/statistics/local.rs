@@ -9,8 +9,10 @@ pub struct LocalStatistics {
     logic_aborts: u64,
     commit_aborts: u64,
     read_cf: u64,
+    rwrite_cf: u64,
     write_cf: u64,
     read_ca: u64,
+    write_ca: u64,
     not_found: u64,
     tx_start: Instant,
     tx_cum: u128,
@@ -33,7 +35,9 @@ impl LocalStatistics {
             commit_aborts: 0,
             read_cf: 0,
             write_cf: 0,
+            rwrite_cf: 0,
             read_ca: 0,
+            write_ca: 0,
             not_found: 0,
             tx_start: Instant::now(),
             tx_cum: 0,
@@ -82,12 +86,28 @@ impl LocalStatistics {
         self.write_cf
     }
 
+    pub fn inc_rwrite_cf(&mut self) {
+        self.rwrite_cf += 1;
+    }
+
+    pub fn get_rwrite_cf(&self) -> u64 {
+        self.rwrite_cf
+    }
+
     pub fn inc_read_ca(&mut self) {
         self.read_ca += 1;
     }
 
     pub fn get_read_ca(&self) -> u64 {
         self.read_ca
+    }
+
+    pub fn inc_write_ca(&mut self) {
+        self.write_ca += 1;
+    }
+
+    pub fn get_write_ca(&self) -> u64 {
+        self.write_ca
     }
 
     pub fn inc_commit_aborts(&mut self) {

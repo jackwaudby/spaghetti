@@ -105,11 +105,17 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 SerializationGraphError::ReadOpCycleFound => {
                                     stats.inc_read_cf();
                                 }
+                                SerializationGraphError::WriteOpCascasde => {
+                                    stats.inc_write_ca();
+                                }
                                 SerializationGraphError::ReadOpCascasde => {
                                     stats.inc_read_ca();
                                 }
                                 SerializationGraphError::WriteOpCycleFound => {
                                     stats.inc_write_cf();
+                                }
+                                SerializationGraphError::CycleFound => {
+                                    stats.inc_rwrite_cf();
                                 }
                                 _ => {}
                             }
