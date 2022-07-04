@@ -193,42 +193,32 @@ impl SerializationGraph {
         aborted || cascading_abort
     }
 
-    pub fn begin(&self) -> (TransactionId, u128) {
+    pub fn begin(&self) -> TransactionId {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
 
-        let (ref_id, thread_id, thread_ctr, d) = self.create_node(); // create node
+        let ref_id = self.create_node(); // create node
 
         let guard = epoch::pin(); // pin thread
 
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
-        (
-            TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr),
-            d,
-        )
+        TransactionId::SerializationGraph(ref_id)
     }
 
-    pub fn create_node(&self) -> (usize, usize, usize, u128) {
-        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-        let thread_ctr = *self.txn_ctr.get().unwrap().borrow();
-
+    pub fn create_node(&self) -> usize {
         let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
-        let s = std::time::Instant::now();
-        let n = Node::new(thread_id, thread_ctr, incoming, outgoing, None);
-        let d = s.elapsed().as_nanos();
 
-        let node = Box::new(n); // allocate node
-
+        let node = Box::new(Node::new(incoming, outgoing, None)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
         let id = ptr as usize; // get id
         unsafe { (*ptr).set_id(id) }; // set id on node
 
         SerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
-        (id, thread_id, thread_ctr, d)
+        id
     }
 
     pub fn read_value(
@@ -270,7 +260,7 @@ impl SerializationGraph {
                 match access {
                     // W-R conflict
                     Access::Write(from) => {
-                        if let TransactionId::SerializationGraph(from_id, _, _) = from {
+                        if let TransactionId::SerializationGraph(from_id) = from {
                             stats.inc_conflict_detected();
                             let from = unsafe { &*(*from_id as *const Node) };
 
@@ -353,7 +343,7 @@ impl SerializationGraph {
                         Access::Write(from) => {
                             stats.inc_conflict_detected();
 
-                            if let TransactionId::SerializationGraph(from_addr, _, _) = from {
+                            if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
                                 // check if write access is uncommitted
@@ -419,7 +409,7 @@ impl SerializationGraph {
                     Access::Read(from) => {
                         stats.inc_conflict_detected();
 
-                        if let TransactionId::SerializationGraph(from_addr, _, _) = from {
+                        if let TransactionId::SerializationGraph(from_addr) = from {
                             let from = unsafe { &*(*from_addr as *const Node) };
                             if !from.is_committed() {
                                 if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats) {

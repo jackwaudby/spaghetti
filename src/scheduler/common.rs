@@ -38,8 +38,6 @@ impl Edge {
 
 #[derive(Debug)]
 pub struct Node {
-    thread_id: usize,
-    thread_ctr: usize,
     isolation_level: Option<IsolationLevel>,
     node_id: UnsafeCell<Option<usize>>,
     incoming: UnsafeCell<Option<EdgeSet>>,
@@ -49,8 +47,6 @@ pub struct Node {
     aborted: AtomicBool,
     cleaned: AtomicBool,
     checked: AtomicBool,
-    early: AtomicBool,
-    //    lock: RwLock<u32>,
     lock: RwLock<u8>,
     abort_through: UnsafeCell<TransactionId>,
 }
@@ -65,15 +61,11 @@ impl Node {
     }
 
     pub fn new(
-        thread_id: usize,
-        thread_ctr: usize,
         incoming: EdgeSet,
         outgoing: EdgeSet,
         isolation_level: Option<IsolationLevel>,
     ) -> Self {
         Self {
-            thread_id,
-            thread_ctr,
             isolation_level,
             node_id: UnsafeCell::new(None),
             incoming: UnsafeCell::new(Some(incoming)),
@@ -83,18 +75,13 @@ impl Node {
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
-            early: AtomicBool::new(false),
             lock: RwLock::new(0),
-            abort_through: UnsafeCell::new(TransactionId::SerializationGraph(0, 0, 0)),
+            abort_through: UnsafeCell::new(TransactionId::SerializationGraph(0)),
         }
     }
 
     pub fn get_isolation_level(&self) -> IsolationLevel {
         self.isolation_level.unwrap()
-    }
-
-    pub fn get_thread_ctr(&self) -> usize {
-        self.thread_ctr
     }
 
     /// Returns `true` if an edge from a given node already exists in this node's incoming edge set.
@@ -250,10 +237,6 @@ impl Node {
         unsafe { self.node_id.get().as_mut().unwrap().unwrap() }
     }
 
-    pub fn get_thread_id(&self) -> usize {
-        self.thread_id
-    }
-
     pub fn is_aborted(&self) -> bool {
         self.aborted.load(Ordering::Acquire)
     }
@@ -286,14 +269,6 @@ impl Node {
         self.checked.store(val, Ordering::Release);
     }
 
-    pub fn is_early(&self) -> bool {
-        self.early.load(Ordering::Acquire)
-    }
-
-    pub fn set_early(&self) {
-        self.early.store(true, Ordering::Release);
-    }
-
     pub fn is_cleaned(&self) -> bool {
         self.cleaned.load(Ordering::Acquire)
     }
@@ -307,13 +282,6 @@ impl Node {
     }
     pub fn get_abort_through(&self) -> TransactionId {
         unsafe { *self.abort_through.get() }
-    }
-
-    pub fn get_full_id(&self) -> TransactionId {
-        let ref_id = self.get_id();
-        let thread_id = self.get_thread_id();
-        let thread_ctr = self.get_thread_ctr();
-        TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
     }
 }
 
@@ -330,11 +298,6 @@ impl std::fmt::Debug for Edge {
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "[th-id: {}, t-id: {}]",
-            self.get_thread_id(),
-            format!("{:x}", self.get_id()),
-        )
+        write!(f, "[t-id: {}]", format!("{:x}", self.get_id()),)
     }
 }

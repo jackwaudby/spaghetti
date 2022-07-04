@@ -53,16 +53,16 @@ impl Scheduler {
         Ok(protocol)
     }
 
-    pub fn begin(&self, isolation_level: IsolationLevel) -> (StatsBucket, u128) {
+    pub fn begin(&self, isolation_level: IsolationLevel) -> StatsBucket {
         use Scheduler::*;
 
-        let (transaction_id, d) = match self {
+        let transaction_id = match self {
             SerializationGraph(sg) => sg.begin(),
-            MixedSerializationGraph(sg) => (sg.begin(isolation_level), 1),
-            NoConcurrencyControl(nocc) => (nocc.begin(), 1),
+            MixedSerializationGraph(sg) => sg.begin(isolation_level),
+            NoConcurrencyControl(nocc) => nocc.begin(),
         };
 
-        (StatsBucket::new(transaction_id), d)
+        StatsBucket::new(transaction_id)
     }
 
     pub fn read_value(

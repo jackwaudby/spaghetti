@@ -238,26 +238,24 @@ impl MixedSerializationGraph {
         *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
             Some(TransactionInformation::new()); // reset txn info
-        let (ref_id, thread_id, thread_ctr) = self.create_node(isolation_level); // create node
+        let ref_id = self.create_node(isolation_level); // create node
         let guard = epoch::pin(); // pin thread
         MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard)); // add to guard
 
-        TransactionId::SerializationGraph(ref_id, thread_id, thread_ctr)
+        TransactionId::SerializationGraph(ref_id)
     }
 
-    pub fn create_node(&self, isolation_level: IsolationLevel) -> (usize, usize, usize) {
-        let thread_id: usize = std::thread::current().name().unwrap().parse().unwrap();
-        let thread_ctr = *self.txn_ctr.get().unwrap().borrow(); // thread ctr
+    pub fn create_node(&self, isolation_level: IsolationLevel) -> usize {
         let incoming = Mutex::new(FxHashSet::default()); // init edge sets
         let outgoing = Mutex::new(FxHashSet::default());
         let iso = Some(isolation_level);
-        let node = Box::new(Node::new(thread_id, thread_ctr, incoming, outgoing, iso)); // allocate node
+        let node = Box::new(Node::new(incoming, outgoing, iso)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw pt
         let id = ptr as usize;
         unsafe { (*ptr).set_id(id) }; // set id on node
         MixedSerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
-        (id, thread_id, thread_ctr)
+        id
     }
 
     pub fn read_value(
@@ -298,7 +296,7 @@ impl MixedSerializationGraph {
                 match access {
                     // W-R conflict
                     Access::Write(from) => {
-                        if let TransactionId::SerializationGraph(from_id, _, _) = from {
+                        if let TransactionId::SerializationGraph(from_id) = from {
                             if !self.insert_and_check(Edge::WriteRead(*from_id)) {
                                 cyclic = true;
                                 break;
@@ -375,7 +373,7 @@ impl MixedSerializationGraph {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
-                            if let TransactionId::SerializationGraph(from_addr, _, _) = from {
+                            if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
                                 // check if write access is uncommitted
@@ -437,7 +435,7 @@ impl MixedSerializationGraph {
             if id < &prv {
                 match access {
                     Access::Read(from) => {
-                        if let TransactionId::SerializationGraph(from_addr, _, _) = from {
+                        if let TransactionId::SerializationGraph(from_addr) = from {
                             if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
                                 cyclic = true;
                                 break;
