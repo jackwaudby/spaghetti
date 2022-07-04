@@ -143,7 +143,7 @@ impl SerializationGraph {
         stack.clear();
 
         let this_rlock = this.read();
-        let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
+        let outgoing = this.get_incoming(); // FxHashSet<Edge<'a>>
         let mut out = outgoing.into_iter().collect();
 
         stack.append(&mut out);
