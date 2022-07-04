@@ -328,7 +328,7 @@ impl SerializationGraph {
                         if let TransactionId::SerializationGraph(from_id) = from {
                             stats.inc_conflict_detected();
 
-                            if !self.insert_and_check(Edge::WriteRead(*from_id), stats) {
+                            if self.insert_and_check(Edge::WriteRead(*from_id), stats) {
                                 cyclic = true;
                                 break;
                             }
@@ -464,7 +464,7 @@ impl SerializationGraph {
                         if let TransactionId::SerializationGraph(from_addr) = from {
                             let from = unsafe { &*(*from_addr as *const Node) };
                             if !from.is_committed() {
-                                if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats) {
+                                if self.insert_and_check(Edge::ReadWrite(*from_addr), stats) {
                                     cyclic = true;
                                     break;
                                 }
