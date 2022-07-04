@@ -375,6 +375,8 @@ impl SerializationGraph {
         let lsn = table.get_lsn(offset);
         let mut prv;
 
+        let guard = &epoch::pin(); // pin thread
+
         loop {
             if self.needs_abort() {
                 self.abort(meta, database);
@@ -387,7 +389,7 @@ impl SerializationGraph {
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
-            let guard = &epoch::pin(); // pin thread
+            // let guard = &epoch::pin(); // pin thread
             let snapshot = rw_table.iter(guard);
 
             let mut wait = false; // flag indicating if there is an uncommitted write
@@ -446,7 +448,7 @@ impl SerializationGraph {
         }
 
         // Now handle R-W conflicts
-        let guard = &epoch::pin(); // pin thread
+        // let guard = &epoch::pin(); // pin thread
         let snapshot = rw_table.iter(guard);
 
         let mut cyclic = false;
