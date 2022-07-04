@@ -1,21 +1,21 @@
-use crate::common::error::NonFatalError;
-use crate::common::error::SerializationGraphError;
+use crate::common::error::{NonFatalError, SerializationGraphError};
 use crate::common::statistics::local::LocalStatistics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
-use crate::scheduler::common::{Edge, Node};
-use crate::scheduler::StatsBucket;
-use crate::scheduler::ValueId;
-use crate::storage::access::{Access, TransactionId};
-use crate::storage::datatype::Data;
-use crate::storage::Database;
+use crate::scheduler::{
+    common::{Edge, Node},
+    StatsBucket, ValueId,
+};
+use crate::storage::{
+    access::{Access, TransactionId},
+    datatype::Data,
+    Database,
+};
 
-use crossbeam_epoch as epoch;
-use crossbeam_epoch::Guard;
+use crossbeam_epoch::{self as epoch, Guard};
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
-use std::cell::RefCell;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
+use std::cell::{RefCell, RefMut};
+use std::sync::atomic::{AtomicU64, Ordering};
 use thread_local::ThreadLocal;
 use tracing::info;
 
@@ -23,6 +23,7 @@ use tracing::info;
 pub struct SerializationGraph {
     txn_ctr: ThreadLocal<RefCell<usize>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
+    visit_path: ThreadLocal<RefCell<FxHashSet<usize>>>,
     stack: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
 }
@@ -39,6 +40,7 @@ impl SerializationGraph {
         Self {
             txn_ctr: ThreadLocal::new(),
             visited: ThreadLocal::new(),
+            visit_path: ThreadLocal::new(),
             stack: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
         }
@@ -121,10 +123,75 @@ impl SerializationGraph {
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
             drop(from_rlock);
-            let is_cycle = self.cycle_check(); // cycle check
+            let is_cycle = self.cycle_cycle_init(this_id);
+
+            // cycle_check(); // cycle check
 
             return !is_cycle;
         }
+    }
+
+    fn get_visited(&self) -> RefMut<FxHashSet<usize>> {
+        self.visited
+            .get_or(|| RefCell::new(FxHashSet::default()))
+            .borrow_mut()
+    }
+
+    fn get_visit_path(&self) -> RefMut<FxHashSet<usize>> {
+        self.visit_path
+            .get_or(|| RefCell::new(FxHashSet::default()))
+            .borrow_mut()
+    }
+
+    fn check_cycle_naive(
+        &self,
+        cur: usize,
+        visited: &mut RefMut<FxHashSet<usize>>,
+        visit_path: &mut RefMut<FxHashSet<usize>>,
+    ) -> bool {
+        // let mut visited = self.get_visited();
+        // let mut visit_path = self.get_visit_path();
+
+        visited.insert(cur);
+        visit_path.insert(cur);
+
+        let cur = unsafe { &*(cur as *const Node) };
+        let g = cur.read();
+        if !cur.is_cleaned() {
+            let incoming = cur.get_incoming();
+            for edge in incoming {
+                let id = edge.extract_id() as usize;
+                if visit_path.contains(&id) {
+                    drop(g);
+                    return true;
+                } else {
+                    if self.check_cycle_naive(id, visited, visit_path) {
+                        drop(g);
+                        return true;
+                    }
+                }
+            }
+        }
+
+        drop(g);
+        let cur = cur.get_id() as usize;
+        visit_path.remove(&cur);
+
+        return false;
+    }
+
+    fn cycle_cycle_init(&self, this_node: usize) -> bool {
+        let mut visited = self.get_visited();
+        let mut visit_path = self.get_visit_path();
+
+        visited.clear();
+        visit_path.clear();
+
+        let mut check = false;
+        if !visited.contains(&this_node) {
+            check = self.check_cycle_naive(this_node, &mut visited, &mut visit_path);
+        }
+        return check;
     }
 
     pub fn cycle_check(&self) -> bool {
@@ -472,7 +539,7 @@ impl SerializationGraph {
             // no lock taken as only outgoing edges can be added from here
             if this.has_incoming() {
                 this.set_checked(false); // if incoming then flip back to unchecked
-                let is_cycle = self.cycle_check(); // cycle check
+                let is_cycle = self.cycle_cycle_init(this.get_id()); // cycle check
                 if is_cycle {
                     this.set_aborted(); // cycle so abort (this)
                 }
