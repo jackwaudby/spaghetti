@@ -173,7 +173,7 @@ impl SerializationGraph {
             let val1 =
                 !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
             if val1 {
-                let outgoing = current.get_outgoing();
+                let outgoing = current.get_incoming();
                 let mut out = outgoing.into_iter().collect();
                 stack.append(&mut out);
             }
