@@ -24,7 +24,6 @@ pub struct SerializationGraph {
     txn_ctr: ThreadLocal<RefCell<usize>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
     visit_path: ThreadLocal<RefCell<FxHashSet<usize>>>,
-    stack: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
 }
 
@@ -41,7 +40,6 @@ impl SerializationGraph {
             txn_ctr: ThreadLocal::new(),
             visited: ThreadLocal::new(),
             visit_path: ThreadLocal::new(),
-            stack: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
         }
     }
@@ -194,62 +192,62 @@ impl SerializationGraph {
         return check;
     }
 
-    pub fn cycle_check(&self) -> bool {
-        let start_id = self.get_transaction() as usize;
+    // pub fn cycle_check(&self) -> bool {
+    //     let start_id = self.get_transaction() as usize;
 
-        let this = unsafe { &*self.get_transaction() };
+    //     let this = unsafe { &*self.get_transaction() };
 
-        let mut visited = self
-            .visited
-            .get_or(|| RefCell::new(FxHashSet::default()))
-            .borrow_mut();
+    //     let mut visited = self
+    //         .visited
+    //         .get_or(|| RefCell::new(FxHashSet::default()))
+    //         .borrow_mut();
 
-        let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
+    //     let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
 
-        visited.clear();
-        stack.clear();
+    //     visited.clear();
+    //     stack.clear();
 
-        let this_rlock = this.read();
-        let outgoing = this.get_incoming(); // FxHashSet<Edge<'a>>
-        let mut out = outgoing.into_iter().collect();
+    //     let this_rlock = this.read();
+    //     let outgoing = this.get_incoming(); // FxHashSet<Edge<'a>>
+    //     let mut out = outgoing.into_iter().collect();
 
-        stack.append(&mut out);
+    //     stack.append(&mut out);
 
-        drop(this_rlock);
+    //     drop(this_rlock);
 
-        while let Some(edge) = stack.pop() {
-            let current = match edge {
-                Edge::ReadWrite(node) => node,
-                Edge::WriteWrite(node) => node,
-                Edge::WriteRead(node) => node,
-            };
+    //     while let Some(edge) = stack.pop() {
+    //         let current = match edge {
+    //             Edge::ReadWrite(node) => node,
+    //             Edge::WriteWrite(node) => node,
+    //             Edge::WriteRead(node) => node,
+    //         };
 
-            if start_id == current {
-                return true; // cycle found
-            }
+    //         if start_id == current {
+    //             return true; // cycle found
+    //         }
 
-            if visited.contains(&current) {
-                continue; // already visited
-            }
+    //         if visited.contains(&current) {
+    //             continue; // already visited
+    //         }
 
-            visited.insert(current);
+    //         visited.insert(current);
 
-            let current = unsafe { &*(current as *const Node) };
+    //         let current = unsafe { &*(current as *const Node) };
 
-            let rlock = current.read();
-            let val1 =
-                !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
-            if val1 {
-                let outgoing = current.get_incoming();
-                let mut out = outgoing.into_iter().collect();
-                stack.append(&mut out);
-            }
+    //         let rlock = current.read();
+    //         let val1 =
+    //             !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
+    //         if val1 {
+    //             let outgoing = current.get_incoming();
+    //             let mut out = outgoing.into_iter().collect();
+    //             stack.append(&mut out);
+    //         }
 
-            drop(rlock);
-        }
+    //         drop(rlock);
+    //     }
 
-        false
-    }
+    //     false
+    // }
 
     /// Check if a transaction needs to abort.
     pub fn needs_abort(&self) -> bool {
@@ -329,13 +327,10 @@ impl SerializationGraph {
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id) = from {
                             stats.inc_conflict_detected();
-                            let from = unsafe { &*(*from_id as *const Node) };
 
-                            if !from.is_committed() {
-                                if !self.insert_and_check(Edge::WriteRead(*from_id), stats) {
-                                    cyclic = true;
-                                    break;
-                                }
+                            if !self.insert_and_check(Edge::WriteRead(*from_id), stats) {
+                                cyclic = true;
+                                break;
                             }
                         }
                     }
@@ -449,16 +444,6 @@ impl SerializationGraph {
                 lsn.store(prv + 1, Ordering::Release); // update lsn
 
                 continue;
-            }
-
-            // (iii) no w-w conflicts -> clean record (both F)
-            // check for cascading abort
-            if self.needs_abort() {
-                rw_table.erase(prv); // remove from rw table
-                self.abort(meta, database);
-                lsn.store(prv + 1, Ordering::Release); // update lsn
-
-                return Err(SerializationGraphError::WriteOpCascasde.into());
             }
 
             break;
