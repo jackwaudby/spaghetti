@@ -297,12 +297,12 @@ impl SerializationGraph {
         let column_id = vid.get_column_id();
         let offset = vid.get_offset();
 
-        let this = unsafe { &*self.get_transaction() };
+        // let this = unsafe { &*self.get_transaction() };
 
-        if this.is_cascading_abort() {
-            self.abort(meta, database);
-            return Err(SerializationGraphError::ReadOpCycleFound.into());
-        }
+        // if this.is_cascading_abort() {
+        //     self.abort(meta, database);
+        //     return Err(SerializationGraphError::ReadOpCycleFound.into());
+        // }
 
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
@@ -312,52 +312,48 @@ impl SerializationGraph {
         // Safety: ensures exculsive access to the record.
         unsafe { spin(prv, lsn) }; // busy wait
 
-        // On acquiring the 'lock' on the record can be clean or dirty.
-        // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
-        let guard = &epoch::pin(); // pin thread
-        let snapshot = rw_table.iter(guard);
+        // // On acquiring the 'lock' on the record can be clean or dirty.
+        // // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
+        // let guard = &epoch::pin(); // pin thread
+        // let snapshot = rw_table.iter(guard);
 
-        let mut cyclic = false;
+        // let mut cyclic = false;
 
-        for (id, access) in snapshot {
-            // only interested in accesses before this one and that are write operations.
-            if id < &prv {
-                match access {
-                    // W-R conflict
-                    Access::Write(from) => {
-                        if let TransactionId::SerializationGraph(from_id) = from {
-                            stats.inc_conflict_detected();
+        // for (id, access) in snapshot {
+        //     // only interested in accesses before this one and that are write operations.
+        //     if id < &prv {
+        //         match access {
+        //             // W-R conflict
+        //             Access::Write(from) => {
+        //                 if let TransactionId::SerializationGraph(from_id) = from {
+        //                     stats.inc_conflict_detected();
 
-                            if !self.insert_and_check(Edge::WriteRead(*from_id), stats) {
-                                cyclic = true;
-                                break;
-                            }
-                        }
-                    }
-                    Access::Read(_) => {}
-                }
-            }
-        }
+        //                     if !self.insert_and_check(Edge::WriteRead(*from_id), stats) {
+        //                         cyclic = true;
+        //                         break;
+        //                     }
+        //                 }
+        //             }
+        //             Access::Read(_) => {}
+        //         }
+        //     }
+        // }
 
-        if cyclic {
-            rw_table.erase(prv); // remove from rw table
-            lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(meta, database); // abort
-            return Err(SerializationGraphError::ReadOpCycleFound.into());
-        }
+        // if cyclic {
+        //     rw_table.erase(prv); // remove from rw table
+        //     lsn.store(prv + 1, Ordering::Release); // update lsn
+        //     self.abort(meta, database); // abort
+        //     return Err(SerializationGraphError::ReadOpCycleFound.into());
+        // }
 
-        let vals = table
-            .get_tuple(column_id, offset)
-            .get()
-            .get_value()
-            .unwrap()
-            .get_value(); // read
+        let tuple = table.get_tuple(column_id, offset).get();
+        let value = tuple.get_value().unwrap().get_value();
 
         lsn.store(prv + 1, Ordering::Release); // update lsn
 
         self.record(OperationType::Read, table_id, column_id, offset, prv); // record operation
 
-        Ok(vals)
+        Ok(value)
     }
 
     /// Write operation.
@@ -449,42 +445,42 @@ impl SerializationGraph {
             break;
         }
 
-        // Now handle R-W conflicts
-        let guard = &epoch::pin(); // pin thread
-        let snapshot = rw_table.iter(guard);
+        // // Now handle R-W conflicts
+        // let guard = &epoch::pin(); // pin thread
+        // let snapshot = rw_table.iter(guard);
 
-        let mut cyclic = false;
+        // let mut cyclic = false;
 
-        for (id, access) in snapshot {
-            if id < &prv {
-                match access {
-                    Access::Read(from) => {
-                        stats.inc_conflict_detected();
+        // for (id, access) in snapshot {
+        //     if id < &prv {
+        //         match access {
+        //             Access::Read(from) => {
+        //                 stats.inc_conflict_detected();
 
-                        if let TransactionId::SerializationGraph(from_addr) = from {
-                            let from = unsafe { &*(*from_addr as *const Node) };
-                            if !from.is_committed() {
-                                if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats) {
-                                    cyclic = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Access::Write(_) => {}
-                }
-            }
-        }
+        //                 if let TransactionId::SerializationGraph(from_addr) = from {
+        //                     let from = unsafe { &*(*from_addr as *const Node) };
+        //                     if !from.is_committed() {
+        //                         if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats) {
+        //                             cyclic = true;
+        //                             break;
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             Access::Write(_) => {}
+        //         }
+        //     }
+        // }
 
-        // (iv) transaction is in a cycle (cycle = T)
-        // abort transaction
-        if cyclic {
-            rw_table.erase(prv); // remove from rw table
-            lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(meta, database);
+        // // (iv) transaction is in a cycle (cycle = T)
+        // // abort transaction
+        // if cyclic {
+        //     rw_table.erase(prv); // remove from rw table
+        //     lsn.store(prv + 1, Ordering::Release); // update lsn
+        //     self.abort(meta, database);
 
-            return Err(SerializationGraphError::CycleFound.into());
-        }
+        //     return Err(SerializationGraphError::CycleFound.into());
+        // }
 
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
