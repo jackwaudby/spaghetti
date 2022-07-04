@@ -1,5 +1,6 @@
 use crate::common::error::NonFatalError;
 use crate::common::error::SerializationGraphError;
+use crate::common::statistics::local::LocalStatistics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::common::{Edge, Node};
 use crate::scheduler::StatsBucket;
@@ -75,7 +76,7 @@ impl SerializationGraph {
     }
 
     /// Insert an edge: (from) --> (this)
-    pub fn insert_and_check(&self, from: Edge) -> bool {
+    pub fn insert_and_check(&self, from: Edge, stats: &mut LocalStatistics) -> bool {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
@@ -115,16 +116,20 @@ impl SerializationGraph {
                 continue; // if (from) checked in process of terminating so try again
             }
 
+            stats.inc_edges_inserted();
+
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
             drop(from_rlock);
             let is_cycle = self.cycle_check(); // cycle check
+
             return !is_cycle;
         }
     }
 
     pub fn cycle_check(&self) -> bool {
         let start_id = self.get_transaction() as usize;
+
         let this = unsafe { &*self.get_transaction() };
 
         let mut visited = self
@@ -140,7 +145,9 @@ impl SerializationGraph {
         let this_rlock = this.read();
         let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
         let mut out = outgoing.into_iter().collect();
+
         stack.append(&mut out);
+
         drop(this_rlock);
 
         while let Some(edge) = stack.pop() {
@@ -229,6 +236,7 @@ impl SerializationGraph {
         vid: ValueId,
         meta: &mut StatsBucket,
         database: &Database,
+        stats: &mut LocalStatistics,
     ) -> Result<Data, NonFatalError> {
         let table_id = vid.get_table_id();
         let column_id = vid.get_column_id();
@@ -263,10 +271,11 @@ impl SerializationGraph {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id, _, _) = from {
+                            stats.inc_conflict_detected();
                             let from = unsafe { &*(*from_id as *const Node) };
 
                             if !from.is_committed() {
-                                if !self.insert_and_check(Edge::WriteRead(*from_id)) {
+                                if !self.insert_and_check(Edge::WriteRead(*from_id), stats) {
                                     cyclic = true;
                                     break;
                                 }
@@ -308,6 +317,7 @@ impl SerializationGraph {
         vid: ValueId,
         meta: &mut StatsBucket,
         database: &Database,
+        stats: &mut LocalStatistics,
     ) -> Result<(), NonFatalError> {
         let table_id = vid.get_table_id();
         let column_id = vid.get_column_id();
@@ -341,13 +351,17 @@ impl SerializationGraph {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
+                            stats.inc_conflict_detected();
+
                             if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
-                                    if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
+                                    // println!("added 1 edge: {} --> X", from.get_full_id());
+
+                                    if !self.insert_and_check(Edge::WriteWrite(*from_addr), stats) {
                                         cyclic = true;
                                         break; // no reason to check other accesses
                                     }
@@ -403,10 +417,12 @@ impl SerializationGraph {
             if id < &prv {
                 match access {
                     Access::Read(from) => {
+                        stats.inc_conflict_detected();
+
                         if let TransactionId::SerializationGraph(from_addr, _, _) = from {
                             let from = unsafe { &*(*from_addr as *const Node) };
                             if !from.is_committed() {
-                                if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
+                                if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats) {
                                     cyclic = true;
                                     break;
                                 }

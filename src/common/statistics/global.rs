@@ -30,6 +30,8 @@ pub struct GlobalStatistics {
     commit: u128,
     wait_manager: u128,
     latency: u128,
+    edges_inserted: u64,
+    conflict_detected: u64,
 }
 
 impl GlobalStatistics {
@@ -63,6 +65,8 @@ impl GlobalStatistics {
             commit: 0,
             wait_manager: 0,
             latency: 0,
+            edges_inserted: 0,
+            conflict_detected: 0,
         }
     }
 
@@ -113,6 +117,8 @@ impl GlobalStatistics {
         self.read_ca += local.get_read_ca();
         self.write_ca += local.get_write_ca();
         self.rwrite_cf += local.get_rwrite_cf();
+        self.edges_inserted += local.get_edges_inserted();
+        self.conflict_detected += local.get_conflict_detected();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -168,7 +174,9 @@ impl GlobalStatistics {
             "wait_time (ms)": self.get_wait_time(),
             "latency (ms)": self.get_latency(),
             "thpt": format!("{:.2}",self.get_thpt()),
-            "abr": format!("{:.2}",self.get_abr())
+            "abr": format!("{:.2}",self.get_abr()),
+            "edges_inserted": self.edges_inserted,
+            "conflicts deteted": self.conflict_detected
 
         });
 

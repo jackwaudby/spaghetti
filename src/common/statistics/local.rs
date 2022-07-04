@@ -22,6 +22,8 @@ pub struct LocalStatistics {
     wait_manager_cum: u128,
     latency_start: Instant,
     latency_cum: u128,
+    edges_inserted: u64,
+    conflict_detected: u64,
 }
 
 impl LocalStatistics {
@@ -47,6 +49,8 @@ impl LocalStatistics {
             wait_manager_cum: 0,
             latency_start: Instant::now(),
             latency_cum: 0,
+            edges_inserted: 0,
+            conflict_detected: 0,
         }
     }
 
@@ -132,6 +136,22 @@ impl LocalStatistics {
 
     pub fn get_aborts(&self) -> u64 {
         self.aborts
+    }
+
+    pub fn inc_edges_inserted(&mut self) {
+        self.edges_inserted += 1;
+    }
+
+    pub fn get_edges_inserted(&self) -> u64 {
+        self.edges_inserted
+    }
+
+    pub fn inc_conflict_detected(&mut self) {
+        self.conflict_detected += 1;
+    }
+
+    pub fn get_conflict_detected(&self) -> u64 {
+        self.conflict_detected
     }
 
     pub fn inc_not_found(&mut self) {

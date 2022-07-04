@@ -61,7 +61,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                 stats.start_tx();
                 // let transaction_id = meta.get_transaction_id();
 
-                response = execute_logic(&mut meta, request.clone(), scheduler, database);
+                response =
+                    execute_logic(&mut meta, request.clone(), scheduler, database, &mut stats);
 
                 // if transaction was restarted and had some locks
                 // if guards.guards.is_some() {
@@ -153,28 +154,41 @@ pub fn execute_logic<'a>(
     request: Request,
     scheduler: &'a Scheduler,
     database: &'a Database,
+    stats: &mut LocalStatistics,
 ) -> Result<(), NonFatalError> {
     use SmallBankTransactionProfile::*;
     let parameters = request.get_parameters();
 
     match parameters.get() {
         Amalgamate(params) => {
-            smallbank::procedures::amalgmate(meta, params.clone(), scheduler, database)
+            smallbank::procedures::amalgmate(meta, params.clone(), scheduler, database, stats)
         }
         Balance(params) => {
-            smallbank::procedures::balance(meta, params.clone(), scheduler, database)
+            smallbank::procedures::balance(meta, params.clone(), scheduler, database, stats)
         }
         SmallBankTransactionProfile::DepositChecking(params) => {
-            smallbank::procedures::deposit_checking(meta, params.clone(), scheduler, database)
+            smallbank::procedures::deposit_checking(
+                meta,
+                params.clone(),
+                scheduler,
+                database,
+                stats,
+            )
         }
         SmallBankTransactionProfile::SendPayment(params) => {
-            smallbank::procedures::send_payment(meta, params.clone(), scheduler, database)
+            smallbank::procedures::send_payment(meta, params.clone(), scheduler, database, stats)
         }
         SmallBankTransactionProfile::TransactSaving(params) => {
-            smallbank::procedures::transact_savings(meta, params.clone(), scheduler, database)
+            smallbank::procedures::transact_savings(
+                meta,
+                params.clone(),
+                scheduler,
+                database,
+                stats,
+            )
         }
         SmallBankTransactionProfile::WriteCheck(params) => {
-            smallbank::procedures::write_check(meta, params.clone(), scheduler, database)
+            smallbank::procedures::write_check(meta, params.clone(), scheduler, database, stats)
         }
     }
 }
