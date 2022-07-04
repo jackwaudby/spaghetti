@@ -164,9 +164,9 @@ impl GlobalStatistics {
             "   logic": self.logic_aborts,
             "   read_cf": self.read_cf,
             "   write_cf": self.write_cf,
+            "   rwrite_cf": self.rwrite_cf,
             "   read_ca": self.read_ca,
             "   write_ca": self.write_ca,
-            "   rwrite_ca": self.rwrite_cf,
 
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.get_txn_time(),
