@@ -76,7 +76,7 @@ impl SerializationGraph {
     }
 
     /// Insert an edge: (from) --> (this)
-    pub fn insert_and_check(&self, from: Edge, stats: &mut LocalStatistics) -> bool {
+    pub fn insert_and_check(&self, from: Edge, stats: &mut LocalStatistics, check: bool) -> bool {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
@@ -121,9 +121,12 @@ impl SerializationGraph {
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
             drop(from_rlock);
-            let is_cycle = self.cycle_cycle_init(this_id);
 
-            // cycle_check(); // cycle check
+            let mut is_cycle = false;
+
+            if check {
+                is_cycle = self.cycle_cycle_init(this_id);
+            }
 
             return !is_cycle;
         }
@@ -353,7 +356,11 @@ impl SerializationGraph {
                                     // if not in cycle then wait
                                     // println!("added 1 edge: {} --> X", from.get_full_id());
 
-                                    if !self.insert_and_check(Edge::WriteWrite(*from_addr), stats) {
+                                    if !self.insert_and_check(
+                                        Edge::WriteWrite(*from_addr),
+                                        stats,
+                                        true,
+                                    ) {
                                         cyclic = true;
                                         // break; // no reason to check other accesses
                                     }
@@ -406,10 +413,10 @@ impl SerializationGraph {
                         if let TransactionId::SerializationGraph(from_addr) = from {
                             let from = unsafe { &*(*from_addr as *const Node) };
                             // if !from.is_committed() {
-                            //     if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats) {
-                            //         cyclic = true;
-                            //         break;
-                            //     }
+                            if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats, false) {
+                                cyclic = true;
+                                break;
+                            }
                             // }
                         }
                     }
