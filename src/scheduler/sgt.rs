@@ -245,13 +245,13 @@ impl SerializationGraph {
         vid: ValueId,
         meta: &mut StatsBucket,
         database: &Database,
-        stats: &mut LocalStatistics,
+        _stats: &mut LocalStatistics,
     ) -> Result<Data, NonFatalError> {
         let table_id = vid.get_table_id();
         let column_id = vid.get_column_id();
         let offset = vid.get_offset();
 
-        let this = unsafe { &*self.get_transaction() };
+        // let this = unsafe { &*self.get_transaction() };
 
         // if this.is_cascading_abort() {
         //     self.abort(meta, database);
@@ -434,7 +434,7 @@ impl SerializationGraph {
                         stats.inc_conflict_detected();
                         stats.inc_rw_conflict_detected();
                         if let TransactionId::SerializationGraph(from_addr) = from {
-                            let from = unsafe { &*(*from_addr as *const Node) };
+                            // let from = unsafe { &*(*from_addr as *const Node) };
                             // if !from.is_committed() {
                             let outcome =
                                 self.insert_and_check(Edge::ReadWrite(*from_addr), stats, false);
@@ -459,13 +459,13 @@ impl SerializationGraph {
         drop(guard);
 
         // (iv) transaction is in a cycle (cycle = T)
-        // if cyclic {
-        //     rw_table.erase(prv); // remove from rw table
-        //     lsn.store(prv + 1, Ordering::Release); // update lsn
-        //     self.abort(meta, database);
+        if cyclic {
+            //     rw_table.erase(prv); // remove from rw table
+            //     lsn.store(prv + 1, Ordering::Release); // update lsn
+            //     self.abort(meta, database);
 
-        //     return Err(SerializationGraphError::CycleFound.into());
-        // }
+            //     return Err(SerializationGraphError::CycleFound.into());
+        }
 
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
@@ -484,7 +484,11 @@ impl SerializationGraph {
     }
 
     /// Commit operation.
-    pub fn commit(&self, meta: &mut StatsBucket, database: &Database) -> Result<(), NonFatalError> {
+    pub fn commit(
+        &self,
+        _meta: &mut StatsBucket,
+        database: &Database,
+    ) -> Result<(), NonFatalError> {
         let this = unsafe { &*self.get_transaction() };
 
         loop {
