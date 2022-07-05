@@ -140,8 +140,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 _ => {}
                             }
 
-                            let tx_time = stats.stop_tx();
-                            stats.stop_txn_logic_abort(tx_time);
+                            // let tx_time = stats.stop_tx();
+                            // stats.stop_txn_logic_abort(tx_time);
 
                             stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
