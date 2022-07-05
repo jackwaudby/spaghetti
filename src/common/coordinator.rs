@@ -100,20 +100,50 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
                                 break;
                             }
-                            Err(_) => {
-                                scheduler.abort(&mut meta, database);
-                                stats.inc_aborts();
-                                stats.inc_commit_aborts();
-                                let tx_time = stats.stop_tx();
-                                stats.stop_txn_commit_abort(tx_time);
-                                stats.start_wait_manager();
-                                // let problem_transactions = meta.get_problem_transactions();
-                                // let g = wait_manager
-                                //     .wait(transaction_id.extract(), problem_transactions);
-                                // guards.guards.replace(g);
-                                stats.stop_wait_manager();
-                                retries += 1;
-                            }
+                            Err(e) => match e {
+                                NonFatalError::NoccError => {}
+                                NonFatalError::SmallBankError(_) => {}
+                                NonFatalError::SerializationGraphError(e) => {
+                                    scheduler.abort(&mut meta, database);
+                                    stats.inc_aborts();
+                                    stats.inc_commit_aborts();
+                                    let tx_time = stats.stop_tx();
+                                    stats.stop_txn_commit_abort(tx_time);
+
+                                    let mut reason = 0;
+                                    match e {
+                                        SerializationGraphError::CycleFound => {
+                                            reason = 1;
+                                        }
+                                        SerializationGraphError::CascadingAbort => {
+                                            reason = 2;
+                                        }
+
+                                        _ => {}
+                                    }
+
+                                    stats.start_wait_manager();
+                                    // let problem_transactions = meta.get_problem_transactions();
+                                    // let g = wait_manager
+                                    //     .wait(transaction_id.extract(), problem_transactions);
+                                    // guards.guards.replace(g);
+                                    stats.stop_wait_manager();
+
+                                    let reason = AbortReason {
+                                        request_no: completed_transactions,
+                                        location: true,
+                                        latency: tx_time as u64,
+                                        reason,
+                                        attempt: retries,
+                                        id: meta.get_transaction_id().extract(),
+                                        abort_through: meta.get_abort_through(),
+                                    };
+
+                                    wtr.serialize(&reason).unwrap();
+
+                                    retries += 1;
+                                }
+                            },
                         }
                     }
                     Err(e) => match e {
