@@ -424,6 +424,8 @@ impl SerializationGraph {
                 }
             }
 
+            drop(guard);
+
             // (i) transaction is in a cycle (cycle = T)
             // abort transaction
             if cyclic {
