@@ -75,9 +75,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
                 match response {
                     Ok(_) => {
-                        //   stats.start_commit();
+                        stats.start_commit();
                         let commit_res = scheduler.commit(&mut meta, database);
-                        // stats.stop_commit();
+                        stats.stop_commit();
 
                         match commit_res {
                             Ok(_) => {
@@ -89,20 +89,15 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             }
                             Err(_) => {
                                 scheduler.abort(&mut meta, database);
-
-                                // case 1 when commit fails
                                 stats.inc_aborts();
                                 stats.inc_commit_aborts();
-
                                 let tx_time = stats.stop_tx();
                                 stats.stop_txn_commit_abort(tx_time);
-
                                 stats.start_wait_manager();
                                 // let problem_transactions = meta.get_problem_transactions();
                                 // let g = wait_manager
                                 //     .wait(transaction_id.extract(), problem_transactions);
                                 // guards.guards.replace(g);
-
                                 stats.stop_wait_manager();
                                 retries += 1;
                             }
@@ -111,15 +106,11 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     Err(e) => match e {
                         NonFatalError::NoccError => {}
                         NonFatalError::SerializationGraphError(e) => {
-                            let tx_time = stats.stop_tx();
-                            stats.stop_txn_logic_abort(tx_time);
-
-                            stats.start_commit();
                             scheduler.abort(&mut meta, database);
-                            stats.stop_commit();
-                            // case 2 when logic fails
                             stats.inc_aborts();
                             stats.inc_logic_aborts();
+                            let tx_time = stats.stop_tx();
+                            stats.stop_txn_logic_abort(tx_time);
 
                             match e {
                                 SerializationGraphError::ReadOpCycleFound => {
@@ -139,9 +130,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 }
                                 _ => {}
                             }
-
-                            // let tx_time = stats.stop_tx();
-                            // stats.stop_txn_logic_abort(tx_time);
 
                             stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
