@@ -338,6 +338,9 @@ impl SerializationGraph {
 
         loop {
             if self.needs_abort() {
+                let this = unsafe { &*self.get_transaction() };
+                let id = this.get_abort_through();
+                meta.set_abort_through(id);
                 // self.abort(meta, database);
                 return Err(SerializationGraphError::WriteOpCascasde.into()); // check for cascading abort
             }
@@ -606,8 +609,8 @@ impl SerializationGraph {
                 Edge::WriteWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
                     if this.is_aborted() {
-                        // let fid = this.get_full_id();
-                        // that.set_abort_through(fid);
+                        let id = this.get_id();
+                        that.set_abort_through(id);
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
@@ -621,8 +624,8 @@ impl SerializationGraph {
                 Edge::WriteRead(that) => {
                     let that = unsafe { &*(*that as *const Node) };
                     if this.is_aborted() {
-                        // let fid = this.get_full_id();
-                        // that.set_abort_through(fid);
+                        let id = this.get_id();
+                        that.set_abort_through(id);
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
