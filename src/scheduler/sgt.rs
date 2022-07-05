@@ -98,7 +98,10 @@ impl SerializationGraph {
 
             let from_ref = unsafe { &*(from_id as *const Node) };
 
-            if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
+            if (from_ref.is_aborted() || from_ref.is_cascading_abort())
+                && !from_ref.is_terminated()
+                && !rw
+            {
                 this_ref.set_cascading_abort();
                 // let fid = from_ref.get_full_id();
                 // this_ref.set_abort_through(fid);
@@ -513,6 +516,7 @@ impl SerializationGraph {
             let ops = self.get_operations();
 
             self.commit_writes(database, true, &ops);
+            this.set_terminated();
             this.set_committed();
             self.cleanup(this);
             self.remove_accesses(database, &ops);
@@ -534,7 +538,9 @@ impl SerializationGraph {
         self.commit_writes(database, false, &ops);
 
         let this = unsafe { &*self.get_transaction() };
+
         this.set_aborted();
+        this.set_terminated();
 
         self.cleanup(this);
 

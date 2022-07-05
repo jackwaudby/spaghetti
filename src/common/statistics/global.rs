@@ -250,8 +250,7 @@ impl GlobalStatistics {
             "abr": format!("{:.2}",self.get_abr()),
             "edges_inserted": self.edges_inserted,
             "conflicts deteted": self.conflict_detected,
-            "   rw": self.rw_conflict_detected,
-            "   ww": self.ww_conflict_detected
+                        "   ww": self.ww_conflict_detected
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());

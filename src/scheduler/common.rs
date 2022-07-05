@@ -47,6 +47,7 @@ pub struct Node {
     aborted: AtomicBool,
     cleaned: AtomicBool,
     checked: AtomicBool,
+    terminated: AtomicBool,
     lock: RwLock<u8>,
     abort_through: UnsafeCell<TransactionId>,
 }
@@ -75,6 +76,8 @@ impl Node {
             aborted: AtomicBool::new(false),
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
+            terminated: AtomicBool::new(false),
+
             lock: RwLock::new(0),
             abort_through: UnsafeCell::new(TransactionId::SerializationGraph(0)),
         }
@@ -243,6 +246,14 @@ impl Node {
 
     pub fn set_aborted(&self) {
         self.aborted.store(true, Ordering::Release);
+    }
+
+    pub fn is_terminated(&self) -> bool {
+        self.terminated.load(Ordering::Acquire)
+    }
+
+    pub fn set_terminated(&self) {
+        self.terminated.store(true, Ordering::Release);
     }
 
     pub fn is_cascading_abort(&self) -> bool {
