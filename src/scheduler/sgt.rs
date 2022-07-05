@@ -401,7 +401,7 @@ impl SerializationGraph {
                 match access {
                     Access::Read(from) => {
                         stats.inc_conflict_detected();
-
+                        stats.inc_rw_conflict_detected();
                         if let TransactionId::SerializationGraph(from_addr) = from {
                             let from = unsafe { &*(*from_addr as *const Node) };
                             // if !from.is_committed() {

@@ -24,6 +24,7 @@ pub struct LocalStatistics {
     latency_cum: u128,
     edges_inserted: u64,
     conflict_detected: u64,
+    rw_conflict_detected: u64,
 }
 
 impl LocalStatistics {
@@ -51,6 +52,7 @@ impl LocalStatistics {
             latency_cum: 0,
             edges_inserted: 0,
             conflict_detected: 0,
+            rw_conflict_detected: 0,
         }
     }
 
@@ -152,6 +154,14 @@ impl LocalStatistics {
 
     pub fn get_conflict_detected(&self) -> u64 {
         self.conflict_detected
+    }
+
+    pub fn inc_rw_conflict_detected(&mut self) {
+        self.rw_conflict_detected += 1;
+    }
+
+    pub fn get_rw_conflict_detected(&self) -> u64 {
+        self.rw_conflict_detected
     }
 
     pub fn inc_not_found(&mut self) {
