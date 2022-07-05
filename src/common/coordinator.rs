@@ -89,7 +89,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 // case 1 when commit fails
                                 stats.inc_aborts();
                                 stats.inc_commit_aborts();
-                                stats.inc_commits();
 
                                 let tx_time = stats.stop_tx();
                                 stats.stop_txn_commit_abort(tx_time);
