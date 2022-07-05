@@ -111,6 +111,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     Err(e) => match e {
                         NonFatalError::NoccError => {}
                         NonFatalError::SerializationGraphError(e) => {
+                            let tx_time = stats.stop_tx();
+                            stats.stop_txn_logic_abort(tx_time);
+
                             stats.start_commit();
                             scheduler.abort(&mut meta, database);
                             stats.stop_commit();
