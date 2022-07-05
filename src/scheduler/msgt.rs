@@ -10,9 +10,10 @@ use crate::workloads::IsolationLevel;
 
 use crossbeam_epoch as epoch;
 use crossbeam_epoch::Guard;
-use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
+use scc::HashSet;
 use std::cell::RefCell;
+use std::collections::hash_map::RandomState;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use thread_local::ThreadLocal;
@@ -147,81 +148,81 @@ impl MixedSerializationGraph {
     }
 
     pub fn cycle_check(&self, isolation: IsolationLevel) -> bool {
-        let start_id = self.get_transaction() as usize;
-        let this = unsafe { &*self.get_transaction() };
+        // let start_id = self.get_transaction() as usize;
+        // let this = unsafe { &*self.get_transaction() };
 
-        let mut visited = self
-            .visited
-            .get_or(|| RefCell::new(FxHashSet::default()))
-            .borrow_mut();
+        // let mut visited = self
+        //     .visited
+        //     .get_or(|| RefCell::new(FxHashSet::default()))
+        //     .borrow_mut();
 
-        let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
+        // let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
 
-        visited.clear();
-        stack.clear();
+        // visited.clear();
+        // stack.clear();
 
-        let this_rlock = this.read();
-        let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
-        let mut out = outgoing.into_iter().collect();
-        stack.append(&mut out);
-        drop(this_rlock);
+        // let this_rlock = this.read();
+        // let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
+        // let mut out = outgoing.into_iter().collect();
+        // stack.append(&mut out);
+        // drop(this_rlock);
 
-        while let Some(edge) = stack.pop() {
-            let current = if self.relevant_cycle_check {
-                // traverse only relevant edges
-                match isolation {
-                    IsolationLevel::ReadUncommitted => {
-                        if let Edge::WriteWrite(node) = edge {
-                            node
-                        } else {
-                            continue;
-                        }
-                    }
-                    IsolationLevel::ReadCommitted => match edge {
-                        Edge::ReadWrite(_) => {
-                            continue;
-                        }
-                        Edge::WriteWrite(node) => node,
-                        Edge::WriteRead(node) => node,
-                    },
-                    IsolationLevel::Serializable => match edge {
-                        Edge::ReadWrite(node) => node,
-                        Edge::WriteWrite(node) => node,
-                        Edge::WriteRead(node) => node,
-                    },
-                }
-            } else {
-                // traverse any edge
-                match edge {
-                    Edge::ReadWrite(node) => node,
-                    Edge::WriteWrite(node) => node,
-                    Edge::WriteRead(node) => node,
-                }
-            };
+        // while let Some(edge) = stack.pop() {
+        //     let current = if self.relevant_cycle_check {
+        //         // traverse only relevant edges
+        //         match isolation {
+        //             IsolationLevel::ReadUncommitted => {
+        //                 if let Edge::WriteWrite(node) = edge {
+        //                     node
+        //                 } else {
+        //                     continue;
+        //                 }
+        //             }
+        //             IsolationLevel::ReadCommitted => match edge {
+        //                 Edge::ReadWrite(_) => {
+        //                     continue;
+        //                 }
+        //                 Edge::WriteWrite(node) => node,
+        //                 Edge::WriteRead(node) => node,
+        //             },
+        //             IsolationLevel::Serializable => match edge {
+        //                 Edge::ReadWrite(node) => node,
+        //                 Edge::WriteWrite(node) => node,
+        //                 Edge::WriteRead(node) => node,
+        //             },
+        //         }
+        //     } else {
+        //         // traverse any edge
+        //         match edge {
+        //             Edge::ReadWrite(node) => node,
+        //             Edge::WriteWrite(node) => node,
+        //             Edge::WriteRead(node) => node,
+        //         }
+        //     };
 
-            if start_id == current {
-                return true; // cycle found
-            }
+        //     if start_id == current {
+        //         return true; // cycle found
+        //     }
 
-            if visited.contains(&current) {
-                continue; // already visited
-            }
+        //     if visited.contains(&current) {
+        //         continue; // already visited
+        //     }
 
-            visited.insert(current);
+        //     visited.insert(current);
 
-            let current = unsafe { &*(current as *const Node) };
+        //     let current = unsafe { &*(current as *const Node) };
 
-            let rlock = current.read();
-            let val1 =
-                !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
-            if val1 {
-                let outgoing = current.get_outgoing();
-                let mut out = outgoing.into_iter().collect();
-                stack.append(&mut out);
-            }
+        //     let rlock = current.read();
+        //     let val1 =
+        //         !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
+        //     if val1 {
+        //         let outgoing = current.get_outgoing();
+        //         let mut out = outgoing.into_iter().collect();
+        //         stack.append(&mut out);
+        //     }
 
-            drop(rlock);
-        }
+        //     drop(rlock);
+        // }
 
         false
     }
@@ -246,8 +247,8 @@ impl MixedSerializationGraph {
     }
 
     pub fn create_node(&self, isolation_level: IsolationLevel) -> usize {
-        let incoming = Mutex::new(FxHashSet::default()); // init edge sets
-        let outgoing = Mutex::new(FxHashSet::default());
+        let incoming = HashSet::new(100, RandomState::new());
+        let outgoing = HashSet::new(100, RandomState::new());
         let iso = Some(isolation_level);
         let node = Box::new(Node::new(incoming, outgoing, iso)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw pt
@@ -522,84 +523,84 @@ impl MixedSerializationGraph {
     }
 
     pub fn cleanup(&self) {
-        let this = unsafe { &*self.get_transaction() };
-        let this_id = self.get_transaction() as usize;
+        // let this = unsafe { &*self.get_transaction() };
+        // let this_id = self.get_transaction() as usize;
 
-        // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)
-        let this_wlock = this.write();
-        this.set_cleaned();
-        drop(this_wlock);
+        // // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)
+        // let this_wlock = this.write();
+        // this.set_cleaned();
+        // drop(this_wlock);
 
-        // remove edge sets:
-        // - no incoming edges will be added as this node is terminating: (from) --> (this)
-        // - no outgoing edges will be added from this node due to cleaned flag: (this) --> (to
-        let outgoing = this.take_outgoing();
-        let incoming = this.take_incoming();
+        // // remove edge sets:
+        // // - no incoming edges will be added as this node is terminating: (from) --> (this)
+        // // - no outgoing edges will be added from this node due to cleaned flag: (this) --> (to
+        // let outgoing = this.take_outgoing();
+        // let incoming = this.take_incoming();
 
-        let mut g = outgoing.lock();
-        let outgoing_set = g.iter();
+        // let mut g = outgoing.lock();
+        // let outgoing_set = g.iter();
 
-        for edge in outgoing_set {
-            match edge {
-                Edge::ReadWrite(that_id) => {
-                    let that = unsafe { &*(*that_id as *const Node) };
-                    let that_rlock = that.read();
-                    if !that.is_cleaned() {
-                        that.remove_incoming(&Edge::ReadWrite(this_id));
-                    }
-                    drop(that_rlock);
-                }
+        // for edge in outgoing_set {
+        //     match edge {
+        //         Edge::ReadWrite(that_id) => {
+        //             let that = unsafe { &*(*that_id as *const Node) };
+        //             let that_rlock = that.read();
+        //             if !that.is_cleaned() {
+        //                 that.remove_incoming(&Edge::ReadWrite(this_id));
+        //             }
+        //             drop(that_rlock);
+        //         }
 
-                Edge::WriteWrite(that_id) => {
-                    let that = unsafe { &*(*that_id as *const Node) };
-                    if this.is_aborted() {
-                        that.set_cascading_abort();
-                    } else {
-                        let that_rlock = that.read();
-                        if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteWrite(this_id));
-                        }
-                        drop(that_rlock);
-                    }
-                }
+        //         Edge::WriteWrite(that_id) => {
+        //             let that = unsafe { &*(*that_id as *const Node) };
+        //             if this.is_aborted() {
+        //                 that.set_cascading_abort();
+        //             } else {
+        //                 let that_rlock = that.read();
+        //                 if !that.is_cleaned() {
+        //                     that.remove_incoming(&Edge::WriteWrite(this_id));
+        //                 }
+        //                 drop(that_rlock);
+        //             }
+        //         }
 
-                Edge::WriteRead(that_id) => {
-                    let that = unsafe { &*(*that_id as *const Node) };
-                    if this.is_aborted() {
-                        that.set_cascading_abort();
-                    } else {
-                        let that_rlock = that.read();
-                        if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteRead(this_id));
-                        }
-                        drop(that_rlock);
-                    }
-                }
-            }
-        }
-        g.clear();
-        drop(g);
+        //         Edge::WriteRead(that_id) => {
+        //             let that = unsafe { &*(*that_id as *const Node) };
+        //             if this.is_aborted() {
+        //                 that.set_cascading_abort();
+        //             } else {
+        //                 let that_rlock = that.read();
+        //                 if !that.is_cleaned() {
+        //                     that.remove_incoming(&Edge::WriteRead(this_id));
+        //                 }
+        //                 drop(that_rlock);
+        //             }
+        //         }
+        //     }
+        // }
+        // g.clear();
+        // drop(g);
 
-        if this.is_aborted() {
-            incoming.lock().clear();
-        }
+        // if this.is_aborted() {
+        //     incoming.lock().clear();
+        // }
 
-        let this = self.get_transaction();
-        let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
+        // let this = self.get_transaction();
+        // let cnt = *self.txn_ctr.get_or(|| RefCell::new(0)).borrow();
 
-        MixedSerializationGraph::EG.with(|x| unsafe {
-            x.borrow().as_ref().unwrap().defer_unchecked(move || {
-                let boxed_node = Box::from_raw(this);
-                drop(boxed_node);
-            });
+        // MixedSerializationGraph::EG.with(|x| unsafe {
+        //     x.borrow().as_ref().unwrap().defer_unchecked(move || {
+        //         let boxed_node = Box::from_raw(this);
+        //         drop(boxed_node);
+        //     });
 
-            if cnt % 64 == 0 {
-                x.borrow().as_ref().unwrap().flush();
-            }
+        //     if cnt % 64 == 0 {
+        //         x.borrow().as_ref().unwrap().flush();
+        //     }
 
-            let guard = x.borrow_mut().take();
-            drop(guard)
-        });
+        //     let guard = x.borrow_mut().take();
+        //     drop(guard)
+        // });
     }
 
     pub fn tidyup(&self, database: &Database, commit: bool) {
