@@ -41,7 +41,7 @@ impl Edge {
 pub struct Node {
     isolation_level: Option<IsolationLevel>,
     node_id: UnsafeCell<Option<usize>>,
-    incoming: Option<EdgeSet>,
+    incoming: UnsafeCell<Option<EdgeSet>>,
     outgoing: UnsafeCell<Option<EdgeSet>>,
     committed: AtomicBool,
     cascading: AtomicBool,
@@ -69,7 +69,7 @@ impl Node {
         Self {
             isolation_level,
             node_id: UnsafeCell::new(None),
-            incoming: Some(incoming),
+            incoming: UnsafeCell::new(Some(incoming)),
             outgoing: UnsafeCell::new(Some(outgoing)),
             committed: AtomicBool::new(false),
             cascading: AtomicBool::new(false),
@@ -87,37 +87,79 @@ impl Node {
 
     /// Returns `true` if an edge from a given node already exists in this node's incoming edge set.
     pub fn incoming_edge_exists(&self, from: &Edge) -> bool {
-        match &self.incoming {
-            Some(edges) => edges.contains(from),
-            None => panic!("incoming edge set removed"),
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
+
+        match incoming_edges {
+            Some(edge_set) => match edge_set {
+                Some(edges) => {
+                    //                    let guard = edges.lock();
+                    let exists = edges.contains(from);
+                    //                  drop(guard);
+                    exists
+                }
+                None => panic!("incoming edge set removed"),
+            },
+            None => panic!("check unsafe"),
         }
     }
 
     /// Returns `true` if the node has at least 1 incoming edge.
     pub fn has_incoming(&self) -> bool {
-        match &self.incoming {
-            Some(edges) => !edges.is_empty(),
-            None => panic!("incoming edge set removed"),
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
+
+        match incoming_edges {
+            Some(edge_set) => match edge_set {
+                Some(edges) => {
+                    // let guard = edges.lock();
+                    let res = edges.is_empty();
+                    // drop(guard);
+                    !res
+                }
+                None => panic!("incoming edge set removed"),
+            },
+            None => panic!("check unsafe"),
         }
     }
 
     /// Insert an incoming edge: (from) --> (this)
     pub fn insert_incoming(&self, from: Edge) {
-        match &self.incoming {
-            Some(edges) => {
-                edges.insert(from);
-            }
-            None => panic!("incoming edge set removed"),
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
+
+        match incoming_edges {
+            Some(edge_set) => match edge_set {
+                Some(edges) => {
+                    // let mut guard = edges.lock();
+                    edges.insert(from);
+                    // drop(guard);
+                }
+                None => panic!("incoming edge set removed"),
+            },
+            None => panic!("check unsafe"),
         }
     }
 
     /// Remove an edge from this node's incoming edge set.
     pub fn remove_incoming(&self, from: &Edge) {
-        match &self.incoming {
-            Some(edges) => {
-                edges.remove(from);
-            }
-            None => panic!("incoming edge set removed"),
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
+
+        match incoming_edges {
+            Some(edge_set) => match edge_set {
+                Some(edges) => {
+                    // let mut guard = edges.lock();
+                    edges.remove(from);
+
+                    // assert_eq!(
+                    //     edges.remove(from),
+                    //     true,
+                    //     "Trying to remove: {:?}, Current: {:?}",
+                    //     from,
+                    //     *guard
+                    // );
+                    // drop(guard);
+                }
+                None => panic!("incoming edge set removed"),
+            },
+            None => panic!("check unsafe"),
         }
     }
 
@@ -140,9 +182,14 @@ impl Node {
 
     /// Remove incoming edge set from node.
     pub fn take_incoming(&self) -> EdgeSet {
-        match &self.incoming {
-            Some(edges) => edges.clone(),
-            None => panic!("incoming edge set already removed"),
+        let incoming = unsafe { self.incoming.get().as_mut() };
+
+        match incoming {
+            Some(edge_set) => match edge_set.take() {
+                Some(edges) => edges,
+                None => panic!("incoming edge set already removed"),
+            },
+            None => panic!("check unsafe"),
         }
     }
 
@@ -174,8 +221,13 @@ impl Node {
 
     /// Get a clone of the outgoing edge from node.
     pub fn get_incoming(&self) -> HashSet<Edge> {
-        match &self.incoming {
-            Some(edges) => edges.clone(),
+        match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
+            Some(edges) => {
+                // let guard = edges.lock();
+                let out = edges.clone();
+                // drop(guard);
+                out
+            }
             None => HashSet::default(),
         }
     }
