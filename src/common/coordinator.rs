@@ -75,9 +75,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
                 match response {
                     Ok(_) => {
-                        stats.start_commit();
+                        //   stats.start_commit();
                         let commit_res = scheduler.commit(&mut meta, database);
-                        stats.stop_commit();
+                        // stats.stop_commit();
 
                         match commit_res {
                             Ok(_) => {
@@ -111,8 +111,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     Err(e) => match e {
                         NonFatalError::NoccError => {}
                         NonFatalError::SerializationGraphError(e) => {
+                            stats.start_commit();
                             scheduler.abort(&mut meta, database);
-
+                            stats.stop_commit();
                             // case 2 when logic fails
                             stats.inc_aborts();
                             stats.inc_logic_aborts();
