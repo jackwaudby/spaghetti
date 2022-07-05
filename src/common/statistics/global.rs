@@ -43,6 +43,8 @@ pub struct GlobalStatistics {
     retries: u64,
     cum_retries: u64,
     max_retries: u64,
+
+    max_txn_logic_abort: u128,
 }
 
 impl GlobalStatistics {
@@ -89,6 +91,8 @@ impl GlobalStatistics {
             retries: 0,
             cum_retries: 0,
             max_retries: 0,
+
+            max_txn_logic_abort: 0,
         }
     }
 
@@ -155,6 +159,10 @@ impl GlobalStatistics {
         if self.max_retries < local.get_max_retries() {
             self.max_retries = local.get_max_retries();
         }
+
+        if self.max_txn_logic_abort < local.get_max_txn_logic_abor() {
+            self.max_txn_logic_abort = local.get_max_txn_logic_abor();
+        }
     }
 
     fn get_total_time(&self) -> u64 {
@@ -196,6 +204,10 @@ impl GlobalStatistics {
 
     fn get_txn_logic_abort(&self) -> u64 {
         (self.txn_logic_abort_cum / 1000000) as u64
+    }
+
+    fn get_max_txn_logic_abort(&self) -> u64 {
+        (self.max_txn_logic_abort / 1000000) as u64
     }
 
     fn get_txn_commit_abort(&self) -> u64 {
@@ -240,6 +252,7 @@ impl GlobalStatistics {
             "cum_runtime (ms)":  self.get_total_time(),
             "txn_not_found_time (ms)": self.get_txn_not_found(),
             "txn_logic_abort_time (ms)": self.get_txn_logic_abort(),
+            "max txn_logic_abort_time": self.get_max_txn_logic_abort(),
             "txn_commit_abort_time (ms)": self.get_txn_commit_abort(),
             "txn_commit_time (ms)": self.get_txn_commit(),
             "retried request": self.retries,

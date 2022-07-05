@@ -38,6 +38,8 @@ pub struct LocalStatistics {
     txn_commit_cum: u128,
     txn_commit_abort_cum: u128,
     txn_logic_abort_cum: u128,
+
+    max_txn_logic_abort: u128,
 }
 
 impl LocalStatistics {
@@ -77,6 +79,8 @@ impl LocalStatistics {
             retries: 0,
             cum_retries: 0,
             max_retries: 0,
+
+            max_txn_logic_abort: 0,
         }
     }
 
@@ -256,7 +260,14 @@ impl LocalStatistics {
     }
 
     pub fn stop_txn_logic_abort(&mut self, txn_time: u128) {
+        if self.max_txn_logic_abort < txn_time {
+            self.max_txn_logic_abort = txn_time;
+        }
         self.txn_logic_abort_cum += txn_time;
+    }
+
+    pub fn get_max_txn_logic_abor(&self) -> u128 {
+        self.max_txn_logic_abort
     }
 
     pub fn get_txn_not_found(&self) -> u128 {
