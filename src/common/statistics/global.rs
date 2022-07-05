@@ -34,6 +34,11 @@ pub struct GlobalStatistics {
     conflict_detected: u64,
     rw_conflict_detected: u64,
     ww_conflict_detected: u64,
+
+    txn_not_found_cum: u128,
+    txn_commit_cum: u128,
+    txn_commit_abort_cum: u128,
+    txn_logic_abort_cum: u128,
 }
 
 impl GlobalStatistics {
@@ -71,6 +76,11 @@ impl GlobalStatistics {
             conflict_detected: 0,
             rw_conflict_detected: 0,
             ww_conflict_detected: 0,
+
+            txn_not_found_cum: 0,
+            txn_commit_cum: 0,
+            txn_commit_abort_cum: 0,
+            txn_logic_abort_cum: 0,
         }
     }
 
@@ -112,10 +122,10 @@ impl GlobalStatistics {
         self.commit_aborts += local.get_commit_aborts();
         self.logic_aborts += local.get_logic_aborts();
         self.not_found += local.get_not_found();
-        self.tx += local.get_tx_cum();
+        // self.tx += local.get_tx_cum();
         self.commit += local.get_commit_cum();
         self.wait_manager += local.get_wait_manager_cum();
-        self.latency += local.get_latency_cum();
+        // self.latency += local.get_latency_cum();
         self.read_cf += local.get_read_cf();
         self.write_cf += local.get_write_cf();
         self.read_ca += local.get_read_ca();
@@ -125,6 +135,11 @@ impl GlobalStatistics {
         self.conflict_detected += local.get_conflict_detected();
         self.rw_conflict_detected += local.get_rw_conflict_detected();
         self.ww_conflict_detected += local.get_ww_conflict_detected();
+
+        self.txn_not_found_cum += local.get_txn_not_found();
+        self.txn_commit_cum += local.get_txn_commit();
+        self.txn_commit_abort_cum += local.get_txn_commit_abort();
+        self.txn_logic_abort_cum += local.get_txn_logic_abort();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -156,6 +171,22 @@ impl GlobalStatistics {
         (self.aborts as f64 / (self.commits + self.not_found + self.aborts) as f64) * 100.0
     }
 
+    fn get_txn_not_found(&self) -> u64 {
+        (self.txn_not_found_cum / 1000000) as u64
+    }
+
+    fn get_txn_commit(&self) -> u64 {
+        (self.txn_commit_cum / 1000000) as u64
+    }
+
+    fn get_txn_logic_abort(&self) -> u64 {
+        (self.txn_logic_abort_cum / 1000000) as u64
+    }
+
+    fn get_txn_commit_abort(&self) -> u64 {
+        (self.txn_commit_abort_cum / 1000000) as u64
+    }
+
     pub fn print_to_console(&mut self) {
         let pr = json!({
             "workload": self.workload,
@@ -185,6 +216,17 @@ impl GlobalStatistics {
             "conflicts deteted": self.conflict_detected,
             "   rw": self.rw_conflict_detected,
             "   ww": self.ww_conflict_detected
+        });
+
+        tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
+
+        let pr = json!({
+            "runtime (ms)": self.get_runtime(),
+            "cum_runtime (ms)":  self.get_total_time(),
+            "txn_not_found_time (ms)": self.get_txn_not_found(),
+            "txn_logic_abort_time (ms)": self.get_txn_logic_abort(),
+            "txn_commit_abort_time (ms)": self.get_txn_commit_abort(),
+            "txn_commit_time (ms)": self.get_txn_commit(),
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());

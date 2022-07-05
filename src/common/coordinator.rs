@@ -50,7 +50,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
         } else {
             let request = transaction_generator.get_next();
             let isolation_level = request.get_isolation_level();
-            stats.start_latency();
+            // stats.start_latency();
 
             let mut response;
             // let mut guard s = WaitGuards::new();
@@ -80,12 +80,20 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         match commit_res {
                             Ok(_) => {
                                 stats.inc_commits();
+                                let tx_time = stats.stop_tx();
+                                stats.stop_txn_commit(tx_time);
+
                                 break;
                             }
                             Err(_) => {
                                 // case 1 when commit fails
                                 stats.inc_aborts();
                                 stats.inc_commit_aborts();
+                                stats.inc_commits();
+
+                                let tx_time = stats.stop_tx();
+                                stats.stop_txn_commit_abort(tx_time);
+
                                 stats.start_wait_manager();
                                 // let problem_transactions = meta.get_problem_transactions();
                                 // let g = wait_manager
@@ -122,6 +130,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 _ => {}
                             }
 
+                            let tx_time = stats.stop_tx();
+                            stats.stop_txn_logic_abort(tx_time);
+
                             stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
@@ -131,6 +142,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             scheduler.abort(&mut meta, database);
                             stats.inc_not_found();
 
+                            let tx_time = stats.stop_tx();
+                            stats.stop_txn_not_found(tx_time);
+
                             // TODO: abort then commit
                             break;
                         }
@@ -138,8 +152,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                 }
             }
 
-            let tx = stats.stop_tx();
-            stats.stop_latency(tx);
+            // let tx = stats.stop_tx();
+            // stats.stop_latency(tx);
 
             completed_transactions += 1;
         }
