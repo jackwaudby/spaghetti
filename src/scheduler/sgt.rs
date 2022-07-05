@@ -99,7 +99,7 @@ impl SerializationGraph {
             let from_ref = unsafe { &*(from_id as *const Node) };
 
             if (from_ref.is_aborted() || from_ref.is_cascading_abort())
-                && !from_ref.is_terminated()
+                // && !from_ref.is_terminated()
                 && !rw
             {
                 this_ref.set_cascading_abort();
@@ -540,7 +540,7 @@ impl SerializationGraph {
         let this = unsafe { &*self.get_transaction() };
 
         this.set_aborted();
-        this.set_terminated();
+        // this.set_terminated();
 
         self.cleanup(this);
 
