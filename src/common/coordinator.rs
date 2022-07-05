@@ -25,6 +25,16 @@ use super::stats_bucket::StatsBucket;
 //         Self { guards: None }
 //     }
 // }
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct AbortReason {
+    request_no: u32,
+    location: bool,
+    latency: u64,
+    reason: u8,
+    attempt: u64,
+}
 
 pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state: &GlobalState) {
     // global state
@@ -41,6 +51,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
 
     let max_transactions = config.get_int("transactions").unwrap() as u32;
     let mut completed_transactions = 0;
+
+    let mut wtr = csv::Writer::from_path(format!("{}-aborts.csv", core_id)).unwrap();
 
     loop {
         if completed_transactions == max_transactions {
@@ -111,20 +123,23 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             let tx_time = stats.stop_tx();
                             stats.stop_txn_logic_abort(tx_time);
 
-                            stats.aborted_latency.push(tx_time as u64);
-
+                            let mut reason = 0;
                             match e {
                                 SerializationGraphError::ReadOpCycleFound => {
                                     stats.inc_read_cf();
+                                    reason = 1;
                                 }
                                 SerializationGraphError::WriteOpCascasde => {
                                     stats.inc_write_ca();
+                                    reason = 2;
                                 }
                                 SerializationGraphError::ReadOpCascasde => {
                                     stats.inc_read_ca();
+                                    reason = 3;
                                 }
                                 SerializationGraphError::WriteOpCycleFound => {
                                     stats.inc_write_cf();
+                                    reason = 4;
                                 }
                                 SerializationGraphError::CycleFound => {
                                     stats.inc_rwrite_cf();
@@ -136,6 +151,17 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
                             stats.stop_wait_manager();
+
+                            let reason = AbortReason {
+                                request_no: completed_transactions,
+                                location: false,
+                                latency: tx_time as u64,
+                                reason,
+                                attempt: retries,
+                            };
+
+                            wtr.serialize(&reason).unwrap();
+
                             retries += 1;
                         }
                         NonFatalError::SmallBankError(_) => {
@@ -163,6 +189,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             completed_transactions += 1;
         }
     }
+    wtr.flush().unwrap();
 
     stats.stop_worker();
 
