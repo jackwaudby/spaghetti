@@ -42,6 +42,7 @@ pub struct GlobalStatistics {
 
     retries: u64,
     cum_retries: u64,
+    max_retries: u64,
 }
 
 impl GlobalStatistics {
@@ -87,6 +88,7 @@ impl GlobalStatistics {
 
             retries: 0,
             cum_retries: 0,
+            max_retries: 0,
         }
     }
 
@@ -149,6 +151,10 @@ impl GlobalStatistics {
 
         self.retries += local.get_retries();
         self.cum_retries += local.get_cum_retries();
+
+        if self.max_retries < local.get_max_retries() {
+            self.max_retries = local.get_max_retries();
+        }
     }
 
     fn get_total_time(&self) -> u64 {

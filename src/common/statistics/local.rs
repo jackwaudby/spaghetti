@@ -28,6 +28,7 @@ pub struct LocalStatistics {
 
     retries: u64,
     cum_retries: u64,
+    max_retries: u64,
 
     // runtime breakdown
     worker_cum: u128,
@@ -75,6 +76,7 @@ impl LocalStatistics {
 
             retries: 0,
             cum_retries: 0,
+            max_retries: 0,
         }
     }
 
@@ -100,6 +102,14 @@ impl LocalStatistics {
 
     pub fn add_cum_retries(&mut self, add: u64) {
         self.cum_retries += add;
+
+        if self.max_retries < add {
+            self.max_retries = add;
+        }
+    }
+
+    pub fn get_max_retries(&self) -> u64 {
+        self.max_retries
     }
 
     pub fn get_cum_retries(&self) -> u64 {
