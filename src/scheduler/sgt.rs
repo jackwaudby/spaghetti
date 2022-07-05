@@ -516,7 +516,7 @@ impl SerializationGraph {
             let ops = self.get_operations();
 
             self.commit_writes(database, true, &ops);
-            this.set_terminated();
+
             this.set_committed();
             self.cleanup(this);
             self.remove_accesses(database, &ops);
