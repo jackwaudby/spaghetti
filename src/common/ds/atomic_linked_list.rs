@@ -159,7 +159,7 @@ impl<T> AtomicLinkedList<T> {
             }
         }
 
-        drop(lg);
+        //        drop(lg);
         unsafe {
             guard.defer_unchecked(move || {
                 let mut o = current.into_owned();
@@ -170,6 +170,7 @@ impl<T> AtomicLinkedList<T> {
                 drop(o);
             });
         }
+        drop(lg);
     }
 }
 
