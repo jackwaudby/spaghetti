@@ -119,14 +119,19 @@ impl SerializationGraph {
 
             stats.inc_edges_inserted();
 
-            from_ref.insert_outgoing(out_edge); // (from)
-            this_ref.insert_incoming(from); // (to)
-            drop(from_rlock);
-
             let mut is_cycle = false;
 
+            // ww: do the insert and cycle check
             if check {
+                from_ref.insert_outgoing(out_edge); // (from)
+                this_ref.insert_incoming(from); // (to)
+                drop(from_rlock);
+
                 is_cycle = self.cycle_cycle_init(this_id);
+            } else {
+                // rw: do everything but
+
+                drop(from_rlock);
             }
 
             return !is_cycle;
