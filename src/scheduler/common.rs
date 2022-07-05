@@ -3,10 +3,10 @@ use crate::workloads::IsolationLevel;
 
 use crate::cpp::{Mutex as RwLock, MutexGuard, SharedMutexGuard};
 
-// use parking_lot::Mutex;
+use parking_lot::Mutex;
+use rustc_hash::FxHashSet;
 // use spin::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use scc::HashSet;
 use std::cell::UnsafeCell;
 use std::fmt;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,8 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 unsafe impl<'a> Send for Node {}
 unsafe impl<'a> Sync for Node {}
 
-// pub type EdgeSet = Mutex<FxHashSet<Edge>>;
-pub type EdgeSet = HashSet<Edge>;
+pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 
 // (from/to, thread id)
 #[derive(Clone, Eq, Hash, PartialEq)]
@@ -92,9 +91,9 @@ impl Node {
         match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
-                    //                    let guard = edges.lock();
-                    let exists = edges.contains(from);
-                    //                  drop(guard);
+                    let guard = edges.lock();
+                    let exists = guard.contains(from);
+                    drop(guard);
                     exists
                 }
                 None => panic!("incoming edge set removed"),
@@ -110,9 +109,9 @@ impl Node {
         match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
-                    // let guard = edges.lock();
-                    let res = edges.is_empty();
-                    // drop(guard);
+                    let guard = edges.lock();
+                    let res = guard.is_empty();
+                    drop(guard);
                     !res
                 }
                 None => panic!("incoming edge set removed"),
@@ -128,9 +127,9 @@ impl Node {
         match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
-                    // let mut guard = edges.lock();
-                    edges.insert(from);
-                    // drop(guard);
+                    let mut guard = edges.lock();
+                    guard.insert(from);
+                    drop(guard);
                 }
                 None => panic!("incoming edge set removed"),
             },
@@ -145,17 +144,15 @@ impl Node {
         match incoming_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
-                    // let mut guard = edges.lock();
-                    edges.remove(from);
-
-                    // assert_eq!(
-                    //     edges.remove(from),
-                    //     true,
-                    //     "Trying to remove: {:?}, Current: {:?}",
-                    //     from,
-                    //     *guard
-                    // );
-                    // drop(guard);
+                    let mut guard = edges.lock();
+                    assert_eq!(
+                        guard.remove(from),
+                        true,
+                        "Trying to remove: {:?}, Current: {:?}",
+                        from,
+                        *guard
+                    );
+                    drop(guard);
                 }
                 None => panic!("incoming edge set removed"),
             },
@@ -170,9 +167,9 @@ impl Node {
         match outgoing_edges {
             Some(edge_set) => match edge_set {
                 Some(edges) => {
-                    // let mut guard = edges.lock();
-                    edges.insert(to);
-                    // drop(guard);
+                    let mut guard = edges.lock();
+                    guard.insert(to);
+                    drop(guard);
                 }
                 None => panic!("outgoing edge set already cleaned"),
             },
@@ -207,28 +204,28 @@ impl Node {
     }
 
     /// Get a clone of the outgoing edge from node.
-    pub fn get_outgoing(&self) -> HashSet<Edge> {
+    pub fn get_outgoing(&self) -> FxHashSet<Edge> {
         match unsafe { self.outgoing.get().as_ref().unwrap().as_ref() } {
             Some(edges) => {
-                // let guard = edges.lock();
-                let out = edges.clone();
-                // drop(guard);
+                let guard = edges.lock();
+                let out = guard.clone();
+                drop(guard);
                 out
             }
-            None => HashSet::default(),
+            None => FxHashSet::default(),
         }
     }
 
     /// Get a clone of the outgoing edge from node.
-    pub fn get_incoming(&self) -> HashSet<Edge> {
+    pub fn get_incoming(&self) -> FxHashSet<Edge> {
         match unsafe { self.incoming.get().as_ref().unwrap().as_ref() } {
             Some(edges) => {
-                // let guard = edges.lock();
-                let out = edges.clone();
-                // drop(guard);
+                let guard = edges.lock();
+                let out = guard.clone();
+                drop(guard);
                 out
             }
-            None => HashSet::default(),
+            None => FxHashSet::default(),
         }
     }
 

@@ -12,10 +12,9 @@ use crate::storage::{
 };
 
 use crossbeam_epoch::{self as epoch, Guard};
+use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
-use scc::HashSet;
 use std::cell::{RefCell, RefMut};
-use std::collections::hash_map::RandomState;
 use std::sync::atomic::{AtomicU64, Ordering};
 use thread_local::ThreadLocal;
 use tracing::info;
@@ -159,29 +158,20 @@ impl SerializationGraph {
 
         let cur = unsafe { &*(cur as *const Node) };
         let g = cur.read();
-        let mut found = false;
         if !cur.is_cleaned() {
             let incoming = cur.get_incoming();
-            incoming.for_each(|edge| {
+            for edge in incoming {
                 let id = edge.extract_id() as usize;
                 if visit_path.contains(&id) {
-                    // drop(g);
-                    found = true;
-                    return;
+                    drop(g);
+                    return true;
                 } else {
                     if self.check_cycle_naive(id, visited, visit_path) {
-                        // drop(g);
-                        found = true;
-
-                        return;
+                        drop(g);
+                        return true;
                     }
                 }
-            });
-        }
-
-        if found {
-            // drop(g);
-            return true;
+            }
         }
 
         drop(g);
@@ -229,8 +219,8 @@ impl SerializationGraph {
     }
 
     pub fn create_node(&self) -> usize {
-        let incoming = HashSet::new(100, RandomState::new());
-        let outgoing = HashSet::new(100, RandomState::new());
+        let incoming = Mutex::new(FxHashSet::default());
+        let outgoing = Mutex::new(FxHashSet::default());
 
         let node = Box::new(Node::new(incoming, outgoing, None)); // allocate node
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
@@ -547,10 +537,10 @@ impl SerializationGraph {
         let outgoing = this.take_outgoing();
         let incoming = this.take_incoming();
 
-        // let mut g = outgoing.lock(); // lock on outgoing edge set
-        // let outgoing_set = g.iter(); // iterator over outgoing edge set
+        let mut g = outgoing.lock(); // lock on outgoing edge set
+        let outgoing_set = g.iter(); // iterator over outgoing edge set
 
-        outgoing.for_each(|edge| {
+        for edge in outgoing_set {
             match edge {
                 // (this) -[rw]-> (to)
                 Edge::ReadWrite(that_id) => {
@@ -594,12 +584,12 @@ impl SerializationGraph {
                     }
                 }
             }
-        });
-
-        outgoing.clear(); // clear (this) outgoing
+        }
+        g.clear(); // clear (this) outgoing
+        drop(g);
 
         if this.is_aborted() {
-            incoming.clear();
+            incoming.lock().clear();
         }
 
         let this = self.get_transaction();
