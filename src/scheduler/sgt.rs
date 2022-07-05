@@ -328,7 +328,7 @@ impl SerializationGraph {
 
         loop {
             if self.needs_abort() {
-                self.abort(meta, database);
+                // self.abort(meta, database);
                 return Err(SerializationGraphError::WriteOpCascasde.into()); // check for cascading abort
             }
 
@@ -395,14 +395,14 @@ impl SerializationGraph {
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                self.abort(meta, database);
+                                                       // self.abort(meta, database);
                 return Err(SerializationGraphError::WriteOpCycleFound.into());
             }
 
             if cascade {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                self.abort(meta, database);
+                                                       // self.abort(meta, database);
                 return Err(SerializationGraphError::WriteOpCascasde.into());
             }
 

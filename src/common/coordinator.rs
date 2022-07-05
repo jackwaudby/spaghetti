@@ -109,6 +109,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     Err(e) => match e {
                         NonFatalError::NoccError => {}
                         NonFatalError::SerializationGraphError(e) => {
+                            scheduler.abort(&mut meta, database);
+
                             // case 2 when logic fails
                             stats.inc_aborts();
                             stats.inc_logic_aborts();
