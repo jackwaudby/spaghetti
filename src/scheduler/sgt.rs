@@ -76,7 +76,7 @@ impl SerializationGraph {
     }
 
     /// Insert an edge: (from) --> (this)
-    pub fn insert_and_check(&self, from: Edge, stats: &mut LocalStatistics, check: bool) -> bool {
+    pub fn insert_and_check(&self, from: Edge, stats: &mut LocalStatistics, check: bool) -> u8 {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
@@ -88,12 +88,12 @@ impl SerializationGraph {
         };
 
         if this_id == from_id {
-            return true; // check for (this) --> (this)
+            return 2; // check for (this) --> (this)
         }
 
         loop {
             if this_ref.incoming_edge_exists(&from) {
-                return true; // check if (from) --> (this) already exists
+                return 2; // check if (from) --> (this) already exists
             };
 
             let from_ref = unsafe { &*(from_id as *const Node) };
@@ -102,13 +102,13 @@ impl SerializationGraph {
                 this_ref.set_cascading_abort();
                 // let fid = from_ref.get_full_id();
                 // this_ref.set_abort_through(fid);
-                return false; // cascadingly abort (this)
+                return 1; // cascadingly abort (this)
             }
 
             let from_rlock = from_ref.read();
             if from_ref.is_cleaned() {
                 drop(from_rlock);
-                return true; // if from is cleaned then it has terminated do not insert edge
+                return 2; // if from is cleaned then it has terminated do not insert edge
             }
 
             if from_ref.is_checked() {
@@ -128,7 +128,12 @@ impl SerializationGraph {
                 is_cycle = self.cycle_cycle_init(this_id);
             }
 
-            return !is_cycle;
+            //return !is_cycle;
+            if is_cycle {
+                return 0;
+            } else {
+                return 2;
+            }
         }
     }
 
@@ -338,6 +343,7 @@ impl SerializationGraph {
 
             let mut wait = false; // flag indicating if there is an uncommitted write
             let mut cyclic = false; // flag indicating if a cycle has been found
+            let mut cascade = false; // flag indicating if a cycle has been found
 
             for (id, access) in snapshot {
                 // only interested in accesses before this one and that are write operations.
@@ -356,12 +362,19 @@ impl SerializationGraph {
                                     stats.inc_conflict_detected();
                                     stats.inc_ww_conflict_detected();
 
-                                    if !self.insert_and_check(
+                                    let outcome = self.insert_and_check(
                                         Edge::WriteWrite(*from_addr),
                                         stats,
                                         true,
-                                    ) {
+                                    );
+
+                                    if outcome == 0 {
                                         cyclic = true;
+                                        // break; // no reason to check other accesses
+                                    }
+
+                                    if outcome == 1 {
+                                        cascade = true;
                                         // break; // no reason to check other accesses
                                     }
 
@@ -384,6 +397,13 @@ impl SerializationGraph {
                 lsn.store(prv + 1, Ordering::Release); // update lsn
                 self.abort(meta, database);
                 return Err(SerializationGraphError::WriteOpCycleFound.into());
+            }
+
+            if cascade {
+                rw_table.erase(prv); // remove from rw table
+                lsn.store(prv + 1, Ordering::Release); // update lsn
+                self.abort(meta, database);
+                return Err(SerializationGraphError::WriteOpCascasde.into());
             }
 
             // (ii) there is an uncommitted write (wait = T)
@@ -413,7 +433,15 @@ impl SerializationGraph {
                         if let TransactionId::SerializationGraph(from_addr) = from {
                             let from = unsafe { &*(*from_addr as *const Node) };
                             // if !from.is_committed() {
-                            if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats, false) {
+                            let outcome =
+                                self.insert_and_check(Edge::ReadWrite(*from_addr), stats, false);
+
+                            if outcome == 1 {
+                                panic!("shouldn't cascade");
+                                //     break;
+                            }
+
+                            if outcome == 0 {
                                 cyclic = true;
                                 //     break;
                             }
