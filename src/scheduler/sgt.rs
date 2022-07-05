@@ -192,63 +192,6 @@ impl SerializationGraph {
         return check;
     }
 
-    // pub fn cycle_check(&self) -> bool {
-    //     let start_id = self.get_transaction() as usize;
-
-    //     let this = unsafe { &*self.get_transaction() };
-
-    //     let mut visited = self
-    //         .visited
-    //         .get_or(|| RefCell::new(FxHashSet::default()))
-    //         .borrow_mut();
-
-    //     let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
-
-    //     visited.clear();
-    //     stack.clear();
-
-    //     let this_rlock = this.read();
-    //     let outgoing = this.get_incoming(); // FxHashSet<Edge<'a>>
-    //     let mut out = outgoing.into_iter().collect();
-
-    //     stack.append(&mut out);
-
-    //     drop(this_rlock);
-
-    //     while let Some(edge) = stack.pop() {
-    //         let current = match edge {
-    //             Edge::ReadWrite(node) => node,
-    //             Edge::WriteWrite(node) => node,
-    //             Edge::WriteRead(node) => node,
-    //         };
-
-    //         if start_id == current {
-    //             return true; // cycle found
-    //         }
-
-    //         if visited.contains(&current) {
-    //             continue; // already visited
-    //         }
-
-    //         visited.insert(current);
-
-    //         let current = unsafe { &*(current as *const Node) };
-
-    //         let rlock = current.read();
-    //         let val1 =
-    //             !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
-    //         if val1 {
-    //             let outgoing = current.get_incoming();
-    //             let mut out = outgoing.into_iter().collect();
-    //             stack.append(&mut out);
-    //         }
-
-    //         drop(rlock);
-    //     }
-
-    //     false
-    // }
-
     /// Check if a transaction needs to abort.
     pub fn needs_abort(&self) -> bool {
         let this = unsafe { &*self.get_transaction() };
@@ -448,43 +391,43 @@ impl SerializationGraph {
         }
 
         // Now handle R-W conflicts
-        let guard = &epoch::pin(); // pin thread
-        let snapshot = rw_table.iter(guard);
+        // let guard = &epoch::pin(); // pin thread
+        // let snapshot = rw_table.iter(guard);
 
-        let mut cyclic = false;
+        // let mut cyclic = false;
 
-        for (id, access) in snapshot {
-            if id < &prv {
-                match access {
-                    Access::Read(from) => {
-                        stats.inc_conflict_detected();
+        // for (id, access) in snapshot {
+        //     if id < &prv {
+        //         match access {
+        //             Access::Read(from) => {
+        //                 stats.inc_conflict_detected();
 
-                        if let TransactionId::SerializationGraph(from_addr) = from {
-                            let from = unsafe { &*(*from_addr as *const Node) };
-                            if !from.is_committed() {
-                                if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats) {
-                                    cyclic = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Access::Write(_) => {}
-                }
-            }
-        }
+        //                 if let TransactionId::SerializationGraph(from_addr) = from {
+        //                     let from = unsafe { &*(*from_addr as *const Node) };
+        //                     if !from.is_committed() {
+        //                         if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats) {
+        //                             cyclic = true;
+        //                             break;
+        //                         }
+        //                     }
+        //                 }
+        //             }
+        //             Access::Write(_) => {}
+        //         }
+        //     }
+        // }
 
-        drop(guard);
+        // drop(guard);
 
         // (iv) transaction is in a cycle (cycle = T)
         // abort transaction
-        if cyclic {
-            rw_table.erase(prv); // remove from rw table
-            lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(meta, database);
+        // if cyclic {
+        //     rw_table.erase(prv); // remove from rw table
+        //     lsn.store(prv + 1, Ordering::Release); // update lsn
+        //     self.abort(meta, database);
 
-            return Err(SerializationGraphError::CycleFound.into());
-        }
+        //     return Err(SerializationGraphError::CycleFound.into());
+        // }
 
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
