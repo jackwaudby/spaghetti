@@ -41,6 +41,8 @@ pub struct LocalStatistics {
 
     max_txn_logic_abort: u128,
     max_txn_commit_abort: u128,
+
+    pub aborted_latency: Vec<u64>,
 }
 
 impl LocalStatistics {
@@ -80,6 +82,8 @@ impl LocalStatistics {
             retries: 0,
             cum_retries: 0,
             max_retries: 0,
+
+            aborted_latency: Vec::new(),
 
             max_txn_logic_abort: 0,
             max_txn_commit_abort: 0,

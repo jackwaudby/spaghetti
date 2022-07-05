@@ -46,6 +46,8 @@ pub struct GlobalStatistics {
 
     max_txn_logic_abort: u128,
     max_txn_commit_abort: u128,
+
+    pub aborted_latency: Vec<u64>,
 }
 
 impl GlobalStatistics {
@@ -95,6 +97,7 @@ impl GlobalStatistics {
 
             max_txn_logic_abort: 0,
             max_txn_commit_abort: 0,
+            aborted_latency: Vec::new(),
         }
     }
 
@@ -129,7 +132,7 @@ impl GlobalStatistics {
         );
     }
 
-    pub fn merge(&mut self, local: LocalStatistics) {
+    pub fn merge(&mut self, mut local: LocalStatistics) {
         self.total_time += local.get_worker_cum();
         self.commits += local.get_commits();
         self.aborts += local.get_aborts();
@@ -169,6 +172,8 @@ impl GlobalStatistics {
         if self.max_txn_commit_abort < local.get_max_txn_commit_abor() {
             self.max_txn_commit_abort = local.get_max_txn_commit_abor();
         }
+
+        self.aborted_latency.append(&mut local.aborted_latency);
     }
 
     fn get_total_time(&self) -> u64 {
@@ -250,7 +255,8 @@ impl GlobalStatistics {
             "abr": format!("{:.2}",self.get_abr()),
             "edges_inserted": self.edges_inserted,
             "conflicts deteted": self.conflict_detected,
-                        "   ww": self.ww_conflict_detected
+            "   rw": self.rw_conflict_detected,
+            "   ww": self.ww_conflict_detected
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());

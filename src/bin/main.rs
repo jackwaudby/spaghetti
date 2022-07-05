@@ -115,6 +115,10 @@ fn main() {
         global_stats.merge(local_stats);
     }
 
+    let mut wtr = csv::Writer::from_path("aborted_latency.csv").unwrap();
+    wtr.serialize(&global_stats.aborted_latency).unwrap();
+    wtr.flush().unwrap();
+
     global_stats.print_to_console();
 
     global_stats.validate();

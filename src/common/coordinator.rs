@@ -1,8 +1,7 @@
-use crate::common::error::NonFatalError;
-use crate::common::global_state::GlobalState;
-use crate::common::message::Request;
-use crate::common::parameter_generation::ParameterGenerator;
-use crate::common::statistics::local::LocalStatistics;
+use crate::common::{
+    error::NonFatalError, global_state::GlobalState, message::Request,
+    parameter_generation::ParameterGenerator, statistics::local::LocalStatistics,
+};
 use crate::scheduler::Scheduler;
 use crate::storage::Database;
 use crate::workloads::smallbank::{
@@ -111,6 +110,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             stats.inc_logic_aborts();
                             let tx_time = stats.stop_tx();
                             stats.stop_txn_logic_abort(tx_time);
+
+                            stats.aborted_latency.push(tx_time as u64);
 
                             match e {
                                 SerializationGraphError::ReadOpCycleFound => {
