@@ -243,7 +243,8 @@ impl GlobalStatistics {
             "txn_commit_abort_time (ms)": self.get_txn_commit_abort(),
             "txn_commit_time (ms)": self.get_txn_commit(),
             "retried request": self.retries,
-            "cum retries": self.cum_retries
+            "cum retries": self.cum_retries,
+            "max retries": self.max_retries
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
