@@ -411,11 +411,11 @@ impl SerializationGraph {
 
                                     if !self.insert_and_check(Edge::WriteWrite(*from_addr), stats) {
                                         cyclic = true;
-                                        break; // no reason to check other accesses
+                                        // break; // no reason to check other accesses
                                     }
 
                                     wait = true; // retry operation
-                                    break;
+                                                 // break;
                                 }
                             }
                         }
@@ -573,9 +573,12 @@ impl SerializationGraph {
         let this_id = self.get_transaction() as usize; // node id
 
         // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)
-        let this_wlock = this.write();
+        let rlock = this.read();
         this.set_cleaned(); // cleaned acts as a barrier for edge insertion.
-        drop(this_wlock);
+        drop(rlock);
+
+        let wlock = this.write();
+        drop(wlock);
 
         // remove edge sets:
         // - no incoming edges will be added as this node is terminating: (from) --> (this)
