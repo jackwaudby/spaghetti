@@ -1,4 +1,3 @@
-use crate::storage::access::TransactionId;
 use crate::workloads::IsolationLevel;
 
 use crate::cpp::{Mutex as RwLock, MutexGuard, SharedMutexGuard};
@@ -49,7 +48,7 @@ pub struct Node {
     checked: AtomicBool,
     terminated: AtomicBool,
     lock: RwLock<u8>,
-    abort_through: UnsafeCell<TransactionId>,
+    abort_through: UnsafeCell<usize>,
 }
 
 impl Node {
@@ -79,7 +78,7 @@ impl Node {
             terminated: AtomicBool::new(false),
 
             lock: RwLock::new(0),
-            abort_through: UnsafeCell::new(TransactionId::SerializationGraph(0)),
+            abort_through: UnsafeCell::new(0),
         }
     }
 
@@ -288,10 +287,10 @@ impl Node {
         self.cleaned.store(true, Ordering::Release);
     }
 
-    pub fn set_abort_through(&self, id: TransactionId) {
+    pub fn set_abort_through(&self, id: usize) {
         unsafe { *self.abort_through.get() = id };
     }
-    pub fn get_abort_through(&self) -> TransactionId {
+    pub fn get_abort_through(&self) -> usize {
         unsafe { *self.abort_through.get() }
     }
 }

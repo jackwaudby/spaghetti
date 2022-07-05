@@ -34,6 +34,8 @@ struct AbortReason {
     latency: u64,
     reason: u8,
     attempt: u64,
+    id: u64,
+    abort_through: usize,
 }
 
 pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state: &GlobalState) {
@@ -158,6 +160,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 latency: tx_time as u64,
                                 reason,
                                 attempt: retries,
+                                id: meta.get_transaction_id().extract(),
+                                abort_through: meta.get_abort_through(),
                             };
 
                             wtr.serialize(&reason).unwrap();

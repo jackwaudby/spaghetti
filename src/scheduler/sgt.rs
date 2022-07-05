@@ -76,7 +76,13 @@ impl SerializationGraph {
     }
 
     /// Insert an edge: (from) --> (this)
-    pub fn insert_and_check(&self, from: Edge, stats: &mut LocalStatistics, check: bool) -> u8 {
+    pub fn insert_and_check(
+        &self,
+        meta: &mut StatsBucket,
+        from: Edge,
+        stats: &mut LocalStatistics,
+        check: bool,
+    ) -> u8 {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
@@ -103,8 +109,9 @@ impl SerializationGraph {
                 && !rw
             {
                 this_ref.set_cascading_abort();
-                // let fid = from_ref.get_full_id();
-                // this_ref.set_abort_through(fid);
+                let fid = from_ref.get_id();
+                this_ref.set_abort_through(fid);
+                meta.set_abort_through(fid);
                 return 1; // cascadingly abort (this)
             }
 
@@ -366,6 +373,7 @@ impl SerializationGraph {
                                     stats.inc_ww_conflict_detected();
 
                                     let outcome = self.insert_and_check(
+                                        meta,
                                         Edge::WriteWrite(*from_addr),
                                         stats,
                                         true,
@@ -436,8 +444,12 @@ impl SerializationGraph {
                         if let TransactionId::SerializationGraph(from_addr) = from {
                             // let from = unsafe { &*(*from_addr as *const Node) };
                             // if !from.is_committed() {
-                            let outcome =
-                                self.insert_and_check(Edge::ReadWrite(*from_addr), stats, false);
+                            let outcome = self.insert_and_check(
+                                meta,
+                                Edge::ReadWrite(*from_addr),
+                                stats,
+                                false,
+                            );
 
                             if outcome == 1 {
                                 panic!("shouldn't cascade");
