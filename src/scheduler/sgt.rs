@@ -130,7 +130,8 @@ impl SerializationGraph {
                 is_cycle = self.cycle_cycle_init(this_id);
             } else {
                 // rw: do everything but
-
+                from_ref.insert_outgoing(out_edge); // (from)
+                this_ref.insert_incoming(from); // (to)
                 drop(from_rlock);
             }
 
