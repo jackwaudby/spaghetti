@@ -343,6 +343,7 @@ impl SerializationGraph {
                         // W-W conflict
                         Access::Write(from) => {
                             stats.inc_conflict_detected();
+                            stats.inc_ww_conflict_detected();
 
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };

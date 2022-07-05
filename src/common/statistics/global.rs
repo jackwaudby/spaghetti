@@ -33,6 +33,7 @@ pub struct GlobalStatistics {
     edges_inserted: u64,
     conflict_detected: u64,
     rw_conflict_detected: u64,
+    ww_conflict_detected: u64,
 }
 
 impl GlobalStatistics {
@@ -69,6 +70,7 @@ impl GlobalStatistics {
             edges_inserted: 0,
             conflict_detected: 0,
             rw_conflict_detected: 0,
+            ww_conflict_detected: 0,
         }
     }
 
@@ -122,6 +124,7 @@ impl GlobalStatistics {
         self.edges_inserted += local.get_edges_inserted();
         self.conflict_detected += local.get_conflict_detected();
         self.rw_conflict_detected += local.get_rw_conflict_detected();
+        self.ww_conflict_detected += local.get_ww_conflict_detected();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -180,7 +183,8 @@ impl GlobalStatistics {
             "abr": format!("{:.2}",self.get_abr()),
             "edges_inserted": self.edges_inserted,
             "conflicts deteted": self.conflict_detected,
-            "rw conflicts deteted": self.rw_conflict_detected
+            "   rw": self.rw_conflict_detected,
+            "   ww": self.ww_conflict_detected
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
