@@ -56,9 +56,10 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             // let mut guard s = WaitGuards::new();
 
             loop {
+                stats.start_tx();
                 let mut meta = scheduler.begin(isolation_level);
 
-                stats.start_tx();
+                //                stats.start_tx();
                 // let transaction_id = meta.get_transaction_id();
 
                 response =
