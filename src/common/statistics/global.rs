@@ -39,6 +39,9 @@ pub struct GlobalStatistics {
     txn_commit_cum: u128,
     txn_commit_abort_cum: u128,
     txn_logic_abort_cum: u128,
+
+    retries: u64,
+    cum_retries: u64,
 }
 
 impl GlobalStatistics {
@@ -81,6 +84,9 @@ impl GlobalStatistics {
             txn_commit_cum: 0,
             txn_commit_abort_cum: 0,
             txn_logic_abort_cum: 0,
+
+            retries: 0,
+            cum_retries: 0,
         }
     }
 
@@ -140,6 +146,9 @@ impl GlobalStatistics {
         self.txn_commit_cum += local.get_txn_commit();
         self.txn_commit_abort_cum += local.get_txn_commit_abort();
         self.txn_logic_abort_cum += local.get_txn_logic_abort();
+
+        self.retries += local.get_retries();
+        self.cum_retries += local.get_cum_retries();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -227,6 +236,8 @@ impl GlobalStatistics {
             "txn_logic_abort_time (ms)": self.get_txn_logic_abort(),
             "txn_commit_abort_time (ms)": self.get_txn_commit_abort(),
             "txn_commit_time (ms)": self.get_txn_commit(),
+            "retried request": self.retries,
+            "cum retries": self.cum_retries
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());

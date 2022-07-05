@@ -55,6 +55,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             let mut response;
             // let mut guard s = WaitGuards::new();
 
+            let mut retries = 0;
+
             loop {
                 stats.start_tx();
                 let mut meta = scheduler.begin(isolation_level);
@@ -100,6 +102,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 // guards.guards.replace(g);
 
                                 stats.stop_wait_manager();
+                                retries += 1;
                             }
                         }
                     }
@@ -136,6 +139,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
                             stats.stop_wait_manager();
+                            retries += 1;
                         }
                         NonFatalError::SmallBankError(_) => {
                             scheduler.abort(&mut meta, database);
@@ -149,6 +153,11 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         }
                     },
                 }
+            }
+
+            if retries != 0 {
+                stats.inc_retries();
+                stats.add_cum_retries(retries);
             }
 
             // let tx = stats.stop_tx();

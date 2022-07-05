@@ -26,6 +26,9 @@ pub struct LocalStatistics {
     rw_conflict_detected: u64,
     ww_conflict_detected: u64,
 
+    retries: u64,
+    cum_retries: u64,
+
     // runtime breakdown
     worker_cum: u128,
     tx_start: Instant,
@@ -69,6 +72,9 @@ impl LocalStatistics {
             txn_commit_cum: 0,
             txn_commit_abort_cum: 0,
             txn_logic_abort_cum: 0,
+
+            retries: 0,
+            cum_retries: 0,
         }
     }
 
@@ -82,6 +88,22 @@ impl LocalStatistics {
 
     pub fn get_worker_cum(&self) -> u128 {
         self.worker_cum
+    }
+
+    pub fn inc_retries(&mut self) {
+        self.retries += 1;
+    }
+
+    pub fn get_retries(&self) -> u64 {
+        self.retries
+    }
+
+    pub fn add_cum_retries(&mut self, add: u64) {
+        self.cum_retries += add;
+    }
+
+    pub fn get_cum_retries(&self) -> u64 {
+        self.cum_retries
     }
 
     pub fn inc_commits(&mut self) {
