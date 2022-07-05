@@ -428,10 +428,10 @@ impl SerializationGraph {
                         if let TransactionId::SerializationGraph(from_addr) = from {
                             let from = unsafe { &*(*from_addr as *const Node) };
                             // if !from.is_committed() {
-                            // if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats, false) {
-                            // cyclic = true;
-                            //     break;
-                            // }
+                            if !self.insert_and_check(Edge::ReadWrite(*from_addr), stats, false) {
+                                cyclic = true;
+                                break;
+                            }
                             // }
                         }
                     }
