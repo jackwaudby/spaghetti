@@ -88,6 +88,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 break;
                             }
                             Err(_) => {
+                                scheduler.abort(&mut meta, database);
+
                                 // case 1 when commit fails
                                 stats.inc_aborts();
                                 stats.inc_commit_aborts();

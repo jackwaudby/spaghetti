@@ -486,12 +486,12 @@ impl SerializationGraph {
 
         loop {
             if this.is_cascading_abort() {
-                self.abort(meta, database);
+                // self.abort(meta, database);
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
             if this.is_aborted() {
-                self.abort(meta, database);
+                // self.abort(meta, database);
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
