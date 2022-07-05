@@ -207,7 +207,7 @@ impl GlobalStatistics {
     }
 
     fn get_max_txn_logic_abort(&self) -> u64 {
-        (self.max_txn_logic_abort / 1000) as u64
+        (self.max_txn_logic_abort) as u64
     }
 
     fn get_txn_commit_abort(&self) -> u64 {
