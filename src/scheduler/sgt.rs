@@ -517,7 +517,7 @@ impl SerializationGraph {
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            let this_wlock = this.write();
+            let this_wlock = this.read();
             this.set_checked(true); // prevents edge insertions
             drop(this_wlock);
 
