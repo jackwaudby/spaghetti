@@ -345,9 +345,6 @@ impl SerializationGraph {
                     match access {
                         // W-W conflict
                         Access::Write(from) => {
-                            stats.inc_conflict_detected();
-                            stats.inc_ww_conflict_detected();
-
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
@@ -355,6 +352,9 @@ impl SerializationGraph {
                                 if !from.is_committed() {
                                     // if not in cycle then wait
                                     // println!("added 1 edge: {} --> X", from.get_full_id());
+
+                                    stats.inc_conflict_detected();
+                                    stats.inc_ww_conflict_detected();
 
                                     if !self.insert_and_check(
                                         Edge::WriteWrite(*from_addr),
