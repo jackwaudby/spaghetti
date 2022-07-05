@@ -456,7 +456,6 @@ impl SerializationGraph {
         drop(guard);
 
         // (iv) transaction is in a cycle (cycle = T)
-        // abort transaction
         // if cyclic {
         //     rw_table.erase(prv); // remove from rw table
         //     lsn.store(prv + 1, Ordering::Release); // update lsn
