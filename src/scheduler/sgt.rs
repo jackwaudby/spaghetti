@@ -96,7 +96,13 @@ impl SerializationGraph {
             return 2; // check for (this) --> (this)
         }
 
+        let mut attempts = 0;
+
         loop {
+            if attempts > 100000000 {
+                panic!("inserting edge took forever");
+            }
+
             if this_ref.incoming_edge_exists(&from) {
                 return 2; // check if (from) --> (this) already exists
             };
@@ -122,6 +128,8 @@ impl SerializationGraph {
 
             if from_ref.is_checked() {
                 drop(from_rlock);
+                attempts += 1;
+
                 continue; // if (from) checked in process of terminating so try again
             }
 
