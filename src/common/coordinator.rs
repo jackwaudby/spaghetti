@@ -16,7 +16,8 @@ use std::sync::mpsc;
 use tracing::debug;
 
 struct WaitGuards<'a> {
-    guards: Option<Vec<spin::MutexGuard<'a, u8>>>,
+    // guards: Option<Vec<spin::MutexGuard<'a, u8>>>,
+    guards: Option<Vec<std::sync::MutexGuard<'a, u8>>>,
 }
 
 impl<'a> WaitGuards<'a> {

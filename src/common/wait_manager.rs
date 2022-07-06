@@ -2,11 +2,11 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeSet;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
-// use std::sync::Mutex;
-// use std::sync::MutexGuard;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 // use crate::common::ds::spin_mutex::{Mutex, MutexGuard};
 
-use spin::{Mutex, MutexGuard};
+// use spin::{Mutex, MutexGuard};
 
 use crate::storage::access::TransactionId;
 
@@ -43,8 +43,8 @@ impl WaitManager {
 
         let mut guards = Vec::new();
         for t in oset {
-            // guards.push(self.locks[t].lock().unwrap());
-            guards.push(self.locks[t].lock());
+            guards.push(self.locks[t].lock().unwrap());
+            // guards.push(self.locks[t].lock());
             // println!("id: {} got lock on offset: {}", tid, t);
         }
         guards
