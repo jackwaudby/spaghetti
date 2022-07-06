@@ -54,7 +54,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
     let max_transactions = config.get_int("transactions").unwrap() as u32;
     let mut completed_transactions = 0;
 
-    let mut wtr = csv::Writer::from_path(format!("{}-aborts.csv", core_id)).unwrap();
+    // let mut wtr = csv::Writer::from_path(format!("{}-aborts.csv", core_id)).unwrap();
 
     loop {
         if completed_transactions == max_transactions {
@@ -139,7 +139,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                         abort_through: meta.get_abort_through(),
                                     };
 
-                                    wtr.serialize(&reason).unwrap();
+                                    // wtr.serialize(&reason).unwrap();
 
                                     retries += 1;
                                 }
@@ -194,7 +194,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 abort_through: meta.get_abort_through(),
                             };
 
-                            wtr.serialize(&reason).unwrap();
+                            // wtr.serialize(&reason).unwrap();
 
                             retries += 1;
                         }
@@ -223,7 +223,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             completed_transactions += 1;
         }
     }
-    wtr.flush().unwrap();
+    // wtr.flush().unwrap();
 
     stats.stop_worker();
 
