@@ -507,7 +507,7 @@ impl SerializationGraph {
                                 meta,
                                 Edge::ReadWrite(*from_addr),
                                 stats,
-                                false,
+                                true,
                             );
 
                             if outcome == 1 {
@@ -531,11 +531,11 @@ impl SerializationGraph {
 
         // (iv) transaction is in a cycle (cycle = T)
         if cyclic {
-            //     rw_table.erase(prv); // remove from rw table
-            //     lsn.store(prv + 1, Ordering::Release); // update lsn
-            //     self.abort(meta, database);
+            rw_table.erase(prv); // remove from rw table
+            lsn.store(prv + 1, Ordering::Release); // update lsn
+                                                   // self.abort(meta, database);
 
-            //     return Err(SerializationGraphError::CycleFound.into());
+            return Err(SerializationGraphError::CycleFound.into());
         }
 
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
