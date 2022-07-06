@@ -41,8 +41,9 @@ impl TransactionInformation {
             .push(Operation::new(op_type, table_id, column_id, offset, prv));
     }
 
-    pub fn get(&mut self) -> Vec<Operation> {
-        self.operations.take().unwrap()
+    pub fn get_clone(&mut self) -> Vec<Operation> {
+        // self.operations.take().unwrap()
+        self.operations.as_ref().unwrap().clone()
     }
 }
 

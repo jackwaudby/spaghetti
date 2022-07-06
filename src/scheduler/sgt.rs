@@ -55,7 +55,7 @@ impl SerializationGraph {
             .borrow_mut()
             .as_mut()
             .unwrap()
-            .get()
+            .get_clone()
     }
 
     pub fn record(
@@ -75,7 +75,6 @@ impl SerializationGraph {
             .add(op_type, table_id, column_id, offset, prv);
     }
 
-    /// Insert an edge: (from) --> (this)
     pub fn insert_and_check(
         &self,
         meta: &mut StatsBucket,
@@ -165,9 +164,6 @@ impl SerializationGraph {
         visited: &mut RefMut<FxHashSet<usize>>,
         visit_path: &mut RefMut<FxHashSet<usize>>,
     ) -> bool {
-        // let mut visited = self.get_visited();
-        // let mut visit_path = self.get_visit_path();
-
         visited.insert(cur);
         visit_path.insert(cur);
 
@@ -207,10 +203,10 @@ impl SerializationGraph {
         if !visited.contains(&this_node) {
             check = self.check_cycle_naive(this_node, &mut visited, &mut visit_path);
         }
+
         return check;
     }
 
-    /// Check if a transaction needs to abort.
     pub fn needs_abort(&self) -> bool {
         let this = unsafe { &*self.get_transaction() };
 
@@ -220,17 +216,14 @@ impl SerializationGraph {
     }
 
     pub fn begin(&self) -> TransactionId {
-        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
+        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1;
         *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
-            Some(TransactionInformation::new()); // reset txn info
-
-        let ref_id = self.create_node(); // create node
-
-        let guard = epoch::pin(); // pin thread
-
+            Some(TransactionInformation::new());
+        let transaction_id = self.create_node();
+        let guard = epoch::pin();
         SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
 
-        TransactionId::SerializationGraph(ref_id)
+        TransactionId::SerializationGraph(transaction_id)
     }
 
     pub fn create_node(&self) -> usize {
@@ -498,59 +491,91 @@ impl SerializationGraph {
         Ok(())
     }
 
-    /// Commit operation.
+    fn check_committed(&self, this_node: &Node, database: &Database, ops: &Vec<Operation>) -> bool {
+        if this_node.is_aborted() || this_node.is_cascading_abort() {
+            return false;
+        }
+
+        let read_lock = this_node.read();
+        this_node.set_checked(true);
+        drop(read_lock);
+
+        let write_lock = this_node.write();
+        drop(write_lock);
+
+        let read_lock = this_node.read();
+        if this_node.has_incoming() {
+            this_node.set_checked(false);
+            drop(read_lock);
+            return false;
+        }
+        drop(read_lock);
+
+        if this_node.is_aborted() || this_node.is_cascading_abort() {
+            return false;
+        }
+
+        let success = self.erase_graph_constraints(this_node, database, ops);
+
+        if success {
+            self.cleanup(this_node);
+            SerializationGraph::EG.with(|x| {
+                let guard = x.borrow_mut().take();
+                drop(guard)
+            });
+        }
+
+        return success;
+    }
+
+    fn erase_graph_constraints(
+        &self,
+        this_node: &Node,
+        database: &Database,
+        ops: &Vec<Operation>,
+    ) -> bool {
+        let id = this_node.get_id();
+        let is_cycle = self.cycle_cycle_init(id);
+        if is_cycle {
+            this_node.set_aborted();
+        }
+
+        // NFN: different
+        self.commit_writes(database, true, &ops);
+
+        this_node.set_committed();
+
+        true
+    }
+
     pub fn commit(
         &self,
         _meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        let this = unsafe { &*self.get_transaction() };
+        let this_node = unsafe { &*self.get_transaction() };
+        let ops = self.get_operations();
 
-        loop {
-            if this.is_cascading_abort() {
-                // self.abort(meta, database);
+        let mut all_pending_transactions_committed = false;
+        while !all_pending_transactions_committed {
+            if this_node.is_cascading_abort() {
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
-            if this.is_aborted() {
-                // self.abort(meta, database);
+            if this_node.is_aborted() {
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            let this_wlock = this.read();
-            this.set_checked(true); // prevents edge insertions
-            drop(this_wlock);
+            all_pending_transactions_committed = self.check_committed(this_node, database, &ops);
 
-            // no lock taken as only outgoing edges can be added from here
-            if this.has_incoming() {
-                this.set_checked(false); // if incoming then flip back to unchecked
-                let is_cycle = self.cycle_cycle_init(this.get_id()); // cycle check
-                if is_cycle {
-                    this.set_aborted(); // cycle so abort (this)
-                }
-                continue;
+            if all_pending_transactions_committed {
+                self.remove_accesses(database, &ops);
             }
-
-            // no incoming edges and no cycle so commit
-            let ops = self.get_operations();
-
-            self.commit_writes(database, true, &ops);
-
-            this.set_committed();
-            self.cleanup(this);
-            self.remove_accesses(database, &ops);
-
-            SerializationGraph::EG.with(|x| {
-                let guard = x.borrow_mut().take();
-                drop(guard)
-            });
-            break;
         }
 
         Ok(())
     }
 
-    /// Abort operation.
     pub fn abort(&self, _meta: &mut StatsBucket, database: &Database) {
         let ops = self.get_operations();
 
@@ -572,7 +597,7 @@ impl SerializationGraph {
     }
 
     /// Cleanup node after committed or aborted.
-    pub fn cleanup(&self, this: &Node) {
+    fn cleanup(&self, this: &Node) {
         let this_id = self.get_transaction() as usize; // node id
 
         // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)

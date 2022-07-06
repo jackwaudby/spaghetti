@@ -57,7 +57,7 @@ impl MixedSerializationGraph {
             .borrow_mut()
             .as_mut()
             .unwrap()
-            .get()
+            .get_clone()
     }
 
     pub fn record(

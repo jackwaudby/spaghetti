@@ -105,7 +105,7 @@ impl NoConcurrencyControl {
     }
 
     fn tidy_up(&self, database: &Database) {
-        let ops = self.txn_info.get().unwrap().borrow_mut().get();
+        let ops = self.txn_info.get().unwrap().borrow_mut().get_clone();
 
         for op in ops {
             let Operation {
