@@ -88,7 +88,7 @@ impl SerializationGraph {
         // prepare
         let (from_id, rw, out_edge) = match from {
             Edge::ReadWrite(from_id) => (from_id, true, Edge::ReadWrite(this_id)),
-            Edge::WriteRead(from_id) => (from_id, false, Edge::WriteRead(this_id)),
+            // Edge::WriteRead(from_id) => (from_id, false, Edge::WriteRead(this_id)),
             Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
         };
 
@@ -346,8 +346,12 @@ impl SerializationGraph {
                         if let TransactionId::SerializationGraph(from_id) = from {
                             // stats.inc_conflict_detected();
 
-                            let outcome =
-                                self.insert_and_check(meta, Edge::WriteRead(*from_id), stats, true);
+                            let outcome = self.insert_and_check(
+                                meta,
+                                Edge::WriteWrite(*from_id),
+                                stats,
+                                true,
+                            );
 
                             // if !self.insert_and_check(Edge::WriteRead(*from_id), stats, true) {
                             //     cyclic = true;
@@ -612,9 +616,9 @@ impl SerializationGraph {
                 Edge::WriteWrite(id) => {
                     meta.add_problem_transaction(id);
                 }
-                Edge::WriteRead(id) => {
-                    meta.add_problem_transaction(id);
-                }
+                // Edge::WriteRead(id) => {
+                //     meta.add_problem_transaction(id);
+                // }
                 Edge::ReadWrite(id) => {}
             }
         }
@@ -677,22 +681,21 @@ impl SerializationGraph {
                         }
                         drop(that_rlock);
                     }
-                }
-                // (this) -[wr]-> (to)
-                Edge::WriteRead(that) => {
-                    let that = unsafe { &*(*that as *const Node) };
-                    if this.is_aborted() {
-                        let id = this.get_id();
-                        that.set_abort_through(id);
-                        that.set_cascading_abort();
-                    } else {
-                        let that_rlock = that.read();
-                        if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteRead(this_id));
-                        }
-                        drop(that_rlock);
-                    }
-                }
+                } // (this) -[wr]-> (to)
+                  // Edge::WriteRead(that) => {
+                  //     let that = unsafe { &*(*that as *const Node) };
+                  //     if this.is_aborted() {
+                  //         let id = this.get_id();
+                  //         that.set_abort_through(id);
+                  //         that.set_cascading_abort();
+                  //     } else {
+                  //         let that_rlock = that.read();
+                  //         if !that.is_cleaned() {
+                  //             that.remove_incoming(&Edge::WriteRead(this_id));
+                  //         }
+                  //         drop(that_rlock);
+                  //     }
+                  // }
             }
         }
         g.clear(); // clear (this) outgoing

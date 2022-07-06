@@ -88,13 +88,13 @@ impl MixedSerializationGraph {
             Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
 
             // WR edge inserted if this node is PL2/3
-            Edge::WriteRead(from_id) => {
-                if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
-                    return true;
-                }
+            // Edge::WriteRead(from_id) => {
+            //     if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
+            //         return true;
+            //     }
 
-                (from_id, false, Edge::WriteRead(this_id))
-            }
+            //     (from_id, false, Edge::WriteRead(this_id))
+            // }
 
             // RW edge inserted if from node is PL3
             Edge::ReadWrite(from_id) => {
@@ -182,12 +182,12 @@ impl MixedSerializationGraph {
                             continue;
                         }
                         Edge::WriteWrite(node) => node,
-                        Edge::WriteRead(node) => node,
+                        // Edge::WriteRead(node) => node,
                     },
                     IsolationLevel::Serializable => match edge {
                         Edge::ReadWrite(node) => node,
                         Edge::WriteWrite(node) => node,
-                        Edge::WriteRead(node) => node,
+                        // Edge::WriteRead(node) => node,
                     },
                 }
             } else {
@@ -195,7 +195,7 @@ impl MixedSerializationGraph {
                 match edge {
                     Edge::ReadWrite(node) => node,
                     Edge::WriteWrite(node) => node,
-                    Edge::WriteRead(node) => node,
+                    // Edge::WriteRead(node) => node,
                 }
             };
 
@@ -297,7 +297,7 @@ impl MixedSerializationGraph {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id) = from {
-                            if !self.insert_and_check(Edge::WriteRead(*from_id)) {
+                            if !self.insert_and_check(Edge::WriteWrite(*from_id)) {
                                 cyclic = true;
                                 break;
                             }
@@ -561,20 +561,18 @@ impl MixedSerializationGraph {
                         }
                         drop(that_rlock);
                     }
-                }
-
-                Edge::WriteRead(that_id) => {
-                    let that = unsafe { &*(*that_id as *const Node) };
-                    if this.is_aborted() {
-                        that.set_cascading_abort();
-                    } else {
-                        let that_rlock = that.read();
-                        if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteRead(this_id));
-                        }
-                        drop(that_rlock);
-                    }
-                }
+                } // Edge::WriteWrite(that_id) => {
+                  //     let that = unsafe { &*(*that_id as *const Node) };
+                  //     if this.is_aborted() {
+                  //         that.set_cascading_abort();
+                  //     } else {
+                  //         let that_rlock = that.read();
+                  //         if !that.is_cleaned() {
+                  //             that.remove_incoming(&&Edge::WriteWrite(this_id));
+                  //         }
+                  //         drop(that_rlock);
+                  //     }
+                  // }
             }
         }
         g.clear();

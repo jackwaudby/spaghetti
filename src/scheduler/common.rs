@@ -20,14 +20,14 @@ pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 pub enum Edge {
     ReadWrite(usize),
     WriteWrite(usize),
-    WriteRead(usize),
+    // WriteRead(usize),
 }
 
 impl Edge {
     pub fn extract_id(&self) -> u64 {
         let id = match &self {
             Edge::ReadWrite(id) => id,
-            Edge::WriteRead(id) => id,
+            // Edge::WriteRead(id) => id,
             Edge::WriteWrite(id) => id,
         };
 
@@ -302,7 +302,7 @@ impl std::fmt::Debug for Edge {
         match &*self {
             ReadWrite(txn_id) => write!(f, "{}", format!("[rw: {:x}]", txn_id)),
             WriteWrite(txn_id) => write!(f, "{}", format!("[ww: {:x}]", txn_id)),
-            WriteRead(txn_id) => write!(f, "{}", format!("[wr: {:x}]", txn_id)),
+            // WriteRead(txn_id) => write!(f, "{}", format!("[wr: {:x}]", txn_id)),
         }
     }
 }
