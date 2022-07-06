@@ -103,12 +103,12 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                     // stats.stop_txn_commit_abort(tx_time);
 
                                     stats.start_wait_manager();
-                                    // let mut problem_transactions = meta.get_problem_transactions();
-                                    // let abort_through = meta.get_abort_through();
-                                    // problem_transactions.insert(abort_through);
-                                    // let g = wait_manager
-                                    //     .wait(transaction_id.extract(), problem_transactions);
-                                    // guards.guards.replace(g);
+                                    let mut problem_transactions = meta.get_problem_transactions();
+                                    let abort_through = meta.get_abort_through();
+                                    problem_transactions.insert(abort_through);
+                                    let g = wait_manager
+                                        .wait(transaction_id.extract(), problem_transactions);
+                                    guards.guards.replace(g);
                                     stats.stop_wait_manager();
                                 }
                             },
@@ -119,46 +119,17 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::SerializationGraphError(_) => {
                             scheduler.abort(&mut meta, database);
                             stats.inc_aborts();
-                            // stats.inc_logic_aborts();
-                            // let tx_time = stats.stop_tx();
-                            // stats.stop_txn_logic_abort(tx_time);
-
-                            // match e {
-                            //     SerializationGraphError::ReadOpCycleFound => {
-                            //         stats.inc_read_cf();
-                            //         reason = 1;
-                            //     }
-                            //     SerializationGraphError::WriteOpCascasde => {
-                            //         stats.inc_write_ca();
-                            //         reason = 2;
-                            //     }
-                            //     SerializationGraphError::ReadOpCascasde => {
-                            //         stats.inc_read_ca();
-                            //         reason = 3;
-                            //     }
-                            //     SerializationGraphError::WriteOpCycleFound => {
-                            //         stats.inc_write_cf();
-                            //         reason = 4;
-                            //     }
-                            //     SerializationGraphError::CycleFound => {
-                            //         stats.inc_rwrite_cf();
-                            //     }
-                            //     _ => {}
-                            // }
 
                             stats.start_wait_manager();
-                            // let mut problem_transactions = meta.get_problem_transactions();
-                            // let abort_through = meta.get_abort_through();
-                            // problem_transactions.insert(abort_through);
-                            // wait_manager.wait(transaction_id.extract(), problem_transactions);
+                            let mut problem_transactions = meta.get_problem_transactions();
+                            let abort_through = meta.get_abort_through();
+                            problem_transactions.insert(abort_through);
+                            wait_manager.wait(transaction_id.extract(), problem_transactions);
                             stats.stop_wait_manager();
                         }
                         NonFatalError::SmallBankError(_) => {
                             scheduler.abort(&mut meta, database);
                             stats.inc_not_found();
-
-                            // let tx_time = stats.stop_tx();
-                            // stats.stop_txn_not_found(tx_time);
 
                             break;
                         }
@@ -172,7 +143,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             completed_transactions += 1;
         }
     }
-    // wtr.flush().unwrap();
 
     stats.stop_worker();
 
