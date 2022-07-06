@@ -238,10 +238,10 @@ impl SerializationGraph {
         this_node.set_checked(true);
         drop(read_lock);
 
-        let write_lock = this_node.write();
-        drop(write_lock);
+        // let write_lock = this_node.write();
+        // drop(write_lock);
 
-        let read_lock = this_node.read();
+        let read_lock = this_node.write();
         if this_node.has_incoming() {
             this_node.set_checked(false);
             drop(read_lock);
