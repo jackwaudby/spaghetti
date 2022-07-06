@@ -100,7 +100,7 @@ impl SerializationGraph {
 
         loop {
             if attempts > 100000000 {
-                panic!("inserting edge took forever");
+                panic!("insert: {} -> {}", from_id, this_id);
             }
 
             if this_ref.incoming_edge_exists(&from) {
