@@ -314,12 +314,13 @@ impl SerializationGraph {
         let column_id = vid.get_column_id();
         let offset = vid.get_offset();
 
-        // let this = unsafe { &*self.get_transaction() };
-
-        // if this.is_cascading_abort() {
-        //     self.abort(meta, database);
-        //     return Err(SerializationGraphError::ReadOpCascasde.into());
-        // }
+        if self.needs_abort() {
+            let this = unsafe { &*self.get_transaction() };
+            let id = this.get_abort_through();
+            meta.set_abort_through(id);
+            // self.abort(meta, database);
+            return Err(SerializationGraphError::WriteOpCascasde.into()); // check for cascading abort
+        }
 
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);

@@ -1,10 +1,10 @@
 use crate::workloads::IsolationLevel;
 
-use crate::cpp::{Mutex as RwLock, MutexGuard, SharedMutexGuard};
+// use crate::cpp::{Mutex as RwLock, MutexGuard, SharedMutexGuard};
 
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
-// use spin::{RwLock, RwLockReadGuard as SharedMutexGuard, RwLockWriteGuard as MutexGuard};
+use spin::{RwLock, RwLockReadGuard as SharedMutexGuard, RwLockWriteGuard as MutexGuard};
 
 use std::cell::UnsafeCell;
 use std::fmt;
@@ -53,13 +53,13 @@ pub struct Node {
 
 impl Node {
     pub fn read(&self) -> SharedMutexGuard<u8> {
-        self.lock.acquire_shared()
-        // self.lock.read()
+        // self.lock.acquire_shared()
+        self.lock.read()
     }
 
     pub fn write(&self) -> MutexGuard<u8> {
-        self.lock.acquire()
-        // self.lock.write()
+        // self.lock.acquire()
+        self.lock.write()
     }
 
     pub fn new(
