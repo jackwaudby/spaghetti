@@ -12,7 +12,7 @@ pub struct StoredProcedureResult {
     isolation: IsolationLevel,
     outcome: Outcome,
     internal_id: u64,
-    problem_transactions: HashSet<TransactionId>,
+    problem_transactions: HashSet<usize>,
 }
 
 impl StoredProcedureResult {
@@ -61,7 +61,7 @@ impl StoredProcedureResult {
         &self.outcome
     }
 
-    pub fn get_problem_transactions(&self) -> HashSet<TransactionId> {
+    pub fn get_problem_transactions(&self) -> HashSet<usize> {
         self.problem_transactions.clone()
     }
 }

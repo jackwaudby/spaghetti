@@ -596,7 +596,7 @@ impl SerializationGraph {
         Ok(())
     }
 
-    pub fn abort(&self, _meta: &mut StatsBucket, database: &Database) {
+    pub fn abort(&self, meta: &mut StatsBucket, database: &Database) {
         let ops = self.get_operations();
 
         self.commit_writes(database, false, &ops);
@@ -604,6 +604,19 @@ impl SerializationGraph {
         let this = unsafe { &*self.get_transaction() };
 
         this.set_aborted();
+
+        let incoming = this.get_incoming().clone();
+        for edge in incoming {
+            match edge {
+                Edge::WriteWrite(id) => {
+                    meta.add_problem_transaction(id);
+                }
+                Edge::WriteRead(id) => {
+                    meta.add_problem_transaction(id);
+                }
+                Edge::ReadWrite(id) => {}
+            }
+        }
 
         self.cleanup(this);
 

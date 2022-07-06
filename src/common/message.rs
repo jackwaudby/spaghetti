@@ -97,7 +97,7 @@ impl Response {
     pub fn get_transaction_id(&self) -> u64 {
         self.result.get_internal_id()
     }
-    pub fn get_problem_transactions(&self) -> HashSet<TransactionId> {
+    pub fn get_problem_transactions(&self) -> HashSet<usize> {
         self.result.get_problem_transactions()
     }
 }

@@ -4,7 +4,7 @@ use std::collections::HashSet;
 
 pub struct StatsBucket {
     tid: TransactionId,
-    problem_transactions: HashSet<TransactionId>,
+    problem_transactions: HashSet<usize>,
     abort_through: usize,
 }
 
@@ -29,11 +29,11 @@ impl StatsBucket {
         self.abort_through = x;
     }
 
-    pub fn get_problem_transactions(&self) -> HashSet<TransactionId> {
+    pub fn get_problem_transactions(&self) -> HashSet<usize> {
         self.problem_transactions.clone()
     }
 
-    pub fn add_problem_transaction(&mut self, id: TransactionId) {
+    pub fn add_problem_transaction(&mut self, id: usize) {
         self.problem_transactions.insert(id);
     }
 }
