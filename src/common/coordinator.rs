@@ -103,12 +103,12 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                     // stats.stop_txn_commit_abort(tx_time);
 
                                     stats.start_wait_manager();
-                                    let mut problem_transactions = meta.get_problem_transactions();
-                                    let abort_through = meta.get_abort_through();
-                                    problem_transactions.insert(abort_through);
-                                    let g = wait_manager
-                                        .wait(transaction_id.extract(), problem_transactions);
-                                    guards.guards.replace(g);
+                                    // let mut problem_transactions = meta.get_problem_transactions();
+                                    // let abort_through = meta.get_abort_through();
+                                    // problem_transactions.insert(abort_through);
+                                    // let g = wait_manager
+                                    //     .wait(transaction_id.extract(), problem_transactions);
+                                    // guards.guards.replace(g);
                                     stats.stop_wait_manager();
                                 }
                             },
@@ -147,11 +147,10 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             // }
 
                             stats.start_wait_manager();
-
-                            let mut problem_transactions = meta.get_problem_transactions();
-                            let abort_through = meta.get_abort_through();
-                            problem_transactions.insert(abort_through);
-                            wait_manager.wait(transaction_id.extract(), problem_transactions);
+                            // let mut problem_transactions = meta.get_problem_transactions();
+                            // let abort_through = meta.get_abort_through();
+                            // problem_transactions.insert(abort_through);
+                            // wait_manager.wait(transaction_id.extract(), problem_transactions);
                             stats.stop_wait_manager();
                         }
                         NonFatalError::SmallBankError(_) => {
