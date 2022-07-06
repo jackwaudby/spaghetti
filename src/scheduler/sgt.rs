@@ -560,9 +560,9 @@ impl SerializationGraph {
 
         let mut all_pending_transactions_committed = false;
         while !all_pending_transactions_committed {
-            if attempts > 1000000 {
-                panic!("stuck");
-            }
+            // if attempts > 1000000 {
+            //     panic!("stuck");
+            // }
 
             if this_node.is_cascading_abort() {
                 return Err(SerializationGraphError::CascadingAbort.into());
@@ -749,9 +749,9 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64) {
 
     let mut i = 0;
     while lsn.load(Ordering::Relaxed) != prv {
-        if attempts > 1000000 {
-            panic!("stuck");
-        }
+        // if attempts > 1000000 {
+        //     panic!("stuck");
+        // }
         i += 1;
         if i >= 10000 {
             std::thread::yield_now();
