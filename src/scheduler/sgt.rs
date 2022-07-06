@@ -99,8 +99,10 @@ impl SerializationGraph {
         let mut attempts = 0;
 
         loop {
+            let from_ref = unsafe { &*(from_id as *const Node) };
+
             if attempts > 100000000 {
-                panic!("insert: {} -> {}", from_id, this_id);
+                panic!("insert: {} -> {} --- from {:?}", from_id, this_id, from_ref);
             }
 
             if this_ref.incoming_edge_exists(&from) {
