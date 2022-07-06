@@ -164,7 +164,6 @@ impl Node {
         }
     }
 
-    /// Insert an outgoing edge: (this) --> (to)
     pub fn insert_outgoing(&self, to: Edge) {
         let outgoing_edges = unsafe { self.outgoing.get().as_ref() };
 

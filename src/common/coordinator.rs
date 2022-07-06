@@ -13,7 +13,6 @@ use config::Config;
 use std::sync::mpsc;
 use tracing::debug;
 
-use super::error::SerializationGraphError;
 use super::stats_bucket::StatsBucket;
 
 // struct WaitGuards<'a> {
@@ -54,8 +53,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
     let max_transactions = config.get_int("transactions").unwrap() as u32;
     let mut completed_transactions = 0;
 
-    // let mut wtr = csv::Writer::from_path(format!("{}-aborts.csv", core_id)).unwrap();
-
     loop {
         if completed_transactions == max_transactions {
             debug!("Max transactions completed: {} ", completed_transactions);
@@ -68,14 +65,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             let mut response;
             // let mut guard s = WaitGuards::new();
 
-            let mut retries = 0;
-
             loop {
                 stats.start_tx();
                 let mut meta = scheduler.begin(isolation_level);
-
-                //                stats.start_tx();
-                // let transaction_id = meta.get_transaction_id();
 
                 response =
                     execute_logic(&mut meta, request.clone(), scheduler, database, &mut stats);
@@ -103,24 +95,12 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             Err(e) => match e {
                                 NonFatalError::NoccError => {}
                                 NonFatalError::SmallBankError(_) => {}
-                                NonFatalError::SerializationGraphError(e) => {
+                                NonFatalError::SerializationGraphError(_) => {
                                     scheduler.abort(&mut meta, database);
                                     stats.inc_aborts();
                                     stats.inc_commit_aborts();
                                     let tx_time = stats.stop_tx();
                                     stats.stop_txn_commit_abort(tx_time);
-
-                                    let mut reason = 0;
-                                    match e {
-                                        SerializationGraphError::CycleFound => {
-                                            reason = 1;
-                                        }
-                                        SerializationGraphError::CascadingAbort => {
-                                            reason = 2;
-                                        }
-
-                                        _ => {}
-                                    }
 
                                     stats.start_wait_manager();
                                     // let problem_transactions = meta.get_problem_transactions();
@@ -128,93 +108,58 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                     //     .wait(transaction_id.extract(), problem_transactions);
                                     // guards.guards.replace(g);
                                     stats.stop_wait_manager();
-
-                                    let reason = AbortReason {
-                                        request_no: completed_transactions,
-                                        location: true,
-                                        latency: tx_time as u64,
-                                        reason,
-                                        attempt: retries,
-                                        id: meta.get_transaction_id().extract(),
-                                        abort_through: meta.get_abort_through(),
-                                    };
-
-                                    // wtr.serialize(&reason).unwrap();
-
-                                    retries += 1;
                                 }
                             },
                         }
                     }
                     Err(e) => match e {
                         NonFatalError::NoccError => {}
-                        NonFatalError::SerializationGraphError(e) => {
+                        NonFatalError::SerializationGraphError(_) => {
                             scheduler.abort(&mut meta, database);
                             stats.inc_aborts();
                             stats.inc_logic_aborts();
-                            let tx_time = stats.stop_tx();
-                            stats.stop_txn_logic_abort(tx_time);
+                            // let tx_time = stats.stop_tx();
+                            // stats.stop_txn_logic_abort(tx_time);
 
-                            let mut reason = 0;
-                            match e {
-                                SerializationGraphError::ReadOpCycleFound => {
-                                    stats.inc_read_cf();
-                                    reason = 1;
-                                }
-                                SerializationGraphError::WriteOpCascasde => {
-                                    stats.inc_write_ca();
-                                    reason = 2;
-                                }
-                                SerializationGraphError::ReadOpCascasde => {
-                                    stats.inc_read_ca();
-                                    reason = 3;
-                                }
-                                SerializationGraphError::WriteOpCycleFound => {
-                                    stats.inc_write_cf();
-                                    reason = 4;
-                                }
-                                SerializationGraphError::CycleFound => {
-                                    stats.inc_rwrite_cf();
-                                }
-                                _ => {}
-                            }
+                            // match e {
+                            //     SerializationGraphError::ReadOpCycleFound => {
+                            //         stats.inc_read_cf();
+                            //         reason = 1;
+                            //     }
+                            //     SerializationGraphError::WriteOpCascasde => {
+                            //         stats.inc_write_ca();
+                            //         reason = 2;
+                            //     }
+                            //     SerializationGraphError::ReadOpCascasde => {
+                            //         stats.inc_read_ca();
+                            //         reason = 3;
+                            //     }
+                            //     SerializationGraphError::WriteOpCycleFound => {
+                            //         stats.inc_write_cf();
+                            //         reason = 4;
+                            //     }
+                            //     SerializationGraphError::CycleFound => {
+                            //         stats.inc_rwrite_cf();
+                            //     }
+                            //     _ => {}
+                            // }
 
                             stats.start_wait_manager();
                             // let problem_transactions = meta.get_problem_transactions();
                             // wait_manager.wait(transaction_id.extract(), problem_transactions);
                             stats.stop_wait_manager();
-
-                            let reason = AbortReason {
-                                request_no: completed_transactions,
-                                location: false,
-                                latency: tx_time as u64,
-                                reason,
-                                attempt: retries,
-                                id: meta.get_transaction_id().extract(),
-                                abort_through: meta.get_abort_through(),
-                            };
-
-                            // wtr.serialize(&reason).unwrap();
-
-                            retries += 1;
                         }
                         NonFatalError::SmallBankError(_) => {
                             scheduler.abort(&mut meta, database);
                             stats.inc_not_found();
 
-                            let tx_time = stats.stop_tx();
-                            stats.stop_txn_not_found(tx_time);
+                            // let tx_time = stats.stop_tx();
+                            // stats.stop_txn_not_found(tx_time);
 
-                            // TODO: abort then commit
                             break;
                         }
                     },
                 }
-            }
-
-            if retries != 0 {
-                stats.inc_retries();
-                stats.add_cum_retries(retries);
             }
 
             // let tx = stats.stop_tx();

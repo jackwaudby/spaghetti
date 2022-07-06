@@ -571,8 +571,6 @@ impl SerializationGraph {
         let this_node = unsafe { &*self.get_transaction() };
         let ops = self.get_operations();
 
-        let mut attempts = 0;
-
         let mut all_pending_transactions_committed = false;
         while !all_pending_transactions_committed {
             // if attempts > 1000000 {
@@ -597,8 +595,6 @@ impl SerializationGraph {
                     drop(guard)
                 });
             }
-
-            attempts += 1;
         }
 
         Ok(())
@@ -764,17 +760,11 @@ impl SerializationGraph {
 }
 
 unsafe fn spin(prv: u64, lsn: &AtomicU64) {
-    let mut attempts = 0;
-
     let mut i = 0;
     while lsn.load(Ordering::Relaxed) != prv {
-        // if attempts > 1000000 {
-        //     panic!("stuck");
-        // }
         i += 1;
         if i >= 10000 {
             std::thread::yield_now();
         }
-        attempts += 1;
     }
 }
