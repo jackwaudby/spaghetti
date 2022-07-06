@@ -1,7 +1,7 @@
 use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned, Shared};
 // use spin::Mutex;
-// use parking_lot::Mutex;
-use crate::cpp::Mutex;
+use parking_lot::Mutex;
+// use crate::cpp::Mutex;
 
 use std::fmt;
 use std::fmt::Debug;
@@ -101,7 +101,9 @@ impl<T> AtomicLinkedList<T> {
     pub fn erase<'g>(&self, id: u64) {
         // Safety: ensures only a single element is removed at a time.
         // Note, element can be concurrently pushed
-        let lg = self.lock.acquire(); // 1 erase at a time
+        // let lg = self.lock.acquire(); // 1 erase at a time
+
+        let lg = self.lock.lock();
 
         let guard = &epoch::pin();
 
