@@ -30,19 +30,17 @@ impl WaitManager {
     }
 
     pub fn wait(&self, tid: u64, neighbours: HashSet<usize>) -> Vec<MutexGuard<'_, u8>> {
-        // pub fn wait(&self, tid: u64, neighbours: HashSet<u64>) -> Vec<MutexGuard<'_>> {
         let mut oset = BTreeSet::new();
         for nid in &neighbours {
             let e = *nid as u64;
-            if e != 0 {
-                let offset = self.calculate_offset(&e);
-                oset.insert(offset);
-            }
-            // println!("{} -> {}", nid, offset);
+            // if e != 0 {
+            let offset = self.calculate_offset(&e);
+            oset.insert(offset);
+            // }
         }
         let offset = self.calculate_offset(&tid);
         oset.insert(offset);
-        // println!("id: {} -> offset: {}", tid, offset);
+
         let mut guards = Vec::new();
         for t in oset {
             // guards.push(self.locks[t].lock().unwrap());
