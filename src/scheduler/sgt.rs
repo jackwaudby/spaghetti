@@ -267,10 +267,6 @@ impl SerializationGraph {
 
         if success {
             self.cleanup(this_node);
-            SerializationGraph::EG.with(|x| {
-                let guard = x.borrow_mut().take();
-                drop(guard)
-            });
         }
 
         return success;
@@ -586,6 +582,11 @@ impl SerializationGraph {
 
             if all_pending_transactions_committed {
                 self.remove_accesses(database, &ops);
+
+                SerializationGraph::EG.with(|x| {
+                    let guard = x.borrow_mut().take();
+                    drop(guard)
+                });
             }
 
             attempts += 1;
@@ -753,7 +754,6 @@ impl SerializationGraph {
     }
 }
 
-// Busy wait until prv matches lsn.
 unsafe fn spin(prv: u64, lsn: &AtomicU64) {
     let mut attempts = 0;
 

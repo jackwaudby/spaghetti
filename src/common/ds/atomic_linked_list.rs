@@ -57,6 +57,7 @@ impl<T> AtomicLinkedList<T> {
                 .compare_exchange(head, new, Relaxed, Relaxed, guard)
             {
                 Ok(_) => {
+                    drop(guard);
                     return id;
                 }
                 Err(cse) => {
@@ -161,7 +162,7 @@ impl<T> AtomicLinkedList<T> {
             }
         }
 
-        //        drop(lg);
+        drop(lg);
         unsafe {
             guard.defer_unchecked(move || {
                 let mut o = current.into_owned();
@@ -172,7 +173,8 @@ impl<T> AtomicLinkedList<T> {
                 drop(o);
             });
         }
-        drop(lg);
+
+        drop(guard);
     }
 }
 
