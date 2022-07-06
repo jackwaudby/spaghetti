@@ -60,14 +60,14 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
         } else {
             let request = transaction_generator.get_next();
             let isolation_level = request.get_isolation_level();
-            // stats.start_latency();
+            stats.start_latency();
 
             let mut response;
             // let mut guard s = WaitGuards::new();
 
             loop {
-                stats.start_tx();
                 let mut meta = scheduler.begin(isolation_level);
+                stats.start_tx();
 
                 response =
                     execute_logic(&mut meta, request.clone(), scheduler, database, &mut stats);
@@ -87,8 +87,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         match commit_res {
                             Ok(_) => {
                                 stats.inc_commits();
-                                let tx_time = stats.stop_tx();
-                                stats.stop_txn_commit(tx_time);
+                                // let tx_time = stats.stop_tx();
+                                // stats.stop_txn_commit(tx_time);
 
                                 break;
                             }
@@ -98,9 +98,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 NonFatalError::SerializationGraphError(_) => {
                                     scheduler.abort(&mut meta, database);
                                     stats.inc_aborts();
-                                    stats.inc_commit_aborts();
-                                    let tx_time = stats.stop_tx();
-                                    stats.stop_txn_commit_abort(tx_time);
+                                    // stats.inc_commit_aborts();
+                                    // let tx_time = stats.stop_tx();
+                                    // stats.stop_txn_commit_abort(tx_time);
 
                                     stats.start_wait_manager();
                                     // let problem_transactions = meta.get_problem_transactions();
@@ -117,7 +117,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::SerializationGraphError(_) => {
                             scheduler.abort(&mut meta, database);
                             stats.inc_aborts();
-                            stats.inc_logic_aborts();
+                            // stats.inc_logic_aborts();
                             // let tx_time = stats.stop_tx();
                             // stats.stop_txn_logic_abort(tx_time);
 
@@ -162,8 +162,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                 }
             }
 
-            // let tx = stats.stop_tx();
-            // stats.stop_latency(tx);
+            let tx = stats.stop_tx();
+            stats.stop_latency(tx);
 
             completed_transactions += 1;
         }

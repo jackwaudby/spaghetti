@@ -96,14 +96,14 @@ impl SerializationGraph {
             return 2; // check for (this) --> (this)
         }
 
-        let mut attempts = 0;
+        // let mut attempts = 0;
 
         loop {
             let from_ref = unsafe { &*(from_id as *const Node) };
 
-            if attempts > 100000000 {
-                panic!("insert: {} -> {} --- from {:?}", from_id, this_id, from_ref);
-            }
+            // if attempts > 100000000 {
+            //     panic!("insert: {} -> {} --- from {:?}", from_id, this_id, from_ref);
+            // }
 
             if this_ref.incoming_edge_exists(&from) {
                 return 2; // check if (from) --> (this) already exists
@@ -130,12 +130,12 @@ impl SerializationGraph {
 
             if from_ref.is_checked() {
                 drop(from_rlock);
-                attempts += 1;
+                // attempts += 1;
 
                 continue; // if (from) checked in process of terminating so try again
             }
 
-            stats.inc_edges_inserted();
+            // stats.inc_edges_inserted();
 
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
@@ -437,8 +437,8 @@ impl SerializationGraph {
                                     // if not in cycle then wait
                                     // println!("added 1 edge: {} --> X", from.get_full_id());
 
-                                    stats.inc_conflict_detected();
-                                    stats.inc_ww_conflict_detected();
+                                    // stats.inc_conflict_detected();
+                                    // stats.inc_ww_conflict_detected();
 
                                     let outcome = self.insert_and_check(
                                         meta,
@@ -507,8 +507,8 @@ impl SerializationGraph {
             if id < &prv {
                 match access {
                     Access::Read(from) => {
-                        stats.inc_conflict_detected();
-                        stats.inc_rw_conflict_detected();
+                        // stats.inc_conflict_detected();
+                        // stats.inc_rw_conflict_detected();
                         if let TransactionId::SerializationGraph(from_addr) = from {
                             // let from = unsafe { &*(*from_addr as *const Node) };
                             // if !from.is_committed() {
@@ -573,10 +573,6 @@ impl SerializationGraph {
 
         let mut all_pending_transactions_committed = false;
         while !all_pending_transactions_committed {
-            // if attempts > 1000000 {
-            //     panic!("stuck");
-            // }
-
             if this_node.is_cascading_abort() {
                 return Err(SerializationGraphError::CascadingAbort.into());
             }

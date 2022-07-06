@@ -139,10 +139,10 @@ impl GlobalStatistics {
         self.commit_aborts += local.get_commit_aborts();
         self.logic_aborts += local.get_logic_aborts();
         self.not_found += local.get_not_found();
-        // self.tx += local.get_tx_cum();
+        self.tx += local.get_tx_cum();
         self.commit += local.get_commit_cum();
         self.wait_manager += local.get_wait_manager_cum();
-        // self.latency += local.get_latency_cum();
+        self.latency += local.get_latency_cum();
         self.read_cf += local.get_read_cf();
         self.write_cf += local.get_write_cf();
         self.read_ca += local.get_read_ca();
@@ -238,13 +238,13 @@ impl GlobalStatistics {
             "cum_runtime (ms)":  self.get_total_time(),
             "commits": self.commits,
             "aborts": self.aborts,
-            "   commits": self.commit_aborts,
-            "   logic": self.logic_aborts,
-            "   read_cf": self.read_cf,
-            "   write_cf": self.write_cf,
-            "   rwrite_cf": self.rwrite_cf,
-            "   read_ca": self.read_ca,
-            "   write_ca": self.write_ca,
+            // "   commits": self.commit_aborts,
+            // "   logic": self.logic_aborts,
+            // "   read_cf": self.read_cf,
+            // "   write_cf": self.write_cf,
+            // "   rwrite_cf": self.rwrite_cf,
+            // "   read_ca": self.read_ca,
+            // "   write_ca": self.write_ca,
 
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.get_txn_time(),
@@ -253,10 +253,10 @@ impl GlobalStatistics {
             "latency (ms)": self.get_latency(),
             "thpt": format!("{:.2}",self.get_thpt()),
             "abr": format!("{:.2}",self.get_abr()),
-            "edges_inserted": self.edges_inserted,
-            "conflicts deteted": self.conflict_detected,
-            "   rw": self.rw_conflict_detected,
-            "   ww": self.ww_conflict_detected
+            // "edges_inserted": self.edges_inserted,
+            // "conflicts deteted": self.conflict_detected,
+            // "   rw": self.rw_conflict_detected,
+            // "   ww": self.ww_conflict_detected
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
@@ -275,6 +275,6 @@ impl GlobalStatistics {
             "max txn_commit_abort_time": self.get_max_txn_commit_abort()
         });
 
-        tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
+        // tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
     }
 }

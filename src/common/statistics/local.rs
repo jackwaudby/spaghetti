@@ -14,13 +14,13 @@ pub struct LocalStatistics {
     read_ca: u64,
     write_ca: u64,
     not_found: u64,
-    // tx_cum: u128,
+    tx_cum: u128,
     commit_start: Instant,
     commit_cum: u128,
     wait_manager_start: Instant,
     wait_manager_cum: u128,
-    // latency_start: Instant,
-    // latency_cum: u128,
+    latency_start: Instant,
+    latency_cum: u128,
     edges_inserted: u64,
     conflict_detected: u64,
     rw_conflict_detected: u64,
@@ -59,13 +59,13 @@ impl LocalStatistics {
             read_ca: 0,
             write_ca: 0,
             not_found: 0,
-            // tx_cum: 0,
+            tx_cum: 0,
             commit_start: Instant::now(),
             commit_cum: 0,
             wait_manager_start: Instant::now(),
             wait_manager_cum: 0,
-            // latency_start: Instant::now(),
-            // latency_cum: 0,
+            latency_start: Instant::now(),
+            latency_cum: 0,
             edges_inserted: 0,
             conflict_detected: 0,
             rw_conflict_detected: 0,
@@ -243,15 +243,15 @@ impl LocalStatistics {
     }
 
     pub fn stop_tx(&mut self) -> u128 {
-        // let cum = self.tx_start.elapsed().as_nanos();
-        // self.tx_cum += cum;
-        // cum
-        self.tx_start.elapsed().as_nanos()
+        let cum = self.tx_start.elapsed().as_nanos();
+        self.tx_cum += cum;
+        cum
+        // self.tx_start.elapsed().as_nanos()
     }
 
-    // pub fn get_tx_cum(&self) -> u128 {
-    //     self.tx_cum
-    // }
+    pub fn get_tx_cum(&self) -> u128 {
+        self.tx_cum
+    }
 
     pub fn stop_txn_not_found(&mut self, txn_time: u128) {
         self.txn_not_found_cum += txn_time;
@@ -324,18 +324,18 @@ impl LocalStatistics {
         self.wait_manager_cum
     }
 
-    // pub fn start_latency(&mut self) {
-    //     self.latency_start = Instant::now();
-    // }
+    pub fn start_latency(&mut self) {
+        self.latency_start = Instant::now();
+    }
 
-    // pub fn stop_latency(&mut self, tx_time: u128) {
-    //     let add = self.latency_start.elapsed().as_nanos() - tx_time;
-    //     // pub fn stop_latency(&mut self) {
-    //     // self.latency_cum += self.latency_start.elapsed().as_nanos();
-    //     self.latency_cum += add;
-    // }
+    pub fn stop_latency(&mut self, tx_time: u128) {
+        let add = self.latency_start.elapsed().as_nanos() - tx_time;
+        // pub fn stop_latency(&mut self) {
+        // self.latency_cum += self.latency_start.elapsed().as_nanos();
+        self.latency_cum += add;
+    }
 
-    // pub fn get_latency_cum(&self) -> u128 {
-    //     self.latency_cum
-    // }
+    pub fn get_latency_cum(&self) -> u128 {
+        self.latency_cum
+    }
 }
