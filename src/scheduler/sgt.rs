@@ -714,7 +714,7 @@ impl SerializationGraph {
                 drop(boxed_node);
             });
 
-            if cnt % 128 == 0 {
+            if cnt % 32 == 0 {
                 x.borrow().as_ref().unwrap().flush();
             }
 
