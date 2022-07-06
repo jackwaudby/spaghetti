@@ -29,11 +29,11 @@ lazy_static! {
 }
 
 pub static MIN_BALANCE: i64 = 10000;
-pub static MAX_BALANCE: i64 = 30000;
+pub static MAX_BALANCE: i64 = 50000;
 pub static SEND_PAYMENT_AMOUNT: f64 = 5.0;
 pub static DEPOSIT_CHECKING_AMOUNT: f64 = 1.3;
-pub static TRANSACT_SAVINGS_AMOUNT: f64 = 20.20;
-pub static WRITE_CHECK_AMOUNT: f64 = 5.0;
+pub static TRANSACT_SAVINGS_AMOUNT: f64 = 20.20; //
+pub static WRITE_CHECK_AMOUNT: f64 = 25.0; // 5.0
 pub static HOTSPOT_PERCENTAGE: f64 = 0.25;
 pub static HOTSPOT_FIXED_SIZE: u64 = 2;
 
