@@ -1,3 +1,4 @@
+use super::stats_bucket::StatsBucket;
 use crate::common::{
     error::NonFatalError, global_state::GlobalState, message::Request,
     parameter_generation::ParameterGenerator, statistics::local::LocalStatistics,
@@ -10,21 +11,19 @@ use crate::workloads::smallbank::{
 };
 
 use config::Config;
+use serde::{Deserialize, Serialize};
 use std::sync::mpsc;
 use tracing::debug;
 
-use super::stats_bucket::StatsBucket;
+struct WaitGuards<'a> {
+    guards: Option<Vec<spin::MutexGuard<'a, u8>>>,
+}
 
-// struct WaitGuards<'a> {
-//     guards: Option<Vec<spin::MutexGuard<'a, u8>>>,
-// }
-
-// impl<'a> WaitGuards<'a> {
-//     fn new() -> Self {
-//         Self { guards: None }
-//     }
-// }
-use serde::{Deserialize, Serialize};
+impl<'a> WaitGuards<'a> {
+    fn new() -> Self {
+        Self { guards: None }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct AbortReason {
@@ -42,7 +41,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
     let config = global_state.get_config();
     let scheduler = global_state.get_scheduler();
     let database = global_state.get_database();
-    // let wait_manager = global_state.get_wait_manager();
+    let wait_manager = global_state.get_wait_manager();
 
     // local state
     let mut stats = LocalStatistics::new();
@@ -63,20 +62,21 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             stats.start_latency();
 
             let mut response;
-            // let mut guard s = WaitGuards::new();
+            let mut guards = WaitGuards::new();
 
             loop {
                 let mut meta = scheduler.begin(isolation_level);
+                let transaction_id = meta.get_transaction_id();
                 stats.start_tx();
 
                 response =
                     execute_logic(&mut meta, request.clone(), scheduler, database, &mut stats);
 
                 // if transaction was restarted and had some locks
-                // if guards.guards.is_some() {
-                //     let g = guards.guards.take().unwrap();
-                //     wait_manager.release(g);
-                // }
+                if guards.guards.is_some() {
+                    let g = guards.guards.take().unwrap();
+                    wait_manager.release(g);
+                }
 
                 match response {
                     Ok(_) => {
@@ -103,10 +103,10 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                     // stats.stop_txn_commit_abort(tx_time);
 
                                     stats.start_wait_manager();
-                                    // let problem_transactions = meta.get_problem_transactions();
-                                    // let g = wait_manager
-                                    //     .wait(transaction_id.extract(), problem_transactions);
-                                    // guards.guards.replace(g);
+                                    let problem_transactions = meta.get_problem_transactions();
+                                    let g = wait_manager
+                                        .wait(transaction_id.extract(), problem_transactions);
+                                    guards.guards.replace(g);
                                     stats.stop_wait_manager();
                                 }
                             },
@@ -145,8 +145,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             // }
 
                             stats.start_wait_manager();
-                            // let problem_transactions = meta.get_problem_transactions();
-                            // wait_manager.wait(transaction_id.extract(), problem_transactions);
+                            let problem_transactions = meta.get_problem_transactions();
+                            wait_manager.wait(transaction_id.extract(), problem_transactions);
                             stats.stop_wait_manager();
                         }
                         NonFatalError::SmallBankError(_) => {
