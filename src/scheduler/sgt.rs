@@ -44,11 +44,11 @@ impl SerializationGraph {
         }
     }
 
-    pub fn get_transaction(&self) -> *mut Node {
+    fn get_transaction(&self) -> *mut Node {
         SerializationGraph::NODE.with(|x| *x.borrow().as_ref().unwrap())
     }
 
-    pub fn get_operations(&self) -> Vec<Operation> {
+    fn get_operations(&self) -> Vec<Operation> {
         self.txn_info
             .get()
             .unwrap()
@@ -58,7 +58,7 @@ impl SerializationGraph {
             .get_clone()
     }
 
-    pub fn record(
+    fn record(
         &self,
         op_type: OperationType,
         table_id: usize,
@@ -75,7 +75,7 @@ impl SerializationGraph {
             .add(op_type, table_id, column_id, offset, prv);
     }
 
-    pub fn insert_and_check(
+    fn insert_and_check(
         &self,
         meta: &mut StatsBucket,
         from: Edge,
@@ -215,18 +215,7 @@ impl SerializationGraph {
         aborted || cascading_abort
     }
 
-    pub fn begin(&self) -> TransactionId {
-        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1;
-        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
-            Some(TransactionInformation::new());
-        let transaction_id = self.create_node();
-        let guard = epoch::pin();
-        SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
-
-        TransactionId::SerializationGraph(transaction_id)
-    }
-
-    pub fn create_node(&self) -> usize {
+    fn create_node(&self) -> usize {
         let incoming = Mutex::new(FxHashSet::default());
         let outgoing = Mutex::new(FxHashSet::default());
 
@@ -238,6 +227,74 @@ impl SerializationGraph {
         SerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
         id
+    }
+
+    fn check_committed(&self, this_node: &Node, database: &Database, ops: &Vec<Operation>) -> bool {
+        if this_node.is_aborted() || this_node.is_cascading_abort() {
+            return false;
+        }
+
+        let read_lock = this_node.read();
+        this_node.set_checked(true);
+        drop(read_lock);
+
+        let write_lock = this_node.write();
+        drop(write_lock);
+
+        let read_lock = this_node.read();
+        if this_node.has_incoming() {
+            this_node.set_checked(false);
+            drop(read_lock);
+            return false;
+        }
+        drop(read_lock);
+
+        if this_node.is_aborted() || this_node.is_cascading_abort() {
+            return false;
+        }
+
+        let success = self.erase_graph_constraints(this_node, database, ops);
+
+        if success {
+            self.cleanup(this_node);
+            SerializationGraph::EG.with(|x| {
+                let guard = x.borrow_mut().take();
+                drop(guard)
+            });
+        }
+
+        return success;
+    }
+
+    fn erase_graph_constraints(
+        &self,
+        this_node: &Node,
+        database: &Database,
+        ops: &Vec<Operation>,
+    ) -> bool {
+        let id = this_node.get_id();
+        let is_cycle = self.cycle_cycle_init(id);
+        if is_cycle {
+            this_node.set_aborted();
+        }
+
+        // NFN: different
+        self.commit_writes(database, true, &ops);
+
+        this_node.set_committed();
+
+        true
+    }
+
+    pub fn begin(&self) -> TransactionId {
+        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1;
+        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
+            Some(TransactionInformation::new());
+        let transaction_id = self.create_node();
+        let guard = epoch::pin();
+        SerializationGraph::EG.with(|x| x.borrow_mut().replace(guard));
+
+        TransactionId::SerializationGraph(transaction_id)
     }
 
     pub fn read_value(
@@ -491,63 +548,6 @@ impl SerializationGraph {
         Ok(())
     }
 
-    fn check_committed(&self, this_node: &Node, database: &Database, ops: &Vec<Operation>) -> bool {
-        if this_node.is_aborted() || this_node.is_cascading_abort() {
-            return false;
-        }
-
-        let read_lock = this_node.read();
-        this_node.set_checked(true);
-        drop(read_lock);
-
-        let write_lock = this_node.write();
-        drop(write_lock);
-
-        let read_lock = this_node.read();
-        if this_node.has_incoming() {
-            this_node.set_checked(false);
-            drop(read_lock);
-            return false;
-        }
-        drop(read_lock);
-
-        if this_node.is_aborted() || this_node.is_cascading_abort() {
-            return false;
-        }
-
-        let success = self.erase_graph_constraints(this_node, database, ops);
-
-        if success {
-            self.cleanup(this_node);
-            SerializationGraph::EG.with(|x| {
-                let guard = x.borrow_mut().take();
-                drop(guard)
-            });
-        }
-
-        return success;
-    }
-
-    fn erase_graph_constraints(
-        &self,
-        this_node: &Node,
-        database: &Database,
-        ops: &Vec<Operation>,
-    ) -> bool {
-        let id = this_node.get_id();
-        let is_cycle = self.cycle_cycle_init(id);
-        if is_cycle {
-            this_node.set_aborted();
-        }
-
-        // NFN: different
-        self.commit_writes(database, true, &ops);
-
-        this_node.set_committed();
-
-        true
-    }
-
     pub fn commit(
         &self,
         _meta: &mut StatsBucket,
@@ -556,8 +556,14 @@ impl SerializationGraph {
         let this_node = unsafe { &*self.get_transaction() };
         let ops = self.get_operations();
 
+        let mut attempts = 0;
+
         let mut all_pending_transactions_committed = false;
         while !all_pending_transactions_committed {
+            if attempts > 1000000 {
+                panic!("stuck");
+            }
+
             if this_node.is_cascading_abort() {
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
@@ -571,6 +577,8 @@ impl SerializationGraph {
             if all_pending_transactions_committed {
                 self.remove_accesses(database, &ops);
             }
+
+            attempts += 1;
         }
 
         Ok(())
@@ -584,7 +592,6 @@ impl SerializationGraph {
         let this = unsafe { &*self.get_transaction() };
 
         this.set_aborted();
-        // this.set_terminated();
 
         self.cleanup(this);
 
