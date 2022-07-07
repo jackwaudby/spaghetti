@@ -1,20 +1,21 @@
 use crate::common::error::{NonFatalError, SerializationGraphError};
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
-use crate::scheduler::common::{Edge, Node};
-use crate::scheduler::StatsBucket;
-use crate::scheduler::ValueId;
-use crate::storage::access::{Access, TransactionId};
-use crate::storage::datatype::Data;
-use crate::storage::Database;
+use crate::scheduler::{
+    common::{MsgEdge as Edge, MsgNode as Node},
+    StatsBucket, ValueId,
+};
+use crate::storage::{
+    access::{Access, TransactionId},
+    datatype::Data,
+    Database,
+};
 use crate::workloads::IsolationLevel;
 
-use crossbeam_epoch as epoch;
-use crossbeam_epoch::Guard;
+use crossbeam_epoch::{self as epoch, Guard};
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
-use std::cell::RefCell;
-use std::sync::atomic::AtomicU64;
-use std::sync::atomic::Ordering;
+use std::cell::{RefCell, RefMut};
+use std::sync::atomic::{AtomicU64, Ordering};
 use thread_local::ThreadLocal;
 use tracing::info;
 
@@ -22,7 +23,7 @@ use tracing::info;
 pub struct MixedSerializationGraph {
     txn_ctr: ThreadLocal<RefCell<usize>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
-    stack: ThreadLocal<RefCell<Vec<Edge>>>,
+    visit_path: ThreadLocal<RefCell<FxHashSet<usize>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
     relevant_cycle_check: bool,
 }
@@ -40,9 +41,9 @@ impl MixedSerializationGraph {
         Self {
             txn_ctr: ThreadLocal::new(),
             visited: ThreadLocal::new(),
-            stack: ThreadLocal::new(),
+            visit_path: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
-            relevant_cycle_check,
+            relevant_cycle_check: false,
         }
     }
 
@@ -77,8 +78,7 @@ impl MixedSerializationGraph {
             .add(op_type, table_id, column_id, offset, prv);
     }
 
-    /// Insert an edge: (from) --> (this)
-    pub fn insert_and_check(&self, from: Edge) -> bool {
+    pub fn insert_and_check(&self, meta: &mut StatsBucket, from: Edge) -> bool {
         let this_ref = unsafe { &*self.get_transaction() };
         let this_id = self.get_transaction() as usize;
 
@@ -88,13 +88,13 @@ impl MixedSerializationGraph {
             Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
 
             // WR edge inserted if this node is PL2/3
-            // Edge::WriteRead(from_id) => {
-            //     if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
-            //         return true;
-            //     }
+            Edge::WriteRead(from_id) => {
+                if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
+                    return true;
+                }
 
-            //     (from_id, false, Edge::WriteRead(this_id))
-            // }
+                (from_id, false, Edge::WriteRead(this_id))
+            }
 
             // RW edge inserted if from node is PL3
             Edge::ReadWrite(from_id) => {
@@ -109,122 +109,187 @@ impl MixedSerializationGraph {
         };
 
         if this_id == from_id {
-            return true; // check for (this) --> (this)
+            return true;
         }
 
         let isolation_level = this_ref.get_isolation_level();
 
         loop {
-            // check if (from) --> (this) already exists
             if this_ref.incoming_edge_exists(&from) {
-                let is_cycle = self.cycle_check(isolation_level); // cycle check
-                return !is_cycle;
+                return true;
             };
 
             let from_ref = unsafe { &*(from_id as *const Node) };
+
             if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
                 this_ref.set_cascading_abort();
-                return false; // cascadingly abort (this)
+                let fid = from_ref.get_id();
+                this_ref.set_abort_through(fid);
+                meta.set_abort_through(fid);
+                return false;
             }
 
             let from_rlock = from_ref.read();
             if from_ref.is_cleaned() {
                 drop(from_rlock);
-                return true; // if from is cleaned then it has terminated do not insert edge
+                return true;
             }
 
             if from_ref.is_checked() {
                 drop(from_rlock);
-                continue; // if (from) checked in process of terminating so try again
+                continue;
             }
 
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
             drop(from_rlock);
-            let is_cycle = self.cycle_check(isolation_level); // cycle check
+
+            let is_cycle = self.cycle_check_init(this_id); // cycle check
+
             return !is_cycle;
         }
     }
 
-    pub fn cycle_check(&self, isolation: IsolationLevel) -> bool {
-        let start_id = self.get_transaction() as usize;
-        let this = unsafe { &*self.get_transaction() };
-
-        let mut visited = self
-            .visited
+    fn get_visited(&self) -> RefMut<FxHashSet<usize>> {
+        self.visited
             .get_or(|| RefCell::new(FxHashSet::default()))
-            .borrow_mut();
+            .borrow_mut()
+    }
 
-        let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
+    fn get_visit_path(&self) -> RefMut<FxHashSet<usize>> {
+        self.visit_path
+            .get_or(|| RefCell::new(FxHashSet::default()))
+            .borrow_mut()
+    }
 
-        visited.clear();
-        stack.clear();
+    fn check_cycle_naive(
+        &self,
+        cur: usize,
+        visited: &mut RefMut<FxHashSet<usize>>,
+        visit_path: &mut RefMut<FxHashSet<usize>>,
+    ) -> bool {
+        visited.insert(cur);
+        visit_path.insert(cur);
 
-        let this_rlock = this.read();
-        let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
-        let mut out = outgoing.into_iter().collect();
-        stack.append(&mut out);
-        drop(this_rlock);
-
-        while let Some(edge) = stack.pop() {
-            let current = if self.relevant_cycle_check {
-                // traverse only relevant edges
-                match isolation {
-                    IsolationLevel::ReadUncommitted => {
-                        if let Edge::WriteWrite(node) = edge {
-                            node
-                        } else {
-                            continue;
-                        }
+        let cur = unsafe { &*(cur as *const Node) };
+        let g = cur.read();
+        if !cur.is_cleaned() {
+            let incoming = cur.get_incoming();
+            for edge in incoming {
+                let id = edge.extract_id() as usize;
+                if visit_path.contains(&id) {
+                    drop(g);
+                    return true;
+                } else {
+                    if self.check_cycle_naive(id, visited, visit_path) {
+                        drop(g);
+                        return true;
                     }
-                    IsolationLevel::ReadCommitted => match edge {
-                        Edge::ReadWrite(_) => {
-                            continue;
-                        }
-                        Edge::WriteWrite(node) => node,
-                        // Edge::WriteRead(node) => node,
-                    },
-                    IsolationLevel::Serializable => match edge {
-                        Edge::ReadWrite(node) => node,
-                        Edge::WriteWrite(node) => node,
-                        // Edge::WriteRead(node) => node,
-                    },
                 }
-            } else {
-                // traverse any edge
-                match edge {
-                    Edge::ReadWrite(node) => node,
-                    Edge::WriteWrite(node) => node,
-                    // Edge::WriteRead(node) => node,
-                }
-            };
-
-            if start_id == current {
-                return true; // cycle found
             }
-
-            if visited.contains(&current) {
-                continue; // already visited
-            }
-
-            visited.insert(current);
-
-            let current = unsafe { &*(current as *const Node) };
-
-            let rlock = current.read();
-            let val1 =
-                !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
-            if val1 {
-                let outgoing = current.get_outgoing();
-                let mut out = outgoing.into_iter().collect();
-                stack.append(&mut out);
-            }
-
-            drop(rlock);
         }
 
-        false
+        drop(g);
+        let cur = cur.get_id() as usize;
+        visit_path.remove(&cur);
+
+        return false;
     }
+
+    fn cycle_check_init(&self, this_node: usize) -> bool {
+        let mut visited = self.get_visited();
+        let mut visit_path = self.get_visit_path();
+
+        visited.clear();
+        visit_path.clear();
+
+        let mut check = false;
+        if !visited.contains(&this_node) {
+            check = self.check_cycle_naive(this_node, &mut visited, &mut visit_path);
+        }
+
+        return check;
+    }
+
+    // pub fn cycle_check(&self, isolation: IsolationLevel) -> bool {
+    //     let start_id = self.get_transaction() as usize;
+    //     let this = unsafe { &*self.get_transaction() };
+
+    //     let mut visited = self
+    //         .visited
+    //         .get_or(|| RefCell::new(FxHashSet::default()))
+    //         .borrow_mut();
+
+    //     let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
+
+    //     visited.clear();
+    //     stack.clear();
+
+    //     let this_rlock = this.read();
+    //     let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
+    //     let mut out = outgoing.into_iter().collect();
+    //     stack.append(&mut out);
+    //     drop(this_rlock);
+
+    //     while let Some(edge) = stack.pop() {
+    //         let current = if self.relevant_cycle_check {
+    //             // traverse only relevant edges
+    //             match isolation {
+    //                 IsolationLevel::ReadUncommitted => {
+    //                     if let Edge::WriteWrite(node) = edge {
+    //                         node
+    //                     } else {
+    //                         continue;
+    //                     }
+    //                 }
+    //                 IsolationLevel::ReadCommitted => match edge {
+    //                     Edge::ReadWrite(_) => {
+    //                         continue;
+    //                     }
+    //                     Edge::WriteWrite(node) => node,
+    //                     Edge::WriteRead(node) => node,
+    //                 },
+    //                 IsolationLevel::Serializable => match edge {
+    //                     Edge::ReadWrite(node) => node,
+    //                     Edge::WriteWrite(node) => node,
+    //                     Edge::WriteRead(node) => node,
+    //                 },
+    //             }
+    //         } else {
+    //             // traverse any edge
+    //             match edge {
+    //                 Edge::ReadWrite(node) => node,
+    //                 Edge::WriteWrite(node) => node,
+    //                 Edge::WriteRead(node) => node,
+    //             }
+    //         };
+
+    //         if start_id == current {
+    //             return true; // cycle found
+    //         }
+
+    //         if visited.contains(&current) {
+    //             continue; // already visited
+    //         }
+
+    //         visited.insert(current);
+
+    //         let current = unsafe { &*(current as *const Node) };
+
+    //         let rlock = current.read();
+    //         let val1 =
+    //             !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
+    //         if val1 {
+    //             let outgoing = current.get_outgoing();
+    //             let mut out = outgoing.into_iter().collect();
+    //             stack.append(&mut out);
+    //         }
+
+    //         drop(rlock);
+    //     }
+
+    //     false
+    // }
 
     pub fn needs_abort(&self) -> bool {
         let this = unsafe { &*self.get_transaction() };
@@ -232,17 +297,6 @@ impl MixedSerializationGraph {
         let aborted = this.is_aborted();
         let cascading_abort = this.is_cascading_abort();
         aborted || cascading_abort
-    }
-
-    pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
-        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
-        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
-            Some(TransactionInformation::new()); // reset txn info
-        let ref_id = self.create_node(isolation_level); // create node
-        let guard = epoch::pin(); // pin thread
-        MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard)); // add to guard
-
-        TransactionId::SerializationGraph(ref_id)
     }
 
     pub fn create_node(&self, isolation_level: IsolationLevel) -> usize {
@@ -258,6 +312,70 @@ impl MixedSerializationGraph {
         id
     }
 
+    fn check_committed(&self, this_node: &Node, database: &Database, ops: &Vec<Operation>) -> bool {
+        if this_node.is_aborted() || this_node.is_cascading_abort() {
+            return false;
+        }
+
+        let read_lock = this_node.read();
+        this_node.set_checked(true);
+        drop(read_lock);
+
+        let write_lock = this_node.write();
+        drop(write_lock);
+
+        let read_lock = this_node.read();
+        if this_node.has_incoming() {
+            this_node.set_checked(false);
+            drop(read_lock);
+            return false;
+        }
+        drop(read_lock);
+
+        if this_node.is_aborted() || this_node.is_cascading_abort() {
+            return false;
+        }
+
+        let success = self.erase_graph_constraints(this_node, database, ops);
+
+        if success {
+            self.cleanup(this_node);
+        }
+
+        return success;
+    }
+
+    fn erase_graph_constraints(
+        &self,
+        this_node: &Node,
+        database: &Database,
+        ops: &Vec<Operation>,
+    ) -> bool {
+        let id = this_node.get_id();
+        let is_cycle = self.cycle_check_init(id);
+        if is_cycle {
+            this_node.set_aborted();
+        }
+
+        // NFN: different
+        self.commit_writes(database, true, &ops);
+
+        this_node.set_committed();
+
+        true
+    }
+
+    pub fn begin(&self, isolation_level: IsolationLevel) -> TransactionId {
+        *self.txn_ctr.get_or(|| RefCell::new(0)).borrow_mut() += 1; // increment txn ctr
+        *self.txn_info.get_or(|| RefCell::new(None)).borrow_mut() =
+            Some(TransactionInformation::new()); // reset txn info
+        let ref_id = self.create_node(isolation_level); // create node
+        let guard = epoch::pin(); // pin thread
+        MixedSerializationGraph::EG.with(|x| x.borrow_mut().replace(guard)); // add to guard
+
+        TransactionId::SerializationGraph(ref_id)
+    }
+
     pub fn read_value(
         &self,
         vid: ValueId,
@@ -268,11 +386,12 @@ impl MixedSerializationGraph {
         let column_id = vid.get_column_id();
         let offset = vid.get_offset();
 
-        let this = unsafe { &*self.get_transaction() };
+        if self.needs_abort() {
+            let this = unsafe { &*self.get_transaction() };
+            let id = this.get_abort_through();
+            meta.set_abort_through(id);
 
-        if this.is_cascading_abort() {
-            self.abort(database);
-            return Err(SerializationGraphError::CascadingAbort.into());
+            return Err(SerializationGraphError::CascadingAbort.into()); // check for cascading abort
         }
 
         let table = database.get_table(table_id);
@@ -297,7 +416,7 @@ impl MixedSerializationGraph {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id) = from {
-                            if !self.insert_and_check(Edge::WriteWrite(*from_id)) {
+                            if !self.insert_and_check(meta, Edge::WriteWrite(*from_id)) {
                                 cyclic = true;
                                 break;
                             }
@@ -308,10 +427,11 @@ impl MixedSerializationGraph {
             }
         }
 
+        drop(guard);
+
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(database); // abort
             return Err(SerializationGraphError::CycleFound.into());
         }
 
@@ -342,7 +462,6 @@ impl MixedSerializationGraph {
         let table_id = vid.get_table_id();
         let column_id = vid.get_column_id();
         let offset = vid.get_offset();
-
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
@@ -350,7 +469,9 @@ impl MixedSerializationGraph {
 
         loop {
             if self.needs_abort() {
-                self.abort(database);
+                let this = unsafe { &*self.get_transaction() };
+                let id = this.get_abort_through();
+                meta.set_abort_through(id);
                 return Err(SerializationGraphError::CascadingAbort.into());
                 // check for cascading abort
             }
@@ -366,6 +487,7 @@ impl MixedSerializationGraph {
 
             let mut wait = false; // flag indicating if there is an uncommitted write
             let mut cyclic = false; // flag indicating if a cycle has been found
+            let mut cascade = false; // flag indicating if a cycle has been found
 
             for (id, access) in snapshot {
                 // only interested in accesses before this one and that are write operations.
@@ -379,7 +501,7 @@ impl MixedSerializationGraph {
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
-                                    if !self.insert_and_check(Edge::WriteWrite(*from_addr)) {
+                                    if !self.insert_and_check(meta, Edge::WriteWrite(*from_addr)) {
                                         cyclic = true;
                                         break; // no reason to check other accesses
                                     }
@@ -394,12 +516,13 @@ impl MixedSerializationGraph {
                 }
             }
 
+            drop(guard);
+
             // (i) transaction is in a cycle (cycle = T)
             // abort transaction
             if cyclic {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                self.abort(database);
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
@@ -410,16 +533,6 @@ impl MixedSerializationGraph {
                 lsn.store(prv + 1, Ordering::Release); // update lsn
 
                 continue;
-            }
-
-            // (iii) no w-w conflicts -> clean record (both F)
-            // check for cascading abort
-            if self.needs_abort() {
-                rw_table.erase(prv); // remove from rw table
-                self.abort(database);
-                lsn.store(prv + 1, Ordering::Release); // update lsn
-
-                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
             break;
@@ -436,7 +549,7 @@ impl MixedSerializationGraph {
                 match access {
                     Access::Read(from) => {
                         if let TransactionId::SerializationGraph(from_addr) = from {
-                            if !self.insert_and_check(Edge::ReadWrite(*from_addr)) {
+                            if !self.insert_and_check(meta, Edge::ReadWrite(*from_addr)) {
                                 cyclic = true;
                                 break;
                             }
@@ -446,14 +559,13 @@ impl MixedSerializationGraph {
                 }
             }
         }
+        drop(guard);
 
         // (iv) transaction is in a cycle (cycle = T)
         // abort transaction
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            self.abort(database);
-
             return Err(SerializationGraphError::CycleFound.into());
         }
 
@@ -479,80 +591,105 @@ impl MixedSerializationGraph {
         _meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<(), NonFatalError> {
-        let this = unsafe { &*self.get_transaction() };
+        let this_node = unsafe { &*self.get_transaction() };
+        let ops = self.get_operations();
 
-        loop {
-            if this.is_cascading_abort() || this.is_aborted() {
-                self.abort(database);
+        let mut all_pending_transactions_committed = false;
+        while !all_pending_transactions_committed {
+            if this_node.is_cascading_abort() {
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
-            let this_wlock = this.write();
-            this.set_checked(true); // prevents edge insertions
-            drop(this_wlock);
-
-            // no lock taken as only outgoing edges can be added from here
-            if this.has_incoming() {
-                this.set_checked(false);
-                let is_cycle = self.cycle_check(this.get_isolation_level());
-                if is_cycle {
-                    this.set_aborted();
-                }
-                continue;
+            if this_node.is_aborted() {
+                return Err(SerializationGraphError::CycleFound.into());
             }
 
-            // no incoming edges and no cycle so commit
-            self.tidyup(database, true);
-            this.set_committed();
-            self.cleanup();
+            all_pending_transactions_committed = self.check_committed(this_node, database, &ops);
 
-            break;
+            if all_pending_transactions_committed {
+                self.remove_accesses(database, &ops);
+
+                MixedSerializationGraph::EG.with(|x| {
+                    let guard = x.borrow_mut().take();
+                    drop(guard)
+                });
+            }
         }
 
         Ok(())
     }
 
-    pub fn abort(&self, database: &Database) -> NonFatalError {
-        let this = unsafe { &*self.get_transaction() };
-        this.set_aborted();
-        self.cleanup();
-        self.tidyup(database, false);
+    pub fn abort(&self, meta: &mut StatsBucket, database: &Database) {
+        let ops = self.get_operations();
 
-        SerializationGraphError::CycleFound.into() // TODO: return the why
+        self.commit_writes(database, false, &ops);
+
+        let this = unsafe { &*self.get_transaction() };
+
+        this.set_aborted();
+
+        let incoming = this.get_incoming().clone();
+        for edge in incoming {
+            match edge {
+                Edge::WriteWrite(id) => {
+                    meta.add_problem_transaction(id);
+                }
+                Edge::WriteRead(id) => {
+                    meta.add_problem_transaction(id);
+                }
+                Edge::ReadWrite(id) => {}
+            }
+        }
+
+        self.cleanup(this);
+
+        self.remove_accesses(database, &ops);
+
+        MixedSerializationGraph::EG.with(|x| {
+            let guard = x.borrow_mut().take();
+            drop(guard)
+        });
     }
 
-    pub fn cleanup(&self) {
-        let this = unsafe { &*self.get_transaction() };
-        let this_id = self.get_transaction() as usize;
+    fn cleanup(&self, this: &Node) {
+        let this_id = self.get_transaction() as usize; // node id
 
         // accesses can still be found, thus, outgoing edge inserts may be attempted: (this) --> (to)
-        let this_wlock = this.write();
-        this.set_cleaned();
-        drop(this_wlock);
+        let rlock = this.read();
+        this.set_cleaned(); // cleaned acts as a barrier for edge insertion.
+        drop(rlock);
+
+        let wlock = this.write();
+        drop(wlock);
 
         // remove edge sets:
         // - no incoming edges will be added as this node is terminating: (from) --> (this)
-        // - no outgoing edges will be added from this node due to cleaned flag: (this) --> (to
+        // - no outgoing edges will be added from this node due to cleaned flag: (this) --> (to)
         let outgoing = this.take_outgoing();
         let incoming = this.take_incoming();
 
-        let mut g = outgoing.lock();
-        let outgoing_set = g.iter();
+        let mut g = outgoing.lock(); // lock on outgoing edge set
+        let outgoing_set = g.iter(); // iterator over outgoing edge set
 
         for edge in outgoing_set {
             match edge {
+                // (this) -[rw]-> (to)
                 Edge::ReadWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
-                    let that_rlock = that.read();
+                    let that_rlock = that.read(); // prevent (to) from committing
                     if !that.is_cleaned() {
                         that.remove_incoming(&Edge::ReadWrite(this_id));
+                        // if (to) is not cleaned remove incoming edge
                     }
                     drop(that_rlock);
                 }
 
+                // (this) -[ww]-> (to)
                 Edge::WriteWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
                     if this.is_aborted() {
+                        let id = this.get_id();
+                        that.set_abort_through(id);
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
@@ -561,21 +698,24 @@ impl MixedSerializationGraph {
                         }
                         drop(that_rlock);
                     }
-                } // Edge::WriteWrite(that_id) => {
-                  //     let that = unsafe { &*(*that_id as *const Node) };
-                  //     if this.is_aborted() {
-                  //         that.set_cascading_abort();
-                  //     } else {
-                  //         let that_rlock = that.read();
-                  //         if !that.is_cleaned() {
-                  //             that.remove_incoming(&&Edge::WriteWrite(this_id));
-                  //         }
-                  //         drop(that_rlock);
-                  //     }
-                  // }
+                } // (this) -[wr]-> (to)
+                Edge::WriteRead(that) => {
+                    let that = unsafe { &*(*that as *const Node) };
+                    if this.is_aborted() {
+                        let id = this.get_id();
+                        that.set_abort_through(id);
+                        that.set_cascading_abort();
+                    } else {
+                        let that_rlock = that.read();
+                        if !that.is_cleaned() {
+                            that.remove_incoming(&Edge::WriteRead(this_id));
+                        }
+                        drop(that_rlock);
+                    }
+                }
             }
         }
-        g.clear();
+        g.clear(); // clear (this) outgoing
         drop(g);
 
         if this.is_aborted() {
@@ -587,24 +727,21 @@ impl MixedSerializationGraph {
 
         MixedSerializationGraph::EG.with(|x| unsafe {
             x.borrow().as_ref().unwrap().defer_unchecked(move || {
-                let boxed_node = Box::from_raw(this);
+                let boxed_node = Box::from_raw(this); // garbage collect
                 drop(boxed_node);
             });
 
-            if cnt % 64 == 0 {
+            if cnt % 16 == 0 {
                 x.borrow().as_ref().unwrap().flush();
             }
 
-            let guard = x.borrow_mut().take();
-            drop(guard)
+            // let guard = x.borrow_mut().take();
+            // drop(guard)
         });
     }
 
-    pub fn tidyup(&self, database: &Database, commit: bool) {
-        let ops = self.get_operations();
-
-        // commit and revert state
-        for op in &ops {
+    fn commit_writes(&self, database: &Database, commit: bool, ops: &Vec<Operation>) {
+        for op in ops {
             let Operation {
                 op_type,
                 table_id,
@@ -624,7 +761,10 @@ impl MixedSerializationGraph {
                 }
             }
         }
+    }
 
+    fn remove_accesses(&self, database: &Database, ops: &Vec<Operation>) {
+        // remove accesses
         for op in ops {
             let Operation {
                 op_type,
@@ -634,15 +774,15 @@ impl MixedSerializationGraph {
                 ..
             } = op;
 
-            let table = database.get_table(table_id);
-            let rwtable = table.get_rwtable(offset);
+            let table = database.get_table(*table_id);
+            let rwtable = table.get_rwtable(*offset);
 
             match op_type {
                 OperationType::Read => {
-                    rwtable.erase(prv);
+                    rwtable.erase(*prv);
                 }
                 OperationType::Write => {
-                    rwtable.erase(prv);
+                    rwtable.erase(*prv);
                 }
             }
         }

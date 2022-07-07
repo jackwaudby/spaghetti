@@ -79,7 +79,7 @@ impl SerializationGraph {
         &self,
         meta: &mut StatsBucket,
         from: Edge,
-        stats: &mut LocalStatistics,
+        _stats: &mut LocalStatistics,
         check: bool,
     ) -> u8 {
         let this_ref = unsafe { &*self.get_transaction() };
@@ -96,30 +96,19 @@ impl SerializationGraph {
             return 2; // check for (this) --> (this)
         }
 
-        // let mut attempts = 0;
-
         loop {
-            let from_ref = unsafe { &*(from_id as *const Node) };
-
-            // if attempts > 100000000 {
-            //     panic!("insert: {} -> {} --- from {:?}", from_id, this_id, from_ref);
-            // }
-
             if this_ref.incoming_edge_exists(&from) {
                 return 2; // check if (from) --> (this) already exists
             };
 
             let from_ref = unsafe { &*(from_id as *const Node) };
 
-            if (from_ref.is_aborted() || from_ref.is_cascading_abort())
-                // && !from_ref.is_terminated()
-                && !rw
-            {
+            if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
                 this_ref.set_cascading_abort();
                 let fid = from_ref.get_id();
                 this_ref.set_abort_through(fid);
                 meta.set_abort_through(fid);
-                return 1; // cascadingly abort (this)
+                return 1;
             }
 
             let from_rlock = from_ref.read();
@@ -130,12 +119,8 @@ impl SerializationGraph {
 
             if from_ref.is_checked() {
                 drop(from_rlock);
-                // attempts += 1;
-
                 continue; // if (from) checked in process of terminating so try again
             }
-
-            // stats.inc_edges_inserted();
 
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
@@ -233,7 +218,6 @@ impl SerializationGraph {
         let ptr: *mut Node = Box::into_raw(node); // convert to raw ptr
         let id = ptr as usize; // get id
         unsafe { (*ptr).set_id(id) }; // set id on node
-
         SerializationGraph::NODE.with(|x| x.borrow_mut().replace(ptr)); // store in thread local
 
         id
@@ -318,7 +302,7 @@ impl SerializationGraph {
             let this = unsafe { &*self.get_transaction() };
             let id = this.get_abort_through();
             meta.set_abort_through(id);
-            // self.abort(meta, database);
+
             return Err(SerializationGraphError::WriteOpCascasde.into()); // check for cascading abort
         }
 
@@ -373,7 +357,6 @@ impl SerializationGraph {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-                                                   // self.abort(meta, database); // abort
             return Err(SerializationGraphError::ReadOpCycleFound.into());
         }
 
@@ -439,12 +422,6 @@ impl SerializationGraph {
 
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
-                                    // if not in cycle then wait
-                                    // println!("added 1 edge: {} --> X", from.get_full_id());
-
-                                    // stats.inc_conflict_detected();
-                                    // stats.inc_ww_conflict_detected();
-
                                     let outcome = self.insert_and_check(
                                         meta,
                                         Edge::WriteWrite(*from_addr),
@@ -547,7 +524,6 @@ impl SerializationGraph {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-                                                   // self.abort(meta, database);
 
             return Err(SerializationGraphError::CycleFound.into());
         }

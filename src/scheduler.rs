@@ -114,7 +114,7 @@ impl Scheduler {
         let res = match self {
             SerializationGraph(sg) => sg.abort(meta, database),
             MixedSerializationGraph(sg) => {
-                sg.abort(database);
+                sg.abort(meta, database);
             }
             NoConcurrencyControl(nocc) => {
                 nocc.abort(meta, database);
