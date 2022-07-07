@@ -1,5 +1,6 @@
 use crate::storage::table::Table;
 use crate::workloads::smallbank::{self, SmallBankDatabase, *};
+use crate::workloads::ycsb::{self, YcsbDatabase, *};
 
 use config::Config;
 use rand::{rngs::StdRng, SeedableRng};
@@ -14,12 +15,15 @@ pub mod table;
 pub mod access;
 
 #[derive(Debug)]
-pub struct Database(SmallBankDatabase);
+pub enum Database {
+    SmallBank(SmallBankDatabase),
+    Ycsb(YcsbDatabase),
+}
 
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone)]
 pub enum PrimaryKey {
     SmallBank,
-    Acid,
+    Ycsb,
 }
 
 impl Database {
@@ -50,14 +54,34 @@ impl Database {
                 };
                 info!("Contention: {}", contention);
 
-                Ok(Database(database))
+                Ok(Database::SmallBank(database))
             }
 
+            "ycsb" => {
+                let population = *YCSB_SF_MAP.get(&sf).unwrap() as usize;
+                let mut database = YcsbDatabase::new(population);
+                let mut rng: StdRng = SeedableRng::from_entropy();
+
+                info!("Generate YCSB SF-{}", sf);
+                ycsb::loader::populate_tables(population, &mut database, &mut rng)?;
+
+                info!("Theta: {}", config.get_float("theta")?);
+                info!("Update rate: {}", config.get_float("update_rate")?);
+                info!(
+                    "Serializable rate: {}",
+                    config.get_float("serializable_rate")?
+                );
+
+                Ok(Database::Ycsb(database))
+            }
             _ => panic!("unknown workload: {}", workload),
         }
     }
 
     pub fn get_table(&self, id: usize) -> &Table {
-        self.0.get_table(id)
+        match self {
+            Database::SmallBank(ref db) => db.get_table(id),
+            Database::Ycsb(ref db) => db.get_table(id),
+        }
     }
 }

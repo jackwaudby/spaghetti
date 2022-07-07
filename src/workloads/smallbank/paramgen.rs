@@ -1,8 +1,7 @@
+use crate::common::isolation_level::IsolationLevel;
 use crate::common::message::{Parameters, Request, Transaction};
 use crate::common::parameter_generation::Generator;
-use crate::workloads::smallbank::SmallBankTransaction;
-use crate::workloads::smallbank::*;
-use crate::workloads::IsolationLevel;
+use crate::workloads::smallbank::{SmallBankTransaction, *};
 
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -83,9 +82,9 @@ impl Generator for SmallBankGenerator {
         };
 
         Request::new(
-            (self.core_id as u32, self.generated),
+            (self.core_id, self.generated),
             Transaction::SmallBank(transaction),
-            Parameters::new(parameters),
+            Parameters::SmallBank(parameters),
             isolation,
         )
     }

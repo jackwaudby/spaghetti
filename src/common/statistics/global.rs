@@ -205,28 +205,28 @@ impl GlobalStatistics {
         (self.aborts as f64 / (self.commits + self.not_found + self.aborts) as f64) * 100.0
     }
 
-    fn get_txn_not_found(&self) -> u64 {
-        (self.txn_not_found_cum / 1000000) as u64
-    }
+    // fn get_txn_not_found(&self) -> u64 {
+    //     (self.txn_not_found_cum / 1000000) as u64
+    // }
 
-    fn get_txn_commit(&self) -> u64 {
-        (self.txn_commit_cum / 1000000) as u64
-    }
+    // fn get_txn_commit(&self) -> u64 {
+    //     (self.txn_commit_cum / 1000000) as u64
+    // }
 
-    fn get_txn_logic_abort(&self) -> u64 {
-        (self.txn_logic_abort_cum / 1000000) as u64
-    }
+    // fn get_txn_logic_abort(&self) -> u64 {
+    //     (self.txn_logic_abort_cum / 1000000) as u64
+    // }
 
-    fn get_max_txn_logic_abort(&self) -> u64 {
-        (self.max_txn_logic_abort) as u64
-    }
+    // fn get_max_txn_logic_abort(&self) -> u64 {
+    //     (self.max_txn_logic_abort) as u64
+    // }
 
-    fn get_max_txn_commit_abort(&self) -> u64 {
-        (self.max_txn_commit_abort) as u64
-    }
-    fn get_txn_commit_abort(&self) -> u64 {
-        (self.txn_commit_abort_cum / 1000000) as u64
-    }
+    // fn get_max_txn_commit_abort(&self) -> u64 {
+    //     (self.max_txn_commit_abort) as u64
+    // }
+    // fn get_txn_commit_abort(&self) -> u64 {
+    //     (self.txn_commit_abort_cum / 1000000) as u64
+    // }
 
     pub fn print_to_console(&mut self) {
         let pr = json!({
@@ -261,19 +261,19 @@ impl GlobalStatistics {
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
 
-        let pr = json!({
-            "runtime (ms)": self.get_runtime(),
-            "cum_runtime (ms)":  self.get_total_time(),
-            "txn_not_found_time (ms)": self.get_txn_not_found(),
-            "txn_logic_abort_time (ms)": self.get_txn_logic_abort(),
-            "txn_commit_abort_time (ms)": self.get_txn_commit_abort(),
-            "txn_commit_time (ms)": self.get_txn_commit(),
-            "retried request": self.retries,
-            "cum retries": self.cum_retries,
-            "max retries": self.max_retries,
-            "max txn_logic_abort_time": self.get_max_txn_logic_abort(),
-            "max txn_commit_abort_time": self.get_max_txn_commit_abort()
-        });
+        // let pr = json!({
+        //     "runtime (ms)": self.get_runtime(),
+        //     "cum_runtime (ms)":  self.get_total_time(),
+        //     "txn_not_found_time (ms)": self.get_txn_not_found(),
+        //     "txn_logic_abort_time (ms)": self.get_txn_logic_abort(),
+        //     "txn_commit_abort_time (ms)": self.get_txn_commit_abort(),
+        //     "txn_commit_time (ms)": self.get_txn_commit(),
+        //     "retried request": self.retries,
+        //     "cum retries": self.cum_retries,
+        //     "max retries": self.max_retries,
+        //     "max txn_logic_abort_time": self.get_max_txn_logic_abort(),
+        //     "max txn_commit_abort_time": self.get_max_txn_commit_abort()
+        // });
 
         // tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
     }

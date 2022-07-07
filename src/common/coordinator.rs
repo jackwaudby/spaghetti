@@ -1,4 +1,5 @@
 use super::stats_bucket::StatsBucket;
+use crate::common::message::Parameters;
 use crate::common::{
     error::NonFatalError, global_state::GlobalState, message::Request,
     parameter_generation::ParameterGenerator, statistics::local::LocalStatistics,
@@ -9,6 +10,8 @@ use crate::workloads::smallbank::{
     self,
     paramgen::{SmallBankGenerator, SmallBankTransactionProfile},
 };
+use crate::workloads::ycsb::paramgen::YcsbGenerator;
+use crate::workloads::ycsb::{self, paramgen::YcsbTransactionProfile};
 
 use config::Config;
 use serde::{Deserialize, Serialize};
@@ -160,37 +163,50 @@ pub fn execute_logic<'a>(
     use SmallBankTransactionProfile::*;
     let parameters = request.get_parameters();
 
-    match parameters.get() {
-        Amalgamate(params) => {
-            smallbank::procedures::amalgmate(meta, params.clone(), scheduler, database, stats)
-        }
-        Balance(params) => {
-            smallbank::procedures::balance(meta, params.clone(), scheduler, database, stats)
-        }
-        SmallBankTransactionProfile::DepositChecking(params) => {
-            smallbank::procedures::deposit_checking(
-                meta,
-                params.clone(),
-                scheduler,
-                database,
-                stats,
-            )
-        }
-        SmallBankTransactionProfile::SendPayment(params) => {
-            smallbank::procedures::send_payment(meta, params.clone(), scheduler, database, stats)
-        }
-        SmallBankTransactionProfile::TransactSaving(params) => {
-            smallbank::procedures::transact_savings(
-                meta,
-                params.clone(),
-                scheduler,
-                database,
-                stats,
-            )
-        }
-        SmallBankTransactionProfile::WriteCheck(params) => {
-            smallbank::procedures::write_check(meta, params.clone(), scheduler, database, stats)
-        }
+    match parameters {
+        Parameters::SmallBank(p) => match p {
+            Amalgamate(params) => {
+                smallbank::procedures::amalgmate(meta, params.clone(), scheduler, database, stats)
+            }
+            Balance(params) => {
+                smallbank::procedures::balance(meta, params.clone(), scheduler, database, stats)
+            }
+            SmallBankTransactionProfile::DepositChecking(params) => {
+                smallbank::procedures::deposit_checking(
+                    meta,
+                    params.clone(),
+                    scheduler,
+                    database,
+                    stats,
+                )
+            }
+            SmallBankTransactionProfile::SendPayment(params) => {
+                smallbank::procedures::send_payment(
+                    meta,
+                    params.clone(),
+                    scheduler,
+                    database,
+                    stats,
+                )
+            }
+            SmallBankTransactionProfile::TransactSaving(params) => {
+                smallbank::procedures::transact_savings(
+                    meta,
+                    params.clone(),
+                    scheduler,
+                    database,
+                    stats,
+                )
+            }
+            SmallBankTransactionProfile::WriteCheck(params) => {
+                smallbank::procedures::write_check(meta, params.clone(), scheduler, database, stats)
+            }
+        },
+        Parameters::Ycsb(p) => match p {
+            YcsbTransactionProfile::General(params) => {
+                ycsb::procedures::transaction(meta, params.clone(), scheduler, database, stats)
+            }
+        },
     }
 }
 
@@ -221,7 +237,22 @@ pub fn get_transaction_generator(config: &Config, core_id: usize) -> ParameterGe
             );
             ParameterGenerator::SmallBank(gen)
         }
+        "ycsb" => {
+            let theta = config.get_float("theta").unwrap();
+            let update_rate = config.get_float("update_rate").unwrap();
+            let serializable_rate = config.get_float("serializable_rate").unwrap();
 
+            let gen = YcsbGenerator::new(
+                core_id,
+                sf,
+                set_seed,
+                seed,
+                theta,
+                update_rate,
+                serializable_rate,
+            );
+            ParameterGenerator::Ycsb(gen)
+        }
         _ => unimplemented!(),
     }
 }

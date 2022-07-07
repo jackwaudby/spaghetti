@@ -1,4 +1,5 @@
 use crate::common::error::{NonFatalError, SerializationGraphError};
+use crate::common::isolation_level::IsolationLevel;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::{
     common::{MsgEdge as Edge, MsgNode as Node},
@@ -9,7 +10,6 @@ use crate::storage::{
     datatype::Data,
     Database,
 };
-use crate::workloads::IsolationLevel;
 
 use crossbeam_epoch::{self as epoch, Guard};
 use parking_lot::Mutex;
@@ -25,7 +25,7 @@ pub struct MixedSerializationGraph {
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
     visit_path: ThreadLocal<RefCell<FxHashSet<usize>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
-    relevant_cycle_check: bool,
+    _relevant_cycle_check: bool,
 }
 
 impl MixedSerializationGraph {
@@ -43,7 +43,7 @@ impl MixedSerializationGraph {
             visited: ThreadLocal::new(),
             visit_path: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
-            relevant_cycle_check: false,
+            _relevant_cycle_check: false,
         }
     }
 
@@ -112,7 +112,7 @@ impl MixedSerializationGraph {
             return true;
         }
 
-        let isolation_level = this_ref.get_isolation_level();
+        // let isolation_level = this_ref.get_isolation_level();
 
         loop {
             if this_ref.incoming_edge_exists(&from) {
@@ -487,7 +487,6 @@ impl MixedSerializationGraph {
 
             let mut wait = false; // flag indicating if there is an uncommitted write
             let mut cyclic = false; // flag indicating if a cycle has been found
-            let mut cascade = false; // flag indicating if a cycle has been found
 
             for (id, access) in snapshot {
                 // only interested in accesses before this one and that are write operations.
@@ -637,7 +636,7 @@ impl MixedSerializationGraph {
                 Edge::WriteRead(id) => {
                     meta.add_problem_transaction(id);
                 }
-                Edge::ReadWrite(id) => {}
+                Edge::ReadWrite(_) => {}
             }
         }
 

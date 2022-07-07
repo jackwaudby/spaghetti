@@ -2,10 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
 use crate::common::error::NonFatalError;
+use crate::common::isolation_level::IsolationLevel;
 use crate::common::message::{Outcome, Success};
 use crate::common::stats_bucket::StatsBucket;
-use crate::storage::access::TransactionId;
-use crate::workloads::IsolationLevel;
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct StoredProcedureResult {

@@ -22,9 +22,9 @@ nurand = true
 use_balance_mix = false
 isolation_mix = "low"
 
-theta = 0.1
-update_rate = 0.0
-serializable_rate = 0.0
+theta = 0.5
+update_rate = 0.5
+serializable_rate = 0.5
 
 increase = 1
 decrease = 2

@@ -1,15 +1,17 @@
 use crate::common::error::NonFatalError;
+use crate::common::isolation_level::IsolationLevel;
 use crate::common::stored_procedure_result::StoredProcedureResult;
 use crate::storage::{access::TransactionId, datatype::Data};
 use crate::workloads::smallbank::{paramgen::SmallBankTransactionProfile, SmallBankTransaction};
-use crate::workloads::IsolationLevel;
+use crate::workloads::ycsb::paramgen::YcsbTransactionProfile;
+use crate::workloads::ycsb::YcsbTransaction;
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub struct Request {
-    request_no: (u32, u32),
+    request_no: (usize, u32),
     transaction: Transaction,
     parameters: Parameters,
     isolation: IsolationLevel,
@@ -17,7 +19,7 @@ pub struct Request {
 
 impl Request {
     pub fn new(
-        request_no: (u32, u32),
+        request_no: (usize, u32),
         transaction: Transaction,
         parameters: Parameters,
         isolation: IsolationLevel,
@@ -30,7 +32,7 @@ impl Request {
         }
     }
 
-    pub fn get_request_no(&self) -> (u32, u32) {
+    pub fn get_request_no(&self) -> (usize, u32) {
         self.request_no
     }
 
@@ -104,24 +106,26 @@ impl Response {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Transaction {
-    // Dummy(DummyTransaction),
-    // Acid(AcidTransaction),
     // Tatp(TatpTransaction),
     SmallBank(SmallBankTransaction),
-    // Ycsb(YcsbTransaction),
+    Ycsb(YcsbTransaction),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
-pub struct Parameters(pub SmallBankTransactionProfile);
-
-impl Parameters {
-    pub fn new(profile: SmallBankTransactionProfile) -> Self {
-        Self(profile)
-    }
-    pub fn get(&self) -> &SmallBankTransactionProfile {
-        &self.0
-    }
+pub enum Parameters {
+    // Tatp(TatpTransactionProfile),
+    SmallBank(SmallBankTransactionProfile),
+    Ycsb(YcsbTransactionProfile),
 }
+
+// impl Parameters {
+//     pub fn new(profile: SmallBankTransactionProfile) -> Self {
+//         Self(profile)
+//     }
+//     pub fn get(&self) -> &SmallBankTransactionProfile {
+//         &self.0
+//     }
+// }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Outcome {

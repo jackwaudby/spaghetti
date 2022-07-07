@@ -23,3 +23,5 @@ pub mod wait_manager;
 pub mod coordinator;
 
 pub mod global_state;
+
+pub mod isolation_level;

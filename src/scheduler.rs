@@ -1,3 +1,4 @@
+use crate::common::isolation_level::IsolationLevel;
 use crate::common::{
     error::NonFatalError, statistics::local::LocalStatistics, stats_bucket::StatsBucket,
     value_id::ValueId,
@@ -6,7 +7,6 @@ use crate::scheduler::{
     msgt::MixedSerializationGraph, nocc::NoConcurrencyControl, sgt::SerializationGraph,
 };
 use crate::storage::{datatype::Data, Database};
-use crate::workloads::IsolationLevel;
 
 use config::Config;
 

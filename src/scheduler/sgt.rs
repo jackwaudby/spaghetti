@@ -595,7 +595,7 @@ impl SerializationGraph {
                 // Edge::WriteRead(id) => {
                 //     meta.add_problem_transaction(id);
                 // }
-                Edge::ReadWrite(id) => {}
+                Edge::ReadWrite(_) => {}
             }
         }
 

@@ -27,6 +27,12 @@ fn main() {
         .arg(arg!(-s --scalefactor <SF> "Set a scale factor").required(false))
         .arg(arg!(-t --transactions <TRANSACTIONS> "Transactions per core").required(false))
         .arg(arg!(-c --cores <CORES> "Number of cores to use").required(false))
+        .arg(arg!(-h --theta <THETA> "Contention (YCSB only)").required(false))
+        .arg(arg!(-u --updaterate <UPDATERATE> "Update rate (YCSB only)").required(false))
+        .arg(
+            arg!(-i --serializablerate <SERIALIZABLERATE> "Serializable rate (YCSB only)")
+                .required(false),
+        )
         .arg(arg!(-r --relevant <RELEVANT> "Reduced relevant DFS (MSGT only)").required(false))
         .get_matches();
 
@@ -48,6 +54,19 @@ fn main() {
 
     if let Some(c) = matches.get_one::<String>("cores") {
         config.set("cores", c.clone()).unwrap();
+    }
+
+    // YCSB
+    if let Some(theta) = matches.get_one::<String>("theta") {
+        config.set("theta", theta.clone()).unwrap();
+    }
+
+    if let Some(ur) = matches.get_one::<String>("updaterate") {
+        config.set("update_rate", ur.clone()).unwrap();
+    }
+
+    if let Some(sr) = matches.get_one::<String>("serializablerate") {
+        config.set("serializable_rate", sr.clone()).unwrap();
     }
 
     // MSGT

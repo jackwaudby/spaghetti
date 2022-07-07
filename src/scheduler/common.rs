@@ -1,4 +1,4 @@
-use crate::workloads::IsolationLevel;
+use crate::common::isolation_level::IsolationLevel;
 
 // use crate::cpp::{Mutex as RwLock, MutexGuard, SharedMutexGuard};
 
