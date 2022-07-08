@@ -1,11 +1,12 @@
 use crate::common::message::Request;
-use crate::workloads::smallbank::paramgen::SmallBankGenerator;
-// use crate::workloads::tatp::paramgen::TatpGenerator;
-use crate::workloads::ycsb::paramgen::YcsbGenerator;
+use crate::workloads::{
+    smallbank::paramgen::SmallBankGenerator, tatp::paramgen::TatpGenerator,
+    ycsb::paramgen::YcsbGenerator,
+};
 
 pub enum ParameterGenerator {
     SmallBank(SmallBankGenerator),
-    // Tatp(TatpGenerator),
+    Tatp(TatpGenerator),
     Ycsb(YcsbGenerator),
 }
 
@@ -14,7 +15,7 @@ impl ParameterGenerator {
         use ParameterGenerator::*;
         match self {
             SmallBank(ref mut gen) => gen.generate(),
-            // Tatp(ref mut gen) => gen.generate(),
+            Tatp(ref mut gen) => gen.generate(),
             Ycsb(ref mut gen) => gen.generate(),
         }
     }
@@ -23,7 +24,7 @@ impl ParameterGenerator {
         use ParameterGenerator::*;
         match self {
             SmallBank(ref mut gen) => gen.get_generated(),
-            // Tatp(ref mut gen) => gen.get_generated(),
+            Tatp(ref mut gen) => gen.get_generated(),
             Ycsb(ref mut gen) => gen.get_generated(),
         }
     }

@@ -8,6 +8,7 @@ pub enum NonFatalError {
     NoccError,
     SmallBankError(SmallBankError),
     SerializationGraphError(SerializationGraphError),
+    RowNotFound,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -40,6 +41,7 @@ impl fmt::Display for NonFatalError {
         use NonFatalError::*;
         match *self {
             NoccError => write!(f, "nocc error"),
+            RowNotFound => write!(f, "row not found error"),
             SmallBankError(ref e) => write!(f, "{}", e),
             SerializationGraphError(ref e) => write!(f, "{}", e),
         }

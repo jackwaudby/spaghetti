@@ -10,8 +10,14 @@ use crate::workloads::smallbank::{
     self,
     paramgen::{SmallBankGenerator, SmallBankTransactionProfile},
 };
-use crate::workloads::ycsb::paramgen::YcsbGenerator;
-use crate::workloads::ycsb::{self, paramgen::YcsbTransactionProfile};
+use crate::workloads::tatp::{
+    self,
+    paramgen::{TatpGenerator, TatpTransactionProfile},
+};
+use crate::workloads::ycsb::{
+    self,
+    paramgen::{YcsbGenerator, YcsbTransactionProfile},
+};
 
 use config::Config;
 use serde::{Deserialize, Serialize};
@@ -19,7 +25,6 @@ use std::sync::mpsc;
 use tracing::debug;
 
 struct WaitGuards<'a> {
-    // guards: Option<Vec<spin::MutexGuard<'a, u8>>>,
     guards: Option<Vec<std::sync::MutexGuard<'a, u8>>>,
 }
 
@@ -99,6 +104,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             Err(e) => match e {
                                 NonFatalError::NoccError => {}
                                 NonFatalError::SmallBankError(_) => {}
+                                NonFatalError::RowNotFound => {}
                                 NonFatalError::SerializationGraphError(_) => {
                                     scheduler.abort(&mut meta, database);
                                     stats.inc_aborts();
@@ -132,6 +138,12 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             stats.stop_wait_manager();
                         }
                         NonFatalError::SmallBankError(_) => {
+                            scheduler.abort(&mut meta, database);
+                            stats.inc_not_found();
+
+                            break;
+                        }
+                        NonFatalError::RowNotFound => {
                             scheduler.abort(&mut meta, database);
                             stats.inc_not_found();
 
@@ -207,6 +219,41 @@ pub fn execute_logic<'a>(
                 ycsb::procedures::transaction(meta, params.clone(), scheduler, database, stats)
             }
         },
+        Parameters::Tatp(p) => match p {
+            TatpTransactionProfile::GetSubscriberData(params) => {
+                tatp::procedures::get_subscriber_data(
+                    meta,
+                    params.clone(),
+                    scheduler,
+                    database,
+                    stats,
+                )
+            }
+            TatpTransactionProfile::GetAccessData(params) => {
+                tatp::procedures::get_access_data(meta, params.clone(), scheduler, database, stats)
+            }
+            TatpTransactionProfile::GetNewDestination(params) => {
+                tatp::procedures::get_new_destination(
+                    meta,
+                    params.clone(),
+                    scheduler,
+                    database,
+                    stats,
+                )
+            }
+            TatpTransactionProfile::UpdateLocationData(params) => {
+                tatp::procedures::update_location(meta, params.clone(), scheduler, database, stats)
+            }
+            TatpTransactionProfile::UpdateSubscriberData(params) => {
+                tatp::procedures::update_subscriber_data(
+                    meta,
+                    params.clone(),
+                    scheduler,
+                    database,
+                    stats,
+                )
+            }
+        },
     }
 }
 
@@ -252,6 +299,11 @@ pub fn get_transaction_generator(config: &Config, core_id: usize) -> ParameterGe
                 serializable_rate,
             );
             ParameterGenerator::Ycsb(gen)
+        }
+        "tatp" => {
+            let use_nurand = config.get_bool("nurand").unwrap();
+            let gen = TatpGenerator::new(core_id, sf, set_seed, seed, use_nurand);
+            ParameterGenerator::Tatp(gen)
         }
         _ => unimplemented!(),
     }

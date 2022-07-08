@@ -1,8 +1,5 @@
-use crate::common::ds::atomic_linked_list::AtomicLinkedList;
-use crate::common::error::NonFatalError;
-use crate::storage::access::Access;
-use crate::storage::tuple::Tuple;
-use crate::storage::PrimaryKey;
+use crate::common::{ds::atomic_linked_list::AtomicLinkedList, error::NonFatalError};
+use crate::storage::{access::Access, tuple::Tuple, PrimaryKey};
 
 use nohash_hasher::IntMap;
 use rustc_hash::FxHashMap;
@@ -59,7 +56,6 @@ impl Table {
         }
     }
 
-    // TODO: is needed?
     pub fn get_mut_exists(&mut self) -> &mut FxHashMap<PrimaryKey, usize> {
         &mut self.exists
     }
@@ -73,7 +69,7 @@ impl Table {
 
         match offset {
             Some(offset) => Ok(*offset),
-            None => panic!("not found"),
+            None => Err(NonFatalError::RowNotFound),
         }
     }
 

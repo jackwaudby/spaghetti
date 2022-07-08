@@ -1,10 +1,8 @@
-use crate::common::error::NonFatalError;
-use crate::common::isolation_level::IsolationLevel;
-use crate::common::stored_procedure_result::StoredProcedureResult;
+use crate::common::{error::NonFatalError, isolation_level::IsolationLevel, stored_procedure_result::StoredProcedureResult};
 use crate::storage::{access::TransactionId, datatype::Data};
 use crate::workloads::smallbank::{paramgen::SmallBankTransactionProfile, SmallBankTransaction};
-use crate::workloads::ycsb::paramgen::YcsbTransactionProfile;
-use crate::workloads::ycsb::YcsbTransaction;
+use crate::workloads::tatp::{TatpTransaction, paramgen::TatpTransactionProfile};
+use crate::workloads::ycsb::{paramgen::YcsbTransactionProfile, YcsbTransaction};
 
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
@@ -106,14 +104,14 @@ impl Response {
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Transaction {
-    // Tatp(TatpTransaction),
+    Tatp(TatpTransaction),
     SmallBank(SmallBankTransaction),
     Ycsb(YcsbTransaction),
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
 pub enum Parameters {
-    // Tatp(TatpTransactionProfile),
+    Tatp(TatpTransactionProfile),
     SmallBank(SmallBankTransactionProfile),
     Ycsb(YcsbTransactionProfile),
 }

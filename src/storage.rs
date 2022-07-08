@@ -1,5 +1,6 @@
 use crate::storage::table::Table;
 use crate::workloads::smallbank::{self, SmallBankDatabase, *};
+use crate::workloads::tatp::{TatpDatabase, self, *, keys::TatpPrimaryKey};
 use crate::workloads::ycsb::{self, YcsbDatabase, *};
 
 use config::Config;
@@ -18,12 +19,14 @@ pub mod access;
 pub enum Database {
     SmallBank(SmallBankDatabase),
     Ycsb(YcsbDatabase),
+    Tatp(TatpDatabase),
 }
 
 #[derive(Debug, Eq, Hash, PartialEq, PartialOrd, Ord, Clone)]
 pub enum PrimaryKey {
     SmallBank,
     Ycsb,
+    Tatp(TatpPrimaryKey),
 }
 
 impl Database {
@@ -74,6 +77,21 @@ impl Database {
 
                 Ok(Database::Ycsb(database))
             }
+
+            "tatp" => {
+                let population = *TATP_SF_MAP.get(&sf).unwrap() as usize;
+                let mut database = TatpDatabase::new(population);
+                let mut rng: StdRng = SeedableRng::from_entropy();
+
+                info!("Generate TATP SF-{}", sf);
+                tatp::loader::populate_tables(population, &mut database, &mut rng)?;
+
+                info!("Parameter generator set seed: {}", set_seed);
+                info!("Nurand: {}", config.get_bool("nurand")?); // balance mix
+
+                Ok(Database::Tatp(database))
+            }
+
             _ => panic!("unknown workload: {}", workload),
         }
     }
@@ -82,6 +100,8 @@ impl Database {
         match self {
             Database::SmallBank(ref db) => db.get_table(id),
             Database::Ycsb(ref db) => db.get_table(id),
+            Database::Tatp(ref db) => db.get_table(id),
+
         }
     }
 }

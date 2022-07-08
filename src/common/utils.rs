@@ -89,35 +89,8 @@ pub fn spin(prv: u64, lsn: &AtomicU64) {
     }
 }
 
-//    Transaction::Tatp(_) => {
-//         if let Parameters::Tatp(params) = parameters {
-//             match params {
-//                 TatpTransactionProfile::GetSubscriberData(params) => {
-//                     tatp::procedures::get_subscriber_data(
-//                         params, scheduler, workload, isolation,
-//                     )
-//                 }
-//                 TatpTransactionProfile::GetAccessData(params) => {
-//                     tatp::procedures::get_access_data(params, scheduler, workload, isolation)
-//                 }
-//                 TatpTransactionProfile::GetNewDestination(params) => {
-//                     tatp::procedures::get_new_destination(
-//                         params, scheduler, workload, isolation,
-//                     )
-//                 }
-//                 TatpTransactionProfile::UpdateLocationData(params) => {
-//                     tatp::procedures::update_location(params, scheduler, workload, isolation)
-//                 }
-//                 TatpTransactionProfile::UpdateSubscriberData(params) => {
-//                     tatp::procedures::update_subscriber_data(
-//                         params, scheduler, workload, isolation,
-//                     )
-//                 }
-//             }
-//         } else {
-//             panic!("transaction type and parameters do not match");
-//         }
-//     }
+
+
 
 //     Transaction::Dummy(_) => {
 //         if let Parameters::Dummy(params) = parameters {
@@ -145,19 +118,6 @@ pub fn spin(prv: u64, lsn: &AtomicU64) {
 //         } else {
 //             panic!("transaction type and parameters do not match");
 //         }
-//     }
-
-//     Transaction::Ycsb(_) => {
-//         if let Parameters::Ycsb(params) = parameters {
-//             match params {
-//                 YcsbTransactionProfile::General(params) => {
-//                     ycsb::procedures::transaction(params, scheduler, workload, isolation)
-//                 }
-//             }
-//         } else {
-//             panic!("transaction type and parameters do not match");
-//         }
-//     }
 
 //     Transaction::Acid(_) => {
 //         if let Parameters::Acid(params) = parameters {
@@ -202,41 +162,6 @@ pub fn spin(prv: u64, lsn: &AtomicU64) {
 //                     acid::procedures::g2_item_write(params, scheduler, workload)
 //                 }
 //             }
-//         } else {
-//             panic!("transaction type and parameters do not match");
-//         }
-//     }
-//     Transaction::SmallBank(_) => {
-//         if let Parameters::SmallBank(params) = parameters {
-//             match params {
-//                 SmallBankTransactionProfile::Amalgamate(params) => {
-//                     smallbank::procedures::amalgmate(params, scheduler, workload, isolation)
-//                 }
-//                 SmallBankTransactionProfile::Balance(params) => {
-//                     smallbank::procedures::balance(params, scheduler, workload, isolation)
-//                 }
-//                 SmallBankTransactionProfile::DepositChecking(params) => {
-//                     smallbank::procedures::deposit_checking(
-//                         params, scheduler, workload, isolation,
-//                     )
-//                 }
-//                 SmallBankTransactionProfile::SendPayment(params) => {
-//                     smallbank::procedures::send_payment(params, scheduler, workload, isolation)
-//                 }
-//                 SmallBankTransactionProfile::TransactSaving(params) => {
-//                     smallbank::procedures::transact_savings(
-//                         params, scheduler, workload, isolation,
-//                     )
-//                 }
-//                 SmallBankTransactionProfile::WriteCheck(params) => {
-//                     smallbank::procedures::write_check(params, scheduler, workload, isolation)
-//                 }
-//             }
-//         } else {
-//             panic!("transaction type and parameters do not match");
-//         }
-//     }
-// };
 
 pub fn create_transaction_log(config: &Config, core_id: usize) -> Option<File> {
     // assumes directory created by this point
