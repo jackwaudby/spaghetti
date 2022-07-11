@@ -119,13 +119,13 @@ impl MixedSerializationGraph {
         loop {
             if attempts > ATTEMPTS {
                 let this_node = unsafe { &*self.get_transaction() };
-                panic!(
-                    "{:x} ({}) stuck inserting {:?}. Incoming {:?}",
-                    this_node.get_id(),
-                    this_node.get_isolation_level(),
-                    from,
-                    this_node.get_incoming(),
-                );
+                // panic!(
+                //     "{:x} ({}) stuck inserting {:?}. Incoming {:?}",
+                //     this_node.get_id(),
+                //     this_node.get_isolation_level(),
+                //     from,
+                //     this_node.get_incoming(),
+                // );
             }
 
             if this_ref.incoming_edge_exists(&from) {
@@ -476,12 +476,12 @@ impl MixedSerializationGraph {
         loop {
             if attempts > ATTEMPTS {
                 let this_node = unsafe { &*self.get_transaction() };
-                panic!(
-                    "{:x} ({}) stuck writing. Incoming {:?}",
-                    this_node.get_id(),
-                    this_node.get_isolation_level(),
-                    this_node.get_incoming(),
-                );
+                // panic!(
+                //     "{:x} ({}) stuck writing. Incoming {:?}",
+                //     this_node.get_id(),
+                //     this_node.get_isolation_level(),
+                //     this_node.get_incoming(),
+                // );
             }
 
             if self.needs_abort() {
@@ -661,12 +661,12 @@ impl MixedSerializationGraph {
             attempts += 1;
 
             if attempts > ATTEMPTS {
-                panic!(
-                    "{:x} ({}) stuck committing. Incoming {:?}",
-                    this_node.get_id(),
-                    this_node.get_isolation_level(),
-                    this_node.get_incoming(),
-                );
+                // panic!(
+                //     "{:x} ({}) stuck committing. Incoming {:?}",
+                //     this_node.get_id(),
+                //     this_node.get_isolation_level(),
+                //     this_node.get_incoming(),
+                // );
             }
         }
 
@@ -852,7 +852,7 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64) {
         }
 
         if attempts > ATTEMPTS {
-            panic!("stuck spinning");
+            // panic!("stuck spinning");
         }
 
         attempts += 1;
