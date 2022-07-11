@@ -97,7 +97,7 @@ fn main() {
     let database: Database = utils::init_database(&config);
     let scheduler: Scheduler = Scheduler::new(&config).unwrap();
     let wait_manager = WaitManager::new(cores);
-    let global_state = GlobalState::new(config, scheduler, database, wait_manager);
+    let global_state = GlobalState::new(config.clone(), scheduler, database, wait_manager);
 
     info!("Starting execution");
     global_stats.start();
@@ -142,5 +142,5 @@ fn main() {
 
     global_stats.validate();
 
-    global_stats.write_to_file();
+    global_stats.write_to_file(&config);
 }

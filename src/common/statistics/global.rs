@@ -279,7 +279,7 @@ impl GlobalStatistics {
         // tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
     }
 
-    pub fn write_to_file(&mut self) {
+    pub fn write_to_file(&mut self, config: &Config) {
         let file = OpenOptions::new()
             .create(true)
             .write(true)
@@ -288,6 +288,8 @@ impl GlobalStatistics {
             .unwrap();
 
         let mut wtr = csv::Writer::from_writer(file);
+
+        let serializable_rate = config.get_float("serializable_rate").unwrap();
 
         wtr.serialize((
             self.scale_factor,
@@ -301,6 +303,7 @@ impl GlobalStatistics {
             self.get_txn_time(),
             self.get_thpt(),
             self.get_abr(),
+            serializable_rate,
         ))
         .unwrap();
     }
