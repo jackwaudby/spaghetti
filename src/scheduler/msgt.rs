@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use thread_local::ThreadLocal;
 use tracing::info;
 
-static ATTEMPTS: u64 = 100000;
+static ATTEMPTS: u64 = 1000000;
 
 #[derive(Debug)]
 pub struct MixedSerializationGraph {
@@ -248,8 +248,8 @@ impl MixedSerializationGraph {
                 }
 
                 let id = edge.extract_id() as usize;
-                // if visit_path.contains(&id) {
-                if id == root_id {
+                if visit_path.contains(&id) {
+                    // if id == root_id {
                     drop(g);
                     return true;
                 } else {
