@@ -38,12 +38,19 @@ file = "./data/22_02_03_ycsb_update_rate_1.csv"
 file = "./data/22_02_03_ycsb_contention_1.csv"
 
 # load data
-col_names = c("sf","protocol","workload","cores","total_time","commits",
-              "external","internal","total_latency","theta","update_rate",
-              "serializable_rate")
+col_names = c("sf","protocol","workload","cores",
+              "theta","serializable_rate","update_rate","relevant_cycle_check",
+              "runtime","commits","aborts","not_found",
+              "txn_time","commit_time","wait_time","latency")
+
+
+
+file = "./results.csv"
+
 raw = read_csv(file = file, col_names = col_names)
 
-raw
+
+
 
 raw = raw %>% filter(cores <= 40)
 workload = str_to_title(raw$workload[1])
@@ -100,6 +107,12 @@ sgt = raw[raw$protocol == "sgt",]
 (msgt$thpt)/sgt$thpt
 
 sgt$abr/(msgt$abr)
+
+ggplot(data = raw, aes(x = serializable_rate, y = thpt, group = protocol, colour = protocol)) +
+  geom_line()
+
+ggplot(data = raw, aes(x = serializable_rate, y = abr, group = protocol, colour = protocol)) +
+  geom_line()
 
 (p1 = ggplot(data = raw, aes(x = serializable_rate, y = thpt, group = protocol, colour = protocol)) +
   geom_line() + xlab(TeX('% of Serializable Transactions ($\\omega$)')) + ylab("thpt (million/s)") + 

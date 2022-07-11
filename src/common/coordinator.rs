@@ -96,8 +96,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         match commit_res {
                             Ok(_) => {
                                 stats.inc_commits();
-                                // let tx_time = stats.stop_tx();
-                                // stats.stop_txn_commit(tx_time);
 
                                 break;
                             }
@@ -108,9 +106,6 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 NonFatalError::SerializationGraphError(_) => {
                                     scheduler.abort(&mut meta, database);
                                     stats.inc_aborts();
-                                    // stats.inc_commit_aborts();
-                                    // let tx_time = stats.stop_tx();
-                                    // stats.stop_txn_commit_abort(tx_time);
 
                                     stats.start_wait_manager();
                                     let mut problem_transactions = meta.get_problem_transactions();

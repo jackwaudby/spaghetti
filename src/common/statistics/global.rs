@@ -289,21 +289,30 @@ impl GlobalStatistics {
 
         let mut wtr = csv::Writer::from_writer(file);
 
+        let theta = config.get_float("theta").unwrap();
         let serializable_rate = config.get_float("serializable_rate").unwrap();
+        let update_rate = config.get_float("update_rate").unwrap();
+        let relevant_cycle_check = config.get_bool("relevant_dfs").unwrap();
 
         wtr.serialize((
+            // parameters
             self.scale_factor,
             &self.protocol,
             &self.workload,
             self.cores,
+            theta,
+            serializable_rate,
+            update_rate,
+            relevant_cycle_check,
+            // raw stats
             self.get_runtime(),
             self.commits,
             self.aborts,
             self.not_found as u64,
             self.get_txn_time(),
-            self.get_thpt(),
-            self.get_abr(),
-            serializable_rate,
+            self.get_commit_time(),
+            self.get_wait_time(),
+            self.get_latency(),
         ))
         .unwrap();
     }
