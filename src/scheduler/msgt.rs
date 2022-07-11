@@ -129,24 +129,24 @@ impl MixedSerializationGraph {
             }
 
             if this_ref.incoming_edge_exists(&from) {
-                // if self.relevant_cycle_check {
-                //     if this_ref.get_isolation_level() == IsolationLevel::Serializable {
-                //         let from_ref = unsafe { &*(from_id as *const Node) };
-                //         let from_iso = from_ref.get_isolation_level();
+                if self.relevant_cycle_check {
+                    if this_ref.get_isolation_level() == IsolationLevel::Serializable {
+                        let from_ref = unsafe { &*(from_id as *const Node) };
+                        let from_iso = from_ref.get_isolation_level();
 
-                //         match from_iso {
-                //             IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
-                //                 let is_cycle = self.cycle_check_init(this_ref); // cycle check
-                //                 if is_cycle {
-                //                     return false;
-                //                 }
-                //             }
-                //             IsolationLevel::Serializable => return true,
-                //         }
-                //     }
-                // } else {
-                return true;
-                // }
+                        match from_iso {
+                            IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
+                                let is_cycle = self.cycle_check_init(this_ref); // cycle check
+                                if is_cycle {
+                                    return false;
+                                }
+                            }
+                            IsolationLevel::Serializable => return true,
+                        }
+                    }
+                } else {
+                    return true;
+                }
 
                 // need to do another check
                 // if self.relevant_cycle_check && (attempts % 100 == 0) {
@@ -457,9 +457,6 @@ impl MixedSerializationGraph {
         Ok(vals)
     }
 
-    /// Write operation.
-    ///
-    /// A write is executed iff there are no uncommitted writes on a record, else the operation is delayed.
     pub fn write_value(
         &self,
         value: &mut Data,
@@ -632,25 +629,25 @@ impl MixedSerializationGraph {
                     drop(guard)
                 });
             } else {
-                // if self.relevant_cycle_check {
-                //     if let IsolationLevel::Serializable = this_node.get_isolation_level() {
-                //         let incoming = this_node.get_incoming();
-                //         for edge in incoming {
-                //             let from_id = edge.extract_id();
-                //             let from_ref = unsafe { &*(from_id as *const Node) };
-                //             match from_ref.get_isolation_level() {
-                //                 IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
-                //                     let is_cycle = self.cycle_check_init(this_node);
-                //                     if is_cycle {
-                //                         this_node.set_aborted();
-                //                     }
-                //                 }
+                if self.relevant_cycle_check {
+                    if let IsolationLevel::Serializable = this_node.get_isolation_level() {
+                        let incoming = this_node.get_incoming();
+                        for edge in incoming {
+                            let from_id = edge.extract_id();
+                            let from_ref = unsafe { &*(from_id as *const Node) };
+                            match from_ref.get_isolation_level() {
+                                IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
+                                    let is_cycle = self.cycle_check_init(this_node);
+                                    if is_cycle {
+                                        this_node.set_aborted();
+                                    }
+                                }
 
-                //                 IsolationLevel::Serializable => {}
-                //             }
-                //         }
-                //     }
-                // }
+                                IsolationLevel::Serializable => {}
+                            }
+                        }
+                    }
+                }
 
                 // if self.relevant_cycle_check && (attempts % 10000 == 0) {
                 //     let is_cycle = self.cycle_check_init(this_node);
@@ -820,7 +817,6 @@ impl MixedSerializationGraph {
     }
 
     fn remove_accesses(&self, database: &Database, ops: &Vec<Operation>) {
-        // remove accesses
         for op in ops {
             let Operation {
                 op_type,
@@ -845,7 +841,6 @@ impl MixedSerializationGraph {
     }
 }
 
-// Busy wait until prv matches lsn.
 unsafe fn spin(prv: u64, lsn: &AtomicU64) {
     let mut i = 0;
     let mut attempts = 0;
