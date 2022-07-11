@@ -129,24 +129,24 @@ impl MixedSerializationGraph {
             }
 
             if this_ref.incoming_edge_exists(&from) {
-                if self.relevant_cycle_check {
-                    if this_ref.get_isolation_level() == IsolationLevel::Serializable {
-                        let from_ref = unsafe { &*(from_id as *const Node) };
-                        let from_iso = from_ref.get_isolation_level();
+                // if self.relevant_cycle_check {
+                //     if this_ref.get_isolation_level() == IsolationLevel::Serializable {
+                //         let from_ref = unsafe { &*(from_id as *const Node) };
+                //         let from_iso = from_ref.get_isolation_level();
 
-                        match from_iso {
-                            IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
-                                let is_cycle = self.cycle_check_init(this_ref); // cycle check
-                                if is_cycle {
-                                    return false;
-                                }
-                            }
-                            IsolationLevel::Serializable => return true,
-                        }
-                    }
-                } else {
-                    return true;
-                }
+                //         match from_iso {
+                //             IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
+                //                 let is_cycle = self.cycle_check_init(this_ref); // cycle check
+                //                 if is_cycle {
+                //                     return false;
+                //                 }
+                //             }
+                //             IsolationLevel::Serializable => return true,
+                //         }
+                //     }
+                // } else {
+                //     return true;
+                // }
 
                 // need to do another check
                 // if self.relevant_cycle_check && (attempts % 100 == 0) {
@@ -156,7 +156,7 @@ impl MixedSerializationGraph {
                 //     }
                 // }
 
-                // return true;
+                return true;
             };
 
             let from_ref = unsafe { &*(from_id as *const Node) };
