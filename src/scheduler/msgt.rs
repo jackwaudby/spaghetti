@@ -340,11 +340,11 @@ impl MixedSerializationGraph {
         database: &Database,
         ops: &Vec<Operation>,
     ) -> bool {
-        // let id = this_node.get_id();
-        // let is_cycle = self.cycle_check_init(this_node);
-        // if is_cycle {
-        //     this_node.set_aborted();
-        // }
+        let id = this_node.get_id();
+        let is_cycle = self.cycle_check_init(this_node);
+        if is_cycle {
+            this_node.set_aborted();
+        }
 
         // NFN: different
         self.commit_writes(database, true, &ops);
