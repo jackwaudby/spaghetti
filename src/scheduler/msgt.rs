@@ -256,8 +256,6 @@ impl MixedSerializationGraph {
                 } else {
                     if self.check_cycle_naive(id, root_lvl, visited, visit_path, root_id) {
                         drop(g);
-                        println!("not found");
-
                         return true;
                     }
                 }
