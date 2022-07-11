@@ -184,12 +184,34 @@ impl MixedSerializationGraph {
             .borrow_mut()
     }
 
+    fn cycle_check_init(&self, this_node: &Node) -> bool {
+        let mut visited = self.get_visited();
+        let mut visit_path = self.get_visit_path();
+
+        let this_id = this_node.get_id();
+        let root_id = this_node.get_id();
+
+        let root_lvl = this_node.get_isolation_level();
+
+        visited.clear();
+        visit_path.clear();
+
+        let mut check = false;
+        if !visited.contains(&this_id) {
+            check =
+                self.check_cycle_naive(this_id, root_lvl, &mut visited, &mut visit_path, root_id);
+        }
+
+        return check;
+    }
+
     fn check_cycle_naive(
         &self,
         cur: usize,
         root_lvl: IsolationLevel,
         visited: &mut RefMut<FxHashSet<usize>>,
         visit_path: &mut RefMut<FxHashSet<usize>>,
+        root_id: usize,
     ) -> bool {
         visited.insert(cur);
         visit_path.insert(cur);
@@ -207,11 +229,12 @@ impl MixedSerializationGraph {
                 }
 
                 let id = edge.extract_id() as usize;
-                if visit_path.contains(&id) {
+                // if visit_path.contains(&id) {
+                if id == root_id {
                     drop(g);
                     return true;
                 } else {
-                    if self.check_cycle_naive(id, root_lvl, visited, visit_path) {
+                    if self.check_cycle_naive(id, root_lvl, visited, visit_path, root_id) {
                         drop(g);
                         return true;
                     }
@@ -254,25 +277,6 @@ impl MixedSerializationGraph {
                 }
             },
         }
-    }
-
-    fn cycle_check_init(&self, this_node: &Node) -> bool {
-        let mut visited = self.get_visited();
-        let mut visit_path = self.get_visit_path();
-
-        let this_id = this_node.get_id();
-
-        let root_lvl = this_node.get_isolation_level();
-
-        visited.clear();
-        visit_path.clear();
-
-        let mut check = false;
-        if !visited.contains(&this_id) {
-            check = self.check_cycle_naive(this_id, root_lvl, &mut visited, &mut visit_path);
-        }
-
-        return check;
     }
 
     pub fn needs_abort(&self) -> bool {
