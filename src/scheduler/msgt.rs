@@ -270,7 +270,7 @@ impl MixedSerializationGraph {
     }
 
     fn is_edge_relevant(&self, root_lvl: IsolationLevel, edge: &Edge) -> bool {
-        return true;
+        return false;
         match edge {
             Edge::WriteWrite(_) => {
                 return true; // relevant to all levels
