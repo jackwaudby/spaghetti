@@ -177,7 +177,7 @@ impl MixedSerializationGraph {
 
             if from_ref.is_checked() {
                 drop(from_rlock);
-                attempts += 1;
+                // attempts += 1;
                 continue;
             }
 
@@ -546,7 +546,7 @@ impl MixedSerializationGraph {
             if wait {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-                attempts += 1;
+                                                       // attempts += 1;
                 continue;
             }
 
@@ -657,7 +657,7 @@ impl MixedSerializationGraph {
                 // }
             }
 
-            attempts += 1;
+            // attempts += 1;
 
             if attempts > ATTEMPTS {
                 panic!(
@@ -854,6 +854,6 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64) {
             panic!("stuck spinning");
         }
 
-        attempts += 1;
+        // attempts += 1;
     }
 }
