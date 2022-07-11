@@ -129,10 +129,13 @@ impl MixedSerializationGraph {
             }
 
             if this_ref.incoming_edge_exists(&from) {
-                // let is_cycle = self.cycle_check_init(this_ref); // cycle check
-                // if is_cycle {
-                //     return false;
-                // }
+                if self.relevant_cycle_check {
+                    let is_cycle = self.cycle_check_init(this_ref); // cycle check
+                    if is_cycle {
+                        return false;
+                    }
+                }
+
                 return true;
             };
 
