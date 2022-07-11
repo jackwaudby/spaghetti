@@ -247,6 +247,7 @@ impl MixedSerializationGraph {
                 // }
                 // }
                 if self.is_edge_relevant(root_lvl, &edge) {
+                    println!("here");
                     let id = edge.extract_id() as usize;
                     // if visit_path.contains(&id) {
                     if id == root_id {
