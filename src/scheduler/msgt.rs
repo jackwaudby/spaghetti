@@ -129,6 +129,7 @@ impl MixedSerializationGraph {
             }
 
             if this_ref.incoming_edge_exists(&from) {
+                // need to do another check
                 if self.relevant_cycle_check {
                     let is_cycle = self.cycle_check_init(this_ref); // cycle check
                     if is_cycle {
@@ -608,6 +609,11 @@ impl MixedSerializationGraph {
                     let guard = x.borrow_mut().take();
                     drop(guard)
                 });
+            } else {
+                        let is_cycle = self.cycle_check_init(this_node);
+        if is_cycle {
+            this_node.set_aborted();
+        }
             }
 
             // if reduced relvant enabled then need to cycle check
