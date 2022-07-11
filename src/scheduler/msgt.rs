@@ -195,12 +195,11 @@ impl MixedSerializationGraph {
         if !cur.is_cleaned() {
             let incoming = cur.get_incoming();
             for edge in incoming {
-                // filter edge
-                // if self.relevant_cycle_check {
-                //     if !self.is_edge_relevant(root_lvl, &edge) {
-                //         continue;
-                //     }
-                // }
+                if self.relevant_cycle_check {
+                    if !self.is_edge_relevant(root_lvl, &edge) {
+                        continue;
+                    }
+                }
 
                 let id = edge.extract_id() as usize;
                 if visit_path.contains(&id) {
