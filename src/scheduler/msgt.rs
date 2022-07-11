@@ -259,6 +259,7 @@ impl MixedSerializationGraph {
                     }
                 }
             }
+            return false;
         }
 
         drop(g);
