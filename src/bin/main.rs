@@ -141,4 +141,6 @@ fn main() {
     global_stats.print_to_console();
 
     global_stats.validate();
+
+    global_stats.write_to_file();
 }

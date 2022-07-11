@@ -1,6 +1,7 @@
 use config::Config;
 use serde_json::json;
 
+use std::fs::OpenOptions;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -113,7 +114,7 @@ impl GlobalStatistics {
         self.end = Some(self.start.unwrap().elapsed());
     }
 
-    pub fn get_runtime(&mut self) -> u64 {
+    pub fn get_runtime(&self) -> u64 {
         match self.end {
             Some(elasped) => elasped.as_millis() as u64,
             None => 0,
@@ -196,12 +197,12 @@ impl GlobalStatistics {
         (self.latency / 1000000) as u64
     }
 
-    fn get_thpt(&mut self) -> f64 {
+    fn get_thpt(&self) -> f64 {
         let total = (self.commits + self.not_found) as f64;
         total / (self.get_runtime() as f64 / 1000.0)
     }
 
-    fn get_abr(&mut self) -> f64 {
+    fn get_abr(&self) -> f64 {
         (self.aborts as f64 / (self.commits + self.not_found + self.aborts) as f64) * 100.0
     }
 
@@ -276,5 +277,31 @@ impl GlobalStatistics {
         // });
 
         // tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
+    }
+
+    pub fn write_to_file(&mut self) {
+        let file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .append(true)
+            .open("./results.csv")
+            .unwrap();
+
+        let mut wtr = csv::Writer::from_writer(file);
+
+        wtr.serialize((
+            self.scale_factor,
+            &self.protocol,
+            &self.workload,
+            self.cores,
+            self.get_runtime(),
+            self.commits,
+            self.aborts,
+            self.not_found as u64,
+            self.get_txn_time(),
+            self.get_thpt(),
+            self.get_abr(),
+        ))
+        .unwrap();
     }
 }
