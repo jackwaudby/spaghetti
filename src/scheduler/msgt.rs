@@ -261,6 +261,8 @@ impl MixedSerializationGraph {
             }
 
             drop(g);
+            let cur = cur.get_id() as usize;
+            visit_path.remove(&cur);
             return false;
         }
 
