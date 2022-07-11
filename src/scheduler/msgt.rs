@@ -11,6 +11,7 @@ use crate::storage::{
     Database,
 };
 
+use core::panic;
 use crossbeam_epoch::{self as epoch, Guard};
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
@@ -18,6 +19,8 @@ use std::cell::{RefCell, RefMut};
 use std::sync::atomic::{AtomicU64, Ordering};
 use thread_local::ThreadLocal;
 use tracing::info;
+
+static ATTEMPTS: u64 = 10000000;
 
 #[derive(Debug)]
 pub struct MixedSerializationGraph {
@@ -112,8 +115,24 @@ impl MixedSerializationGraph {
             return true;
         }
 
+        let mut attempts = 0;
         loop {
+            if attempts > ATTEMPTS {
+                let this_node = unsafe { &*self.get_transaction() };
+                panic!(
+                    "{:x} ({}) stuck inserting {:?}. Incoming {:?}",
+                    this_node.get_id(),
+                    this_node.get_isolation_level(),
+                    from,
+                    this_node.get_incoming(),
+                );
+            }
+
             if this_ref.incoming_edge_exists(&from) {
+                let is_cycle = self.cycle_check_init(this_ref); // cycle check
+                if is_cycle {
+                    return false;
+                }
                 return true;
             };
 
@@ -135,6 +154,7 @@ impl MixedSerializationGraph {
 
             if from_ref.is_checked() {
                 drop(from_rlock);
+                attempts += 1;
                 continue;
             }
 
@@ -288,6 +308,7 @@ impl MixedSerializationGraph {
         if this_node.has_incoming() {
             this_node.set_checked(false);
             drop(read_lock);
+
             return false;
         }
         drop(read_lock);
@@ -312,10 +333,10 @@ impl MixedSerializationGraph {
         ops: &Vec<Operation>,
     ) -> bool {
         // let id = this_node.get_id();
-        let is_cycle = self.cycle_check_init(this_node);
-        if is_cycle {
-            this_node.set_aborted();
-        }
+        // let is_cycle = self.cycle_check_init(this_node);
+        // if is_cycle {
+        //     this_node.set_aborted();
+        // }
 
         // NFN: different
         self.commit_writes(database, true, &ops);
@@ -427,7 +448,18 @@ impl MixedSerializationGraph {
         let lsn = table.get_lsn(offset);
         let mut prv;
 
+        let mut attempts = 0;
         loop {
+            if attempts > ATTEMPTS {
+                let this_node = unsafe { &*self.get_transaction() };
+                panic!(
+                    "{:x} ({}) stuck writing. Incoming {:?}",
+                    this_node.get_id(),
+                    this_node.get_isolation_level(),
+                    this_node.get_incoming(),
+                );
+            }
+
             if self.needs_abort() {
                 let this = unsafe { &*self.get_transaction() };
                 let id = this.get_abort_through();
@@ -490,7 +522,7 @@ impl MixedSerializationGraph {
             if wait {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
-
+                attempts += 1;
                 continue;
             }
 
@@ -554,6 +586,7 @@ impl MixedSerializationGraph {
         let ops = self.get_operations();
 
         let mut all_pending_transactions_committed = false;
+        let mut attempts = 0;
         while !all_pending_transactions_committed {
             if this_node.is_cascading_abort() {
                 return Err(SerializationGraphError::CascadingAbort.into());
@@ -572,6 +605,25 @@ impl MixedSerializationGraph {
                     let guard = x.borrow_mut().take();
                     drop(guard)
                 });
+            }
+
+            // if reduced relvant enabled then need to cycle check
+            if self.relevant_cycle_check {
+                let cycle = self.cycle_check_init(this_node);
+                if cycle {
+                    return Err(SerializationGraphError::CycleFound.into());
+                }
+            }
+
+            attempts += 1;
+
+            if attempts > ATTEMPTS {
+                panic!(
+                    "{:x} ({}) stuck committing. Incoming {:?}",
+                    this_node.get_id(),
+                    this_node.get_isolation_level(),
+                    this_node.get_incoming(),
+                );
             }
         }
 
@@ -751,10 +803,17 @@ impl MixedSerializationGraph {
 // Busy wait until prv matches lsn.
 unsafe fn spin(prv: u64, lsn: &AtomicU64) {
     let mut i = 0;
+    let mut attempts = 0;
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;
         if i >= 10000 {
             std::thread::yield_now();
         }
+
+        if attempts > ATTEMPTS {
+            panic!("stuck spinning");
+        }
+
+        attempts += 1;
     }
 }

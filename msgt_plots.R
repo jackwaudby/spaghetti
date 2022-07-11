@@ -50,13 +50,13 @@ file = "./results.csv"
 raw = read_csv(file = file, col_names = col_names)
 
 
-
-
-raw = raw %>% filter(cores <= 40)
 workload = str_to_title(raw$workload[1])
-raw$thpt = raw$commits / (raw$total_time / raw$cores / 1000) / 1000000
-raw$abr = raw$external / (raw$commits + raw$external+ raw$internal)
-raw$lat = raw$total_latency / (raw$commits + raw$external + raw$internal)
+raw$thpt = (raw$commits + raw$not_found) / (raw$runtime / raw$cores / 1000) 
+
+raw
+
+raw$abr = raw$aborts / (raw$commits + raw$not_found+ raw$aborts)
+raw$lat = (raw$txn_time + raw$latency) / (raw$commits + raw$not_found)
 raw = raw %>% 
   mutate(protocol = str_replace(protocol, "msgt-std", "msgt"))
 raw$abr = raw$abr * 100
@@ -112,6 +112,9 @@ ggplot(data = raw, aes(x = serializable_rate, y = thpt, group = protocol, colour
   geom_line()
 
 ggplot(data = raw, aes(x = serializable_rate, y = abr, group = protocol, colour = protocol)) +
+  geom_line()
+
+ggplot(data = raw, aes(x = serializable_rate, y = lat, group = protocol, colour = protocol)) +
   geom_line()
 
 (p1 = ggplot(data = raw, aes(x = serializable_rate, y = thpt, group = protocol, colour = protocol)) +

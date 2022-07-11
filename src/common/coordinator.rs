@@ -73,7 +73,13 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             let mut response;
             let mut guards = WaitGuards::new();
 
+            let mut attempts = 0;
+
             loop {
+                if attempts > 200 {
+                    panic!("{} aborted too many times", core_id);
+                }
+
                 let mut meta = scheduler.begin(isolation_level);
                 let transaction_id = meta.get_transaction_id();
                 stats.start_tx();
@@ -146,6 +152,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         }
                     },
                 }
+                attempts += 1;
             }
 
             let tx = stats.stop_tx();
