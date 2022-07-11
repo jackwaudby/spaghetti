@@ -195,6 +195,7 @@ impl MixedSerializationGraph {
         if !cur.is_cleaned() {
             let incoming = cur.get_incoming();
             for edge in incoming {
+                // if the edge is not relevant then ignore!
                 if self.relevant_cycle_check {
                     if !self.is_edge_relevant(root_lvl, &edge) {
                         continue;
