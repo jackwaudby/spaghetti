@@ -241,29 +241,25 @@ impl MixedSerializationGraph {
             let incoming = cur.get_incoming();
             for edge in incoming {
                 // if the edge is not relevant then ignore!
-                if self.relevant_cycle_check {
-                    if !self.is_edge_relevant(root_lvl, &edge) {
-                        continue;
-                    }
-                }
+                // if self.relevant_cycle_check {
+                if self.is_edge_relevant(root_lvl, &edge) {
+                    // continue;
+                    // }
+                    // }
 
-                let id = edge.extract_id() as usize;
-                // if visit_path.contains(&id) {
-                if id == root_id {
-                    drop(g);
-                    return true;
-                } else {
-                    if self.check_cycle_naive(id, root_lvl, visited, visit_path, root_id) {
+                    let id = edge.extract_id() as usize;
+                    // if visit_path.contains(&id) {
+                    if id == root_id {
                         drop(g);
                         return true;
+                    } else {
+                        if self.check_cycle_naive(id, root_lvl, visited, visit_path, root_id) {
+                            drop(g);
+                            return true;
+                        }
                     }
                 }
             }
-
-            drop(g);
-            let cur = cur.get_id() as usize;
-            visit_path.remove(&cur);
-            return false;
         }
 
         drop(g);
