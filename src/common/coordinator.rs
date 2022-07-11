@@ -76,7 +76,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
             let mut attempts = 0;
 
             loop {
-                if attempts > 1000 {
+                if attempts > 100000000 {
                     panic!("{} aborted too many times", core_id);
                 }
 
