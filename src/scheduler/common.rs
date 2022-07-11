@@ -428,6 +428,55 @@ impl MsgNode {
         }
     }
 
+    pub fn has_incoming_weaker(&self) -> bool {
+        let incoming_edges = unsafe { self.incoming.get().as_ref() };
+
+        match incoming_edges {
+            Some(edge_set) => match edge_set {
+                Some(edges) => {
+                    let guard = edges.lock();
+
+                    for edge in &*guard {
+                        let from_ref = unsafe { &*(edge.extract_id() as *const Node) };
+                        let from_iso = from_ref.get_isolation_level();
+
+                        match self.get_isolation_level() {
+                            IsolationLevel::Serializable => match from_iso {
+                                IsolationLevel::Serializable => {}
+                                IsolationLevel::ReadCommitted => {
+                                    drop(guard);
+                                    return true;
+                                }
+                                IsolationLevel::ReadUncommitted => {
+                                    drop(guard);
+                                    return true;
+                                }
+                            },
+                            IsolationLevel::ReadCommitted => match from_iso {
+                                IsolationLevel::Serializable => {}
+                                IsolationLevel::ReadCommitted => {}
+                                IsolationLevel::ReadUncommitted => {
+                                    drop(guard);
+                                    return true;
+                                }
+                            },
+                            IsolationLevel::ReadUncommitted => match from_iso {
+                                IsolationLevel::Serializable => {}
+                                IsolationLevel::ReadCommitted => {}
+                                IsolationLevel::ReadUncommitted => {}
+                            },
+                        }
+                    }
+
+                    drop(guard);
+                    return false;
+                }
+                None => panic!("incoming edge set removed"),
+            },
+            None => panic!("check unsafe"),
+        }
+    }
+
     /// Insert an incoming edge: (from) --> (this)
     pub fn insert_incoming(&self, from: MsgEdge) {
         let incoming_edges = unsafe { self.incoming.get().as_ref() };

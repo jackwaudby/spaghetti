@@ -627,28 +627,16 @@ impl MixedSerializationGraph {
                     let guard = x.borrow_mut().take();
                     drop(guard)
                 });
+            } else {
+                if self.relevant_cycle_check {
+                    if this_node.has_incoming_weaker() {
+                        let is_cycle = self.cycle_check_init(this_node);
+                        if is_cycle {
+                            this_node.set_aborted();
+                        }
+                    }
+                }
             }
-            //  else {
-            //     if self.relevant_cycle_check {
-            //         if let IsolationLevel::Serializable = this_node.get_isolation_level() {
-            //             let incoming = this_node.get_incoming();
-            //             for edge in incoming {
-            //                 let from_id = edge.extract_id();
-            //                 let from_ref = unsafe { &*(from_id as *const Node) };
-            //                 match from_ref.get_isolation_level() {
-            //                     IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
-            //                         let is_cycle = self.cycle_check_init(this_node);
-            //                         if is_cycle {
-            //                             this_node.set_aborted();
-            //                             break;
-            //                         }
-            //                     }
-
-            //                     IsolationLevel::Serializable => {}
-            //                 }
-            //             }
-            //         }
-            //     }
 
             // if self.relevant_cycle_check && (attempts % 10000 == 0) {
             //     let is_cycle = self.cycle_check_init(this_node);
