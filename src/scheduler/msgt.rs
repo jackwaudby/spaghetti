@@ -241,11 +241,11 @@ impl MixedSerializationGraph {
             let incoming = cur.get_incoming();
             for edge in incoming {
                 // if the edge is not relevant then ignore!
-                // if self.relevant_cycle_check {
-                //     if self.is_edge_relevant(root_lvl, &edge) {
-                //         continue;
-                //     }
-                // }
+                if self.relevant_cycle_check {
+                    if !self.is_edge_relevant(root_lvl, &edge) {
+                        continue;
+                    }
+                }
 
                 let id = edge.extract_id() as usize;
                 // if visit_path.contains(&id) {
