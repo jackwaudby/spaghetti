@@ -149,12 +149,12 @@ impl MixedSerializationGraph {
                 // }
 
                 // need to do another check
-                // if self.relevant_cycle_check && (attempts % 100 == 0) {
-                //     let is_cycle = self.cycle_check_init(this_ref); // cycle check
-                //     if is_cycle {
-                //         return false;
-                //     }
-                // }
+                if self.relevant_cycle_check && (attempts % 100 == 0) {
+                    let is_cycle = self.cycle_check_init(this_ref); // cycle check
+                    if is_cycle {
+                        return false;
+                    }
+                }
 
                 return true;
             };
@@ -651,12 +651,12 @@ impl MixedSerializationGraph {
             //         }
             //     }
 
-            // if self.relevant_cycle_check && (attempts % 10000 == 0) {
-            //     let is_cycle = self.cycle_check_init(this_node);
-            //     if is_cycle {
-            //         this_node.set_aborted();
-            //     }
-            // }
+            if self.relevant_cycle_check && (attempts % 10000 == 0) {
+                let is_cycle = self.cycle_check_init(this_node);
+                if is_cycle {
+                    this_node.set_aborted();
+                }
+            }
             // }
 
             attempts += 1;
