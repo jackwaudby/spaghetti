@@ -247,15 +247,18 @@ impl MixedSerializationGraph {
                 // }
                 // }
                 if self.is_edge_relevant(root_lvl, &edge) {
-                    println!("here");
                     let id = edge.extract_id() as usize;
                     // if visit_path.contains(&id) {
                     if id == root_id {
                         drop(g);
+                        println!("not found");
+
                         return true;
                     } else {
                         if self.check_cycle_naive(id, root_lvl, visited, visit_path, root_id) {
                             drop(g);
+                            println!("not found");
+
                             return true;
                         }
                     }
