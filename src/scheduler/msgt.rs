@@ -25,7 +25,7 @@ pub struct MixedSerializationGraph {
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
     visit_path: ThreadLocal<RefCell<FxHashSet<usize>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
-    _relevant_cycle_check: bool,
+    relevant_cycle_check: bool,
 }
 
 impl MixedSerializationGraph {
@@ -43,7 +43,7 @@ impl MixedSerializationGraph {
             visited: ThreadLocal::new(),
             visit_path: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
-            _relevant_cycle_check: false,
+            relevant_cycle_check,
         }
     }
 
@@ -112,8 +112,6 @@ impl MixedSerializationGraph {
             return true;
         }
 
-        // let isolation_level = this_ref.get_isolation_level();
-
         loop {
             if this_ref.incoming_edge_exists(&from) {
                 return true;
@@ -144,7 +142,7 @@ impl MixedSerializationGraph {
             this_ref.insert_incoming(from); // (to)
             drop(from_rlock);
 
-            let is_cycle = self.cycle_check_init(this_id); // cycle check
+            let is_cycle = self.cycle_check_init(this_ref); // cycle check
 
             return !is_cycle;
         }
@@ -165,6 +163,7 @@ impl MixedSerializationGraph {
     fn check_cycle_naive(
         &self,
         cur: usize,
+        root_lvl: IsolationLevel,
         visited: &mut RefMut<FxHashSet<usize>>,
         visit_path: &mut RefMut<FxHashSet<usize>>,
     ) -> bool {
@@ -176,12 +175,19 @@ impl MixedSerializationGraph {
         if !cur.is_cleaned() {
             let incoming = cur.get_incoming();
             for edge in incoming {
+                // filter edge
+                if self.relevant_cycle_check {
+                    if !self.is_edge_relevant(root_lvl, &edge) {
+                        continue;
+                    }
+                }
+
                 let id = edge.extract_id() as usize;
                 if visit_path.contains(&id) {
                     drop(g);
                     return true;
                 } else {
-                    if self.check_cycle_naive(id, visited, visit_path) {
+                    if self.check_cycle_naive(id, root_lvl, visited, visit_path) {
                         drop(g);
                         return true;
                     }
@@ -196,100 +202,54 @@ impl MixedSerializationGraph {
         return false;
     }
 
-    fn cycle_check_init(&self, this_node: usize) -> bool {
+    fn is_edge_relevant(&self, root_lvl: IsolationLevel, edge: &Edge) -> bool {
+        match edge {
+            Edge::WriteWrite(_) => {
+                return true; // relevant to all levels
+            }
+            Edge::WriteRead(_) => match root_lvl {
+                IsolationLevel::ReadUncommitted => {
+                    return false;
+                }
+                IsolationLevel::ReadCommitted => {
+                    return true;
+                }
+                IsolationLevel::Serializable => {
+                    return true;
+                }
+            },
+            Edge::ReadWrite(_) => match root_lvl {
+                IsolationLevel::ReadUncommitted => {
+                    return false;
+                }
+                IsolationLevel::ReadCommitted => {
+                    return false;
+                }
+                IsolationLevel::Serializable => {
+                    return true;
+                }
+            },
+        }
+    }
+
+    fn cycle_check_init(&self, this_node: &Node) -> bool {
         let mut visited = self.get_visited();
         let mut visit_path = self.get_visit_path();
+
+        let this_id = this_node.get_id();
+
+        let root_lvl = this_node.get_isolation_level();
 
         visited.clear();
         visit_path.clear();
 
         let mut check = false;
-        if !visited.contains(&this_node) {
-            check = self.check_cycle_naive(this_node, &mut visited, &mut visit_path);
+        if !visited.contains(&this_id) {
+            check = self.check_cycle_naive(this_id, root_lvl, &mut visited, &mut visit_path);
         }
 
         return check;
     }
-
-    // pub fn cycle_check(&self, isolation: IsolationLevel) -> bool {
-    //     let start_id = self.get_transaction() as usize;
-    //     let this = unsafe { &*self.get_transaction() };
-
-    //     let mut visited = self
-    //         .visited
-    //         .get_or(|| RefCell::new(FxHashSet::default()))
-    //         .borrow_mut();
-
-    //     let mut stack = self.stack.get_or(|| RefCell::new(Vec::new())).borrow_mut();
-
-    //     visited.clear();
-    //     stack.clear();
-
-    //     let this_rlock = this.read();
-    //     let outgoing = this.get_outgoing(); // FxHashSet<Edge<'a>>
-    //     let mut out = outgoing.into_iter().collect();
-    //     stack.append(&mut out);
-    //     drop(this_rlock);
-
-    //     while let Some(edge) = stack.pop() {
-    //         let current = if self.relevant_cycle_check {
-    //             // traverse only relevant edges
-    //             match isolation {
-    //                 IsolationLevel::ReadUncommitted => {
-    //                     if let Edge::WriteWrite(node) = edge {
-    //                         node
-    //                     } else {
-    //                         continue;
-    //                     }
-    //                 }
-    //                 IsolationLevel::ReadCommitted => match edge {
-    //                     Edge::ReadWrite(_) => {
-    //                         continue;
-    //                     }
-    //                     Edge::WriteWrite(node) => node,
-    //                     Edge::WriteRead(node) => node,
-    //                 },
-    //                 IsolationLevel::Serializable => match edge {
-    //                     Edge::ReadWrite(node) => node,
-    //                     Edge::WriteWrite(node) => node,
-    //                     Edge::WriteRead(node) => node,
-    //                 },
-    //             }
-    //         } else {
-    //             // traverse any edge
-    //             match edge {
-    //                 Edge::ReadWrite(node) => node,
-    //                 Edge::WriteWrite(node) => node,
-    //                 Edge::WriteRead(node) => node,
-    //             }
-    //         };
-
-    //         if start_id == current {
-    //             return true; // cycle found
-    //         }
-
-    //         if visited.contains(&current) {
-    //             continue; // already visited
-    //         }
-
-    //         visited.insert(current);
-
-    //         let current = unsafe { &*(current as *const Node) };
-
-    //         let rlock = current.read();
-    //         let val1 =
-    //             !(current.is_committed() || current.is_aborted() || current.is_cascading_abort());
-    //         if val1 {
-    //             let outgoing = current.get_outgoing();
-    //             let mut out = outgoing.into_iter().collect();
-    //             stack.append(&mut out);
-    //         }
-
-    //         drop(rlock);
-    //     }
-
-    //     false
-    // }
 
     pub fn needs_abort(&self) -> bool {
         let this = unsafe { &*self.get_transaction() };
@@ -351,8 +311,8 @@ impl MixedSerializationGraph {
         database: &Database,
         ops: &Vec<Operation>,
     ) -> bool {
-        let id = this_node.get_id();
-        let is_cycle = self.cycle_check_init(id);
+        // let id = this_node.get_id();
+        let is_cycle = self.cycle_check_init(this_node);
         if is_cycle {
             this_node.set_aborted();
         }
