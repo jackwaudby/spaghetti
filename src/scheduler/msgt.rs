@@ -129,10 +129,10 @@ impl MixedSerializationGraph {
             }
 
             if this_ref.incoming_edge_exists(&from) {
-                let is_cycle = self.cycle_check_init(this_ref); // cycle check
-                if is_cycle {
-                    return false;
-                }
+                // let is_cycle = self.cycle_check_init(this_ref); // cycle check
+                // if is_cycle {
+                //     return false;
+                // }
                 return true;
             };
 
@@ -196,11 +196,11 @@ impl MixedSerializationGraph {
             let incoming = cur.get_incoming();
             for edge in incoming {
                 // filter edge
-                if self.relevant_cycle_check {
-                    if !self.is_edge_relevant(root_lvl, &edge) {
-                        continue;
-                    }
-                }
+                // if self.relevant_cycle_check {
+                //     if !self.is_edge_relevant(root_lvl, &edge) {
+                //         continue;
+                //     }
+                // }
 
                 let id = edge.extract_id() as usize;
                 if visit_path.contains(&id) {
@@ -608,12 +608,12 @@ impl MixedSerializationGraph {
             }
 
             // if reduced relvant enabled then need to cycle check
-            if self.relevant_cycle_check {
-                let cycle = self.cycle_check_init(this_node);
-                if cycle {
-                    return Err(SerializationGraphError::CycleFound.into());
-                }
-            }
+            // if self.relevant_cycle_check {
+            //     let cycle = self.cycle_check_init(this_node);
+            //     if cycle {
+            //         return Err(SerializationGraphError::CycleFound.into());
+            //     }
+            // }
 
             attempts += 1;
 
