@@ -20,7 +20,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use thread_local::ThreadLocal;
 use tracing::info;
 
-static ATTEMPTS: u64 = 1000000;
+static ATTEMPTS: u64 = 10000000;
 
 #[derive(Debug)]
 pub struct MixedSerializationGraph {
