@@ -239,28 +239,26 @@ impl MixedSerializationGraph {
         let g = cur.read();
         if !cur.is_cleaned() {
             let incoming = cur.get_incoming();
-            'edgeloop: for edge in incoming {
+            for edge in incoming {
                 // if the edge is not relevant then ignore!
-                // if self.relevant_cycle_check {
-                // if !self.is_edge_relevant(root_lvl, &edge) {
-                // continue 'edgeloop;
-                // }
-                // }
-                if self.is_edge_relevant(root_lvl, &edge) {
-                    let id = edge.extract_id() as usize;
-                    // if visit_path.contains(&id) {
-                    if id == root_id {
+                if self.relevant_cycle_check {
+                    if !self.is_edge_relevant(root_lvl, &edge) {
+                        continue;
+                    }
+                }
+                let id = edge.extract_id() as usize;
+                if visit_path.contains(&id) {
+                    // if id == root_id {
+                    drop(g);
+                    println!("not found");
+
+                    return true;
+                } else {
+                    if self.check_cycle_naive(id, root_lvl, visited, visit_path, root_id) {
                         drop(g);
                         println!("not found");
 
                         return true;
-                    } else {
-                        if self.check_cycle_naive(id, root_lvl, visited, visit_path, root_id) {
-                            drop(g);
-                            println!("not found");
-
-                            return true;
-                        }
                     }
                 }
             }
@@ -274,7 +272,6 @@ impl MixedSerializationGraph {
     }
 
     fn is_edge_relevant(&self, root_lvl: IsolationLevel, edge: &Edge) -> bool {
-        // return false;
         match edge {
             Edge::WriteWrite(_) => {
                 return true; // relevant to all levels
