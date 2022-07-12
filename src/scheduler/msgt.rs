@@ -280,9 +280,6 @@ impl MixedSerializationGraph {
                 cur.get_isolation_level()
             ));
 
-            // println!("{}", path);
-            // println!("{:?}", edge_path);
-
             let mut ww = 0;
             let mut wr = 0;
             let mut rw = 0;
@@ -307,13 +304,13 @@ impl MixedSerializationGraph {
             match root_lvl {
                 IsolationLevel::Serializable => {}
                 IsolationLevel::ReadCommitted => match cycle_type {
-                    Cycle::G2 => println!("Didn't need to abort"),
+                    Cycle::G2 => println!("Didn't need to abort: RC with a G2"),
                     Cycle::G1c => {}
                     Cycle::G0 => {}
                 },
                 IsolationLevel::ReadUncommitted => match cycle_type {
-                    Cycle::G2 => println!("Didn't need to abort"),
-                    Cycle::G1c => println!("Didn't need to abort"),
+                    Cycle::G2 => println!("Didn't need to abort: RU with a G2"),
+                    Cycle::G1c => println!("Didn't need to abort: RU with a G1"),
                     Cycle::G0 => {}
                 },
             }
