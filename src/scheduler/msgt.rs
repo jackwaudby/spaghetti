@@ -318,6 +318,7 @@ impl MixedSerializationGraph {
                             if let IsolationLevel::Serializable = cur.get_isolation_level() {
                                 // println!("Abort this guy: {:x}", id);
                                 cur.set_cascading_abort();
+                                check = false;
                                 break;
                             }
                         }
