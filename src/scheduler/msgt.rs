@@ -308,7 +308,15 @@ impl MixedSerializationGraph {
                         println!(
                             "Didn't need to abort: RC with a G2 {} {:?}",
                             path, edge_path
-                        )
+                        );
+                        for node in &*visit_path {
+                            let id = *node;
+                            let cur = unsafe { &*(id as *const Node) };
+                            if let IsolationLevel::Serializable = cur.get_isolation_level() {
+                                println!("Abort this guy: {}", id);
+                                break;
+                            }
+                        }
                     }
                     Cycle::G1c => {}
                     Cycle::G0 => {}
