@@ -351,6 +351,7 @@ pub struct MsgNode {
     cleaned: AtomicBool,
     checked: AtomicBool,
     terminated: AtomicBool,
+    commit_phase: AtomicBool,
     lock: RwLock<u8>,
     abort_through: UnsafeCell<usize>,
 }
@@ -382,7 +383,7 @@ impl MsgNode {
             cleaned: AtomicBool::new(false),
             checked: AtomicBool::new(false),
             terminated: AtomicBool::new(false),
-
+            commit_phase: AtomicBool::new(false),
             lock: RwLock::new(0),
             abort_through: UnsafeCell::new(0),
         }
@@ -437,34 +438,36 @@ impl MsgNode {
                     let guard = edges.lock();
 
                     for edge in &*guard {
-                        let from_ref = unsafe { &*(edge.extract_id() as *const Node) };
+                        let from_ref = unsafe { &*(edge.extract_id() as *const MsgNode) };
                         let from_iso = from_ref.get_isolation_level();
-
-                        match self.get_isolation_level() {
-                            IsolationLevel::Serializable => match from_iso {
-                                IsolationLevel::Serializable => {}
-                                IsolationLevel::ReadCommitted => {
-                                    drop(guard);
-                                    return true;
-                                }
-                                IsolationLevel::ReadUncommitted => {
-                                    drop(guard);
-                                    return true;
-                                }
-                            },
-                            IsolationLevel::ReadCommitted => match from_iso {
-                                IsolationLevel::Serializable => {}
-                                IsolationLevel::ReadCommitted => {}
-                                IsolationLevel::ReadUncommitted => {
-                                    drop(guard);
-                                    return true;
-                                }
-                            },
-                            IsolationLevel::ReadUncommitted => match from_iso {
-                                IsolationLevel::Serializable => {}
-                                IsolationLevel::ReadCommitted => {}
-                                IsolationLevel::ReadUncommitted => {}
-                            },
+                        let committing = from_ref.is_in_commit_phase();
+                        if committing {
+                            match self.get_isolation_level() {
+                                IsolationLevel::Serializable => match from_iso {
+                                    IsolationLevel::Serializable => {}
+                                    IsolationLevel::ReadCommitted => {
+                                        drop(guard);
+                                        return true;
+                                    }
+                                    IsolationLevel::ReadUncommitted => {
+                                        drop(guard);
+                                        return true;
+                                    }
+                                },
+                                IsolationLevel::ReadCommitted => match from_iso {
+                                    IsolationLevel::Serializable => {}
+                                    IsolationLevel::ReadCommitted => {}
+                                    IsolationLevel::ReadUncommitted => {
+                                        drop(guard);
+                                        return true;
+                                    }
+                                },
+                                IsolationLevel::ReadUncommitted => match from_iso {
+                                    IsolationLevel::Serializable => {}
+                                    IsolationLevel::ReadCommitted => {}
+                                    IsolationLevel::ReadUncommitted => {}
+                                },
+                            }
                         }
                     }
 
@@ -599,6 +602,14 @@ impl MsgNode {
 
     pub fn set_aborted(&self) {
         self.aborted.store(true, Ordering::Release);
+    }
+
+    pub fn is_in_commit_phase(&self) -> bool {
+        self.commit_phase.load(Ordering::Acquire)
+    }
+
+    pub fn set_commit_phase(&self) {
+        self.commit_phase.store(true, Ordering::Release);
     }
 
     pub fn is_terminated(&self) -> bool {

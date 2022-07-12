@@ -618,6 +618,8 @@ impl MixedSerializationGraph {
         database: &Database,
     ) -> Result<(), NonFatalError> {
         let this_node = unsafe { &*self.get_transaction() };
+
+        this_node.set_commit_phase();
         let ops = self.get_operations();
 
         let mut all_pending_transactions_committed = false;
