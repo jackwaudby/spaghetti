@@ -13,8 +13,10 @@ use crate::storage::{
 
 use core::panic;
 use crossbeam_epoch::{self as epoch, Guard};
+use linked_hash_set::LinkedHashSet;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
+use std::borrow::BorrowMut;
 use std::cell::{RefCell, RefMut};
 use std::sync::atomic::{AtomicU64, Ordering};
 use thread_local::ThreadLocal;
@@ -22,11 +24,18 @@ use tracing::info;
 
 static ATTEMPTS: u64 = 100000000;
 
+enum Cycle {
+    G0,
+    G1c,
+    G2,
+}
+
 #[derive(Debug)]
 pub struct MixedSerializationGraph {
     txn_ctr: ThreadLocal<RefCell<usize>>,
     visited: ThreadLocal<RefCell<FxHashSet<usize>>>,
-    visit_path: ThreadLocal<RefCell<FxHashSet<usize>>>,
+    visit_path: ThreadLocal<RefCell<Vec<usize>>>,
+    edge_path: ThreadLocal<RefCell<Vec<Edge>>>,
     txn_info: ThreadLocal<RefCell<Option<TransactionInformation>>>,
     relevant_cycle_check: bool,
 }
@@ -45,6 +54,7 @@ impl MixedSerializationGraph {
             txn_ctr: ThreadLocal::new(),
             visited: ThreadLocal::new(),
             visit_path: ThreadLocal::new(),
+            edge_path: ThreadLocal::new(),
             txn_info: ThreadLocal::new(),
             relevant_cycle_check,
         }
@@ -209,15 +219,22 @@ impl MixedSerializationGraph {
             .borrow_mut()
     }
 
-    fn get_visit_path(&self) -> RefMut<FxHashSet<usize>> {
+    fn get_visit_path(&self) -> RefMut<Vec<usize>> {
         self.visit_path
-            .get_or(|| RefCell::new(FxHashSet::default()))
+            .get_or(|| RefCell::new(Vec::new()))
+            .borrow_mut()
+    }
+
+    fn get_edge_path(&self) -> RefMut<Vec<Edge>> {
+        self.edge_path
+            .get_or(|| RefCell::new(Vec::new()))
             .borrow_mut()
     }
 
     fn cycle_check_init(&self, this_node: &Node) -> bool {
         let mut visited = self.get_visited();
         let mut visit_path = self.get_visit_path();
+        let mut edge_path = self.get_edge_path();
 
         let this_id = this_node.get_id();
         let root_id = this_node.get_id();
@@ -226,11 +243,80 @@ impl MixedSerializationGraph {
 
         visited.clear();
         visit_path.clear();
+        edge_path.clear();
 
         let mut check = false;
         if !visited.contains(&this_id) {
-            check =
-                self.check_cycle_naive(this_id, root_lvl, &mut visited, &mut visit_path, root_id);
+            check = self.check_cycle_naive(
+                this_id,
+                root_lvl,
+                &mut visited,
+                &mut visit_path,
+                &mut edge_path,
+                root_id,
+            );
+        }
+
+        if check {
+            let vv: Vec<_> = visit_path.borrow_mut().iter().collect::<Vec<_>>();
+            let path_len = vv.len();
+
+            let mut path = String::new();
+
+            for node in &vv[0..path_len - 1] {
+                let id = **node;
+                let cur = unsafe { &*(id as *const Node) };
+
+                let id = cur.get_id();
+                path.push_str(&format!("({:x}:{}),", id, cur.get_isolation_level()));
+            }
+
+            let last = vv[path_len - 1];
+            let cur = unsafe { &*(*last as *const Node) };
+
+            path.push_str(&format!(
+                "({:x}:{})",
+                cur.get_id(),
+                cur.get_isolation_level()
+            ));
+
+            // println!("{}", path);
+            // println!("{:?}", edge_path);
+
+            let mut ww = 0;
+            let mut wr = 0;
+            let mut rw = 0;
+
+            for edge in &*edge_path {
+                match edge {
+                    Edge::WriteWrite(_) => ww += 1,
+                    Edge::WriteRead(_) => wr += 1,
+                    Edge::ReadWrite(_) => rw += 1,
+                }
+            }
+
+            let cycle_type = if rw > 0 {
+                Cycle::G2
+            } else if wr > 0 {
+                Cycle::G1c
+            } else {
+                Cycle::G0
+            };
+
+            // did i need to abort?
+            match root_lvl {
+                IsolationLevel::Serializable => {}
+                IsolationLevel::ReadCommitted => match cycle_type {
+                    Cycle::G2 => println!("Didn't need to abort"),
+                    Cycle::G1c => {}
+                    Cycle::G0 => {}
+                },
+                IsolationLevel::ReadUncommitted => match cycle_type {
+                    Cycle::G2 => println!("Didn't need to abort"),
+                    Cycle::G1c => println!("Didn't need to abort"),
+                    Cycle::G0 => {}
+                },
+            }
         }
 
         return check;
@@ -241,11 +327,13 @@ impl MixedSerializationGraph {
         cur: usize,
         root_lvl: IsolationLevel,
         visited: &mut RefMut<FxHashSet<usize>>,
-        visit_path: &mut RefMut<FxHashSet<usize>>,
+        visit_path: &mut RefMut<Vec<usize>>,
+        edge_path: &mut RefMut<Vec<Edge>>,
+
         root_id: usize,
     ) -> bool {
         visited.insert(cur);
-        visit_path.insert(cur);
+        visit_path.push(cur);
 
         let cur = unsafe { &*(cur as *const Node) };
         let g = cur.read();
@@ -253,28 +341,35 @@ impl MixedSerializationGraph {
             let incoming = cur.get_incoming();
             for edge in incoming {
                 // if the edge is not relevant then ignore!
-                if self.relevant_cycle_check {
-                    if !self.is_edge_relevant(root_lvl, &edge) {
-                        continue;
-                    }
-                }
+                // if self.relevant_cycle_check {
+                //     if !self.is_edge_relevant(root_lvl, &edge) {
+                //         continue;
+                //     }
+                // }
+                edge_path.push(edge.clone());
                 let id = edge.extract_id() as usize;
                 if visit_path.contains(&id) {
                     // if id == root_id {
+                    visit_path.push(id);
                     drop(g);
                     return true;
                 } else {
-                    if self.check_cycle_naive(id, root_lvl, visited, visit_path, root_id) {
+                    if self.check_cycle_naive(id, root_lvl, visited, visit_path, edge_path, root_id)
+                    {
                         drop(g);
                         return true;
                     }
                 }
+                let index = edge_path.iter().position(|x| *x == edge.clone()).unwrap();
+
+                edge_path.remove(index);
             }
         }
 
         drop(g);
         let cur = cur.get_id() as usize;
-        visit_path.remove(&cur);
+        let index = visit_path.iter().position(|x| *x == cur).unwrap();
+        visit_path.remove(index);
 
         return false;
     }
