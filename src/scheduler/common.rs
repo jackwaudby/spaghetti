@@ -354,6 +354,7 @@ pub struct MsgNode {
     commit_phase: AtomicBool,
     lock: RwLock<u8>,
     abort_through: UnsafeCell<usize>,
+    at_risk: AtomicBool,
 }
 
 impl MsgNode {
@@ -386,6 +387,7 @@ impl MsgNode {
             commit_phase: AtomicBool::new(false),
             lock: RwLock::new(0),
             abort_through: UnsafeCell::new(0),
+            at_risk: AtomicBool::new(false),
         }
     }
 
@@ -628,6 +630,14 @@ impl MsgNode {
 
     pub fn set_cascading_abort(&self) {
         self.cascading.store(true, Ordering::Release);
+    }
+
+    pub fn is_at_risk(&self) -> bool {
+        self.at_risk.load(Ordering::Acquire)
+    }
+
+    pub fn set_at_risk(&self) {
+        self.at_risk.store(true, Ordering::Release);
     }
 
     pub fn is_committed(&self) -> bool {

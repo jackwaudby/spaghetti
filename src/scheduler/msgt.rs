@@ -181,6 +181,17 @@ impl MixedSerializationGraph {
                 continue;
             }
 
+            // if edge is rw and from is not PL-3 then set at risk
+            if rw {
+                let from_iso = from_ref.get_isolation_level();
+                match from_iso {
+                    IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
+                        from_ref.set_at_risk();
+                    }
+                    IsolationLevel::Serializable => {}
+                }
+            }
+
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
             drop(from_rlock);
@@ -650,14 +661,14 @@ impl MixedSerializationGraph {
                     drop(guard)
                 });
             } else {
-                // if self.relevant_cycle_check {
-                //     if this_node.has_incoming_weaker() {
-                //         let is_cycle = self.cycle_check_init(this_node);
-                //         if is_cycle {
-                //             this_node.set_aborted();
-                //         }
-                //     }
-                // }
+                if self.relevant_cycle_check {
+                    if this_node.is_at_risk() {
+                        let is_cycle = self.cycle_check_init(this_node);
+                        if is_cycle {
+                            this_node.set_aborted();
+                        }
+                    }
+                }
 
                 // if self.relevant_cycle_check && (attempts % 10000 == 0) {
                 //     let is_cycle = self.cycle_check_init(this_node);
