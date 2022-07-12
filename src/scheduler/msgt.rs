@@ -13,10 +13,8 @@ use crate::storage::{
 
 use core::panic;
 use crossbeam_epoch::{self as epoch, Guard};
-use linked_hash_set::LinkedHashSet;
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
-use std::borrow::BorrowMut;
 use std::cell::{RefCell, RefMut};
 use std::sync::atomic::{AtomicU64, Ordering};
 use thread_local::ThreadLocal;
@@ -128,7 +126,7 @@ impl MixedSerializationGraph {
         let mut attempts = 0;
         loop {
             if attempts > ATTEMPTS {
-                let this_node = unsafe { &*self.get_transaction() };
+                // let this_node = unsafe { &*self.get_transaction() };
                 // panic!(
                 //     "{:x} ({}) stuck inserting {:?}. Incoming {:?}",
                 //     this_node.get_id(),
@@ -194,14 +192,14 @@ impl MixedSerializationGraph {
             // Tj -> Ti
             // If Tj is PL-3 and Ti is PL-1/2
 
-            if rw {
-                // match this_ref.get_isolation_level() {
-                //     IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
-                from_ref.set_at_risk();
-                //     }
-                //     IsolationLevel::Serializable => {}
-                // }
-            }
+            // if rw {
+            // match this_ref.get_isolation_level() {
+            //     IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
+            // from_ref.set_at_risk();
+            //     }
+            //     IsolationLevel::Serializable => {}
+            // }
+            // }
 
             from_ref.insert_outgoing(out_edge); // (from)
             this_ref.insert_incoming(from); // (to)
@@ -257,36 +255,39 @@ impl MixedSerializationGraph {
             );
         }
 
-        if check {
-            let vv: Vec<_> = visit_path.borrow_mut().iter().collect::<Vec<_>>();
-            let path_len = vv.len();
+        // if cycle found and rrdfs
+        if check && self.relevant_cycle_check {
+            // printing
+            // let vv: Vec<_> = visit_path.borrow_mut().iter().collect::<Vec<_>>();
+            // let path_len = vv.len();
 
-            let mut path = String::new();
+            // let mut path = String::new();
 
-            for node in &vv[0..path_len - 1] {
-                let id = **node;
-                let cur = unsafe { &*(id as *const Node) };
+            // for node in &vv[0..path_len - 1] {
+            //     let id = **node;
+            //     let cur = unsafe { &*(id as *const Node) };
 
-                let id = cur.get_id();
-                path.push_str(&format!("({:x}:{}),", id, cur.get_isolation_level()));
-            }
+            //     let id = cur.get_id();
+            //     path.push_str(&format!("({:x}:{}),", id, cur.get_isolation_level()));
+            // }
 
-            let last = vv[path_len - 1];
-            let cur = unsafe { &*(*last as *const Node) };
+            // let last = vv[path_len - 1];
+            // let cur = unsafe { &*(*last as *const Node) };
 
-            path.push_str(&format!(
-                "({:x}:{})",
-                cur.get_id(),
-                cur.get_isolation_level()
-            ));
+            // path.push_str(&format!(
+            //     "({:x}:{})",
+            //     cur.get_id(),
+            //     cur.get_isolation_level()
+            // ));
 
-            let mut ww = 0;
+            // what type of cycle have I found?
+            let mut _ww = 0;
             let mut wr = 0;
             let mut rw = 0;
 
             for edge in &*edge_path {
                 match edge {
-                    Edge::WriteWrite(_) => ww += 1,
+                    Edge::WriteWrite(_) => _ww += 1,
                     Edge::WriteRead(_) => wr += 1,
                     Edge::ReadWrite(_) => rw += 1,
                 }
@@ -300,20 +301,22 @@ impl MixedSerializationGraph {
                 Cycle::G0
             };
 
-            // did i need to abort?
+            // do i need to abort cos of this cycle?
             match root_lvl {
+                // PL-3 always abort
                 IsolationLevel::Serializable => {}
+                // if Im PL-2, G1c/0 I abort, else S aborts
                 IsolationLevel::ReadCommitted => match cycle_type {
                     Cycle::G2 => {
-                        println!(
-                            "Didn't need to abort: RC with a G2 {} {:?}",
-                            path, edge_path
-                        );
+                        // println!(
+                        //     "Didn't need to abort: RC with a G2 {} {:?}",
+                        //     path, edge_path
+                        // );
                         for node in &*visit_path {
                             let id = *node;
                             let cur = unsafe { &*(id as *const Node) };
                             if let IsolationLevel::Serializable = cur.get_isolation_level() {
-                                println!("Abort this guy: {:x}", id);
+                                // println!("Abort this guy: {:x}", id);
                                 cur.set_cascading_abort();
                                 break;
                             }
@@ -322,15 +325,34 @@ impl MixedSerializationGraph {
                     Cycle::G1c => {}
                     Cycle::G0 => {}
                 },
+                // if Im PL-2, G1c/0 I abort, else S aborts
                 IsolationLevel::ReadUncommitted => match cycle_type {
-                    Cycle::G2 => println!(
-                        "Didn't need to abort: RU with a G2 {} {:?}",
-                        path, edge_path
-                    ),
-                    Cycle::G1c => println!(
-                        "Didn't need to abort: RU with a G1 {} {:?}",
-                        path, edge_path
-                    ),
+                    // s aborts
+                    Cycle::G2 => {
+                        for node in &*visit_path {
+                            let id = *node;
+                            let cur = unsafe { &*(id as *const Node) };
+                            if let IsolationLevel::Serializable = cur.get_isolation_level() {
+                                cur.set_cascading_abort();
+                                break;
+                            }
+                        }
+                    }
+                    // s or rc aborts
+                    Cycle::G1c => {
+                        for node in &*visit_path {
+                            let id = *node;
+                            let cur = unsafe { &*(id as *const Node) };
+
+                            match cur.get_isolation_level() {
+                                IsolationLevel::ReadUncommitted => {}
+                                IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
+                                    cur.set_cascading_abort();
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     Cycle::G0 => {}
                 },
             }
@@ -391,35 +413,35 @@ impl MixedSerializationGraph {
         return false;
     }
 
-    fn is_edge_relevant(&self, root_lvl: IsolationLevel, edge: &Edge) -> bool {
-        match edge {
-            Edge::WriteWrite(_) => {
-                return true; // relevant to all levels
-            }
-            Edge::WriteRead(_) => match root_lvl {
-                IsolationLevel::ReadUncommitted => {
-                    return false;
-                }
-                IsolationLevel::ReadCommitted => {
-                    return true;
-                }
-                IsolationLevel::Serializable => {
-                    return true;
-                }
-            },
-            Edge::ReadWrite(_) => match root_lvl {
-                IsolationLevel::ReadUncommitted => {
-                    return false;
-                }
-                IsolationLevel::ReadCommitted => {
-                    return false;
-                }
-                IsolationLevel::Serializable => {
-                    return true;
-                }
-            },
-        }
-    }
+    // fn is_edge_relevant(&self, root_lvl: IsolationLevel, edge: &Edge) -> bool {
+    //     match edge {
+    //         Edge::WriteWrite(_) => {
+    //             return true; // relevant to all levels
+    //         }
+    //         Edge::WriteRead(_) => match root_lvl {
+    //             IsolationLevel::ReadUncommitted => {
+    //                 return false;
+    //             }
+    //             IsolationLevel::ReadCommitted => {
+    //                 return true;
+    //             }
+    //             IsolationLevel::Serializable => {
+    //                 return true;
+    //             }
+    //         },
+    //         Edge::ReadWrite(_) => match root_lvl {
+    //             IsolationLevel::ReadUncommitted => {
+    //                 return false;
+    //             }
+    //             IsolationLevel::ReadCommitted => {
+    //                 return false;
+    //             }
+    //             IsolationLevel::Serializable => {
+    //                 return true;
+    //             }
+    //         },
+    //     }
+    // }
 
     pub fn needs_abort(&self) -> bool {
         let this = unsafe { &*self.get_transaction() };
@@ -600,7 +622,7 @@ impl MixedSerializationGraph {
         let mut attempts = 0;
         loop {
             if attempts > ATTEMPTS {
-                let this_node = unsafe { &*self.get_transaction() };
+                // let this_node = unsafe { &*self.get_transaction() };
                 // panic!(
                 //     "{:x} ({}) stuck writing. Incoming {:?}",
                 //     this_node.get_id(),
@@ -651,14 +673,14 @@ impl MixedSerializationGraph {
                                                  // if self.relevant_cycle_check {
                                                  //     let this_node = unsafe { &*self.get_transaction() };
 
-                                    if self.relevant_cycle_check {
-                                        if this.is_at_risk() {
-                                            let is_cycle = self.cycle_check_init(this);
-                                            if is_cycle {
-                                                this.set_aborted();
-                                            }
-                                        }
-                                    }
+                                    // if self.relevant_cycle_check {
+                                    //     if this.is_at_risk() {
+                                    //         let is_cycle = self.cycle_check_init(this);
+                                    //         if is_cycle {
+                                    //             this.set_aborted();
+                                    //         }
+                                    //     }
+                                    // }
 
                                     //     if this_node.has_incoming_weaker() {
                                     //         let is_cycle = self.cycle_check_init(this_node);
@@ -783,14 +805,14 @@ impl MixedSerializationGraph {
                     drop(guard)
                 });
             } else {
-                if self.relevant_cycle_check {
-                    if this_node.is_at_risk() {
-                        let is_cycle = self.cycle_check_init(this_node);
-                        if is_cycle {
-                            this_node.set_aborted();
-                        }
-                    }
-                }
+                // if self.relevant_cycle_check {
+                //     if this_node.is_at_risk() {
+                //         let is_cycle = self.cycle_check_init(this_node);
+                //         if is_cycle {
+                //             this_node.set_aborted();
+                //         }
+                //     }
+                // }
 
                 // if self.relevant_cycle_check && (attempts % 10000 == 0) {
                 //     let is_cycle = self.cycle_check_init(this_node);
@@ -985,7 +1007,7 @@ impl MixedSerializationGraph {
     }
 }
 
-unsafe fn spin(prv: u64, lsn: &AtomicU64, this: &Node) {
+unsafe fn spin(prv: u64, lsn: &AtomicU64, _this: &Node) {
     let mut i = 0;
     let mut attempts = 0;
     while lsn.load(Ordering::Relaxed) != prv {
