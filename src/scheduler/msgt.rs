@@ -356,8 +356,8 @@ impl MixedSerializationGraph {
                 // }
                 edge_path.push(edge.clone());
                 let id = edge.extract_id() as usize;
-                if visit_path.contains(&id) {
-                    // if id == root_id {
+                // if visit_path.contains(&id) {
+                if id == root_id {
                     visit_path.push(id);
                     drop(g);
                     return true;
