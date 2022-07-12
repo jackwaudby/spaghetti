@@ -313,7 +313,7 @@ impl MixedSerializationGraph {
                             let id = *node;
                             let cur = unsafe { &*(id as *const Node) };
                             if let IsolationLevel::Serializable = cur.get_isolation_level() {
-                                println!("Abort this guy: {}", id);
+                                println!("Abort this guy: {:x}", id);
                                 break;
                             }
                         }
