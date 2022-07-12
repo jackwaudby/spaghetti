@@ -38,28 +38,41 @@ file = "./data/22_02_03_ycsb_update_rate_1.csv"
 file = "./data/22_02_03_ycsb_contention_1.csv"
 
 # load data
+file = "./results.csv"
 col_names = c("sf","protocol","workload","cores",
-              "theta","serializable_rate","update_rate","relevant_cycle_check",
+              "theta","serializable_rate","update_rate",
+              "relevant_cycle_check",
               "runtime","commits","aborts","not_found",
               "txn_time","commit_time","wait_time","latency")
-
-
-
-file = "./results.csv"
-
 raw = read_csv(file = file, col_names = col_names)
 
+for (i in 1:nrow(raw)) {
+  if (raw[i,8] == TRUE) {
+    raw[i,2] = "msgt-rel"
+  }
+}
 
-workload = str_to_title(raw$workload[1])
-raw$thpt = (raw$commits + raw$not_found) / (raw$runtime / raw$cores / 1000) 
+testrow = raw[10,]
+testrow$commits / (testrow$runtime / 1000)
 
-raw
-
+raw$thpt = ((raw$commits + raw$not_found) / (raw$runtime / 1000)) / 1000000
 raw$abr = raw$aborts / (raw$commits + raw$not_found+ raw$aborts)
 raw$lat = (raw$txn_time + raw$latency) / (raw$commits + raw$not_found)
-raw = raw %>% 
-  mutate(protocol = str_replace(protocol, "msgt-std", "msgt"))
-raw$abr = raw$abr * 100
+
+ggplot(data = raw, 
+       aes(x = serializable_rate, 
+           y = thpt, 
+           group = protocol, 
+           colour = protocol)) +
+  geom_line()
+
+ggplot(data = raw, 
+       aes(x = serializable_rate, 
+           y = abr, 
+           group = protocol, 
+           colour = protocol)) +
+  geom_line()
+ 
 
 #### SCALABILITY ####
 
