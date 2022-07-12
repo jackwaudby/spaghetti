@@ -126,14 +126,14 @@ impl MixedSerializationGraph {
         let mut attempts = 0;
         loop {
             if attempts > ATTEMPTS {
-                // let this_node = unsafe { &*self.get_transaction() };
-                // panic!(
-                //     "{:x} ({}) stuck inserting {:?}. Incoming {:?}",
-                //     this_node.get_id(),
-                //     this_node.get_isolation_level(),
-                //     from,
-                //     this_node.get_incoming(),
-                // );
+                let this_node = unsafe { &*self.get_transaction() };
+                panic!(
+                    "{:x} ({}) stuck inserting {:?}. Incoming {:?}",
+                    this_node.get_id(),
+                    this_node.get_isolation_level(),
+                    from,
+                    this_node.get_incoming(),
+                );
             }
 
             if this_ref.incoming_edge_exists(&from) {
@@ -626,13 +626,13 @@ impl MixedSerializationGraph {
         let mut attempts = 0;
         loop {
             if attempts > ATTEMPTS {
-                // let this_node = unsafe { &*self.get_transaction() };
-                // panic!(
-                //     "{:x} ({}) stuck writing. Incoming {:?}",
-                //     this_node.get_id(),
-                //     this_node.get_isolation_level(),
-                //     this_node.get_incoming(),
-                // );
+                let this_node = unsafe { &*self.get_transaction() };
+                panic!(
+                    "{:x} ({}) stuck writing. Incoming {:?}",
+                    this_node.get_id(),
+                    this_node.get_isolation_level(),
+                    this_node.get_incoming(),
+                );
             }
 
             if self.needs_abort() {
@@ -829,13 +829,13 @@ impl MixedSerializationGraph {
             attempts += 1;
 
             if attempts > ATTEMPTS {
-                // panic!(
-                //     "{:x} ({}) stuck committing. Incoming {:?}. At risk {:?}",
-                //     this_node.get_id(),
-                //     this_node.get_isolation_level(),
-                //     this_node.get_incoming(),
-                //     this_node.is_at_risk()
-                // );
+                panic!(
+                    "{:x} ({}) stuck committing. Incoming {:?}. At risk {:?}",
+                    this_node.get_id(),
+                    this_node.get_isolation_level(),
+                    this_node.get_incoming(),
+                    this_node.is_at_risk()
+                );
             }
         }
 
@@ -1011,7 +1011,7 @@ impl MixedSerializationGraph {
     }
 }
 
-unsafe fn spin(prv: u64, lsn: &AtomicU64, _this: &Node) {
+unsafe fn spin(prv: u64, lsn: &AtomicU64, this: &Node) {
     let mut i = 0;
     let mut attempts = 0;
     while lsn.load(Ordering::Relaxed) != prv {
@@ -1021,12 +1021,12 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64, _this: &Node) {
         }
 
         if attempts > ATTEMPTS {
-            // panic!(
-            //     "{:x} ({}) stuck spinning. Incoming {:?}",
-            //     this.get_id(),
-            //     this.get_isolation_level(),
-            //     this.get_incoming(),
-            // );
+            panic!(
+                "{:x} ({}) stuck spinning. Incoming {:?}",
+                this.get_id(),
+                this.get_isolation_level(),
+                this.get_incoming(),
+            );
         }
 
         attempts += 1;
