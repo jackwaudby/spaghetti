@@ -535,7 +535,7 @@ impl MixedSerializationGraph {
                                     //     }
                                     // }
 
-                                    if self.relevant_cycle_check && (attempts % 100 == 0) {
+                                    if self.relevant_cycle_check && (attempts % 1000 == 0) {
                                         let is_cycle = self.cycle_check_init(this); // cycle check
                                         if is_cycle {
                                             this.set_aborted();
