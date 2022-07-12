@@ -691,10 +691,11 @@ impl MixedSerializationGraph {
 
             if attempts > ATTEMPTS {
                 panic!(
-                    "{:x} ({}) stuck committing. Incoming {:?}",
+                    "{:x} ({}) stuck committing. Incoming {:?}. At risk {:?}",
                     this_node.get_id(),
                     this_node.get_isolation_level(),
                     this_node.get_incoming(),
+                    this_node.is_at_risk()
                 );
             }
         }
