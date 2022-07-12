@@ -407,7 +407,9 @@ impl MixedSerializationGraph {
         let lsn = table.get_lsn(offset);
 
         // Safety: ensures exculsive access to the record.
-        unsafe { spin(prv, lsn) }; // busy wait
+        let this = unsafe { &*self.get_transaction() };
+
+        unsafe { spin(prv, lsn, this) }; // busy wait
 
         // On acquiring the 'lock' on the record can be clean or dirty.
         // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
@@ -492,8 +494,9 @@ impl MixedSerializationGraph {
             }
 
             prv = rw_table.push_front(Access::Write(meta.get_transaction_id())); // get ticket
+            let this = unsafe { &*self.get_transaction() };
 
-            unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
+            unsafe { spin(prv, lsn, this) }; // Safety: ensures exculsive access to the record
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -840,7 +843,7 @@ impl MixedSerializationGraph {
     }
 }
 
-unsafe fn spin(prv: u64, lsn: &AtomicU64) {
+unsafe fn spin(prv: u64, lsn: &AtomicU64, this: &Node) {
     let mut i = 0;
     let mut attempts = 0;
     while lsn.load(Ordering::Relaxed) != prv {
@@ -850,7 +853,12 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64) {
         }
 
         if attempts > ATTEMPTS {
-            panic!("stuck spinning");
+            panic!(
+                "{:x} ({}) stuck spinning. Incoming {:?}",
+                this.get_id(),
+                this.get_isolation_level(),
+                this.get_incoming(),
+            );
         }
 
         attempts += 1;
