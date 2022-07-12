@@ -183,13 +183,13 @@ impl MixedSerializationGraph {
 
             // if edge is rw and from is not PL-3 then set at risk
             if rw {
-                let from_iso = from_ref.get_isolation_level();
-                match from_iso {
-                    IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
-                        from_ref.set_at_risk();
-                    }
-                    IsolationLevel::Serializable => {}
-                }
+                // let from_iso = from_ref.get_isolation_level();
+                // match from_iso {
+                //     IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
+                from_ref.set_at_risk();
+                //     }
+                //     IsolationLevel::Serializable => {}
+                // }
             }
 
             from_ref.insert_outgoing(out_edge); // (from)
