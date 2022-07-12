@@ -521,6 +521,16 @@ impl MixedSerializationGraph {
                                     }
 
                                     wait = true; // retry operation
+                                    if self.relevant_cycle_check {
+                                        let this_node = unsafe { &*self.get_transaction() };
+
+                                        if this_node.has_incoming_weaker() {
+                                            let is_cycle = self.cycle_check_init(this_node);
+                                            if is_cycle {
+                                                this_node.set_aborted();
+                                            }
+                                        }
+                                    }
                                     break;
                                 }
                             }
