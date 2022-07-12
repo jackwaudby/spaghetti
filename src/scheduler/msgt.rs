@@ -330,29 +330,32 @@ impl MixedSerializationGraph {
                 IsolationLevel::ReadUncommitted => match cycle_type {
                     // s aborts
                     Cycle::G2 => {
-                        // for node in &*visit_path {
-                        //     let id = *node;
-                        //     let cur = unsafe { &*(id as *const Node) };
-                        //     if let IsolationLevel::Serializable = cur.get_isolation_level() {
-                        //         cur.set_cascading_abort();
-                        //         break;
-                        //     }
-                        // }
+                        for node in &*visit_path {
+                            let id = *node;
+                            let cur = unsafe { &*(id as *const Node) };
+                            if let IsolationLevel::Serializable = cur.get_isolation_level() {
+                                cur.set_cascading_abort();
+                                check = false;
+                                break;
+                            }
+                        }
                     }
                     // s or rc aborts
                     Cycle::G1c => {
-                        // for node in &*visit_path {
-                        //     let id = *node;
-                        //     let cur = unsafe { &*(id as *const Node) };
+                        for node in &*visit_path {
+                            let id = *node;
+                            let cur = unsafe { &*(id as *const Node) };
 
-                        //     match cur.get_isolation_level() {
-                        //         IsolationLevel::ReadUncommitted => {}
-                        //         IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
-                        //             cur.set_cascading_abort();
-                        //             break;
-                        //         }
-                        //     }
-                        // }
+                            match cur.get_isolation_level() {
+                                IsolationLevel::ReadUncommitted => {}
+                                IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
+                                    cur.set_cascading_abort();
+                                    check = false;
+
+                                    break;
+                                }
+                            }
+                        }
                     }
                     Cycle::G0 => {}
                 },
