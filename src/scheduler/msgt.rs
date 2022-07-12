@@ -538,6 +538,15 @@ impl MixedSerializationGraph {
                                                  // if self.relevant_cycle_check {
                                                  //     let this_node = unsafe { &*self.get_transaction() };
 
+                                    if self.relevant_cycle_check {
+                                        if this.is_at_risk() {
+                                            let is_cycle = self.cycle_check_init(this);
+                                            if is_cycle {
+                                                this.set_aborted();
+                                            }
+                                        }
+                                    }
+
                                     //     if this_node.has_incoming_weaker() {
                                     //         let is_cycle = self.cycle_check_init(this_node);
                                     //         if is_cycle {
