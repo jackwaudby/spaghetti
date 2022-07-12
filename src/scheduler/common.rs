@@ -440,35 +440,35 @@ impl MsgNode {
                     for edge in &*guard {
                         let from_ref = unsafe { &*(edge.extract_id() as *const MsgNode) };
                         let from_iso = from_ref.get_isolation_level();
-                        let committing = from_ref.is_in_commit_phase();
-                        if committing {
-                            match self.get_isolation_level() {
-                                IsolationLevel::Serializable => match from_iso {
-                                    IsolationLevel::Serializable => {}
-                                    IsolationLevel::ReadCommitted => {
-                                        drop(guard);
-                                        return true;
-                                    }
-                                    IsolationLevel::ReadUncommitted => {
-                                        drop(guard);
-                                        return true;
-                                    }
-                                },
-                                IsolationLevel::ReadCommitted => match from_iso {
-                                    IsolationLevel::Serializable => {}
-                                    IsolationLevel::ReadCommitted => {}
-                                    IsolationLevel::ReadUncommitted => {
-                                        drop(guard);
-                                        return true;
-                                    }
-                                },
-                                IsolationLevel::ReadUncommitted => match from_iso {
-                                    IsolationLevel::Serializable => {}
-                                    IsolationLevel::ReadCommitted => {}
-                                    IsolationLevel::ReadUncommitted => {}
-                                },
-                            }
+                        // let committing = from_ref.is_in_commit_phase();
+                        // if committing {
+                        match self.get_isolation_level() {
+                            IsolationLevel::Serializable => match from_iso {
+                                IsolationLevel::Serializable => {}
+                                IsolationLevel::ReadCommitted => {
+                                    drop(guard);
+                                    return true;
+                                }
+                                IsolationLevel::ReadUncommitted => {
+                                    drop(guard);
+                                    return true;
+                                }
+                            },
+                            IsolationLevel::ReadCommitted => match from_iso {
+                                IsolationLevel::Serializable => {}
+                                IsolationLevel::ReadCommitted => {}
+                                IsolationLevel::ReadUncommitted => {
+                                    drop(guard);
+                                    return true;
+                                }
+                            },
+                            IsolationLevel::ReadUncommitted => match from_iso {
+                                IsolationLevel::Serializable => {}
+                                IsolationLevel::ReadCommitted => {}
+                                IsolationLevel::ReadUncommitted => {}
+                            },
                         }
+                        // }
                     }
 
                     drop(guard);
