@@ -535,12 +535,12 @@ impl MixedSerializationGraph {
                                     //     }
                                     // }
 
-                                    if self.relevant_cycle_check && (attempts % 1000 == 0) {
-                                        let is_cycle = self.cycle_check_init(this); // cycle check
-                                        if is_cycle {
-                                            this.set_aborted();
-                                        }
-                                    }
+                                    // if self.relevant_cycle_check && (attempts % 1000 == 0) {
+                                    //     let is_cycle = self.cycle_check_init(this); // cycle check
+                                    //     if is_cycle {
+                                    //         this.set_aborted();
+                                    //     }
+                                    // }
                                     break;
                                 }
                             }
@@ -659,12 +659,12 @@ impl MixedSerializationGraph {
                 //     }
                 // }
 
-                if self.relevant_cycle_check && (attempts % 10000 == 0) {
-                    let is_cycle = self.cycle_check_init(this_node);
-                    if is_cycle {
-                        this_node.set_aborted();
-                    }
-                }
+                // if self.relevant_cycle_check && (attempts % 10000 == 0) {
+                //     let is_cycle = self.cycle_check_init(this_node);
+                //     if is_cycle {
+                //         this_node.set_aborted();
+                //     }
+                // }
             }
 
             attempts += 1;
