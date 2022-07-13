@@ -398,14 +398,14 @@ impl MixedSerializationGraph {
                 //     visit_path.contains(&id)
                 // };
 
-                // if visit_path.contains(&id) {
-                if id == root_id {
+                if visit_path.contains(&id) {
+                    // if id == root_id {
                     // if f {
                     visit_path.push(id);
                     drop(g);
                     return true;
-                } else if visited.contains(&id) {
-                    // skip
+                // } else if visited.contains(&id) {
+                // skip
                 } else {
                     if self.check_cycle_naive(id, root_lvl, visited, visit_path, edge_path, root_id)
                     {
