@@ -179,34 +179,34 @@ impl MixedSerializationGraph {
                         if is_g0_cycle || is_g1_cycle {
                             return false; // abort self
                         } else {
-                            // from_ref.set_cascading_abort();
+                            from_ref.set_cascading_abort();
 
-                            for node_id in &memb {
-                                if *node_id != this_ref.get_id() {
-                                    let cur = unsafe { &*(*node_id as *const Node) };
-                                    match cur.get_isolation_level() {
-                                        IsolationLevel::Serializable => {
-                                            cur.set_cascading_abort();
+                            // for node_id in &memb {
+                            //     if *node_id != this_ref.get_id() {
+                            //         let cur = unsafe { &*(*node_id as *const Node) };
+                            //         match cur.get_isolation_level() {
+                            //             IsolationLevel::Serializable => {
+                            //                 cur.set_cascading_abort();
 
-                                            let tj_in_cycle = memb.contains(&from_ref.get_id());
-                                            if !tj_in_cycle {
-                                                println!(
-                                                "I'm {} aborting: {}. The edge is {:?}. The node path is {:?}, Tj in path: {}, Edge path: {:?}",
-                                                this_ref.get_id(),
-                                                cur.get_id(),
-                                                from,
-                                                memb,
-                                                tj_in_cycle, 
-                                                edgepath
-                                            );
-                                            }
-                                            break;
-                                        }
-                                        IsolationLevel::ReadUncommitted
-                                        | IsolationLevel::ReadCommitted => {}
-                                    }
-                                }
-                            }
+                            //                 let tj_in_cycle = memb.contains(&from_ref.get_id());
+                            //                 if !tj_in_cycle {
+                            //                     println!(
+                            //                     "I'm {} aborting: {}. The edge is {:?}. The node path is {:?}, Tj in path: {}, Edge path: {:?}",
+                            //                     this_ref.get_id(),
+                            //                     cur.get_id(),
+                            //                     from,
+                            //                     memb,
+                            //                     tj_in_cycle,
+                            //                     edgepath
+                            //                 );
+                            //                 }
+                            //                 break;
+                            //             }
+                            //             IsolationLevel::ReadUncommitted
+                            //             | IsolationLevel::ReadCommitted => {}
+                            //         }
+                            //     }
+                            // }
                         }
                     } else {
                         return false;
