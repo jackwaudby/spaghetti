@@ -175,44 +175,70 @@ impl MixedSerializationGraph {
                 let is_cycle = is_g0_cycle || is_g1_cycle || is_g2_cycle;
 
                 if is_cycle {
-                    if let IsolationLevel::ReadCommitted = this_ref.get_isolation_level() {
-                        if is_g0_cycle || is_g1_cycle {
-                            return false; // abort self
-                        } else {
-                            from_ref.set_cascading_abort();
-
-                            // for node_id in &memb {
-                            //     if *node_id != this_ref.get_id() {
-                            //         let cur = unsafe { &*(*node_id as *const Node) };
-                            //         match cur.get_isolation_level() {
-                            //             IsolationLevel::Serializable => {
-                            //                 cur.set_cascading_abort();
-
-                            //                 let tj_in_cycle = memb.contains(&from_ref.get_id());
-                            //                 if !tj_in_cycle {
-                            //                     println!(
-                            //                     "I'm {} aborting: {}. The edge is {:?}. The node path is {:?}, Tj in path: {}, Edge path: {:?}",
-                            //                     this_ref.get_id(),
-                            //                     cur.get_id(),
-                            //                     from,
-                            //                     memb,
-                            //                     tj_in_cycle,
-                            //                     edgepath
-                            //                 );
-                            //                 }
-                            //                 break;
-                            //             }
-                            //             IsolationLevel::ReadUncommitted
-                            //             | IsolationLevel::ReadCommitted => {}
-                            //         }
-                            //     }
-                            // }
-                        }
-                    } else {
-                        return false;
+                    if is_g0_cycle {
+                        return false; // abort this
                     }
+
+                    if is_g1_cycle {
+                        match this_ref.get_isolation_level() {
+                            IsolationLevel::ReadUncommitted => {
+                                from_ref.set_cascading_abort();
+                                return true; // abort that
+                            }
+                            IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
+                                return false; // abort this
+                            }
+                        }
+                    }
+
+                    if is_g2_cycle {
+                        match this_ref.get_isolation_level() {
+                            IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
+                                from_ref.set_cascading_abort();
+                                return true; // abort that
+                            }
+                            IsolationLevel::Serializable => {
+                                return false; // abort this
+                            }
+                        }
+                    }
+
+                    // if let IsolationLevel::ReadCommitted = this_ref.get_isolation_level() {
+                    //     if is_g0_cycle || is_g1_cycle {
+                    //         return false; // abort self
+                    //     } else {
+                    //         from_ref.set_cascading_abort();
+
+                    // for node_id in &memb {
+                    //     if *node_id != this_ref.get_id() {
+                    //         let cur = unsafe { &*(*node_id as *const Node) };
+                    //         match cur.get_isolation_level() {
+                    //             IsolationLevel::Serializable => {
+                    //                 cur.set_cascading_abort();
+
+                    //                 let tj_in_cycle = memb.contains(&from_ref.get_id());
+                    //                 if !tj_in_cycle {
+                    //                     println!(
+                    //                     "I'm {} aborting: {}. The edge is {:?}. The node path is {:?}, Tj in path: {}, Edge path: {:?}",
+                    //                     this_ref.get_id(),
+                    //                     cur.get_id(),
+                    //                     from,
+                    //                     memb,
+                    //                     tj_in_cycle,
+                    //                     edgepath
+                    //                 );
+                    //                 }
+                    //                 break;
+                    //             }
+                    //             IsolationLevel::ReadUncommitted
+                    //             | IsolationLevel::ReadCommitted => {}
+                    //         }
+                    //     }
+                    // }
+                    // }
+                } else {
+                    return true; // no cycle
                 }
-                return true; // if no cycle or if aborted else
 
             // return self.complex(this_ref, &from);
             } else {
@@ -222,144 +248,144 @@ impl MixedSerializationGraph {
         }
     }
 
-    // fn complex(&self, this_ref: &Node, from: &Edge) -> bool {
-    //     let this_node_isolation_level = this_ref.get_isolation_level();
-    //     match *from {
-    //         Edge::WriteWrite(_) => {
-    //             let is_g0_cycle = self.g0_cycle_check_init(this_ref);
-    //             if is_g0_cycle {
-    //                 return false; // this abort this node
-    //             }
+    fn complex(&self, this_ref: &Node, from: &Edge) -> bool {
+        let this_node_isolation_level = this_ref.get_isolation_level();
+        match *from {
+            Edge::WriteWrite(_) => {
+                let is_g0_cycle = self.g0_cycle_check_init(this_ref);
+                if is_g0_cycle {
+                    return false; // this abort this node
+                }
 
-    //             let (is_g1_cycle, visit_path) = self.g1_cycle_check_init(this_ref);
-    //             if is_g1_cycle {
-    //                 match this_node_isolation_level {
-    //                     IsolationLevel::ReadUncommitted => {
-    //                         // abort first PL2/3
-    //                         for node_id in visit_path {
-    //                             let cur = unsafe { &*(node_id as *const Node) };
-    //                             match cur.get_isolation_level() {
-    //                                 IsolationLevel::Serializable
-    //                                 | IsolationLevel::ReadCommitted => {
-    //                                     cur.set_cascading_abort();
-    //                                     break;
-    //                                 }
-    //                                 IsolationLevel::ReadUncommitted => {}
-    //                             }
-    //                         }
-    //                         return true;
-    //                     }
-    //                     IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
-    //                         // abort this node
-    //                         return false;
-    //                     }
-    //                 }
-    //             }
+                let (is_g1_cycle, visit_path) = self.g1_cycle_check_init(this_ref);
+                if is_g1_cycle {
+                    match this_node_isolation_level {
+                        IsolationLevel::ReadUncommitted => {
+                            // abort first PL2/3
+                            for node_id in visit_path {
+                                let cur = unsafe { &*(node_id as *const Node) };
+                                match cur.get_isolation_level() {
+                                    IsolationLevel::Serializable
+                                    | IsolationLevel::ReadCommitted => {
+                                        cur.set_cascading_abort();
+                                        break;
+                                    }
+                                    IsolationLevel::ReadUncommitted => {}
+                                }
+                            }
+                            return true;
+                        }
+                        IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
+                            // abort this node
+                            return false;
+                        }
+                    }
+                }
 
-    //             let (is_g2_cycle, visit_path) = self.cycle_check_init(this_ref);
-    //             if is_g2_cycle {
-    //                 match this_node_isolation_level {
-    //                     IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
-    //                         // abort first PL-3
-    //                         for node_id in visit_path {
-    //                             let cur = unsafe { &*(node_id as *const Node) };
-    //                             match cur.get_isolation_level() {
-    //                                 IsolationLevel::Serializable => {
-    //                                     cur.set_cascading_abort();
-    //                                     break;
-    //                                 }
-    //                                 IsolationLevel::ReadUncommitted
-    //                                 | IsolationLevel::ReadCommitted => {}
-    //                             }
-    //                         }
-    //                         return true;
-    //                     }
-    //                     IsolationLevel::Serializable => {
-    //                         // abort this node
-    //                         return false;
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         Edge::WriteRead(_) => {
-    //             // can't introduce a relevant cycle (g0)
-    //             let (is_g1_cycle, visit_path) = self.g1_cycle_check_init(this_ref);
-    //             if is_g1_cycle {
-    //                 match this_node_isolation_level {
-    //                     IsolationLevel::ReadUncommitted => {
-    //                         // abort first PL2/3
-    //                         for node_id in visit_path {
-    //                             let cur = unsafe { &*(node_id as *const Node) };
-    //                             match cur.get_isolation_level() {
-    //                                 IsolationLevel::Serializable
-    //                                 | IsolationLevel::ReadCommitted => {
-    //                                     cur.set_cascading_abort();
-    //                                     break;
-    //                                 }
-    //                                 IsolationLevel::ReadUncommitted => {}
-    //                             }
-    //                         }
-    //                         return true;
-    //                     }
-    //                     IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
-    //                         // abort this node
-    //                         return false;
-    //                     }
-    //                 }
-    //             }
+                let (is_g2_cycle, visit_path) = self.cycle_check_init(this_ref);
+                if is_g2_cycle {
+                    match this_node_isolation_level {
+                        IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
+                            // abort first PL-3
+                            for node_id in visit_path {
+                                let cur = unsafe { &*(node_id as *const Node) };
+                                match cur.get_isolation_level() {
+                                    IsolationLevel::Serializable => {
+                                        cur.set_cascading_abort();
+                                        break;
+                                    }
+                                    IsolationLevel::ReadUncommitted
+                                    | IsolationLevel::ReadCommitted => {}
+                                }
+                            }
+                            return true;
+                        }
+                        IsolationLevel::Serializable => {
+                            // abort this node
+                            return false;
+                        }
+                    }
+                }
+            }
+            Edge::WriteRead(_) => {
+                // can't introduce a relevant cycle (g0)
+                let (is_g1_cycle, visit_path) = self.g1_cycle_check_init(this_ref);
+                if is_g1_cycle {
+                    match this_node_isolation_level {
+                        IsolationLevel::ReadUncommitted => {
+                            // abort first PL2/3
+                            for node_id in visit_path {
+                                let cur = unsafe { &*(node_id as *const Node) };
+                                match cur.get_isolation_level() {
+                                    IsolationLevel::Serializable
+                                    | IsolationLevel::ReadCommitted => {
+                                        cur.set_cascading_abort();
+                                        break;
+                                    }
+                                    IsolationLevel::ReadUncommitted => {}
+                                }
+                            }
+                            return true;
+                        }
+                        IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
+                            // abort this node
+                            return false;
+                        }
+                    }
+                }
 
-    //             let (is_g2_cycle, visit_path) = self.cycle_check_init(this_ref);
-    //             if is_g2_cycle {
-    //                 match this_node_isolation_level {
-    //                     IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
-    //                         // abort first PL-3
-    //                         for node_id in visit_path {
-    //                             let cur = unsafe { &*(node_id as *const Node) };
-    //                             match cur.get_isolation_level() {
-    //                                 IsolationLevel::Serializable => {
-    //                                     cur.set_cascading_abort();
-    //                                     break;
-    //                                 }
-    //                                 IsolationLevel::ReadUncommitted
-    //                                 | IsolationLevel::ReadCommitted => {}
-    //                             }
-    //                         }
-    //                         return true;
-    //                     }
-    //                     IsolationLevel::Serializable => {
-    //                         // abort this node
-    //                         return false;
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //         Edge::ReadWrite(_) => {
-    //             let (is_g2_cycle, visit_path) = self.cycle_check_init(this_ref);
-    //             if is_g2_cycle {
-    //                 match this_node_isolation_level {
-    //                     IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
-    //                         // abort first PL-3
-    //                         for node_id in visit_path {
-    //                             let cur = unsafe { &*(node_id as *const Node) };
-    //                             match cur.get_isolation_level() {
-    //                                 IsolationLevel::Serializable => {
-    //                                     cur.set_cascading_abort();
-    //                                     break;
-    //                                 }
-    //                                 IsolationLevel::ReadUncommitted
-    //                                 | IsolationLevel::ReadCommitted => {}
-    //                             }
-    //                         }
-    //                     }
-    //                     IsolationLevel::Serializable => {
-    //                         // abort this node
-    //                         return false;
-    //                     }
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
+                let (is_g2_cycle, visit_path) = self.cycle_check_init(this_ref);
+                if is_g2_cycle {
+                    match this_node_isolation_level {
+                        IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
+                            // abort first PL-3
+                            for node_id in visit_path {
+                                let cur = unsafe { &*(node_id as *const Node) };
+                                match cur.get_isolation_level() {
+                                    IsolationLevel::Serializable => {
+                                        cur.set_cascading_abort();
+                                        break;
+                                    }
+                                    IsolationLevel::ReadUncommitted
+                                    | IsolationLevel::ReadCommitted => {}
+                                }
+                            }
+                            return true;
+                        }
+                        IsolationLevel::Serializable => {
+                            // abort this node
+                            return false;
+                        }
+                    }
+                }
+            }
+            Edge::ReadWrite(_) => {
+                let (is_g2_cycle, visit_path) = self.cycle_check_init(this_ref);
+                if is_g2_cycle {
+                    match this_node_isolation_level {
+                        IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
+                            // abort first PL-3
+                            for node_id in visit_path {
+                                let cur = unsafe { &*(node_id as *const Node) };
+                                match cur.get_isolation_level() {
+                                    IsolationLevel::Serializable => {
+                                        cur.set_cascading_abort();
+                                        break;
+                                    }
+                                    IsolationLevel::ReadUncommitted
+                                    | IsolationLevel::ReadCommitted => {}
+                                }
+                            }
+                        }
+                        IsolationLevel::Serializable => {
+                            // abort this node
+                            return false;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     fn get_visited(&self) -> RefMut<FxHashSet<usize>> {
         self.visited
