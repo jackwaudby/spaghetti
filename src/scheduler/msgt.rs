@@ -168,7 +168,13 @@ impl MixedSerializationGraph {
             drop(from_rlock);
 
             if self.relevant_cycle_check {
-                let is_g0_cycle = self.g0_cycle_check_init(this_ref);
+                let is_g0_cycle = if let Edge::WriteWrite(_) = from.clone() {
+                    self.g0_cycle_check_init(this_ref)
+                } else {
+                    false
+                };
+
+                // let is_g0_cycle = self.g0_cycle_check_init(this_ref);
                 let (is_g1_cycle, _) = self.g1_cycle_check_init(this_ref);
                 let (is_g2_cycle, memb, edgepath) = self.cycle_check_init(this_ref);
 
