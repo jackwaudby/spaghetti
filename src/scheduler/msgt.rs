@@ -188,7 +188,7 @@ impl MixedSerializationGraph {
                                         IsolationLevel::Serializable => {
                                             cur.set_cascading_abort();
                                             println!(
-                                                "I'm {:x} aborting: {:x}. The edge is {:?}. The path is {:?}",
+                                                "I'm {} aborting: {}. The edge is {:?}. The path is {:?}",
                                                 this_ref.get_id(),
                                                 cur.get_id(),
                                                 from,
@@ -959,7 +959,7 @@ impl MixedSerializationGraph {
 
             if attempts > ATTEMPTS {
                 panic!(
-                    "{:x} ({}) stuck committing. Incoming {:?}. Cascading {:?}",
+                    "{} ({}) stuck committing. Incoming {:?}. Cascading {:?}",
                     this_node.get_id(),
                     this_node.get_isolation_level(),
                     this_node.get_incoming(),
