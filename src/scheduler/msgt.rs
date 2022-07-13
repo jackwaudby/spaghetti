@@ -168,15 +168,31 @@ impl MixedSerializationGraph {
             drop(from_rlock);
 
             if self.relevant_cycle_check {
-                let is_g0_cycle = if let Edge::WriteWrite(_) = from.clone() {
-                    self.g0_cycle_check_init(this_ref)
-                } else {
-                    false
+                let (is_g0_cycle, is_g1_cycle, is_g2_cycle) = match from.clone() {
+                    // inserting a ww can cause any cycle
+                    Edge::WriteWrite(_) => {
+                        let g0 = self.g0_cycle_check_init(this_ref);
+                        let (g1, _) = self.g1_cycle_check_init(this_ref);
+                        let (g2, _, _) = self.cycle_check_init(this_ref);
+                        (g0, g1, g2)
+                    }
+                    // inserting a wr can cause G1 or G2
+                    Edge::WriteRead(_) => {
+                        let (g1, _) = self.g1_cycle_check_init(this_ref);
+                        let (g2, _, _) = self.cycle_check_init(this_ref);
+                        (false, g1, g2)
+                    }
+                    // inserting a rw can cause G2
+                    Edge::ReadWrite(_) => {
+                        let (g2, _, _) = self.cycle_check_init(this_ref);
+                        (false, false, g2)
+                    }
                 };
 
+                // do it for everyone
                 // let is_g0_cycle = self.g0_cycle_check_init(this_ref);
-                let (is_g1_cycle, _) = self.g1_cycle_check_init(this_ref);
-                let (is_g2_cycle, memb, edgepath) = self.cycle_check_init(this_ref);
+                // let (is_g1_cycle, _) = self.g1_cycle_check_init(this_ref);
+                // let (is_g2_cycle, memb, edgepath) = self.cycle_check_init(this_ref);
 
                 let is_cycle = is_g0_cycle || is_g1_cycle || is_g2_cycle;
 
