@@ -170,15 +170,34 @@ impl MixedSerializationGraph {
             if self.relevant_cycle_check {
                 let is_g0_cycle = self.g0_cycle_check_init(this_ref);
                 let (is_g1_cycle, _) = self.g1_cycle_check_init(this_ref);
-                let (is_g2_cycle, _memb) = self.cycle_check_init(this_ref);
+                let (is_g2_cycle, memb) = self.cycle_check_init(this_ref);
 
-                // if let IsolationLevel::ReadCommitted = this_ref.get_isolation_level() {
+                let is_cycle = is_g0_cycle || is_g1_cycle || is_g2_cycle;
 
-                // }
+                if is_cycle {
+                    if let IsolationLevel::ReadCommitted = this_ref.get_isolation_level() {
+                        if is_g0_cycle || is_g1_cycle {
+                            return false; // abort self
+                        } else {
+                            for node_id in memb {
+                                if node_id != this_ref.get_id() {
+                                    let cur = unsafe { &*(node_id as *const Node) };
+                                    match cur.get_isolation_level() {
+                                        IsolationLevel::Serializable => {
+                                            cur.set_cascading_abort();
+                                            break;
+                                        }
+                                        IsolationLevel::ReadUncommitted
+                                        | IsolationLevel::ReadCommitted => {}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                return true; // if no cycle or if aborted else
 
-                return !(is_g0_cycle || is_g1_cycle || is_g2_cycle);
-
-                // return self.complex(this_ref, &from);
+            // return self.complex(this_ref, &from);
             } else {
                 let (is_cycle, _) = self.cycle_check_init(this_ref);
                 return !is_cycle; // false equals cycle so flip
