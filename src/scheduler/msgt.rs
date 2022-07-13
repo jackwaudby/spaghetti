@@ -15,12 +15,13 @@ use core::panic;
 use crossbeam_epoch::{self as epoch, Guard};
 use parking_lot::Mutex;
 use rustc_hash::FxHashSet;
+use std::borrow::BorrowMut;
 use std::cell::{RefCell, RefMut};
 use std::sync::atomic::{AtomicU64, Ordering};
 use thread_local::ThreadLocal;
 use tracing::info;
 
-static ATTEMPTS: u64 = 100000000;
+static ATTEMPTS: u64 = 1000000;
 
 enum Cycle {
     G0,
@@ -137,33 +138,6 @@ impl MixedSerializationGraph {
             }
 
             if this_ref.incoming_edge_exists(&from) {
-                // if self.relevant_cycle_check {
-                //     if this_ref.get_isolation_level() == IsolationLevel::Serializable {
-                //         let from_ref = unsafe { &*(from_id as *const Node) };
-                //         let from_iso = from_ref.get_isolation_level();
-
-                //         match from_iso {
-                //             IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
-                //                 let is_cycle = self.cycle_check_init(this_ref); // cycle check
-                //                 if is_cycle {
-                //                     return false;
-                //                 }
-                //             }
-                //             IsolationLevel::Serializable => return true,
-                //         }
-                //     }
-                // } else {
-                //     return true;
-                // }
-
-                // need to do another check
-                // if self.relevant_cycle_check && (attempts % 100 == 0) {
-                //     let is_cycle = self.cycle_check_init(this_ref); // cycle check
-                //     if is_cycle {
-                //         return false;
-                //     }
-                // }
-
                 return true;
             };
 
@@ -189,25 +163,150 @@ impl MixedSerializationGraph {
                 continue;
             }
 
-            // Tj -> Ti
-            // If Tj is PL-3 and Ti is PL-1/2
-
-            // if rw {
-            // match this_ref.get_isolation_level() {
-            //     IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted => {
-            // from_ref.set_at_risk();
-            //     }
-            //     IsolationLevel::Serializable => {}
-            // }
-            // }
-
-            from_ref.insert_outgoing(out_edge); // (from)
-            this_ref.insert_incoming(from); // (to)
+            from_ref.insert_outgoing(out_edge.clone()); // (from)
+            this_ref.insert_incoming(from.clone()); // (to)
             drop(from_rlock);
 
-            let is_cycle = self.cycle_check_init(this_ref); // cycle check
+            let this_node_isolation_level = this_ref.get_isolation_level();
+            match from {
+                Edge::WriteWrite(_) => {
+                    let is_g0_cycle = self.g0_cycle_check_init(this_ref);
+                    if is_g0_cycle {
+                        return false; // this abort this node
+                    }
 
-            return !is_cycle;
+                    let (is_g1_cycle, visit_path) = self.g1_cycle_check_init(this_ref);
+                    if is_g1_cycle {
+                        match this_node_isolation_level {
+                            IsolationLevel::ReadUncommitted => {
+                                // abort first PL2/3
+                                for node_id in visit_path {
+                                    let cur = unsafe { &*(node_id as *const Node) };
+                                    match cur.get_isolation_level() {
+                                        IsolationLevel::Serializable
+                                        | IsolationLevel::ReadCommitted => {
+                                            cur.set_cascading_abort();
+                                            break;
+                                        }
+                                        IsolationLevel::ReadUncommitted => {}
+                                    }
+                                }
+                                return true;
+                            }
+                            IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
+                                // abort this node
+                                return false;
+                            }
+                        }
+                    }
+
+                    let (is_g2_cycle, visit_path) = self.cycle_check_init(this_ref);
+                    if is_g2_cycle {
+                        match this_node_isolation_level {
+                            IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
+                                // abort first PL-3
+                                for node_id in visit_path {
+                                    let cur = unsafe { &*(node_id as *const Node) };
+                                    match cur.get_isolation_level() {
+                                        IsolationLevel::Serializable => {
+                                            cur.set_cascading_abort();
+                                            break;
+                                        }
+                                        IsolationLevel::ReadUncommitted
+                                        | IsolationLevel::ReadCommitted => {}
+                                    }
+                                }
+                                return true;
+                            }
+                            IsolationLevel::Serializable => {
+                                // abort this node
+                                return false;
+                            }
+                        }
+                    }
+                }
+                Edge::WriteRead(_) => {
+                    // can't introduce a relevant cycle (g0)
+                    let (is_g1_cycle, visit_path) = self.g1_cycle_check_init(this_ref);
+                    if is_g1_cycle {
+                        match this_node_isolation_level {
+                            IsolationLevel::ReadUncommitted => {
+                                // abort first PL2/3
+                                for node_id in visit_path {
+                                    let cur = unsafe { &*(node_id as *const Node) };
+                                    match cur.get_isolation_level() {
+                                        IsolationLevel::Serializable
+                                        | IsolationLevel::ReadCommitted => {
+                                            cur.set_cascading_abort();
+                                            break;
+                                        }
+                                        IsolationLevel::ReadUncommitted => {}
+                                    }
+                                }
+                                return true;
+                            }
+                            IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
+                                // abort this node
+                                return false;
+                            }
+                        }
+                    }
+
+                    let (is_g2_cycle, visit_path) = self.cycle_check_init(this_ref);
+                    if is_g2_cycle {
+                        match this_node_isolation_level {
+                            IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
+                                // abort first PL-3
+                                for node_id in visit_path {
+                                    let cur = unsafe { &*(node_id as *const Node) };
+                                    match cur.get_isolation_level() {
+                                        IsolationLevel::Serializable => {
+                                            cur.set_cascading_abort();
+                                            break;
+                                        }
+                                        IsolationLevel::ReadUncommitted
+                                        | IsolationLevel::ReadCommitted => {}
+                                    }
+                                }
+                                return true;
+                            }
+                            IsolationLevel::Serializable => {
+                                // abort this node
+                                return false;
+                            }
+                        }
+                    }
+                }
+                Edge::ReadWrite(_) => {
+                    let (is_g2_cycle, visit_path) = self.cycle_check_init(this_ref);
+                    if is_g2_cycle {
+                        match this_node_isolation_level {
+                            IsolationLevel::ReadUncommitted | IsolationLevel::ReadCommitted => {
+                                // abort first PL-3
+                                for node_id in visit_path {
+                                    let cur = unsafe { &*(node_id as *const Node) };
+                                    match cur.get_isolation_level() {
+                                        IsolationLevel::Serializable => {
+                                            cur.set_cascading_abort();
+                                            break;
+                                        }
+                                        IsolationLevel::ReadUncommitted
+                                        | IsolationLevel::ReadCommitted => {}
+                                    }
+                                }
+                            }
+                            IsolationLevel::Serializable => {
+                                // abort this node
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // let is_cycle = self.cycle_check_init(this_ref); // cycle check
+
+            // return !is_cycle;
         }
     }
 
@@ -229,7 +328,176 @@ impl MixedSerializationGraph {
             .borrow_mut()
     }
 
-    fn cycle_check_init(&self, this_node: &Node) -> bool {
+    // A transaction can only introduce a G0 anomaly by inserting a WW edge.
+    fn g0_cycle_check_init(&self, this_node: &Node) -> bool {
+        let mut visited = self.get_visited();
+        let mut visit_path = self.get_visit_path();
+        let mut edge_path = self.get_edge_path();
+
+        let root_id = this_node.get_id();
+
+        visited.clear();
+        visit_path.clear();
+        edge_path.clear();
+
+        let mut check = false;
+        if !visited.contains(&root_id) {
+            check = self.g0_cycle_check_naive(
+                root_id,
+                &mut visited,
+                &mut visit_path,
+                &mut edge_path,
+                root_id,
+            );
+        }
+
+        return check;
+    }
+
+    fn g0_cycle_check_naive(
+        &self,
+        cur: usize,
+        visited: &mut RefMut<FxHashSet<usize>>,
+        visit_path: &mut RefMut<Vec<usize>>,
+        edge_path: &mut RefMut<Vec<Edge>>,
+        root_id: usize,
+    ) -> bool {
+        visited.insert(cur);
+        visit_path.push(cur);
+
+        let cur = unsafe { &*(cur as *const Node) };
+        let g = cur.read();
+        if !cur.is_cleaned() {
+            let incoming = cur.get_incoming();
+            for edge in incoming {
+                // only traverse WW/WR edges
+
+                let traverse = match edge {
+                    Edge::WriteWrite(_) => true,
+                    Edge::WriteRead(_) => false,
+                    Edge::ReadWrite(_) => false,
+                };
+
+                if traverse {
+                    let id = edge.extract_id() as usize;
+
+                    edge_path.push(edge.clone());
+
+                    // if back to root then a WW cycle has been found
+                    if id == root_id {
+                        visit_path.push(id);
+                        drop(g);
+                        return true;
+                    } else if !visited.contains(&id) {
+                        // if not yet visited go to the next node
+                        if self.g0_cycle_check_naive(id, visited, visit_path, edge_path, root_id) {
+                            drop(g);
+                            return true;
+                        }
+                    }
+
+                    // if already visited need to remove the edge from the path (it is last added)
+                    let path_len = edge_path.len();
+                    edge_path.remove(path_len - 1);
+                }
+            }
+        }
+
+        // no more nodes to visit
+        drop(g);
+        let cur = cur.get_id() as usize;
+        // not on visit path
+        let index = visit_path.iter().position(|x| *x == cur).unwrap();
+        visit_path.remove(index);
+
+        return false;
+    }
+
+    fn g1_cycle_check_init(&self, this_node: &Node) -> (bool, Vec<usize>) {
+        let mut visited = self.get_visited();
+        let mut visit_path = self.get_visit_path();
+        let mut edge_path = self.get_edge_path();
+
+        let root_id = this_node.get_id();
+
+        visited.clear();
+        visit_path.clear();
+        edge_path.clear();
+
+        let mut check = false;
+        if !visited.contains(&root_id) {
+            check = self.g1_cycle_check_naive(
+                root_id,
+                &mut visited,
+                &mut visit_path,
+                &mut edge_path,
+                root_id,
+            );
+        }
+
+        return (check, visit_path.to_vec());
+    }
+
+    fn g1_cycle_check_naive(
+        &self,
+        cur: usize,
+        visited: &mut RefMut<FxHashSet<usize>>,
+        visit_path: &mut RefMut<Vec<usize>>,
+        edge_path: &mut RefMut<Vec<Edge>>,
+        root_id: usize,
+    ) -> bool {
+        visited.insert(cur);
+        visit_path.push(cur);
+
+        let cur = unsafe { &*(cur as *const Node) };
+        let g = cur.read();
+        if !cur.is_cleaned() {
+            let incoming = cur.get_incoming();
+            for edge in incoming {
+                // only traverse WW/WR edges
+
+                let traverse = match edge {
+                    Edge::WriteWrite(_) => true,
+                    Edge::WriteRead(_) => true,
+                    Edge::ReadWrite(_) => false,
+                };
+
+                if traverse {
+                    let id = edge.extract_id() as usize;
+
+                    edge_path.push(edge.clone());
+
+                    // if back to root then a WW cycle has been found
+                    if id == root_id {
+                        visit_path.push(id);
+                        drop(g);
+                        return true;
+                    } else if !visited.contains(&id) {
+                        // if not yet visited go to the next node
+                        if self.g1_cycle_check_naive(id, visited, visit_path, edge_path, root_id) {
+                            drop(g);
+                            return true;
+                        }
+                    }
+
+                    // if already visited need to remove the edge from the path (it is last added)
+                    let path_len = edge_path.len();
+                    edge_path.remove(path_len - 1);
+                }
+            }
+        }
+
+        // no more nodes to visit
+        drop(g);
+        let cur = cur.get_id() as usize;
+        // not on visit path
+        let index = visit_path.iter().position(|x| *x == cur).unwrap();
+        visit_path.remove(index);
+
+        return false;
+    }
+
+    fn cycle_check_init(&self, this_node: &Node) -> (bool, Vec<usize>) {
         let mut visited = self.get_visited();
         let mut visit_path = self.get_visit_path();
         let mut edge_path = self.get_edge_path();
@@ -255,114 +523,7 @@ impl MixedSerializationGraph {
             );
         }
 
-        // if cycle found and rrdfs
-        if check && self.relevant_cycle_check {
-            // printing
-            // let vv: Vec<_> = visit_path.borrow_mut().iter().collect::<Vec<_>>();
-            // let path_len = vv.len();
-
-            // let mut path = String::new();
-
-            // for node in &vv[0..path_len - 1] {
-            //     let id = **node;
-            //     let cur = unsafe { &*(id as *const Node) };
-
-            //     let id = cur.get_id();
-            //     path.push_str(&format!("({:x}:{}),", id, cur.get_isolation_level()));
-            // }
-
-            // let last = vv[path_len - 1];
-            // let cur = unsafe { &*(*last as *const Node) };
-
-            // path.push_str(&format!(
-            //     "({:x}:{})",
-            //     cur.get_id(),
-            //     cur.get_isolation_level()
-            // ));
-
-            // what type of cycle have I found?
-            let mut _ww = 0;
-            let mut wr = 0;
-            let mut rw = 0;
-
-            for edge in &*edge_path {
-                match edge {
-                    Edge::WriteWrite(_) => _ww += 1,
-                    Edge::WriteRead(_) => wr += 1,
-                    Edge::ReadWrite(_) => rw += 1,
-                }
-            }
-
-            let cycle_type = if rw > 0 {
-                Cycle::G2
-            } else if wr > 0 {
-                Cycle::G1c
-            } else {
-                Cycle::G0
-            };
-
-            // do i need to abort cos of this cycle?
-            match root_lvl {
-                // PL-3 always abort
-                IsolationLevel::Serializable => {}
-                // if Im PL-2, G1c/0 I abort, else S aborts
-                IsolationLevel::ReadCommitted => match cycle_type {
-                    Cycle::G2 => {
-                        // println!(
-                        //     "Didn't need to abort: RC with a G2 {} {:?}",
-                        //     path, edge_path
-                        // );
-                        for node in &*visit_path {
-                            let id = *node;
-                            let cur = unsafe { &*(id as *const Node) };
-                            if let IsolationLevel::Serializable = cur.get_isolation_level() {
-                                // println!("Abort this guy: {:x}", id);
-                                cur.set_cascading_abort();
-                                check = false;
-                                break;
-                            }
-                        }
-                    }
-                    Cycle::G1c => {}
-                    Cycle::G0 => {}
-                },
-                // if Im PL-2, G1c/0 I abort, else S aborts
-                IsolationLevel::ReadUncommitted => match cycle_type {
-                    // s aborts
-                    Cycle::G2 => {
-                        for node in &*visit_path {
-                            let id = *node;
-                            let cur = unsafe { &*(id as *const Node) };
-                            if let IsolationLevel::Serializable = cur.get_isolation_level() {
-                                cur.set_cascading_abort();
-                                check = false;
-                                break;
-                            }
-                        }
-                    }
-                    // s or rc aborts
-                    Cycle::G1c => {
-                        for node in &*visit_path {
-                            let id = *node;
-                            let cur = unsafe { &*(id as *const Node) };
-
-                            match cur.get_isolation_level() {
-                                IsolationLevel::ReadUncommitted => {}
-                                IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
-                                    cur.set_cascading_abort();
-                                    check = false;
-
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    Cycle::G0 => {}
-                },
-            }
-        }
-
-        return check;
+        return (check, visit_path.to_vec());
     }
 
     fn check_cycle_naive(
@@ -372,7 +533,6 @@ impl MixedSerializationGraph {
         visited: &mut RefMut<FxHashSet<usize>>,
         visit_path: &mut RefMut<Vec<usize>>,
         edge_path: &mut RefMut<Vec<Edge>>,
-
         root_id: usize,
     ) -> bool {
         visited.insert(cur);
@@ -383,39 +543,23 @@ impl MixedSerializationGraph {
         if !cur.is_cleaned() {
             let incoming = cur.get_incoming();
             for edge in incoming {
-                // if the edge is not relevant then ignore!
-                // if self.relevant_cycle_check {
-                //     if !self.is_edge_relevant(root_lvl, &edge) {
-                //         continue;
-                //     }
-                // }
                 edge_path.push(edge.clone());
                 let id = edge.extract_id() as usize;
 
-                // let f = if self.relevant_cycle_check {
-                //     id == root_id
-                // } else {
-                //     visit_path.contains(&id)
-                // };
-
-                // if visit_path.contains(&id) {
                 if id == root_id {
-                    // if f {
                     visit_path.push(id);
                     drop(g);
                     return true;
-                } else if visited.contains(&id) {
-                    // skip
-                } else {
+                } else if !visited.contains(&id) {
                     if self.check_cycle_naive(id, root_lvl, visited, visit_path, edge_path, root_id)
                     {
                         drop(g);
                         return true;
                     }
                 }
-                let index = edge_path.iter().position(|x| *x == edge.clone()).unwrap();
 
-                edge_path.remove(index);
+                let path_len = edge_path.len();
+                edge_path.remove(path_len - 1);
             }
         }
 
@@ -426,36 +570,6 @@ impl MixedSerializationGraph {
 
         return false;
     }
-
-    // fn is_edge_relevant(&self, root_lvl: IsolationLevel, edge: &Edge) -> bool {
-    //     match edge {
-    //         Edge::WriteWrite(_) => {
-    //             return true; // relevant to all levels
-    //         }
-    //         Edge::WriteRead(_) => match root_lvl {
-    //             IsolationLevel::ReadUncommitted => {
-    //                 return false;
-    //             }
-    //             IsolationLevel::ReadCommitted => {
-    //                 return true;
-    //             }
-    //             IsolationLevel::Serializable => {
-    //                 return true;
-    //             }
-    //         },
-    //         Edge::ReadWrite(_) => match root_lvl {
-    //             IsolationLevel::ReadUncommitted => {
-    //                 return false;
-    //             }
-    //             IsolationLevel::ReadCommitted => {
-    //                 return false;
-    //             }
-    //             IsolationLevel::Serializable => {
-    //                 return true;
-    //             }
-    //         },
-    //     }
-    // }
 
     pub fn needs_abort(&self) -> bool {
         let this = unsafe { &*self.get_transaction() };
@@ -684,32 +798,6 @@ impl MixedSerializationGraph {
                                     }
 
                                     wait = true; // retry operation
-                                                 // if self.relevant_cycle_check {
-                                                 //     let this_node = unsafe { &*self.get_transaction() };
-
-                                    // if self.relevant_cycle_check {
-                                    //     if this.is_at_risk() {
-                                    //         let is_cycle = self.cycle_check_init(this);
-                                    //         if is_cycle {
-                                    //             this.set_aborted();
-                                    //         }
-                                    //     }
-                                    // }
-
-                                    //     if this_node.has_incoming_weaker() {
-                                    //         let is_cycle = self.cycle_check_init(this_node);
-                                    //         if is_cycle {
-                                    //             this_node.set_aborted();
-                                    //         }
-                                    //     }
-                                    // }
-
-                                    // if self.relevant_cycle_check && (attempts % 1000 == 0) {
-                                    //     let is_cycle = self.cycle_check_init(this); // cycle check
-                                    //     if is_cycle {
-                                    //         this.set_aborted();
-                                    //     }
-                                    // }
                                     break;
                                 }
                             }
@@ -1018,6 +1106,115 @@ impl MixedSerializationGraph {
                 }
             }
         }
+    }
+}
+
+fn abort_cleanup(
+    this_isolation: IsolationLevel,
+    cycle_type: Cycle,
+    path: String,
+    edge_path: RefMut<Vec<Edge>>,
+    visit_path: RefMut<Vec<usize>>,
+    check: &mut bool,
+) {
+    match this_isolation {
+        // PL-3 always abort
+        IsolationLevel::Serializable => {}
+        // if Im PL-2, G1c/0 I abort, else S aborts
+        IsolationLevel::ReadCommitted => match cycle_type {
+            Cycle::G2 => {
+                println!(
+                    "Didn't need to abort: RC with a G2 {} {:?}",
+                    path, edge_path
+                );
+                for node in &*visit_path {
+                    let id = *node;
+                    let cur = unsafe { &*(id as *const Node) };
+                    if let IsolationLevel::Serializable = cur.get_isolation_level() {
+                        println!("Abort this guy: {:x}", id);
+                        cur.set_cascading_abort();
+                        *check = false;
+                        break;
+                    }
+                }
+            }
+            Cycle::G1c => {}
+            Cycle::G0 => {}
+        },
+        // if Im PL-2, G1c/0 I abort, else S aborts
+        IsolationLevel::ReadUncommitted => match cycle_type {
+            // s aborts
+            Cycle::G2 => {
+                // for node in &*visit_path {
+                //     let id = *node;
+                //     let cur = unsafe { &*(id as *const Node) };
+                //     if let IsolationLevel::Serializable = cur.get_isolation_level() {
+                //         cur.set_cascading_abort();
+                //         check = false;
+                //         break;
+                //     }
+                // }
+            }
+            // s or rc aborts
+            Cycle::G1c => {
+                // for node in &*visit_path {
+                //     let id = *node;
+                //     let cur = unsafe { &*(id as *const Node) };
+
+                //     match cur.get_isolation_level() {
+                //         IsolationLevel::ReadUncommitted => {}
+                //         IsolationLevel::ReadCommitted | IsolationLevel::Serializable => {
+                //             cur.set_cascading_abort();
+                //             check = false;
+                //             break;
+                //         }
+                //     }
+                // }
+            }
+            Cycle::G0 => {}
+        },
+    }
+}
+
+fn print_node_path(visit_path: &mut RefMut<Vec<usize>>) -> String {
+    let vv: Vec<_> = visit_path.borrow_mut().iter().collect::<Vec<_>>();
+    let path_len = vv.len();
+    let mut path = String::new();
+    for node in &vv[0..path_len - 1] {
+        let id = **node;
+        let cur = unsafe { &*(id as *const Node) };
+
+        let id = cur.get_id();
+        path.push_str(&format!("({:x}:{}),", id, cur.get_isolation_level()));
+    }
+    let last = vv[path_len - 1];
+    let cur = unsafe { &*(*last as *const Node) };
+    path.push_str(&format!(
+        "({:x}:{})",
+        cur.get_id(),
+        cur.get_isolation_level()
+    ));
+    path
+}
+
+fn classify_cycle(edge_path: &RefMut<Vec<Edge>>) -> Cycle {
+    let mut wr = 0;
+    let mut rw = 0;
+
+    for edge in &**edge_path {
+        match edge {
+            Edge::WriteWrite(_) => {}
+            Edge::WriteRead(_) => wr += 1,
+            Edge::ReadWrite(_) => rw += 1,
+        }
+    }
+
+    if rw > 0 {
+        Cycle::G2
+    } else if wr > 0 {
+        Cycle::G1c
+    } else {
+        Cycle::G0
     }
 }
 
