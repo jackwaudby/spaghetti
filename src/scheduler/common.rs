@@ -676,15 +676,15 @@ impl std::fmt::Debug for MsgEdge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::result::Result<(), std::fmt::Error> {
         use MsgEdge::*;
         match &*self {
-            ReadWrite(txn_id) => write!(f, "{}", format!("[rw: {:x}]", txn_id)),
-            WriteWrite(txn_id) => write!(f, "{}", format!("[ww: {:x}]", txn_id)),
-            WriteRead(txn_id) => write!(f, "{}", format!("[wr: {:x}]", txn_id)),
+            ReadWrite(txn_id) => write!(f, "{}", format!("[rw: {}]", txn_id)),
+            WriteWrite(txn_id) => write!(f, "{}", format!("[ww: {}]", txn_id)),
+            WriteRead(txn_id) => write!(f, "{}", format!("[wr: {}]", txn_id)),
         }
     }
 }
 
 impl fmt::Display for MsgNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[t-id: {}]", format!("{:x}", self.get_id()),)
+        write!(f, "[t-id: {}]", format!("{}", self.get_id()),)
     }
 }
