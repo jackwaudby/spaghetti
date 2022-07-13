@@ -185,6 +185,11 @@ impl MixedSerializationGraph {
                                     match cur.get_isolation_level() {
                                         IsolationLevel::Serializable => {
                                             cur.set_cascading_abort();
+                                            println!(
+                                                "I'm {} aborting: {}",
+                                                this_ref.get_id(),
+                                                cur.get_id()
+                                            );
                                             break;
                                         }
                                         IsolationLevel::ReadUncommitted
@@ -193,6 +198,8 @@ impl MixedSerializationGraph {
                                 }
                             }
                         }
+                    } else {
+                        return false;
                     }
                 }
                 return true; // if no cycle or if aborted else
