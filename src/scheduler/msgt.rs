@@ -305,9 +305,7 @@ impl MixedSerializationGraph {
 
             // return self.complex(this_ref, &from);
             } else {
-                let (is_cycle, _, _) = self.cycle_check_any_init(this_ref);
-
-                // let (is_cycle, _, _) = self.cycle_check_init(this_ref);
+                let (is_cycle, _, _) = self.cycle_check_init(this_ref);
                 return !is_cycle; // false equals cycle so flip
             }
         }
