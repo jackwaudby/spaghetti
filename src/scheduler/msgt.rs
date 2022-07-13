@@ -170,7 +170,7 @@ impl MixedSerializationGraph {
             if self.relevant_cycle_check {
                 let is_g0_cycle = self.g0_cycle_check_init(this_ref);
                 let (is_g1_cycle, _) = self.g1_cycle_check_init(this_ref);
-                let (is_g2_cycle, memb) = self.cycle_check_init(this_ref);
+                let (is_g2_cycle, memb, edgepath) = self.cycle_check_init(this_ref);
 
                 let is_cycle = is_g0_cycle || is_g1_cycle || is_g2_cycle;
 
@@ -191,12 +191,13 @@ impl MixedSerializationGraph {
                                             let tj_in_cycle = memb.contains(&from_ref.get_id());
                                             if !tj_in_cycle {
                                                 println!(
-                                                "I'm {} aborting: {}. The edge is {:?}. The path is {:?}, Tj in path: {}",
+                                                "I'm {} aborting: {}. The edge is {:?}. The node path is {:?}, Tj in path: {}, Edge path: {:?}",
                                                 this_ref.get_id(),
                                                 cur.get_id(),
                                                 from,
                                                 memb,
-                                                tj_in_cycle
+                                                tj_in_cycle, 
+                                                edgepath
                                             );
                                             }
                                             break;
@@ -215,7 +216,7 @@ impl MixedSerializationGraph {
 
             // return self.complex(this_ref, &from);
             } else {
-                let (is_cycle, _) = self.cycle_check_init(this_ref);
+                let (is_cycle, _, _) = self.cycle_check_init(this_ref);
                 return !is_cycle; // false equals cycle so flip
             }
         }
@@ -547,7 +548,7 @@ impl MixedSerializationGraph {
         return false;
     }
 
-    fn cycle_check_init(&self, this_node: &Node) -> (bool, Vec<usize>) {
+    fn cycle_check_init(&self, this_node: &Node) -> (bool, Vec<usize>, Vec<Edge>) {
         let mut visited = self.get_visited();
         let mut visit_path = self.get_visit_path();
         let mut edge_path = self.get_edge_path();
@@ -573,7 +574,7 @@ impl MixedSerializationGraph {
             );
         }
 
-        return (check, visit_path.to_vec());
+        return (check, visit_path.to_vec(), edge_path.to_vec());
     }
 
     fn check_cycle_naive(
