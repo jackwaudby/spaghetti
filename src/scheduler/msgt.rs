@@ -699,10 +699,10 @@ impl MixedSerializationGraph {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id) = from {
-                            // if !self.insert_and_check(meta, Edge::WriteWrite(*from_id)) {
-                            //     cyclic = true;
-                            //     break;
-                            // }
+                            if !self.insert_and_check(meta, Edge::WriteWrite(*from_id)) {
+                                cyclic = true;
+                                break;
+                            }
                         }
                     }
                     Access::Read(_) => {}
@@ -840,10 +840,10 @@ impl MixedSerializationGraph {
                 match access {
                     Access::Read(from) => {
                         if let TransactionId::SerializationGraph(from_addr) = from {
-                            // if !self.insert_and_check(meta, Edge::ReadWrite(*from_addr)) {
-                            //     cyclic = true;
-                            //     break;
-                            // }
+                            if !self.insert_and_check(meta, Edge::ReadWrite(*from_addr)) {
+                                cyclic = true;
+                                break;
+                            }
                         }
                     }
                     Access::Write(_) => {}
