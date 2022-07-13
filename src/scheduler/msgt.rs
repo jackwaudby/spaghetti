@@ -305,7 +305,9 @@ impl MixedSerializationGraph {
 
             // return self.complex(this_ref, &from);
             } else {
-                let (is_cycle, _, _) = self.cycle_check_init(this_ref);
+                let (is_cycle, _, _) = self.cycle_check_any_init(this_ref);
+
+                // let (is_cycle, _, _) = self.cycle_check_init(this_ref);
                 return !is_cycle; // false equals cycle so flip
             }
         }
@@ -631,6 +633,79 @@ impl MixedSerializationGraph {
         drop(g);
         let cur = cur.get_id() as usize;
         // not on visit path
+        let index = visit_path.iter().position(|x| *x == cur).unwrap();
+        visit_path.remove(index);
+
+        return false;
+    }
+
+    fn cycle_check_any_init(&self, this_node: &Node) -> (bool, Vec<usize>, Vec<Edge>) {
+        let mut visited = self.get_visited();
+        let mut visit_path = self.get_visit_path();
+        let mut edge_path = self.get_edge_path();
+
+        let this_id = this_node.get_id();
+        let root_id = this_node.get_id();
+
+        let root_lvl = this_node.get_isolation_level();
+
+        visited.clear();
+        visit_path.clear();
+        edge_path.clear();
+
+        let mut check = false;
+        if !visited.contains(&this_id) {
+            check = self.check_cycle_any(
+                this_id,
+                root_lvl,
+                &mut visited,
+                &mut visit_path,
+                &mut edge_path,
+                root_id,
+            );
+        }
+
+        return (check, visit_path.to_vec(), edge_path.to_vec());
+    }
+
+    fn check_cycle_any(
+        &self,
+        cur: usize,
+        root_lvl: IsolationLevel,
+        visited: &mut RefMut<FxHashSet<usize>>,
+        visit_path: &mut RefMut<Vec<usize>>,
+        edge_path: &mut RefMut<Vec<Edge>>,
+        root_id: usize,
+    ) -> bool {
+        visited.insert(cur);
+        visit_path.push(cur);
+
+        let cur = unsafe { &*(cur as *const Node) };
+        let g = cur.read();
+        if !cur.is_cleaned() {
+            let incoming = cur.get_incoming();
+            for edge in incoming {
+                edge_path.push(edge.clone());
+                let id = edge.extract_id() as usize;
+
+                if visit_path.contains(&id) {
+                    visit_path.push(id);
+                    drop(g);
+                    return true;
+                } else if self
+                    .check_cycle_any(id, root_lvl, visited, visit_path, edge_path, root_id)
+                {
+                    drop(g);
+                    return true;
+                }
+
+                let path_len = edge_path.len();
+                edge_path.remove(path_len - 1);
+            }
+        }
+
+        drop(g);
+        let cur = cur.get_id() as usize;
         let index = visit_path.iter().position(|x| *x == cur).unwrap();
         visit_path.remove(index);
 
