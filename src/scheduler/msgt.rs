@@ -172,14 +172,38 @@ impl MixedSerializationGraph {
                     // inserting a ww can cause any cycle
                     Edge::WriteWrite(_) => {
                         let g0 = self.g0_cycle_check_init(this_ref);
-                        let (g1, _) = self.g1_cycle_check_init(this_ref);
-                        let (g2, _, _) = self.cycle_check_init(this_ref);
+                        // let (g1, _) = self.g1_cycle_check_init(this_ref);
+
+                        // only do if g0 is false
+                        let g1 = if !g0 {
+                            let (g1, _) = self.g1_cycle_check_init(this_ref);
+                            g1
+                        } else {
+                            false
+                        };
+
+                        // only do if g1 is false
+                        let g2 = if !g1 {
+                            let (g2, _, _) = self.cycle_check_init(this_ref);
+                            g2
+                        } else {
+                            false
+                        };
+
                         (g0, g1, g2)
                     }
                     // inserting a wr can cause G1 or G2
                     Edge::WriteRead(_) => {
                         let (g1, _) = self.g1_cycle_check_init(this_ref);
-                        let (g2, _, _) = self.cycle_check_init(this_ref);
+
+                        // only do it if prev is false
+                        let g2 = if !g1 {
+                            let (g2, _, _) = self.cycle_check_init(this_ref);
+                            g2
+                        } else {
+                            false
+                        };
+
                         (false, g1, g2)
                     }
                     // inserting a rw can cause G2
