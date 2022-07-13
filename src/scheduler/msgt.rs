@@ -187,12 +187,16 @@ impl MixedSerializationGraph {
                                     match cur.get_isolation_level() {
                                         IsolationLevel::Serializable => {
                                             cur.set_cascading_abort();
+
+                                            let tj_in_cycle = memb.contains(&from_ref.get_id());
+
                                             println!(
-                                                "I'm {} aborting: {}. The edge is {:?}. The path is {:?}",
+                                                "I'm {} aborting: {}. The edge is {:?}. The path is {:?}, Tj in path: {}",
                                                 this_ref.get_id(),
                                                 cur.get_id(),
                                                 from,
-                                                memb
+                                                memb,
+                                                tj_in_cycle
                                             );
                                             break;
                                         }
