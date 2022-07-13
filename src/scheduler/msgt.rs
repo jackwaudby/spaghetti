@@ -186,11 +186,10 @@ impl MixedSerializationGraph {
                                         IsolationLevel::Serializable => {
                                             cur.set_cascading_abort();
                                             println!(
-                                                "I'm {:x} aborting: {:x}. The edge is {} -> {}",
+                                                "I'm {:x} aborting: {:x}. The edge is {:?}",
                                                 this_ref.get_id(),
                                                 cur.get_id(),
-                                                from_id,
-                                                this_ref.get_id(),
+                                                from,
                                             );
                                             break;
                                         }
