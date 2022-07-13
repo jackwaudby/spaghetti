@@ -189,8 +189,8 @@ impl MixedSerializationGraph {
                                             cur.set_cascading_abort();
 
                                             let tj_in_cycle = memb.contains(&from_ref.get_id());
-
-                                            println!(
+                                            if !tj_in_cycle {
+                                                println!(
                                                 "I'm {} aborting: {}. The edge is {:?}. The path is {:?}, Tj in path: {}",
                                                 this_ref.get_id(),
                                                 cur.get_id(),
@@ -198,6 +198,7 @@ impl MixedSerializationGraph {
                                                 memb,
                                                 tj_in_cycle
                                             );
+                                            }
                                             break;
                                         }
                                         IsolationLevel::ReadUncommitted
