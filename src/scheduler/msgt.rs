@@ -179,25 +179,27 @@ impl MixedSerializationGraph {
                         if is_g0_cycle || is_g1_cycle {
                             return false; // abort self
                         } else {
-                            for node_id in memb {
-                                if node_id != this_ref.get_id() {
-                                    let cur = unsafe { &*(node_id as *const Node) };
-                                    match cur.get_isolation_level() {
-                                        IsolationLevel::Serializable => {
-                                            cur.set_cascading_abort();
-                                            println!(
-                                                "I'm {:x} aborting: {:x}. The edge is {:?}",
-                                                this_ref.get_id(),
-                                                cur.get_id(),
-                                                from,
-                                            );
-                                            break;
-                                        }
-                                        IsolationLevel::ReadUncommitted
-                                        | IsolationLevel::ReadCommitted => {}
-                                    }
-                                }
-                            }
+                            from_ref.set_cascading_abort();
+
+                            // for node_id in memb {
+                            //     if node_id != this_ref.get_id() {
+                            //         let cur = unsafe { &*(node_id as *const Node) };
+                            //         match cur.get_isolation_level() {
+                            //             IsolationLevel::Serializable => {
+                            //                 cur.set_cascading_abort();
+                            //                 println!(
+                            //                     "I'm {:x} aborting: {:x}. The edge is {:?}",
+                            //                     this_ref.get_id(),
+                            //                     cur.get_id(),
+                            //                     from,
+                            //                 );
+                            //                 break;
+                            //             }
+                            //             IsolationLevel::ReadUncommitted
+                            //             | IsolationLevel::ReadCommitted => {}
+                            //         }
+                            //     }
+                            // }
                         }
                     } else {
                         return false;
