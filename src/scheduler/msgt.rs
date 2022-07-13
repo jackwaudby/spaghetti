@@ -185,11 +185,11 @@ impl MixedSerializationGraph {
                                     match cur.get_isolation_level() {
                                         IsolationLevel::Serializable => {
                                             cur.set_cascading_abort();
-                                            println!(
-                                                "I'm {} aborting: {}",
-                                                this_ref.get_id(),
-                                                cur.get_id()
-                                            );
+                                            // println!(
+                                            //     "I'm {} aborting: {}",
+                                            //     this_ref.get_id(),
+                                            //     cur.get_id()
+                                            // );
                                             break;
                                         }
                                         IsolationLevel::ReadUncommitted
@@ -955,11 +955,11 @@ impl MixedSerializationGraph {
 
             if attempts > ATTEMPTS {
                 panic!(
-                    "{:x} ({}) stuck committing. Incoming {:?}. At risk {:?}",
+                    "{:x} ({}) stuck committing. Incoming {:?}. Cascading {:?}",
                     this_node.get_id(),
                     this_node.get_isolation_level(),
                     this_node.get_incoming(),
-                    this_node.is_at_risk()
+                    this_node.is_cascading_abort()
                 );
             }
         }
