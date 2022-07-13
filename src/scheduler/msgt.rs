@@ -169,11 +169,16 @@ impl MixedSerializationGraph {
 
             if self.relevant_cycle_check {
                 if let Edge::ReadWrite(_) = from.clone() {
-                    if let IsolationLevel::Serializable = this_ref.get_isolation_level() {
-                        return false; // abort this node
+                    let (is_cycle, _, _) = self.cycle_check_init(this_ref);
+                    if is_cycle {
+                        if let IsolationLevel::Serializable = this_ref.get_isolation_level() {
+                            return false; // abort this node
+                        } else {
+                            from_ref.set_cascading_abort();
+                            return true; // abort that node
+                        }
                     } else {
-                        from_ref.set_cascading_abort();
-                        return true; // abort that node
+                        return true;
                     }
                 } else {
                     let (is_cycle, _, _) = self.cycle_check_init(this_ref);
