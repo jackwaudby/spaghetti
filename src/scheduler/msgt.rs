@@ -193,7 +193,25 @@ impl MixedSerializationGraph {
                                 println!("Inserted: {:?} to {}", from.clone(), this_id);
                                 println!("visit path: {:?}", visit_path);
                                 println!("edge path: {:?}", edge_path);
-                                println!("Cycle: {:?}", _classify_cycle(edge_path));
+                                let cycle_type = _classify_cycle(edge_path);
+
+                                println!("Cycle: {:?}", cycle_type);
+
+                                if let Cycle::G2 = cycle_type {
+                                    for node_id in visit_path {
+                                        let cur = unsafe { &*(node_id as *const Node) };
+                                        match cur.get_isolation_level() {
+                                            IsolationLevel::Serializable => {
+                                                cur.set_cascading_abort();
+                                                println!("Abort: {:?}", cur.get_id());
+                                                break;
+                                            }
+                                            IsolationLevel::ReadUncommitted
+                                            | IsolationLevel::ReadCommitted => {}
+                                        }
+                                    }
+                                }
+
                                 iter += 1;
                                 // found someone else's cycle
                             }
