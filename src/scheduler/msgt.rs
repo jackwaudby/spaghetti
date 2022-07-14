@@ -182,7 +182,7 @@ impl MixedSerializationGraph {
                             // cycle with added edge
                             if visit_path.contains(&from_ref.get_id()) {
                                 if iter > 0 {
-                                    println!("then found mine");
+                                    // println!("then found mine");
                                 }
 
                                 if let IsolationLevel::Serializable = this_ref.get_isolation_level()
@@ -193,13 +193,13 @@ impl MixedSerializationGraph {
                                     return true; // abort that node
                                 }
                             } else {
-                                println!("iter: {} - found someone else's cycle", iter);
-                                println!("Inserted: {:?} to {}", from.clone(), this_id);
-                                println!("visit path: {:?}", visit_path);
-                                println!("edge path: {:?}", edge_path);
+                                // println!("iter: {} - found someone else's cycle", iter);
+                                // println!("Inserted: {:?} to {}", from.clone(), this_id);
+                                // println!("visit path: {:?}", visit_path);
+                                // println!("edge path: {:?}", edge_path);
                                 let cycle_type = _classify_cycle(edge_path);
 
-                                println!("Cycle: {:?}", cycle_type);
+                                // println!("Cycle: {:?}", cycle_type);
 
                                 if let Cycle::G2 = cycle_type {
                                     for node_id in visit_path {
@@ -221,7 +221,7 @@ impl MixedSerializationGraph {
                             }
                         } else {
                             if iter > 0 {
-                                println!("then found none");
+                                // println!("then found none");
                             }
 
                             return true; // no cycle
