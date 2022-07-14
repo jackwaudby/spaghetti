@@ -147,7 +147,7 @@ impl MixedSerializationGraph {
         loop {
             if attempts > ATTEMPTS {
                 panic!(
-                    "{:x} ({}) stuck inserting {:?}. Incoming {:?}",
+                    "{} ({}) stuck inserting {:?}. Incoming {:?}",
                     this_id,
                     this_iso,
                     from,
@@ -580,7 +580,7 @@ impl MixedSerializationGraph {
             if attempts > ATTEMPTS {
                 let this_node = unsafe { &*self.get_transaction() };
                 panic!(
-                    "{:x} ({}) stuck writing. Incoming {:?}",
+                    "{} ({}) stuck writing. Incoming {:?}",
                     this_node.get_id(),
                     this_node.get_isolation_level(),
                     this_node.get_incoming(),
@@ -970,7 +970,7 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64, this: &Node) {
 
         if attempts > ATTEMPTS {
             panic!(
-                "{:x} ({}) stuck spinning. Incoming {:?}",
+                "{} ({}) stuck spinning. Incoming {:?}",
                 this.get_id(),
                 this.get_isolation_level(),
                 this.get_incoming(),
