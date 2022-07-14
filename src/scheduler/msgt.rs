@@ -23,6 +23,7 @@ use tracing::info;
 
 static ATTEMPTS: u64 = 1000000;
 
+#[derive(Debug)]
 enum Cycle {
     G0,
     G1c,
@@ -169,17 +170,60 @@ impl MixedSerializationGraph {
 
             if self.relevant_cycle_check {
                 if let Edge::ReadWrite(_) = from.clone() {
-                    let (is_cycle, _, _) = self.cycle_check_init(this_ref);
-                    if is_cycle {
-                        if let IsolationLevel::Serializable = this_ref.get_isolation_level() {
-                            return false; // abort this node
+                    let mut iter = 0;
+                    loop {
+                        let (is_cycle, visit_path, edge_path) = self.cycle_check_init(this_ref);
+
+                        if is_cycle {
+                            // cycle with added edge
+                            if visit_path.contains(&from_ref.get_id()) {
+                                if iter > 0 {
+                                    println!("then found mine");
+                                }
+
+                                if let IsolationLevel::Serializable = this_ref.get_isolation_level()
+                                {
+                                    return false; // abort this node
+                                } else {
+                                    from_ref.set_cascading_abort();
+                                    return true; // abort that node
+                                }
+                            } else {
+                                println!("iter: {} - found someone else's cycle", iter);
+                                println!("Inserted: {:?} to {}", from.clone(), this_id);
+                                println!("visit path: {:?}", visit_path);
+                                println!("edge path: {:?}", edge_path);
+                                println!("Cycle: {:?}", _classify_cycle(edge_path));
+                                iter += 1;
+                                // found someone else's cycle
+                            }
                         } else {
-                            from_ref.set_cascading_abort();
-                            return true; // abort that node
+                            if iter > 0 {
+                                println!("then found none");
+                            }
+
+                            return true; // no cycle
                         }
-                    } else {
-                        return true;
                     }
+
+                    // if is_cycle {
+                    //     if !visit_path.contains(&from_ref.get_id()) {
+                    //         println!("Inserted: {:?} to {}", from.clone(), this_id);
+                    //         println!("visit path: {:?}", visit_path);
+                    //         println!("edge path: {:?}", edge_path);
+                    //         println!("Cycle: {:?}", _classify_cycle(edge_path));
+                    //         return true;
+                    //     } else {
+                    //         if let IsolationLevel::Serializable = this_ref.get_isolation_level() {
+                    //             return false; // abort this node
+                    //         } else {
+                    //             from_ref.set_cascading_abort();
+                    //             return true; // abort that node
+                    //         }
+                    //     }
+                    // } else {
+                    //     return true;
+                    // }
                 } else {
                     let (is_cycle, _, _) = self.cycle_check_init(this_ref);
                     return !is_cycle; // false equals cycle so flip
@@ -1388,11 +1432,11 @@ fn _print_node_path(visit_path: &mut RefMut<Vec<usize>>) -> String {
     path
 }
 
-fn _classify_cycle(edge_path: &RefMut<Vec<Edge>>) -> Cycle {
+fn _classify_cycle(edge_path: Vec<Edge>) -> Cycle {
     let mut wr = 0;
     let mut rw = 0;
 
-    for edge in &**edge_path {
+    for edge in &edge_path {
         match edge {
             Edge::WriteWrite(_) => {}
             Edge::WriteRead(_) => wr += 1,

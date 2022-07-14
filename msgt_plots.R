@@ -38,7 +38,8 @@ file = "./data/22_02_03_ycsb_update_rate_1.csv"
 file = "./data/22_02_03_ycsb_contention_1.csv"
 
 # load data
-file = "./results.csv"
+file = "./experiment.csv"
+
 col_names = c("sf","protocol","workload","cores",
               "theta","serializable_rate","update_rate",
               "relevant_cycle_check",
@@ -51,9 +52,6 @@ for (i in 1:nrow(raw)) {
     raw[i,2] = "msgt-rel"
   }
 }
-
-testrow = raw[10,]
-testrow$commits / (testrow$runtime / 1000)
 
 raw$thpt = ((raw$commits + raw$not_found) / (raw$runtime / 1000)) / 1000000
 raw$abr = raw$aborts / (raw$commits + raw$not_found+ raw$aborts)
@@ -72,8 +70,10 @@ ggplot(data = raw,
            group = protocol, 
            colour = protocol)) +
   geom_line()
- 
 
+(raw$abr[1:6] - raw$abr[7:12])*100
+raw$abr[1:6]*100
+raw$abr[7:12]*100
 #### SCALABILITY ####
 
 msgt = raw[raw$protocol == "msgt",]
