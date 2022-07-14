@@ -527,7 +527,20 @@ impl MixedSerializationGraph {
         // Safety: ensures exculsive access to the record.
         let this = unsafe { &*self.get_transaction() };
 
-        unsafe { spin(prv, lsn, this) }; // busy wait
+        let abort = self.spin(prv, lsn, this, database, meta);
+
+        if abort {
+            let ops = self.get_operations();
+
+            rw_table.erase(prv); // remove from rw table
+            lsn.store(prv + 1, Ordering::Release); // update lsn
+            self.remove_accesses(database, &ops);
+            MixedSerializationGraph::EG.with(|x| {
+                let guard = x.borrow_mut().take();
+                drop(guard)
+            });
+            return Err(NonFatalError::NoccError); // TODO: abort called externally
+        }
 
         // On acquiring the 'lock' on the record can be clean or dirty.
         // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
@@ -615,7 +628,20 @@ impl MixedSerializationGraph {
 
             prv = rw_table.push_front(Access::Write(meta.get_transaction_id())); // get ticket
 
-            unsafe { spin(prv, lsn, this) }; // Safety: ensures exculsive access to the record
+            let abort = self.spin(prv, lsn, this, database, meta); // Safety: ensures exculsive access to the record
+
+            if abort {
+                let ops = self.get_operations();
+
+                rw_table.erase(prv); // remove from rw table
+                lsn.store(prv + 1, Ordering::Release); // update lsn
+                self.remove_accesses(database, &ops);
+                MixedSerializationGraph::EG.with(|x| {
+                    let guard = x.borrow_mut().take();
+                    drop(guard)
+                });
+                return Err(NonFatalError::NoccError); // TODO: abort called externally
+            }
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -933,6 +959,62 @@ impl MixedSerializationGraph {
             }
         }
     }
+
+    fn spin(
+        &self,
+        prv: u64,
+        lsn: &AtomicU64,
+        this: &Node,
+        database: &Database,
+        meta: &mut StatsBucket,
+    ) -> bool {
+        let mut i = 0;
+        let mut attempts = 0;
+
+        let mut abort = false;
+        while lsn.load(Ordering::Relaxed) != prv {
+            if self.needs_abort() {
+                let ops = self.get_operations();
+                self.commit_writes(database, false, &ops);
+                let this = unsafe { &*self.get_transaction() };
+                this.set_aborted();
+
+                let incoming = this.get_incoming().clone();
+                for edge in incoming {
+                    match edge {
+                        Edge::WriteWrite(id) => {
+                            meta.add_problem_transaction(id);
+                        }
+                        Edge::WriteRead(id) => {
+                            meta.add_problem_transaction(id);
+                        }
+                        Edge::ReadWrite(_) => {}
+                    }
+                }
+
+                self.cleanup(this);
+                abort = true;
+            }
+
+            i += 1;
+            if i >= 10000 {
+                std::thread::yield_now();
+            }
+
+            if attempts > ATTEMPTS {
+                panic!(
+                    "{} ({}) stuck spinning. Incoming {:?}, Cascading: {:?}",
+                    this.get_id(),
+                    this.get_isolation_level(),
+                    this.get_incoming(),
+                    this.is_cascading_abort()
+                );
+            }
+
+            attempts += 1;
+        }
+        abort
+    }
 }
 
 fn _print_node_path(visit_path: &mut RefMut<Vec<usize>>) -> String {
@@ -977,25 +1059,25 @@ fn classify_cycle(edge_path: Vec<Edge>) -> Cycle {
     }
 }
 
-unsafe fn spin(prv: u64, lsn: &AtomicU64, this: &Node) {
-    let mut i = 0;
-    let mut attempts = 0;
-    while lsn.load(Ordering::Relaxed) != prv {
-        i += 1;
-        if i >= 10000 {
-            std::thread::yield_now();
-        }
+// fn spin(prv: u64, lsn: &AtomicU64, this: &Node) {
+//     let mut i = 0;
+//     let mut attempts = 0;
+//     while lsn.load(Ordering::Relaxed) != prv {
+//         i += 1;
+//         if i >= 10000 {
+//             std::thread::yield_now();
+//         }
 
-        if attempts > ATTEMPTS {
-            panic!(
-                "{} ({}) stuck spinning. Incoming {:?}, Cascading: {:?}",
-                this.get_id(),
-                this.get_isolation_level(),
-                this.get_incoming(),
-                this.is_cascading_abort()
-            );
-        }
+//         if attempts > ATTEMPTS {
+//             panic!(
+//                 "{} ({}) stuck spinning. Incoming {:?}, Cascading: {:?}",
+//                 this.get_id(),
+//                 this.get_isolation_level(),
+//                 this.get_incoming(),
+//                 this.is_cascading_abort()
+//             );
+//         }
 
-        attempts += 1;
-    }
-}
+//         attempts += 1;
+//     }
+// }
