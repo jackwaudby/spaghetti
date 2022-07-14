@@ -534,6 +534,21 @@ impl MixedSerializationGraph {
 
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
+
+            let incoming = this.get_incoming().clone();
+            for edge in incoming {
+                match edge {
+                    Edge::WriteWrite(id) => {
+                        meta.add_problem_transaction(id);
+                    }
+                    Edge::WriteRead(id) => {
+                        meta.add_problem_transaction(id);
+                    }
+                    Edge::ReadWrite(_) => {}
+                }
+            }
+
+            self.cleanup(this);
             self.remove_accesses(database, &ops);
             MixedSerializationGraph::EG.with(|x| {
                 let guard = x.borrow_mut().take();
@@ -635,6 +650,21 @@ impl MixedSerializationGraph {
 
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
+
+                let incoming = this.get_incoming().clone();
+                for edge in incoming {
+                    match edge {
+                        Edge::WriteWrite(id) => {
+                            meta.add_problem_transaction(id);
+                        }
+                        Edge::WriteRead(id) => {
+                            meta.add_problem_transaction(id);
+                        }
+                        Edge::ReadWrite(_) => {}
+                    }
+                }
+
+                self.cleanup(this);
                 self.remove_accesses(database, &ops);
                 MixedSerializationGraph::EG.with(|x| {
                     let guard = x.borrow_mut().take();
@@ -979,20 +1009,6 @@ impl MixedSerializationGraph {
                 let this = unsafe { &*self.get_transaction() };
                 this.set_aborted();
 
-                let incoming = this.get_incoming().clone();
-                for edge in incoming {
-                    match edge {
-                        Edge::WriteWrite(id) => {
-                            meta.add_problem_transaction(id);
-                        }
-                        Edge::WriteRead(id) => {
-                            meta.add_problem_transaction(id);
-                        }
-                        Edge::ReadWrite(_) => {}
-                    }
-                }
-
-                self.cleanup(this);
                 abort = true;
             }
 
