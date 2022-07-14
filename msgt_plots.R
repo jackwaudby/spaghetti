@@ -39,7 +39,7 @@ file = "./data/22_02_03_ycsb_contention_1.csv"
 
 # load data
 file = "./experiment.csv"
-file = "./results-isolation.csv"
+file = "./results-tatp.csv"
 
 col_names = c("sf","protocol","workload","cores",
               "theta","serializable_rate","update_rate",
@@ -70,21 +70,21 @@ raw$com = (raw$commit_time) / (raw$commits + raw$not_found)
 
 
 ggplot(data = raw, 
-       aes(x = serializable_rate, 
+       aes(x = cores, 
            y = thpt, 
            group = protocol, 
            colour = protocol)) +
   geom_line()
 
 ggplot(data = raw, 
-       aes(x = serializable_rate, 
+       aes(x = cores, 
            y = abr, 
            group = protocol, 
            colour = protocol)) +
   geom_line()
 
 ggplot(data = raw, 
-       aes(x = serializable_rate, 
+       aes(x = cores, 
            y = lat, 
            group = protocol, 
            colour = protocol)) +
@@ -92,7 +92,7 @@ ggplot(data = raw,
 
 
   ggplot(data = raw, 
-       aes(x = serializable_rate, 
+       aes(x = cores, 
            y = com, 
            group = protocol, 
            colour = protocol)) +

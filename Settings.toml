@@ -19,8 +19,9 @@ anomaly = "g1c"
 load = false
 
 nurand = true
+
 use_balance_mix = false
-isolation_mix = "low"
+isolation_mix = "mid"
 
 theta = 0.5
 update_rate = 0.5
