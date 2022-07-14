@@ -292,7 +292,7 @@ impl GlobalStatistics {
         let theta = config.get_float("theta").unwrap();
         let serializable_rate = config.get_float("serializable_rate").unwrap();
         let update_rate = config.get_float("update_rate").unwrap();
-        let cycle_check_strategy = config.get_bool("dfs").unwrap();
+        let cycle_check_strategy = config.get_str("dfs").unwrap();
 
         wtr.serialize((
             // parameters
