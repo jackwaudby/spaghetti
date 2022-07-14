@@ -1,6 +1,6 @@
 use crate::storage::table::Table;
 use crate::workloads::smallbank::{self, SmallBankDatabase, *};
-use crate::workloads::tatp::{TatpDatabase, self, *, keys::TatpPrimaryKey};
+use crate::workloads::tatp::{self, keys::TatpPrimaryKey, TatpDatabase, *};
 use crate::workloads::ycsb::{self, YcsbDatabase, *};
 
 use config::Config;
@@ -57,6 +57,9 @@ impl Database {
                 };
                 info!("Contention: {}", contention);
 
+                let isolation_mix = config.get_str("isolation_mix").unwrap();
+                info!("Isolation mix: {}", isolation_mix);
+
                 Ok(Database::SmallBank(database))
             }
 
@@ -101,7 +104,6 @@ impl Database {
             Database::SmallBank(ref db) => db.get_table(id),
             Database::Ycsb(ref db) => db.get_table(id),
             Database::Tatp(ref db) => db.get_table(id),
-
         }
     }
 }
