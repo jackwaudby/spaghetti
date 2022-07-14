@@ -5,6 +5,7 @@
 # U = 0.5, omega = 0.2, cores = 40
 
 rm results.csv
+rm exp-contention-results.csv
 
 cargo build --release
 
@@ -14,3 +15,5 @@ for protocol in msgt sgt; do
         sleep 5
     done
 done
+
+mv results.csv exp-contention-results.csv

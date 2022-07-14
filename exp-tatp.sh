@@ -5,6 +5,7 @@
 # NUrand on
 
 rm results.csv
+rm exp-tatp-results.csv
 
 cargo build --release
 
@@ -14,3 +15,5 @@ for protocol in msgt sgt; do
         sleep 5
     done
 done
+
+mv results.csv exp-tatp-results.csv
