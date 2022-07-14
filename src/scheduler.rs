@@ -40,10 +40,10 @@ impl Scheduler {
         let protocol = match p.as_str() {
             "sgt" => Scheduler::SerializationGraph(SerializationGraph::new(cores)),
             "msgt" => {
-                let relevant_cycle_check = config.get_bool("relevant_dfs")?;
+                let cycle_check_strategy = config.get_str("dfs")?;
                 Scheduler::MixedSerializationGraph(MixedSerializationGraph::new(
                     cores,
-                    relevant_cycle_check,
+                    &cycle_check_strategy,
                 ))
             }
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),

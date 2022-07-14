@@ -54,7 +54,7 @@ for (i in 1:nrow(raw)) {
 }
 
 raw$thpt = ((raw$commits + raw$not_found) / (raw$runtime / 1000)) / 1000000
-raw$abr = raw$aborts / (raw$commits + raw$not_found+ raw$aborts)
+raw$abr = (raw$aborts / (raw$commits + raw$not_found+ raw$aborts))*100
 raw$lat = (raw$txn_time + raw$latency) / (raw$commits + raw$not_found)
 
 ggplot(data = raw, 

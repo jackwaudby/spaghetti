@@ -33,7 +33,7 @@ fn main() {
             arg!(-i --serializablerate <SERIALIZABLERATE> "Serializable rate (YCSB only)")
                 .required(false),
         )
-        .arg(arg!(-r --relevant <RELEVANT> "Reduced relevant DFS (MSGT only)").required(false))
+        .arg(arg!(-d --dfs <DFS> "Cycle shecking DFS (MSGT only)").required(false))
         .get_matches();
 
     if let Some(w) = matches.get_one::<String>("workload") {
@@ -70,8 +70,8 @@ fn main() {
     }
 
     // MSGT
-    if let Some(dfs) = matches.get_one::<String>("relevant") {
-        config.set("relevant_dfs", dfs.clone()).unwrap();
+    if let Some(dfs) = matches.get_one::<String>("dfs") {
+        config.set("dfs", dfs.clone()).unwrap();
     }
 
     // logging
