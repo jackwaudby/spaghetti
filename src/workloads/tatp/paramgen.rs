@@ -50,12 +50,14 @@ impl Generator for TatpGenerator {
         let n: f32 = self.rng.gen();
         let (transaction, parameters) = self.get_params(n);
 
-        let m: f32 = self.rng.gen();
-        let isolation = match m {
-            x if x < 0.2 => IsolationLevel::ReadUncommitted,
-            x if x < 0.6 => IsolationLevel::ReadCommitted,
-            _ => IsolationLevel::Serializable,
-        };
+        // let m: f32 = self.rng.gen();
+        // let isolation = match m {
+        //     x if x < 0.2 => IsolationLevel::ReadUncommitted,
+        //     x if x < 0.6 => IsolationLevel::ReadCommitted,
+        //     _ => IsolationLevel::Serializable,
+        // };
+
+        let isolation = IsolationLevel::ReadCommitted;
 
         Request::new(
             (self.core_id, self.generated),
