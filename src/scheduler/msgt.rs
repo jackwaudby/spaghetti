@@ -988,10 +988,11 @@ unsafe fn spin(prv: u64, lsn: &AtomicU64, this: &Node) {
 
         if attempts > ATTEMPTS {
             panic!(
-                "{} ({}) stuck spinning. Incoming {:?}",
+                "{} ({}) stuck spinning. Incoming {:?}, Cascading: {:?}",
                 this.get_id(),
                 this.get_isolation_level(),
                 this.get_incoming(),
+                this.is_cascading_abort()
             );
         }
 
