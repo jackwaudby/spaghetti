@@ -219,6 +219,7 @@ impl MixedSerializationGraph {
                                     let cycle_type = classify_cycle(edge_path);
 
                                     // if was a G2 we can help out by aborting a PL-3 in the path
+                                    let mut aborted = 0;
                                     if let Cycle::G2 = cycle_type {
                                         for node_id in visit_path {
                                             let cur = unsafe { &*(node_id as *const Node) };
@@ -226,6 +227,7 @@ impl MixedSerializationGraph {
                                                 cur.get_isolation_level()
                                             {
                                                 cur.set_cascading_abort();
+                                                aborted = node_id;
                                                 break;
                                             }
                                         }
@@ -233,11 +235,13 @@ impl MixedSerializationGraph {
 
                                     if attempts > ATTEMPTS {
                                         panic!(
-                                            "{} ({}) stuck in cycle loop. Incoming {:?}, Found cycle: {:?}",
+                                            "{} ({}) stuck in cycle loop. Incoming {:?}, Found cycle: {:?}, aborted: {}",
                                             this_id,
                                             this_iso,
                                             this_ref.get_incoming(),
-                                            cycle_type
+                                            cycle_type,
+                                            aborted
+
                                         );
                                     }
 
