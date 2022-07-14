@@ -207,7 +207,7 @@ impl MixedSerializationGraph {
                                         match cur.get_isolation_level() {
                                             IsolationLevel::Serializable => {
                                                 cur.set_cascading_abort();
-                                                println!("Abort: {:?}", cur.get_id());
+                                                // println!("Abort: {:?}", cur.get_id());
                                                 break;
                                             }
                                             IsolationLevel::ReadUncommitted
