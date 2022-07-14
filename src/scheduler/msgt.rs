@@ -195,7 +195,18 @@ impl MixedSerializationGraph {
                 }
                 CycleCheckingStrategy::Relevant => {
                     if let Edge::ReadWrite(_) = from.clone() {
+                        let mut attempts = 0;
+
                         loop {
+                            if attempts > ATTEMPTS {
+                                panic!(
+                                    "{} ({}) stuck in cycle loop. Incoming {:?}",
+                                    this_id,
+                                    this_iso,
+                                    this_ref.get_incoming(),
+                                );
+                            }
+
                             if this_ref.is_aborted() || this_ref.is_cascading_abort() {
                                 return false;
                             }
@@ -234,6 +245,7 @@ impl MixedSerializationGraph {
                                 // no cycle found
                                 return true;
                             }
+                            attempts += 1;
                         }
                     } else {
                         // edge was a WW/WR edge
