@@ -535,20 +535,6 @@ impl MixedSerializationGraph {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
 
-            let incoming = this.get_incoming().clone();
-            for edge in incoming {
-                match edge {
-                    Edge::WriteWrite(id) => {
-                        meta.add_problem_transaction(id);
-                    }
-                    Edge::WriteRead(id) => {
-                        meta.add_problem_transaction(id);
-                    }
-                    Edge::ReadWrite(_) => {}
-                }
-            }
-
-            self.cleanup(this);
             self.remove_accesses(database, &ops);
             MixedSerializationGraph::EG.with(|x| {
                 let guard = x.borrow_mut().take();
@@ -651,20 +637,6 @@ impl MixedSerializationGraph {
                 rw_table.erase(prv); // remove from rw table
                 lsn.store(prv + 1, Ordering::Release); // update lsn
 
-                let incoming = this.get_incoming().clone();
-                for edge in incoming {
-                    match edge {
-                        Edge::WriteWrite(id) => {
-                            meta.add_problem_transaction(id);
-                        }
-                        Edge::WriteRead(id) => {
-                            meta.add_problem_transaction(id);
-                        }
-                        Edge::ReadWrite(_) => {}
-                    }
-                }
-
-                self.cleanup(this);
                 self.remove_accesses(database, &ops);
                 MixedSerializationGraph::EG.with(|x| {
                     let guard = x.borrow_mut().take();
@@ -1002,14 +974,32 @@ impl MixedSerializationGraph {
         let mut attempts = 0;
 
         let mut abort = false;
-        while lsn.load(Ordering::Relaxed) != prv {
-            if self.needs_abort() {
-                let ops = self.get_operations();
-                self.commit_writes(database, false, &ops);
-                let this = unsafe { &*self.get_transaction() };
-                this.set_aborted();
 
-                abort = true;
+        while lsn.load(Ordering::Relaxed) != prv {
+            // only execute this one
+            if !abort {
+                if self.needs_abort() {
+                    let ops = self.get_operations();
+                    self.commit_writes(database, false, &ops);
+                    let this = unsafe { &*self.get_transaction() };
+                    this.set_aborted();
+
+                    let incoming = this.get_incoming().clone();
+                    for edge in incoming {
+                        match edge {
+                            Edge::WriteWrite(id) => {
+                                meta.add_problem_transaction(id);
+                            }
+                            Edge::WriteRead(id) => {
+                                meta.add_problem_transaction(id);
+                            }
+                            Edge::ReadWrite(_) => {}
+                        }
+                    }
+
+                    self.cleanup(this);
+                    abort = true;
+                }
             }
 
             i += 1;
