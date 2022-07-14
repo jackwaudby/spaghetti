@@ -262,11 +262,11 @@ impl SerializationGraph {
         database: &Database,
         ops: &Vec<Operation>,
     ) -> bool {
-        let id = this_node.get_id();
-        let is_cycle = self.cycle_cycle_init(id);
-        if is_cycle {
-            this_node.set_aborted();
-        }
+        // let id = this_node.get_id();
+        // let is_cycle = self.cycle_cycle_init(id);
+        // if is_cycle {
+        //     this_node.set_aborted();
+        // }
 
         // NFN: different
         self.commit_writes(database, true, &ops);
@@ -312,7 +312,7 @@ impl SerializationGraph {
         let lsn = table.get_lsn(offset);
 
         // Safety: ensures exculsive access to the record.
-        unsafe { spin(prv, lsn) }; // busy wait
+        spin(prv, lsn); // busy wait
 
         // On acquiring the 'lock' on the record can be clean or dirty.
         // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
@@ -400,7 +400,7 @@ impl SerializationGraph {
 
             prv = rw_table.push_front(Access::Write(meta.get_transaction_id())); // get ticket
 
-            unsafe { spin(prv, lsn) }; // Safety: ensures exculsive access to the record
+            spin(prv, lsn); // Safety: ensures exculsive access to the record
 
             // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
             // In this case the operation is restarted after a cycle check.
@@ -748,7 +748,7 @@ impl SerializationGraph {
     }
 }
 
-unsafe fn spin(prv: u64, lsn: &AtomicU64) {
+fn spin(prv: u64, lsn: &AtomicU64) {
     let mut i = 0;
     while lsn.load(Ordering::Relaxed) != prv {
         i += 1;

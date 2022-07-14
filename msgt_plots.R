@@ -42,20 +42,31 @@ file = "./experiment.csv"
 
 col_names = c("sf","protocol","workload","cores",
               "theta","serializable_rate","update_rate",
-              "relevant_cycle_check",
+              "dfs",
               "runtime","commits","aborts","not_found",
               "txn_time","commit_time","wait_time","latency")
 raw = read_csv(file = file, col_names = col_names)
 
 for (i in 1:nrow(raw)) {
-  if (raw[i,8] == TRUE) {
+  if (raw[i,8] == "relevant" && raw[i,2] = "msgt") {
     raw[i,2] = "msgt-rel"
+  }
+  
+  if (raw[i,8] == "restricted" && raw[i,2] = "msgt") {
+    raw[i,2] = "msgt-res"
+  }
+  
+  if (raw[i,8] == "reduced" && raw[i,2] = "msgt") {
+    raw[i,2] = "msgt-red"
   }
 }
 
+raw = raw %>% filter(dfs != "restricted")
 raw$thpt = ((raw$commits + raw$not_found) / (raw$runtime / 1000)) / 1000000
 raw$abr = (raw$aborts / (raw$commits + raw$not_found+ raw$aborts))*100
 raw$lat = (raw$txn_time + raw$latency) / (raw$commits + raw$not_found)
+raw$com = (raw$commit_time) / (raw$commits + raw$not_found)
+
 
 ggplot(data = raw, 
        aes(x = serializable_rate, 
@@ -71,9 +82,22 @@ ggplot(data = raw,
            colour = protocol)) +
   geom_line()
 
-(raw$abr[1:6] - raw$abr[7:12])*100
-raw$abr[1:6]*100
-raw$abr[7:12]*100
+ggplot(data = raw, 
+       aes(x = serializable_rate, 
+           y = lat, 
+           group = protocol, 
+           colour = protocol)) +
+  geom_line()
+
+
+ggplot(data = raw, 
+       aes(x = serializable_rate, 
+           y = com, 
+           group = protocol, 
+           colour = protocol)) +
+  geom_line()
+
+
 #### SCALABILITY ####
 
 msgt = raw[raw$protocol == "msgt",]
