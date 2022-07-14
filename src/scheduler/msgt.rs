@@ -57,7 +57,10 @@ impl MixedSerializationGraph {
     }
 
     pub fn new(size: usize, cycle_checking_strategy: &str) -> Self {
-        info!("Initialise msg with {} thread(s)", size);
+        info!(
+            "Initialise mixed serialization graph testing with {} cores(s)",
+            size
+        );
         info!("Cycle checking strategy: {}", cycle_checking_strategy);
 
         let cycle_checking_strategy = match cycle_checking_strategy {
@@ -108,24 +111,22 @@ impl MixedSerializationGraph {
             .add(op_type, table_id, column_id, offset, prv);
     }
 
-    pub fn insert_and_check(&self, meta: &mut StatsBucket, from: Edge) -> bool {
-        let this_ref = unsafe { &*self.get_transaction() };
-        let this_id = self.get_transaction() as usize;
+    pub fn insert_and_check(&self, this_ref: &Node, meta: &mut StatsBucket, from: Edge) -> bool {
+        let this_id = this_ref.get_id();
+        let this_iso = this_ref.get_isolation_level();
 
         // prepare
         let (from_id, rw, out_edge) = match from {
             // WW edges always get inserted
             Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
-
             // WR edge inserted if this node is PL2/3
             Edge::WriteRead(from_id) => {
-                if let IsolationLevel::ReadUncommitted = this_ref.get_isolation_level() {
+                if let IsolationLevel::ReadUncommitted = this_iso {
                     return true;
                 }
 
                 (from_id, false, Edge::WriteRead(this_id))
             }
-
             // RW edge inserted if from node is PL3
             Edge::ReadWrite(from_id) => {
                 let from_ref = unsafe { &*(from_id as *const Node) };
@@ -145,13 +146,12 @@ impl MixedSerializationGraph {
         let mut attempts = 0;
         loop {
             if attempts > ATTEMPTS {
-                let this_node = unsafe { &*self.get_transaction() };
                 panic!(
                     "{:x} ({}) stuck inserting {:?}. Incoming {:?}",
-                    this_node.get_id(),
-                    this_node.get_isolation_level(),
+                    this_id,
+                    this_iso,
                     from,
-                    this_node.get_incoming(),
+                    this_ref.get_incoming(),
                 );
             }
 
@@ -163,9 +163,8 @@ impl MixedSerializationGraph {
 
             if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
                 this_ref.set_cascading_abort();
-                let fid = from_ref.get_id();
-                this_ref.set_abort_through(fid);
-                meta.set_abort_through(fid);
+                this_ref.set_abort_through(from_id);
+                meta.set_abort_through(from_id);
                 return false;
             }
 
@@ -188,15 +187,14 @@ impl MixedSerializationGraph {
             match self.cycle_checking_strategy {
                 CycleCheckingStrategy::Reduced => {
                     let (is_cycle, _, _) = self.cycle_check_reduced_init(this_ref);
-                    return !is_cycle; // false equals cycle so flip
+                    return !is_cycle;
                 }
                 CycleCheckingStrategy::Restricted => {
                     let (is_cycle, _, _) = self.cycle_check_init(this_ref);
-                    return !is_cycle; // false equals cycle so flip
+                    return !is_cycle;
                 }
                 CycleCheckingStrategy::Relevant => {
                     if let Edge::ReadWrite(_) = from.clone() {
-                        let mut iter = 0;
                         loop {
                             if this_ref.is_aborted() || this_ref.is_cascading_abort() {
                                 return false;
@@ -205,58 +203,42 @@ impl MixedSerializationGraph {
                             let (is_cycle, visit_path, edge_path) = self.cycle_check_init(this_ref);
 
                             if is_cycle {
-                                // cycle with added edge
+                                // the cycle found includes the inserted RW edge
                                 if visit_path.contains(&from_ref.get_id()) {
-                                    if iter > 0 {
-                                        // println!("then found mine");
-                                    }
-
-                                    if let IsolationLevel::Serializable =
-                                        this_ref.get_isolation_level()
-                                    {
+                                    if let IsolationLevel::Serializable = this_iso {
                                         return false; // abort this node
                                     } else {
                                         from_ref.set_cascading_abort();
                                         return true; // abort that node
                                     }
                                 } else {
-                                    // println!("iter: {} - found someone else's cycle", iter);
-                                    // println!("Inserted: {:?} to {}", from.clone(), this_id);
-                                    // println!("visit path: {:?}", visit_path);
-                                    // println!("edge path: {:?}", edge_path);
-                                    let cycle_type = _classify_cycle(edge_path);
+                                    // the cycle found did not include the inserted RW edge
+                                    let cycle_type = classify_cycle(edge_path);
 
-                                    // println!("Cycle: {:?}", cycle_type);
-
+                                    // if was a G2 we can help out by aborting a PL-3 in the path
                                     if let Cycle::G2 = cycle_type {
                                         for node_id in visit_path {
                                             let cur = unsafe { &*(node_id as *const Node) };
-                                            match cur.get_isolation_level() {
-                                                IsolationLevel::Serializable => {
-                                                    cur.set_cascading_abort();
-                                                    // println!("Abort: {:?}", cur.get_id());
-                                                    break;
-                                                }
-                                                IsolationLevel::ReadUncommitted
-                                                | IsolationLevel::ReadCommitted => {}
+                                            if let IsolationLevel::Serializable =
+                                                cur.get_isolation_level()
+                                            {
+                                                cur.set_cascading_abort();
+                                                break;
                                             }
                                         }
                                     }
 
-                                    iter += 1;
-                                    // found someone else's cycle
+                                    // try find my cycle (if there is one)
                                 }
                             } else {
-                                if iter > 0 {
-                                    // println!("then found none");
-                                }
-
-                                return true; // no cycle
+                                // no cycle found
+                                return true;
                             }
                         }
                     } else {
+                        // edge was a WW/WR edge
                         let (is_cycle, _, _) = self.cycle_check_init(this_ref);
-                        return !is_cycle; // false equals cycle so flip
+                        return !is_cycle;
                     }
                 }
             }
@@ -543,7 +525,7 @@ impl MixedSerializationGraph {
                     // W-R conflict
                     Access::Write(from) => {
                         if let TransactionId::SerializationGraph(from_id) = from {
-                            if !self.insert_and_check(meta, Edge::WriteWrite(*from_id)) {
+                            if !self.insert_and_check(this, meta, Edge::WriteWrite(*from_id)) {
                                 cyclic = true;
                                 break;
                             }
@@ -591,6 +573,7 @@ impl MixedSerializationGraph {
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
         let mut prv;
+        let this = unsafe { &*self.get_transaction() };
 
         let mut attempts = 0;
         loop {
@@ -613,7 +596,6 @@ impl MixedSerializationGraph {
             }
 
             prv = rw_table.push_front(Access::Write(meta.get_transaction_id())); // get ticket
-            let this = unsafe { &*self.get_transaction() };
 
             unsafe { spin(prv, lsn, this) }; // Safety: ensures exculsive access to the record
 
@@ -637,7 +619,11 @@ impl MixedSerializationGraph {
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
-                                    if !self.insert_and_check(meta, Edge::WriteWrite(*from_addr)) {
+                                    if !self.insert_and_check(
+                                        this,
+                                        meta,
+                                        Edge::WriteWrite(*from_addr),
+                                    ) {
                                         cyclic = true;
                                         break; // no reason to check other accesses
                                     }
@@ -686,7 +672,7 @@ impl MixedSerializationGraph {
                 match access {
                     Access::Read(from) => {
                         if let TransactionId::SerializationGraph(from_addr) = from {
-                            if !self.insert_and_check(meta, Edge::ReadWrite(*from_addr)) {
+                            if !self.insert_and_check(this, meta, Edge::ReadWrite(*from_addr)) {
                                 cyclic = true;
                                 break;
                             }
@@ -952,7 +938,7 @@ fn _print_node_path(visit_path: &mut RefMut<Vec<usize>>) -> String {
     path
 }
 
-fn _classify_cycle(edge_path: Vec<Edge>) -> Cycle {
+fn classify_cycle(edge_path: Vec<Edge>) -> Cycle {
     let mut wr = 0;
     let mut rw = 0;
 
