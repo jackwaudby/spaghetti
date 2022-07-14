@@ -172,6 +172,10 @@ impl MixedSerializationGraph {
                 if let Edge::ReadWrite(_) = from.clone() {
                     let mut iter = 0;
                     loop {
+                        if this_ref.is_aborted() || this_ref.is_cascading_abort() {
+                            return false;
+                        }
+
                         let (is_cycle, visit_path, edge_path) = self.cycle_check_init(this_ref);
 
                         if is_cycle {
