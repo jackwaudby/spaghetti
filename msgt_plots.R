@@ -39,6 +39,7 @@ file = "./data/22_02_03_ycsb_contention_1.csv"
 
 # load data
 file = "./experiment.csv"
+file = "./results-isolation.csv"
 
 col_names = c("sf","protocol","workload","cores",
               "theta","serializable_rate","update_rate",
@@ -48,15 +49,15 @@ col_names = c("sf","protocol","workload","cores",
 raw = read_csv(file = file, col_names = col_names)
 
 for (i in 1:nrow(raw)) {
-  if (raw[i,8] == "relevant" && raw[i,2] = "msgt") {
+  if (raw[i,8] == "relevant" && raw[i,2] == "msgt") {
     raw[i,2] = "msgt-rel"
   }
   
-  if (raw[i,8] == "restricted" && raw[i,2] = "msgt") {
+  if (raw[i,8] == "restricted" && raw[i,2] == "msgt") {
     raw[i,2] = "msgt-res"
   }
   
-  if (raw[i,8] == "reduced" && raw[i,2] = "msgt") {
+  if (raw[i,8] == "reduced" && raw[i,2] == "msgt") {
     raw[i,2] = "msgt-red"
   }
 }
@@ -90,7 +91,7 @@ ggplot(data = raw,
   geom_line()
 
 
-ggplot(data = raw, 
+  ggplot(data = raw, 
        aes(x = serializable_rate, 
            y = com, 
            group = protocol, 
