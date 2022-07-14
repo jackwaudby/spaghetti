@@ -8,7 +8,7 @@ set_seed = false
 
 protocol="sgt"
 cores = 1
-dfs = reduced
+dfs = "reduced"
 garbage_collection = false
 garbage_collection_sleep = 1
 
