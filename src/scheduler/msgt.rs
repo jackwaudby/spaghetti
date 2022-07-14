@@ -198,15 +198,6 @@ impl MixedSerializationGraph {
                         let mut attempts = 0;
 
                         loop {
-                            if attempts > ATTEMPTS {
-                                panic!(
-                                    "{} ({}) stuck in cycle loop. Incoming {:?}",
-                                    this_id,
-                                    this_iso,
-                                    this_ref.get_incoming(),
-                                );
-                            }
-
                             if this_ref.is_aborted() || this_ref.is_cascading_abort() {
                                 return false;
                             }
@@ -224,6 +215,7 @@ impl MixedSerializationGraph {
                                     }
                                 } else {
                                     // the cycle found did not include the inserted RW edge
+
                                     let cycle_type = classify_cycle(edge_path);
 
                                     // if was a G2 we can help out by aborting a PL-3 in the path
@@ -237,6 +229,16 @@ impl MixedSerializationGraph {
                                                 break;
                                             }
                                         }
+                                    }
+
+                                    if attempts > ATTEMPTS {
+                                        panic!(
+                                            "{} ({}) stuck in cycle loop. Incoming {:?}, Found cycle: {:?}",
+                                            this_id,
+                                            this_iso,
+                                            this_ref.get_incoming(),
+                                            cycle_type
+                                        );
                                     }
 
                                     // try find my cycle (if there is one)
