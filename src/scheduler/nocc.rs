@@ -3,12 +3,7 @@ use crate::common::{
     transaction_information::{Operation, OperationType, TransactionInformation},
 };
 use crate::scheduler::{StatsBucket, ValueId};
-use crate::storage::{
-    access::{Access, TransactionId},
-    datatype::Data,
-    table::Table,
-    Database,
-};
+use crate::storage::{access::TransactionId, datatype::Data, table::Table, Database};
 
 use std::cell::RefCell;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -41,7 +36,7 @@ impl NoConcurrencyControl {
     pub fn read_value(
         &self,
         vid: ValueId,
-        meta: &mut StatsBucket,
+        _meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<Data, NonFatalError> {
         let table_id = vid.get_table_id();
@@ -49,7 +44,9 @@ impl NoConcurrencyControl {
         let offset = vid.get_offset();
         let table: &Table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
-        let prv = rw_table.push_front(Access::Read(meta.get_transaction_id()));
+        // let prv = rw_table.push_front(Access::Read(meta.get_transaction_id()));
+        let prv = rw_table.dummy_push_front();
+
         let lsn = table.get_lsn(offset);
 
         spin(prv, lsn);
@@ -59,13 +56,13 @@ impl NoConcurrencyControl {
 
         lsn.store(prv + 1, Ordering::Release);
 
-        self.txn_info.get().unwrap().borrow_mut().add(
-            OperationType::Read,
-            table_id,
-            column_id,
-            offset,
-            prv,
-        );
+        // self.txn_info.get().unwrap().borrow_mut().add(
+        //     OperationType::Read,
+        //     table_id,
+        //     column_id,
+        //     offset,
+        //     prv,
+        // );
 
         Ok(value)
     }
@@ -74,7 +71,7 @@ impl NoConcurrencyControl {
         &self,
         value: &mut Data,
         vid: ValueId,
-        meta: &mut StatsBucket,
+        _meta: &mut StatsBucket,
         database: &Database,
     ) -> Result<(), NonFatalError> {
         let table_id = vid.get_table_id();
@@ -83,7 +80,8 @@ impl NoConcurrencyControl {
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
-        let prv = rw_table.push_front(Access::Write(meta.get_transaction_id()));
+        // let prv = rw_table.push_front(Access::Write(meta.get_transaction_id()));
+        let prv = rw_table.dummy_push_front();
 
         spin(prv, lsn);
 
@@ -93,18 +91,18 @@ impl NoConcurrencyControl {
 
         lsn.store(prv + 1, Ordering::Release);
 
-        self.txn_info.get().unwrap().borrow_mut().add(
-            OperationType::Write,
-            table_id,
-            column_id,
-            offset,
-            prv,
-        );
+        // self.txn_info.get().unwrap().borrow_mut().add(
+        //     OperationType::Write,
+        //     table_id,
+        //     column_id,
+        //     offset,
+        //     prv,
+        // );
 
         Ok(())
     }
 
-    fn tidy_up(&self, database: &Database) {
+    fn _tidy_up(&self, database: &Database) {
         let ops = self.txn_info.get().unwrap().borrow_mut().get_clone();
 
         for op in ops {
@@ -133,15 +131,15 @@ impl NoConcurrencyControl {
     pub fn commit(
         &self,
         _meta: &mut StatsBucket,
-        database: &Database,
+        _database: &Database,
     ) -> Result<(), NonFatalError> {
-        self.tidy_up(database);
+        // self.tidy_up(database);
 
         Ok(())
     }
 
-    pub fn abort(&self, _meta: &mut StatsBucket, database: &Database) -> NonFatalError {
-        self.tidy_up(database);
+    pub fn abort(&self, _meta: &mut StatsBucket, _database: &Database) -> NonFatalError {
+        // self.tidy_up(database);
 
         NonFatalError::NoccError
     }

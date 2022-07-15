@@ -34,6 +34,11 @@ impl<T> AtomicLinkedList<T> {
         }
     }
 
+    pub fn dummy_push_front(&self) -> u64 {
+        let id = self.id.fetch_add(1, SeqCst);
+        id
+    }
+
     /// Push an element to the head of the list. Returns (all-time) position in the list.
     pub fn push_front<'g>(&self, t: T) -> u64 {
         let id = self.id.fetch_add(1, SeqCst); // get node id
