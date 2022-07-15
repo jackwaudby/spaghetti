@@ -18,8 +18,10 @@ pub mod helper;
 lazy_static! {
     pub static ref YCSB_SF_MAP: HashMap<u64, usize> = {
         let mut m = HashMap::new();
-        m.insert(0, 100);
-        m.insert(1, 100000);
+        m.insert(1, 100);
+        m.insert(2, 100000);
+        m.insert(3, 10000000);
+
         m
     };
 }
