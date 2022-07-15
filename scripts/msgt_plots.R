@@ -18,6 +18,22 @@ df = read_csv(file = file, col_names = col_names)
 df = renameProtocols(df) 
 df = computeMetrics(df)
 
+for (w in c("smallbank","ycsb","tatp")) {
+  temp = df[which(df$workload == w),]
+  cat(paste0("workload: ",w,"\n"))
+  
+  (noccThpt = temp[which(temp$protocol == "nocc"),]$thpt)
+  (sgtThpt = temp[which(temp$protocol == "sgt"),]$thpt)
+  (msgtThpt = temp[which(temp$protocol == "msgt-red"),]$thpt)
+  (sgtOverhead = ((noccThpt - sgtThpt) / noccThpt)*100)
+  (msgtOverhead = ((noccThpt - msgtThpt) / noccThpt)*100)
+  
+  cat(paste0("nocc thpt: ",round(noccThpt, 2),"\n"))
+  cat(paste0("sgt thpt: ",round(sgtThpt, 2),"\n"))
+  cat(paste0("msgt thpt: ",round(msgtThpt, 2),"\n"))
+  
+}
+
 (noccThpt = df[which(df$protocol == "nocc"),]$thpt)
 (sgtThpt = df[which(df$protocol == "sgt"),]$thpt)
 (msgtThpt = df[which(df$protocol == "msgt-red"),]$thpt)
