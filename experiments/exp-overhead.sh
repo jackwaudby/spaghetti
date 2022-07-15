@@ -2,8 +2,8 @@
 
 # Overhead Experiment
 
-rm results.csv
-rm exp-overhead-results.csv
+rm ../results.csv
+rm ../exp-overhead-results.csv
 
 cargo build --release
 
@@ -13,4 +13,4 @@ for protocol in msgt sgt nocc; do
     sleep 5
 done
 
-mv results.csv exp-overhead-results.csv
+mv ../results.csv ../results/exp-overhead-results.csv
