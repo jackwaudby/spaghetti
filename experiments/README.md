@@ -75,5 +75,5 @@ Misc:
 - Track conflicts detected 
 - Track average cycle length 
 - Track type of cycles found 
-- Nocc vs SGT vs MSGT
+- Nocc vs SGT vs MSGT experiment
 
