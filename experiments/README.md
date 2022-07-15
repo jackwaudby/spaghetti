@@ -44,16 +44,17 @@ Misc:
 
 Parameters:
 - `scale_factor`: table size;
-    - `sf=0`: 100 entries
-    - `sf=1`: 100K entries 
+    - `sf=1`: 100 entries
+    - `sf=2`: 100K entries 
+    - `sf=3`: 10M entries     
 - `theta`: contention (0.0-0.9)
 - `update_rate`: update ops per transaction (0.0-1.0)
 - `serializable_rate`: proportion of serializable transactions, 10% of the remainder are read uncommitted
+- `queries`: queries per transaction
 
 Scalability: `theta=0.8`, `update_rate=0.5`, `serializable_rate=0.2`, vary `cores=1-40`
 Contention: `cores=40`, `update_rate=0.5`, `serializable_rate=0.2`, vary `theta=0.0-0.9`
 Isolation: `cores=40`, `update_rate=0.5`, `theta=0.8`, vary `serializable_rate=0.0-1.0`
-
 
 Misc:
 - Use 10 queries/txn
@@ -75,5 +76,4 @@ Misc:
 - Track average cycle length 
 - Track type of cycles found 
 - Nocc vs SGT vs MSGT
-- YCSB transaction size parameter 
-- YCSB 10M scale factor 
+
