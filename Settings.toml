@@ -23,9 +23,12 @@ nurand = true
 use_balance_mix = false
 isolation_mix = "mid"
 
+# YCSB
 theta = 0.5
 update_rate = 0.5
 serializable_rate = 0.5
+queries = 10
+
 
 increase = 1
 decrease = 2

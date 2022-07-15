@@ -33,6 +33,7 @@ fn main() {
             arg!(-i --serializablerate <SERIALIZABLERATE> "Serializable rate (YCSB only)")
                 .required(false),
         )
+        .arg(arg!(-q --queries <QUERIES> "Queries per transaction (YCSB only)").required(false))
         .arg(arg!(-d --dfs <DFS> "Cycle shecking DFS (MSGT only)").required(false))
         .get_matches();
 
@@ -67,6 +68,10 @@ fn main() {
 
     if let Some(sr) = matches.get_one::<String>("serializablerate") {
         config.set("serializable_rate", sr.clone()).unwrap();
+    }
+
+    if let Some(queries) = matches.get_one::<String>("queries") {
+        config.set("queries", queries.clone()).unwrap();
     }
 
     // MSGT

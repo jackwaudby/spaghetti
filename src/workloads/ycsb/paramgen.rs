@@ -17,6 +17,7 @@ pub struct YcsbGenerator {
     update_rate: f64,
     serializable_rate: f64,
     read_uncommitted_rate: f64,
+    queries: u64,
     alpha: f64,
     zetan: f64,
     eta: f64,
@@ -31,6 +32,7 @@ impl YcsbGenerator {
         theta: f64,
         update_rate: f64,
         serializable_rate: f64,
+        queries: u64,
     ) -> Self {
         let rng: StdRng;
 
@@ -62,6 +64,7 @@ impl YcsbGenerator {
             alpha,
             zetan,
             eta,
+            queries,
         }
     }
 }
@@ -117,7 +120,7 @@ impl YcsbGenerator {
         let mut operations = Vec::new();
         let mut unique = HashSet::new();
 
-        for _ in 0..10 {
+        for _ in 0..self.queries {
             let mut offset;
             loop {
                 offset = helper::zipf2(

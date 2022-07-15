@@ -77,6 +77,7 @@ impl Database {
                     "Serializable rate: {}",
                     config.get_float("serializable_rate")?
                 );
+                info!("Queries per transaction: {}", config.get_int("queries")?);
 
                 Ok(Database::Ycsb(database))
             }

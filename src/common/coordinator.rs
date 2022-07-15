@@ -290,6 +290,7 @@ pub fn get_transaction_generator(config: &Config, core_id: usize) -> ParameterGe
             let theta = config.get_float("theta").unwrap();
             let update_rate = config.get_float("update_rate").unwrap();
             let serializable_rate = config.get_float("serializable_rate").unwrap();
+            let queries = config.get_int("queries").unwrap() as u64;
 
             let gen = YcsbGenerator::new(
                 core_id,
@@ -299,6 +300,7 @@ pub fn get_transaction_generator(config: &Config, core_id: usize) -> ParameterGe
                 theta,
                 update_rate,
                 serializable_rate,
+                queries,
             );
             ParameterGenerator::Ycsb(gen)
         }
