@@ -31,8 +31,8 @@ Misc:
 ## TATP 
 
 Base Table Size (`scale_factor`):
-1. 100 entries (`sf=0`)
-2. 100,000 entries  (`sf=1`)
+1. 100 entries (`sf=1`)
+2. 100,000 entries  (`sf=2`)
 
 Misc:
 - Non-uniform access (`nurand`)
@@ -71,9 +71,17 @@ Misc:
 5. Average cycle length
 6. Conflicts detected 
 
+## Overhead Experiment
+Separates the concurrency control overhead from the actual transaction workload. 
+Benchmarks:
+- 
+
+Turned off the tuple access history, conflict detection, cycle checks, and restart handling. 
+The only concurrency requirement for `No CC` is that tuple accesses are serialized.
+
 ## TODO 
 - Track conflicts detected 
 - Track average cycle length 
 - Track type of cycles found 
-- Nocc vs SGT vs MSGT experiment
+- Nocc vs SGT vs MSGT experiment 
 

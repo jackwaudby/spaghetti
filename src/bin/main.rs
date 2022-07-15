@@ -34,6 +34,10 @@ fn main() {
                 .required(false),
         )
         .arg(arg!(-q --queries <QUERIES> "Queries per transaction (YCSB only)").required(false))
+        .arg(arg!(-b --balancemix <BALANCEMIX> "Balance mix (SmallBank only)").required(false))
+        .arg(
+            arg!(-m --isolationmix <ISOLATIONMIX> "Isolation mix (SmallBank only)").required(false),
+        )
         .arg(arg!(-d --dfs <DFS> "Cycle shecking DFS (MSGT only)").required(false))
         .get_matches();
 
@@ -55,6 +59,15 @@ fn main() {
 
     if let Some(c) = matches.get_one::<String>("cores") {
         config.set("cores", c.clone()).unwrap();
+    }
+
+    // SmallBank
+    if let Some(bm) = matches.get_one::<String>("balancemix") {
+        config.set("use_balance_mix", bm.clone()).unwrap();
+    }
+
+    if let Some(im) = matches.get_one::<String>("isolationmix") {
+        config.set("isolation_mix", im.clone()).unwrap();
     }
 
     // YCSB

@@ -45,7 +45,8 @@ impl Database {
                 smallbank::loader::populate_tables(population, &mut database, &mut rng)?; // generate data
 
                 info!("Parameter generator set seed: {}", set_seed);
-                info!("Balance mix: {}", config.get_bool("use_balance_mix")?); // balance mix
+                info!("Balance mix: {}", config.get_bool("use_balance_mix")?);
+
                 let contention = match sf {
                     0 => "NA",
                     1 => "high",
