@@ -18,6 +18,7 @@ workload = "smallbank"
 anomaly = "g1c"
 load = false
 
+# TATP
 nurand = true
 
 # SmallBank

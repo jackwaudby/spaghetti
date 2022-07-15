@@ -6,67 +6,48 @@ library(patchwork)
 library(scales)
 library(latex2exp)
 
-dir_root = "../msgt/paper/figures/"
-
-# scalability
-# read only
-# cores=1-40; U=0.0; omega=0.0; theta=0.0
-file = "./data/22_02_03_ycsb_scalabilty_1.csv"
-
-# medium contention
-# cores=1-40; U=0.5; omega=0.5; theta=0.6
-file = "./data/22_02_03_ycsb_scalabilty_2.csv"
-
-# high contention
-# cores=1-40; U=0.5; omega=0.5; theta=0.7
-file = "./data/22_02_03_ycsb_scalabilty_3.csv"
-
-# high update rate, contention. low serializable rate
-# cores=1-40; U=0.9; omega=0.2; theta=0.7
-file = "./data/22_02_03_ycsb_scalability_4.csv"
-
-# isolation
-# cores=40; U=0.5; omega=0.0-1.0; theta=0.7
-file = "./data/22_02_03_ycsb_isolation_1.csv"
-
-# update rate
-# cores=40; U=0.0-1.0; omega=0.2; theta=0.6
-file = "./data/22_02_03_ycsb_update_rate_1.csv"
-
-# contention
-# cores=40; U=0.5; omega=0.2; theta=0.6-0.9
-file = "./data/22_02_03_ycsb_contention_1.csv"
-
-# load data
-file = "./experiment.csv"
-file = "./exp-isolation-results.csv"
-
 col_names = c("sf","protocol","workload","cores",
               "theta","serializable_rate","update_rate",
               "dfs",
               "runtime","commits","aborts","not_found",
               "txn_time","commit_time","wait_time","latency")
-raw = read_csv(file = file, col_names = col_names)
 
-for (i in 1:nrow(raw)) {
-  if (raw[i,8] == "relevant" && raw[i,2] == "msgt") {
-    raw[i,2] = "msgt-rel"
+#### Overhead Experiment ####
+file = "../results/exp-overhead-results.csv"
+df = read_csv(file = file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
+
+(noccThpt = df[which(df$protocol == "nocc"),]$thpt)
+(sgtThpt = df[which(df$protocol == "sgt"),]$thpt)
+(msgtThpt = df[which(df$protocol == "msgt-red"),]$thpt)
+(sgtOverhead = ((noccThpt - sgtThpt) / noccThpt)*100)
+(msgtOverhead = ((noccThpt - msgtThpt) / noccThpt)*100)
+
+
+renameProtocols <- function(df) {
+  for (i in 1:nrow(df)) {
+    if (df[i,8] == "relevant" && df[i,2] == "msgt") {
+      df[i,2] = "msgt-rel"
+    }
+    
+    if (df[i,8] == "restricted" && df[i,2] == "msgt") {
+      df[i,2] = "msgt-res"
+    }
+    
+    if (df[i,8] == "reduced" && df[i,2] == "msgt") {
+      df[i,2] = "msgt-red"
+    }
   }
   
-  if (raw[i,8] == "restricted" && raw[i,2] == "msgt") {
-    raw[i,2] = "msgt-res"
-  }
-  
-  if (raw[i,8] == "reduced" && raw[i,2] == "msgt") {
-    raw[i,2] = "msgt-red"
-  }
+  return(df)
 }
-
-raw = raw %>% filter(dfs != "restricted")
-raw$thpt = ((raw$commits + raw$not_found) / (raw$runtime / 1000)) / 1000000
-raw$abr = (raw$aborts / (raw$commits + raw$not_found+ raw$aborts))*100
-raw$lat = (raw$txn_time + raw$latency) / (raw$commits + raw$not_found)
-raw$com = (raw$commit_time) / (raw$commits + raw$not_found)
+computeMetrics <- function(df) {
+  df$thpt = ((df$commits + df$not_found) / (df$runtime / 1000)) / 1000000
+  df$abr = (df$aborts / (df$commits + df$not_found+ df$aborts))*100
+  df$lat = (df$txn_time + df$latency) / (df$commits + df$not_found)
+  return(df)
+}
 
 
 ggplot(data = raw, 
