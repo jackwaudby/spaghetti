@@ -8,9 +8,36 @@ library(latex2exp)
 
 col_names = c("sf","protocol","workload","cores",
               "theta","serializable_rate","update_rate",
-              "dfs",
+              "queries","dfs",
               "runtime","commits","aborts","not_found",
-              "txn_time","commit_time","wait_time","latency")
+              "txn_time","commit_time","wait_time","latency",
+              "rw","wr","rw","g0","g1","g2","path")
+
+renameProtocols <- function(df) {
+  for (i in 1:nrow(df)) {
+    if (df[i,8] == "relevant" && df[i,2] == "msgt") {
+      df[i,2] = "msgt-rel"
+    }
+    
+    if (df[i,8] == "restricted" && df[i,2] == "msgt") {
+      df[i,2] = "msgt-res"
+    }
+    
+    if (df[i,8] == "reduced" && df[i,2] == "msgt") {
+      df[i,2] = "msgt-red"
+    }
+  }
+  
+  return(df)
+}
+computeMetrics <- function(df) {
+  df$thpt = ((df$commits + df$not_found) / (df$runtime / 1000)) / 1000000
+  df$abr = (df$aborts / (df$commits + df$not_found+ df$aborts))*100
+  df$lat = (df$txn_time + df$latency) / (df$commits + df$not_found)
+  df$apl = df$path / (df$g0 + df$g1 + df$g2)
+  
+  return(df)
+}
 
 #### Overhead Experiment ####
 file = "../results/exp-overhead-results.csv"
@@ -43,46 +70,27 @@ for (w in c("smallbank","ycsb","tatp")) {
 (msgtOverhead = ((noccThpt - msgtThpt) / noccThpt)*100)
 
 
-renameProtocols <- function(df) {
-  for (i in 1:nrow(df)) {
-    if (df[i,8] == "relevant" && df[i,2] == "msgt") {
-      df[i,2] = "msgt-rel"
-    }
-    
-    if (df[i,8] == "restricted" && df[i,2] == "msgt") {
-      df[i,2] = "msgt-res"
-    }
-    
-    if (df[i,8] == "reduced" && df[i,2] == "msgt") {
-      df[i,2] = "msgt-red"
-    }
-  }
-  
-  return(df)
-}
-computeMetrics <- function(df) {
-  df$thpt = ((df$commits + df$not_found) / (df$runtime / 1000)) / 1000000
-  df$abr = (df$aborts / (df$commits + df$not_found+ df$aborts))*100
-  df$lat = (df$txn_time + df$latency) / (df$commits + df$not_found)
-  return(df)
-}
+#### Isolation Experiment ####
+file = "../results/exp-isolation-results.csv"
+df = read_csv(file = file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
 
-
-ggplot(data = raw, 
+ggplot(data = df, 
        aes(x = serializable_rate, 
            y = thpt, 
            group = protocol, 
            colour = protocol)) +
   geom_line()
 
-ggplot(data = raw, 
+ggplot(data = df, 
        aes(x = serializable_rate, 
            y = abr, 
            group = protocol, 
            colour = protocol)) +
   geom_line()
 
-ggplot(data = raw, 
+ggplot(data = df, 
        aes(x = serializable_rate, 
            y = lat, 
            group = protocol, 
@@ -90,7 +98,7 @@ ggplot(data = raw,
   geom_line()
 
 
-  ggplot(data = raw, 
+  ggplot(data = df, 
        aes(x = serializable_rate, 
            y = com, 
            group = protocol, 

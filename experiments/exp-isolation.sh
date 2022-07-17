@@ -18,6 +18,6 @@ for protocol in msgt sgt; do
     done
 done
 
-mv results.csv exp-isolation-results.csv
+mv results.csv results/exp-isolation-results.csv
 
 cd experiments
