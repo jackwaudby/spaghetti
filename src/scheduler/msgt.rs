@@ -574,8 +574,6 @@ impl MixedSerializationGraph {
             return Err(NonFatalError::NoccError); // TODO: abort called externally
         }
 
-        // On acquiring the 'lock' on the record can be clean or dirty.
-        // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
         let guard = &epoch::pin();
         let snapshot = rw_table.iter(guard);
 
@@ -757,8 +755,8 @@ impl MixedSerializationGraph {
             ); // Assert: never write to an uncommitted value.
         }
 
-        lsn.store(prv + 1, Ordering::Release); // update lsn, giving next operation access.
-        self.record(OperationType::Write, vid, prv); // record operation
+        lsn.store(prv + 1, Ordering::Release);
+        self.record(OperationType::Write, vid, prv);
 
         Ok(())
     }

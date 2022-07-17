@@ -271,6 +271,7 @@ impl SerializationGraph {
 
             return Err(SerializationGraphError::CascadingAbort.into());
         }
+
         let table_id = vid.get_table_id();
         let table = database.get_table(table_id);
 
@@ -330,13 +331,13 @@ impl SerializationGraph {
         database: &Database,
     ) -> Result<(), NonFatalError> {
         let table_id = vid.get_table_id();
-        let column_id = vid.get_column_id();
         let offset = vid.get_offset();
         let table = database.get_table(table_id);
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
         let mut prv;
         let this_ref = unsafe { &*self.get_transaction() };
+        let tid = meta.get_transaction_id();
 
         loop {
             if self.needs_abort(this_ref) {
@@ -345,7 +346,7 @@ impl SerializationGraph {
                 return Err(SerializationGraphError::CascadingAbort.into());
             }
 
-            prv = rw_table.push_front(Access::Write(meta.get_transaction_id()));
+            prv = rw_table.push_front(Access::Write(tid));
 
             spin(prv, lsn);
 
@@ -356,14 +357,11 @@ impl SerializationGraph {
             let mut cyclic = false;
 
             for (id, access) in snapshot {
-                // only interested in accesses before this one and that are write operations.
                 if id < &prv {
                     if let Access::Write(from_tid) = access {
                         meta.inc_ww_conflicts();
-
                         if let TransactionId::SerializationGraph(from_id) = from_tid {
                             let from_ref = unsafe { &*(*from_id as *const Node) };
-
                             if !from_ref.is_committed() {
                                 let from = Edge::NotReadWrite(*from_id);
                                 if !self.insert_and_check(this_ref, meta, from) {
@@ -428,6 +426,7 @@ impl SerializationGraph {
             return Err(SerializationGraphError::CycleFound.into());
         }
 
+        let column_id = vid.get_column_id();
         if let Err(_) = table.get_tuple(column_id, offset).get().set_value(value) {
             panic!(
                 "{} attempting to write over uncommitted value on ({},{},{})",
@@ -479,28 +478,18 @@ impl SerializationGraph {
 
     pub fn abort(&self, meta: &mut StatsBucket, database: &Database) {
         let ops = self.get_operations();
-
         self.commit_writes(database, false, &ops);
-
         let this = unsafe { &*self.get_transaction() };
-
         this.set_aborted();
 
-        let incoming = this.get_incoming().clone();
+        let incoming = this.get_incoming();
         for edge in incoming {
-            match edge {
-                Edge::NotReadWrite(id) => {
-                    meta.add_problem_transaction(id);
-                }
-                // Edge::WriteRead(id) => {
-                //     meta.add_problem_transaction(id);
-                // }
-                Edge::ReadWrite(_) => {}
+            if let Edge::NotReadWrite(id) = edge {
+                meta.add_problem_transaction(id);
             }
         }
 
         self.cleanup(this);
-
         self.remove_accesses(database, &ops);
 
         SerializationGraph::EG.with(|x| {
@@ -557,21 +546,7 @@ impl SerializationGraph {
                         }
                         drop(that_rlock);
                     }
-                } // (this) -[wr]-> (to)
-                  // Edge::WriteRead(that) => {
-                  //     let that = unsafe { &*(*that as *const Node) };
-                  //     if this.is_aborted() {
-                  //         let id = this.get_id();
-                  //         that.set_abort_through(id);
-                  //         that.set_cascading_abort();
-                  //     } else {
-                  //         let that_rlock = that.read();
-                  //         if !that.is_cleaned() {
-                  //             that.remove_incoming(&Edge::WriteRead(this_id));
-                  //         }
-                  //         drop(that_rlock);
-                  //     }
-                  // }
+                }
             }
         }
         g.clear(); // clear (this) outgoing
@@ -593,9 +568,6 @@ impl SerializationGraph {
             if cnt % 16 == 0 {
                 x.borrow().as_ref().unwrap().flush();
             }
-
-            // let guard = x.borrow_mut().take();
-            // drop(guard)
         });
     }
 
@@ -623,7 +595,6 @@ impl SerializationGraph {
     }
 
     fn remove_accesses(&self, database: &Database, ops: &Vec<Operation>) {
-        // remove accesses
         for op in ops {
             let Operation {
                 op_type,
