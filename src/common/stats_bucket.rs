@@ -1,4 +1,4 @@
-use crate::storage::access::TransactionId;
+use crate::{scheduler::msgt::Cycle, storage::access::TransactionId};
 
 use std::collections::HashSet;
 
@@ -6,6 +6,9 @@ pub struct StatsBucket {
     tid: TransactionId,
     problem_transactions: HashSet<usize>,
     abort_through: usize,
+    cycle_type: Option<Cycle>,
+    path_len: Option<usize>,
+    ww_conflict_detected: u64,
 }
 
 impl StatsBucket {
@@ -14,7 +17,34 @@ impl StatsBucket {
             tid,
             problem_transactions: HashSet::new(),
             abort_through: 0,
+            cycle_type: None,
+            path_len: None,
+            ww_conflict_detected: 0,
         }
+    }
+
+    pub fn inc_ww_conflict_detected(&mut self) {
+        self.ww_conflict_detected += 1;
+    }
+
+    pub fn get_ww_conflict_detected(&self) -> u64 {
+        self.ww_conflict_detected
+    }
+
+    pub fn set_cycle_type(&mut self, cycle: Cycle) {
+        self.cycle_type.replace(cycle);
+    }
+
+    pub fn get_cycle_type(&mut self) -> Option<Cycle> {
+        self.cycle_type.clone()
+    }
+
+    pub fn set_path_len(&mut self, len: usize) {
+        self.path_len.replace(len);
+    }
+
+    pub fn get_path_len(&mut self) -> &Option<usize> {
+        &self.path_len
     }
 
     pub fn get_transaction_id(&self) -> TransactionId {

@@ -24,6 +24,7 @@ pub struct LocalStatistics {
     edges_inserted: u64,
     conflict_detected: u64,
     rw_conflict_detected: u64,
+    wr_conflict_detected: u64,
     ww_conflict_detected: u64,
 
     retries: u64,
@@ -43,6 +44,13 @@ pub struct LocalStatistics {
     max_txn_commit_abort: u128,
 
     pub aborted_latency: Vec<u64>,
+
+    // cycle types
+    g0: u64,
+    g1: u64,
+    g2: u64,
+
+    path_len: usize,
 }
 
 impl LocalStatistics {
@@ -69,6 +77,7 @@ impl LocalStatistics {
             edges_inserted: 0,
             conflict_detected: 0,
             rw_conflict_detected: 0,
+            wr_conflict_detected: 0,
             ww_conflict_detected: 0,
 
             // runtime breakdown
@@ -87,6 +96,12 @@ impl LocalStatistics {
 
             max_txn_logic_abort: 0,
             max_txn_commit_abort: 0,
+
+            g0: 0,
+            g1: 0,
+            g2: 0,
+
+            path_len: 0,
         }
     }
 
@@ -214,6 +229,14 @@ impl LocalStatistics {
         self.conflict_detected
     }
 
+    pub fn inc_wr_conflict_detected(&mut self) {
+        self.wr_conflict_detected += 1;
+    }
+
+    pub fn get_wr_conflict_detected(&self) -> u64 {
+        self.wr_conflict_detected
+    }
+
     pub fn inc_rw_conflict_detected(&mut self) {
         self.rw_conflict_detected += 1;
     }
@@ -222,8 +245,8 @@ impl LocalStatistics {
         self.rw_conflict_detected
     }
 
-    pub fn inc_ww_conflict_detected(&mut self) {
-        self.ww_conflict_detected += 1;
+    pub fn inc_ww_conflict_detected(&mut self, ww: u64) {
+        self.ww_conflict_detected += ww;
     }
 
     pub fn get_ww_conflict_detected(&self) -> u64 {
@@ -337,5 +360,37 @@ impl LocalStatistics {
 
     pub fn get_latency_cum(&self) -> u128 {
         self.latency_cum
+    }
+
+    pub fn inc_g0(&mut self) {
+        self.g0 += 1;
+    }
+
+    pub fn get_g0(&mut self) -> u64 {
+        self.g0
+    }
+
+    pub fn inc_g1(&mut self) {
+        self.g1 += 1;
+    }
+
+    pub fn get_g1(&mut self) -> u64 {
+        self.g1
+    }
+
+    pub fn inc_g2(&mut self) {
+        self.g2 += 1;
+    }
+
+    pub fn get_g2(&mut self) -> u64 {
+        self.g2
+    }
+
+    pub fn inc_path_len(&mut self, path_len: usize) {
+        self.path_len += path_len;
+    }
+
+    pub fn get_path_len(&self) -> usize {
+        self.path_len
     }
 }

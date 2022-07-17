@@ -4,6 +4,7 @@ use crate::common::{
     error::NonFatalError, global_state::GlobalState, message::Request,
     parameter_generation::ParameterGenerator, statistics::local::LocalStatistics,
 };
+use crate::scheduler::msgt::Cycle;
 use crate::scheduler::Scheduler;
 use crate::storage::Database;
 use crate::workloads::smallbank::{
@@ -103,6 +104,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             Ok(_) => {
                                 stats.inc_commits();
 
+                                // inc conflicts detected
+                                stats.inc_ww_conflict_detected(meta.get_ww_conflict_detected());
+
                                 break;
                             }
                             Err(e) => match e {
@@ -111,7 +115,10 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 NonFatalError::RowNotFound => {}
                                 NonFatalError::SerializationGraphError(_) => {
                                     scheduler.abort(&mut meta, database);
+
                                     stats.inc_aborts();
+                                    record_cycle_type(&mut meta, &mut stats);
+                                    record_path_len(&mut meta, &mut stats);
 
                                     stats.start_wait_manager();
                                     let mut problem_transactions = meta.get_problem_transactions();
@@ -129,13 +136,18 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::NoccError => {}
                         NonFatalError::SerializationGraphError(_) => {
                             scheduler.abort(&mut meta, database);
+
                             stats.inc_aborts();
+                            record_cycle_type(&mut meta, &mut stats);
+                            record_path_len(&mut meta, &mut stats);
 
                             stats.start_wait_manager();
                             let mut problem_transactions = meta.get_problem_transactions();
                             let abort_through = meta.get_abort_through();
                             problem_transactions.insert(abort_through);
-                            wait_manager.wait(transaction_id.extract(), problem_transactions);
+                            let g =
+                                wait_manager.wait(transaction_id.extract(), problem_transactions);
+                            guards.guards.replace(g);
                             stats.stop_wait_manager();
                         }
                         NonFatalError::SmallBankError(_) => {
@@ -165,6 +177,22 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
     stats.stop_worker();
 
     stats_tx.send(stats).unwrap();
+}
+
+fn record_path_len(meta: &mut StatsBucket, stats: &mut LocalStatistics) {
+    if let Some(path_len) = meta.get_path_len() {
+        stats.inc_path_len(*path_len);
+    }
+}
+
+fn record_cycle_type(meta: &mut StatsBucket, stats: &mut LocalStatistics) {
+    if let Some(cycle_type) = meta.get_cycle_type() {
+        match cycle_type {
+            Cycle::G0 => stats.inc_g0(),
+            Cycle::G1c => stats.inc_g1(),
+            Cycle::G2 => stats.inc_g2(),
+        }
+    }
 }
 
 pub fn execute_logic<'a>(

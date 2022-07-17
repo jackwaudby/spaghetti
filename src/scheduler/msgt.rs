@@ -1,6 +1,8 @@
-use crate::common::error::{NonFatalError, SerializationGraphError};
-use crate::common::isolation_level::IsolationLevel;
-use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
+use crate::common::{
+    error::{NonFatalError, SerializationGraphError},
+    isolation_level::IsolationLevel,
+    transaction_information::{Operation, OperationType, TransactionInformation},
+};
 use crate::scheduler::{
     common::{MsgEdge as Edge, MsgNode as Node},
     StatsBucket, ValueId,
@@ -23,12 +25,13 @@ use tracing::info;
 
 static ATTEMPTS: u64 = 10000000;
 
-#[derive(Debug)]
-enum Cycle {
+#[derive(Debug, Clone)]
+pub enum Cycle {
     G0,
     G1c,
     G2,
 }
+
 #[derive(Debug)]
 enum CycleCheckingStrategy {
     // starts from this_node and looks for any cycle
@@ -80,11 +83,11 @@ impl MixedSerializationGraph {
         }
     }
 
-    pub fn get_transaction(&self) -> *mut Node {
+    fn get_transaction(&self) -> *mut Node {
         MixedSerializationGraph::NODE.with(|x| *x.borrow().as_ref().unwrap())
     }
 
-    pub fn get_operations(&self) -> Vec<Operation> {
+    fn get_operations(&self) -> Vec<Operation> {
         self.txn_info
             .get()
             .unwrap()
@@ -94,24 +97,20 @@ impl MixedSerializationGraph {
             .get_clone()
     }
 
-    pub fn record(
-        &self,
-        op_type: OperationType,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        prv: u64,
-    ) {
-        self.txn_info
-            .get()
-            .unwrap()
+    fn record(&self, op_type: OperationType, vid: ValueId, prv: u64) {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
+
+        let txn_info = self.txn_info.get().unwrap();
+        txn_info
             .borrow_mut()
             .as_mut()
             .unwrap()
             .add(op_type, table_id, column_id, offset, prv);
     }
 
-    pub fn insert_and_check(&self, this_ref: &Node, meta: &mut StatsBucket, from: Edge) -> bool {
+    fn insert_and_check(&self, this_ref: &Node, meta: &mut StatsBucket, from: Edge) -> bool {
         let this_id = this_ref.get_id();
         let this_iso = this_ref.get_isolation_level();
 
@@ -165,18 +164,21 @@ impl MixedSerializationGraph {
                 this_ref.set_cascading_abort();
                 this_ref.set_abort_through(from_id);
                 meta.set_abort_through(from_id);
+
                 return false;
             }
 
             let from_rlock = from_ref.read();
             if from_ref.is_cleaned() {
                 drop(from_rlock);
+
                 return true;
             }
 
             if from_ref.is_checked() {
                 drop(from_rlock);
                 attempts += 1;
+
                 continue;
             }
 
@@ -186,11 +188,27 @@ impl MixedSerializationGraph {
 
             match self.cycle_checking_strategy {
                 CycleCheckingStrategy::Reduced => {
-                    let (is_cycle, _, _) = self.cycle_check_reduced_init(this_ref);
+                    let (is_cycle, _, edge_path) = self.cycle_check_reduced_init(this_ref);
+
+                    if is_cycle {
+                        let cycle_type = classify_cycle(&edge_path);
+                        meta.set_cycle_type(cycle_type);
+
+                        let path_len = edge_path.len();
+                        meta.set_path_len(path_len);
+                    }
+
                     return !is_cycle;
                 }
+
                 CycleCheckingStrategy::Restricted => {
-                    let (is_cycle, _, _) = self.cycle_check_init(this_ref);
+                    let (is_cycle, _, edge_path) = self.cycle_check_init(this_ref);
+
+                    if is_cycle {
+                        let cycle_type = classify_cycle(&edge_path);
+                        meta.set_cycle_type(cycle_type);
+                    }
+
                     return !is_cycle;
                 }
                 CycleCheckingStrategy::Relevant => {
@@ -205,6 +223,9 @@ impl MixedSerializationGraph {
                             let (is_cycle, visit_path, edge_path) = self.cycle_check_init(this_ref);
 
                             if is_cycle {
+                                let cycle_type = classify_cycle(&edge_path);
+                                meta.set_cycle_type(cycle_type);
+
                                 // the cycle found includes the inserted RW edge
                                 if visit_path.contains(&from_ref.get_id()) {
                                     if let IsolationLevel::Serializable = this_iso {
@@ -216,7 +237,7 @@ impl MixedSerializationGraph {
                                 } else {
                                     // the cycle found did not include the inserted RW edge
 
-                                    let cycle_type = classify_cycle(edge_path);
+                                    let cycle_type = classify_cycle(&edge_path);
 
                                     // if was a G2 we can help out by aborting a PL-3 in the path
                                     let mut aborted = 0;
@@ -510,13 +531,13 @@ impl MixedSerializationGraph {
         let table_id = vid.get_table_id();
         let column_id = vid.get_column_id();
         let offset = vid.get_offset();
+        let this_ref = unsafe { &*self.get_transaction() };
 
         if self.needs_abort() {
-            let this = unsafe { &*self.get_transaction() };
-            let id = this.get_abort_through();
+            let id = this_ref.get_abort_through();
             meta.set_abort_through(id);
 
-            return Err(SerializationGraphError::CascadingAbort.into()); // check for cascading abort
+            return Err(SerializationGraphError::CascadingAbort.into());
         }
 
         let table = database.get_table(table_id);
@@ -524,10 +545,7 @@ impl MixedSerializationGraph {
         let prv = rw_table.push_front(Access::Read(meta.get_transaction_id()));
         let lsn = table.get_lsn(offset);
 
-        // Safety: ensures exculsive access to the record.
-        let this = unsafe { &*self.get_transaction() };
-
-        let abort = self.spin(prv, lsn, this, database, meta);
+        let abort = self.spin(prv, lsn, this_ref, database, meta);
 
         if abort {
             let ops = self.get_operations();
@@ -545,25 +563,22 @@ impl MixedSerializationGraph {
 
         // On acquiring the 'lock' on the record can be clean or dirty.
         // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
-        let guard = &epoch::pin(); // pin thread
+        let guard = &epoch::pin();
         let snapshot = rw_table.iter(guard);
 
         let mut cyclic = false;
 
         for (id, access) in snapshot {
-            // only interested in accesses before this one and that are write operations.
             if id < &prv {
-                match access {
-                    // W-R conflict
-                    Access::Write(from) => {
-                        if let TransactionId::SerializationGraph(from_id) = from {
-                            if !self.insert_and_check(this, meta, Edge::WriteWrite(*from_id)) {
-                                cyclic = true;
-                                break;
-                            }
+                if let Access::Write(from_tid) = access {
+                    if let TransactionId::SerializationGraph(from_id) = from_tid {
+                        let from = Edge::WriteRead(*from_id);
+
+                        if !self.insert_and_check(this_ref, meta, from) {
+                            cyclic = true;
+                            break;
                         }
                     }
-                    Access::Read(_) => {}
                 }
             }
         }
@@ -571,22 +586,17 @@ impl MixedSerializationGraph {
         drop(guard);
 
         if cyclic {
-            rw_table.erase(prv); // remove from rw table
-            lsn.store(prv + 1, Ordering::Release); // update lsn
+            rw_table.erase(prv);
+            lsn.store(prv + 1, Ordering::Release);
 
             return Err(SerializationGraphError::CycleFound.into());
         }
 
-        let vals = table
-            .get_tuple(column_id, offset)
-            .get()
-            .get_value()
-            .unwrap()
-            .get_value(); // read
+        let tuple = table.get_tuple(column_id, offset);
+        let vals = tuple.get().get_value().unwrap().get_value();
 
-        lsn.store(prv + 1, Ordering::Release); // update lsn
-
-        self.record(OperationType::Read, table_id, column_id, offset, prv); // record operation
+        lsn.store(prv + 1, Ordering::Release);
+        self.record(OperationType::Read, vid, prv);
 
         Ok(vals)
     }
@@ -662,6 +672,7 @@ impl MixedSerializationGraph {
                             if let TransactionId::SerializationGraph(from_addr) = from {
                                 let from = unsafe { &*(*from_addr as *const Node) };
 
+                                meta.inc_ww_conflict_detected();
                                 // check if write access is uncommitted
                                 if !from.is_committed() {
                                     // if not in cycle then wait
@@ -749,7 +760,7 @@ impl MixedSerializationGraph {
         }
 
         lsn.store(prv + 1, Ordering::Release); // update lsn, giving next operation access.
-        self.record(OperationType::Write, table_id, column_id, offset, prv); // record operation
+        self.record(OperationType::Write, vid, prv); // record operation
 
         Ok(())
     }
@@ -1044,11 +1055,11 @@ fn _print_node_path(visit_path: &mut RefMut<Vec<usize>>) -> String {
     path
 }
 
-fn classify_cycle(edge_path: Vec<Edge>) -> Cycle {
+fn classify_cycle(edge_path: &Vec<Edge>) -> Cycle {
     let mut wr = 0;
     let mut rw = 0;
 
-    for edge in &edge_path {
+    for edge in edge_path {
         match edge {
             Edge::WriteWrite(_) => {}
             Edge::WriteRead(_) => wr += 1,
@@ -1064,26 +1075,3 @@ fn classify_cycle(edge_path: Vec<Edge>) -> Cycle {
         Cycle::G0
     }
 }
-
-// fn spin(prv: u64, lsn: &AtomicU64, this: &Node) {
-//     let mut i = 0;
-//     let mut attempts = 0;
-//     while lsn.load(Ordering::Relaxed) != prv {
-//         i += 1;
-//         if i >= 10000 {
-//             std::thread::yield_now();
-//         }
-
-//         if attempts > ATTEMPTS {
-//             panic!(
-//                 "{} ({}) stuck spinning. Incoming {:?}, Cascading: {:?}",
-//                 this.get_id(),
-//                 this.get_isolation_level(),
-//                 this.get_incoming(),
-//                 this.is_cascading_abort()
-//             );
-//         }
-
-//         attempts += 1;
-//     }
-// }

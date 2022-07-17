@@ -28,10 +28,12 @@ for (w in c("smallbank","ycsb","tatp")) {
   (sgtOverhead = ((noccThpt - sgtThpt) / noccThpt)*100)
   (msgtOverhead = ((noccThpt - msgtThpt) / noccThpt)*100)
   
-  cat(paste0("nocc thpt: ",round(noccThpt, 2),"\n"))
-  cat(paste0("sgt thpt: ",round(sgtThpt, 2),"\n"))
-  cat(paste0("msgt thpt: ",round(msgtThpt, 2),"\n"))
-  
+  cat(paste0("nocc thpt: ",round(noccThpt, 2),"M\n"))
+  cat(paste0("sgt thpt: ",round(sgtThpt, 2),"M\n"))
+  cat(paste0("msgt thpt: ",round(msgtThpt, 2),"M\n"))
+  cat(paste0("sgt overhead: ",round(sgtOverhead, 2),"%\n"))
+  cat(paste0("msgt overhead: ",round(msgtOverhead, 2),"%\n"))
+  cat("\n")
 }
 
 (noccThpt = df[which(df$protocol == "nocc"),]$thpt)
