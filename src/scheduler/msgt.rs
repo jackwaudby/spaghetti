@@ -986,28 +986,30 @@ impl MixedSerializationGraph {
 
         while lsn.load(Ordering::Relaxed) != prv {
             // only execute this one
-            if !abort {
-                if self.needs_abort(this) {
-                    let ops = self.get_operations();
-                    self.commit_writes(database, false, &ops);
-                    let this = unsafe { &*self.get_transaction() };
-                    this.set_aborted();
+            if let CycleCheckingStrategy::Relevant = self.cycle_checking_strategy {
+                if !abort {
+                    if self.needs_abort(this) {
+                        let ops = self.get_operations();
+                        self.commit_writes(database, false, &ops);
+                        let this = unsafe { &*self.get_transaction() };
+                        this.set_aborted();
 
-                    let incoming = this.get_incoming();
-                    for edge in incoming {
-                        match edge {
-                            Edge::WriteWrite(id) => {
-                                meta.add_problem_transaction(id);
+                        let incoming = this.get_incoming();
+                        for edge in incoming {
+                            match edge {
+                                Edge::WriteWrite(id) => {
+                                    meta.add_problem_transaction(id);
+                                }
+                                Edge::WriteRead(id) => {
+                                    meta.add_problem_transaction(id);
+                                }
+                                Edge::ReadWrite(_) => {}
                             }
-                            Edge::WriteRead(id) => {
-                                meta.add_problem_transaction(id);
-                            }
-                            Edge::ReadWrite(_) => {}
                         }
-                    }
 
-                    self.cleanup(this);
-                    abort = true;
+                        self.cleanup(this);
+                        abort = true;
+                    }
                 }
             }
 

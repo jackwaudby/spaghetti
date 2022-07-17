@@ -15,15 +15,15 @@ col_names = c("sf","protocol","workload","cores",
 
 renameProtocols <- function(df) {
   for (i in 1:nrow(df)) {
-    if (df[i,8] == "relevant" && df[i,2] == "msgt") {
+    if (df[i,9] == "relevant" && df[i,2] == "msgt") {
       df[i,2] = "msgt-rel"
     }
     
-    if (df[i,8] == "restricted" && df[i,2] == "msgt") {
+    if (df[i,9] == "restricted" && df[i,2] == "msgt") {
       df[i,2] = "msgt-res"
     }
     
-    if (df[i,8] == "reduced" && df[i,2] == "msgt") {
+    if (df[i,9] == "reduced" && df[i,2] == "msgt") {
       df[i,2] = "msgt-red"
     }
   }
@@ -34,6 +34,7 @@ computeMetrics <- function(df) {
   df$thpt = ((df$commits + df$not_found) / (df$runtime / 1000)) / 1000000
   df$abr = (df$aborts / (df$commits + df$not_found+ df$aborts))*100
   df$lat = (df$txn_time + df$latency) / (df$commits + df$not_found)
+  df$com = df$commit_time / df$commits
   df$apl = df$path / (df$g0 + df$g1 + df$g2)
   
   return(df)
@@ -98,12 +99,12 @@ ggplot(data = df,
   geom_line()
 
 
-  ggplot(data = df, 
+ggplot(data = df, 
        aes(x = serializable_rate, 
            y = com, 
            group = protocol, 
            colour = protocol)) +
-  geom_line()
+geom_line()
 
 
 #### SCALABILITY ####
