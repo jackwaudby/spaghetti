@@ -104,7 +104,28 @@ ggplot(data = df,
            y = com, 
            group = protocol, 
            colour = protocol)) +
-geom_line()
+        geom_line()
+
+msgt = df[1:6,]
+total = msgt$g0 + msgt$g1 + msgt$g2
+
+msgt$g0 = (msgt$g0 / total) * 100
+msgt$g1 = (msgt$g1 / total) * 100
+msgt$g2 = (msgt$g2 / total) * 100
+
+ggplot(data = msgt, 
+       aes(x = serializable_rate)) +
+  geom_line(aes(y = g0)) +
+  geom_line(aes(y = g1)) +
+  geom_line(aes(y = g2))
+
+
+
+ggplot(data = df[1:6,], 
+       aes(x = serializable_rate, 
+           y = apl)) +
+  geom_line()
+
 
 
 #### SCALABILITY ####

@@ -162,7 +162,7 @@ impl SerializationGraph {
         }
 
         drop(g);
-        let cur = cur.get_id() as usize;
+        let cur = cur.get_id().unwrap() as usize;
         visit_path.remove(&cur);
 
         return false;
@@ -537,7 +537,7 @@ impl SerializationGraph {
                     let that = unsafe { &*(*that_id as *const Node) };
                     if this.is_aborted() {
                         let id = this.get_id();
-                        that.set_abort_through(id);
+                        that.set_abort_through(id.unwrap());
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();

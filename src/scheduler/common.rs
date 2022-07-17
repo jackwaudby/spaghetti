@@ -231,8 +231,8 @@ impl Node {
         unsafe { *self.node_id.get().as_mut().unwrap() = Some(node_id) };
     }
 
-    pub fn get_id(&self) -> usize {
-        unsafe { self.node_id.get().as_mut().unwrap().unwrap() }
+    pub fn get_id(&self) -> Option<usize> {
+        unsafe { self.node_id.get().as_mut().unwrap().clone() }
     }
 
     pub fn is_aborted(&self) -> bool {
@@ -304,7 +304,7 @@ impl std::fmt::Debug for Edge {
 
 impl fmt::Display for Node {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[t-id: {}]", format!("{:x}", self.get_id()),)
+        write!(f, "[t-id: {}]", format!("{:x}", self.get_id().unwrap()),)
     }
 }
 
