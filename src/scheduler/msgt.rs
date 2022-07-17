@@ -130,7 +130,7 @@ impl MixedSerializationGraph {
             if attempts > ATTEMPTS {
                 panic!(
                     "{} ({}) stuck inserting {:?}. Incoming {:?}",
-                    this_ref.get_id(),
+                    this_ref.get_id().unwrap(),
                     this_ref.get_isolation_level(),
                     from,
                     this_ref.get_incoming(),
@@ -253,14 +253,14 @@ impl MixedSerializationGraph {
 
                                     if attempts > ATTEMPTS {
                                         panic!(
-                                            "{} ({}) stuck in cycle loop. Incoming {:?}, Found cycle: {:?}, aborted: {}",
-                                            this_ref.get_id(),
-                                            this_ref.get_isolation_level(),
-                                            this_ref.get_incoming(),
-                                            cycle_type,
-                                            aborted
+                                                "{} ({}) stuck in cycle loop. Incoming {:?}, Found cycle: {:?}, aborted: {}",
+                                                this_ref.get_id().unwrap(),
+                                                this_ref.get_isolation_level(),
+                                                this_ref.get_incoming(),
+                                                cycle_type,
+                                                aborted
 
-                                        );
+                                            );
                                     }
 
                                     // try find my cycle (if there is one)
@@ -323,14 +323,14 @@ impl MixedSerializationGraph {
         edge_path.clear();
 
         let mut check = false;
-        if !visited.contains(&this_id) {
+        if !visited.contains(&this_id.unwrap()) {
             check = self.check_cycle_restricted(
-                this_id,
+                this_id.unwrap(),
                 root_lvl,
                 &mut visited,
                 &mut visit_path,
                 &mut edge_path,
-                root_id,
+                root_id.unwrap(),
             );
         }
 
@@ -376,7 +376,7 @@ impl MixedSerializationGraph {
         }
 
         drop(g);
-        let cur = cur.get_id() as usize;
+        let cur = cur.get_id().unwrap() as usize;
         let index = visit_path.iter().position(|x| *x == cur).unwrap();
         visit_path.remove(index);
 
@@ -397,9 +397,9 @@ impl MixedSerializationGraph {
         edge_path.clear();
 
         let mut check = false;
-        if !visited.contains(&this_id) {
+        if !visited.contains(&this_id.unwrap()) {
             check = self.check_cycle_reduced(
-                this_id,
+                this_id.unwrap(),
                 root_lvl,
                 &mut visited,
                 &mut visit_path,
@@ -449,7 +449,7 @@ impl MixedSerializationGraph {
         }
 
         drop(g);
-        let cur = cur.get_id() as usize;
+        let cur = cur.get_id().unwrap() as usize;
         let index = visit_path.iter().position(|x| *x == cur).unwrap();
         visit_path.remove(index);
 
@@ -636,7 +636,7 @@ impl MixedSerializationGraph {
                 let this_node = unsafe { &*self.get_transaction() };
                 panic!(
                     "{} ({}) stuck writing. Incoming {:?}",
-                    this_node.get_id(),
+                    this_node.get_id().unwrap(),
                     this_node.get_isolation_level(),
                     this_node.get_incoming(),
                 );
@@ -798,7 +798,7 @@ impl MixedSerializationGraph {
             if attempts > ATTEMPTS {
                 panic!(
                     "{} ({}) stuck committing. Incoming {:?}. Cascading {:?}",
-                    this_node.get_id(),
+                    this_node.get_id().unwrap(),
                     this_node.get_isolation_level(),
                     this_node.get_incoming(),
                     this_node.is_cascading_abort()
@@ -874,7 +874,7 @@ impl MixedSerializationGraph {
                     let that = unsafe { &*(*that_id as *const Node) };
                     if this.is_aborted() {
                         let id = this.get_id();
-                        that.set_abort_through(id);
+                        that.set_abort_through(id.unwrap());
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
@@ -888,7 +888,7 @@ impl MixedSerializationGraph {
                     let that = unsafe { &*(*that as *const Node) };
                     if this.is_aborted() {
                         let id = this.get_id();
-                        that.set_abort_through(id);
+                        that.set_abort_through(id.unwrap());
                         that.set_cascading_abort();
                     } else {
                         let that_rlock = that.read();
@@ -1019,7 +1019,7 @@ impl MixedSerializationGraph {
             if attempts > ATTEMPTS {
                 panic!(
                     "{} ({}) stuck spinning. Incoming {:?}, Cascading: {:?}",
-                    this.get_id(),
+                    this.get_id().unwrap(),
                     this.get_isolation_level(),
                     this.get_incoming(),
                     this.is_cascading_abort()
@@ -1040,7 +1040,7 @@ fn is_self_edge(this_ref: &Node, from_ref: &Node) -> bool {
 }
 
 fn is_relevant_or_obligatory(from: &Edge, this_ref: &Node) -> Option<Edge> {
-    let this_id = this_ref.get_id();
+    let this_id = this_ref.get_id().unwrap();
 
     match *from {
         // WW edges always get inserted
@@ -1078,13 +1078,17 @@ fn _print_node_path(visit_path: &mut RefMut<Vec<usize>>) -> String {
         let cur = unsafe { &*(id as *const Node) };
 
         let id = cur.get_id();
-        path.push_str(&format!("({:x}:{}),", id, cur.get_isolation_level()));
+        path.push_str(&format!(
+            "({:x}:{}),",
+            id.unwrap(),
+            cur.get_isolation_level()
+        ));
     }
     let last = vv[path_len - 1];
     let cur = unsafe { &*(*last as *const Node) };
     path.push_str(&format!(
         "({:x}:{})",
-        cur.get_id(),
+        cur.get_id().unwrap(),
         cur.get_isolation_level()
     ));
     path

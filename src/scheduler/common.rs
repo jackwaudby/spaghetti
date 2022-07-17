@@ -589,8 +589,8 @@ impl MsgNode {
         unsafe { *self.node_id.get().as_mut().unwrap() = Some(node_id) };
     }
 
-    pub fn get_id(&self) -> usize {
-        unsafe { self.node_id.get().as_mut().unwrap().unwrap() }
+    pub fn get_id(&self) -> Option<usize> {
+        unsafe { self.node_id.get().as_mut().unwrap().clone() }
     }
 
     pub fn is_aborted(&self) -> bool {
@@ -678,6 +678,6 @@ impl std::fmt::Debug for MsgEdge {
 
 impl fmt::Display for MsgNode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[t-id: {}]", format!("{}", self.get_id()),)
+        write!(f, "[t-id: {}]", format!("{}", self.get_id().unwrap()),)
     }
 }
