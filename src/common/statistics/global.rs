@@ -1,4 +1,6 @@
 use config::Config;
+use csv::WriterBuilder;
+use serde::Serialize;
 use serde_json::json;
 
 use std::fs::OpenOptions;
@@ -19,42 +21,17 @@ pub struct GlobalStatistics {
     total_time: u128,
     commits: u64,
     aborts: u64,
-    logic_aborts: u64,
-    commit_aborts: u64,
-    write_cf: u64,
-    read_cf: u64,
-    rwrite_cf: u64,
-    read_ca: u64,
-    write_ca: u64,
     not_found: u64,
     tx: u128,
     commit: u128,
     wait_manager: u128,
     latency: u128,
-    edges_inserted: u64,
-    conflict_detected: u64,
-    rw_conflict_detected: u64,
-    wr_conflict_detected: u64,
-    ww_conflict_detected: u64,
-
-    txn_not_found_cum: u128,
-    txn_commit_cum: u128,
-    txn_commit_abort_cum: u128,
-    txn_logic_abort_cum: u128,
-
-    retries: u64,
-    cum_retries: u64,
-    max_retries: u64,
-
-    max_txn_logic_abort: u128,
-    max_txn_commit_abort: u128,
-
-    pub aborted_latency: Vec<u64>,
-
+    rw_conflicts: u64,
+    wr_conflicts: u64,
+    ww_conflicts: u64,
     g0: u64,
     g1: u64,
     g2: u64,
-
     path_len: usize,
 }
 
@@ -77,41 +54,17 @@ impl GlobalStatistics {
             total_time: 0,
             commits: 0,
             aborts: 0,
-            logic_aborts: 0,
-            commit_aborts: 0,
-            write_cf: 0,
-            read_cf: 0,
-            read_ca: 0,
-            rwrite_cf: 0,
-            write_ca: 0,
             not_found: 0,
             tx: 0,
             commit: 0,
             wait_manager: 0,
             latency: 0,
-            edges_inserted: 0,
-            conflict_detected: 0,
-            rw_conflict_detected: 0,
-            wr_conflict_detected: 0,
-            ww_conflict_detected: 0,
-
-            txn_not_found_cum: 0,
-            txn_commit_cum: 0,
-            txn_commit_abort_cum: 0,
-            txn_logic_abort_cum: 0,
-
-            retries: 0,
-            cum_retries: 0,
-            max_retries: 0,
-
-            max_txn_logic_abort: 0,
-            max_txn_commit_abort: 0,
-            aborted_latency: Vec::new(),
-
+            rw_conflicts: 0,
+            wr_conflicts: 0,
+            ww_conflicts: 0,
             g0: 0,
             g1: 0,
             g2: 0,
-
             path_len: 0,
         }
     }
@@ -151,45 +104,16 @@ impl GlobalStatistics {
         self.total_time += local.get_worker_cum();
         self.commits += local.get_commits();
         self.aborts += local.get_aborts();
-        self.commit_aborts += local.get_commit_aborts();
-        self.logic_aborts += local.get_logic_aborts();
+
         self.not_found += local.get_not_found();
         self.tx += local.get_tx_cum();
         self.commit += local.get_commit_cum();
         self.wait_manager += local.get_wait_manager_cum();
         self.latency += local.get_latency_cum();
-        self.read_cf += local.get_read_cf();
-        self.write_cf += local.get_write_cf();
-        self.read_ca += local.get_read_ca();
-        self.write_ca += local.get_write_ca();
-        self.rwrite_cf += local.get_rwrite_cf();
-        self.edges_inserted += local.get_edges_inserted();
-        self.conflict_detected += local.get_conflict_detected();
-        self.rw_conflict_detected += local.get_rw_conflict_detected();
-        self.wr_conflict_detected += local.get_wr_conflict_detected();
-        self.ww_conflict_detected += local.get_ww_conflict_detected();
 
-        self.txn_not_found_cum += local.get_txn_not_found();
-        self.txn_commit_cum += local.get_txn_commit();
-        self.txn_commit_abort_cum += local.get_txn_commit_abort();
-        self.txn_logic_abort_cum += local.get_txn_logic_abort();
-
-        self.retries += local.get_retries();
-        self.cum_retries += local.get_cum_retries();
-
-        if self.max_retries < local.get_max_retries() {
-            self.max_retries = local.get_max_retries();
-        }
-
-        if self.max_txn_logic_abort < local.get_max_txn_logic_abor() {
-            self.max_txn_logic_abort = local.get_max_txn_logic_abor();
-        }
-
-        if self.max_txn_commit_abort < local.get_max_txn_commit_abor() {
-            self.max_txn_commit_abort = local.get_max_txn_commit_abor();
-        }
-
-        self.aborted_latency.append(&mut local.aborted_latency);
+        self.rw_conflicts += local.get_ww_conflicts();
+        self.wr_conflicts += local.get_wr_conflicts();
+        self.ww_conflicts += local.get_rw_conflicts();
 
         self.g0 += local.get_g0();
         self.g1 += local.get_g1();
@@ -227,6 +151,18 @@ impl GlobalStatistics {
         (self.aborts as f64 / (self.commits + self.not_found + self.aborts) as f64) * 100.0
     }
 
+    fn get_total_conflicts(&self) -> u64 {
+        self.ww_conflicts + self.wr_conflicts + self.rw_conflicts
+    }
+
+    fn get_total_cycles(&self) -> u64 {
+        self.g0 + self.g1 + self.g2
+    }
+
+    fn get_av_path_len(&self) -> f64 {
+        self.path_len as f64 / (self.g0 + self.g1 + self.g2) as f64
+    }
+
     pub fn print_to_console(&mut self) {
         let pr = json!({
             "workload": self.workload,
@@ -244,16 +180,16 @@ impl GlobalStatistics {
             "latency (ms)": self.get_latency(),
             "thpt": format!("{:.2}",self.get_thpt()),
             "abr": format!("{:.2}",self.get_abr()),
-            "conflicts deteted": self.conflict_detected,
-            "   rw": self.rw_conflict_detected,
-            "   wr": self.wr_conflict_detected,
-            "   ww": self.ww_conflict_detected,
-            "cycles found": (self.g0 + self.g1 + self.g2),
+            "conflicts deteted": self.get_total_conflicts(),
+            "   rw": self.rw_conflicts,
+            "   wr": self.wr_conflicts,
+            "   ww": self.ww_conflicts,
+            "cycles found": self.get_total_cycles(),
             "   g0": self.g0,
             "   g1": self.g1,
             "   g2": self.g2,
-            "path len": (self.path_len),
-            "av. path len": (self.path_len as f64 / (self.g0 + self.g1 + self.g2)as f64  ),
+            "path len": self.path_len,
+            "av. path len": self.get_av_path_len() ,
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
@@ -267,33 +203,68 @@ impl GlobalStatistics {
             .open("./results.csv")
             .unwrap();
 
-        let mut wtr = csv::Writer::from_writer(file);
+        let mut wtr = WriterBuilder::new().has_headers(false).from_writer(file);
 
+        let cycle_check_strategy = config.get_str("dfs").unwrap();
+
+        // YCSB
         let theta = config.get_float("theta").unwrap();
         let serializable_rate = config.get_float("serializable_rate").unwrap();
         let update_rate = config.get_float("update_rate").unwrap();
-        let cycle_check_strategy = config.get_str("dfs").unwrap();
+        let queries = config.get_int("queries").unwrap() as u64;
 
-        wtr.serialize((
-            // parameters
-            self.scale_factor,
-            &self.protocol,
-            &self.workload,
-            self.cores,
+        wtr.serialize(CsvOutput {
+            scale_factor: self.scale_factor,
+            protocol: self.protocol.clone(),
+            workload: self.workload.clone(),
+            cores: self.cores,
             theta,
             serializable_rate,
             update_rate,
+            queries,
             cycle_check_strategy,
-            // raw stats
-            self.get_runtime(),
-            self.commits,
-            self.aborts,
-            self.not_found as u64,
-            self.get_txn_time(),
-            self.get_commit_time(),
-            self.get_wait_time(),
-            self.get_latency(),
-        ))
+            runtime: self.get_runtime(),
+            commits: self.commits,
+            aborts: self.aborts,
+            not_found: self.not_found,
+            txn_time: self.get_txn_time(),
+            commit_time: self.get_commit_time(),
+            wait_time: self.get_wait_time(),
+            latency: self.get_latency(),
+            rw_conflicts: self.rw_conflicts,
+            wr_conflicts: self.wr_conflicts,
+            ww_conflicts: self.ww_conflicts,
+            g0: self.g0,
+            g1: self.g1,
+            g2: self.g2,
+        })
         .unwrap();
     }
+}
+
+#[derive(Debug, Serialize)]
+struct CsvOutput {
+    scale_factor: u64,
+    protocol: String,
+    workload: String,
+    cores: u64,
+    theta: f64,
+    serializable_rate: f64,
+    update_rate: f64,
+    queries: u64,
+    cycle_check_strategy: String,
+    runtime: u64,
+    commits: u64,
+    aborts: u64,
+    not_found: u64,
+    txn_time: u64,
+    commit_time: u64,
+    wait_time: u64,
+    latency: u64,
+    rw_conflicts: u64,
+    wr_conflicts: u64,
+    ww_conflicts: u64,
+    g0: u64,
+    g1: u64,
+    g2: u64,
 }

@@ -8,7 +8,9 @@ pub struct StatsBucket {
     abort_through: usize,
     cycle_type: Option<Cycle>,
     path_len: Option<usize>,
-    ww_conflict_detected: u64,
+    ww_conflicts: u64,
+    wr_conflicts: u64,
+    rw_conflicts: u64,
 }
 
 impl StatsBucket {
@@ -19,16 +21,34 @@ impl StatsBucket {
             abort_through: 0,
             cycle_type: None,
             path_len: None,
-            ww_conflict_detected: 0,
+            ww_conflicts: 0,
+            wr_conflicts: 0,
+            rw_conflicts: 0,
         }
     }
 
-    pub fn inc_ww_conflict_detected(&mut self) {
-        self.ww_conflict_detected += 1;
+    pub fn inc_ww_conflicts(&mut self) {
+        self.ww_conflicts += 1;
     }
 
-    pub fn get_ww_conflict_detected(&self) -> u64 {
-        self.ww_conflict_detected
+    pub fn get_ww_conflicts(&self) -> u64 {
+        self.ww_conflicts
+    }
+
+    pub fn inc_wr_conflicts(&mut self) {
+        self.wr_conflicts += 1;
+    }
+
+    pub fn get_wr_conflicts(&self) -> u64 {
+        self.wr_conflicts
+    }
+
+    pub fn inc_rw_conflicts(&mut self) {
+        self.rw_conflicts += 1;
+    }
+
+    pub fn get_rw_conflicts(&self) -> u64 {
+        self.rw_conflicts
     }
 
     pub fn set_cycle_type(&mut self, cycle: Cycle) {

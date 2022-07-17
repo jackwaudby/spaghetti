@@ -1,22 +1,14 @@
 log = "info"
-record = true
 log_results = false
-
 transactions = 10000
-timeout = 1
 set_seed = false
-
 protocol="sgt"
 cores = 1
-dfs = "reduced"
-garbage_collection = false
-garbage_collection_sleep = 1
-
 scale_factor = 1
-
 workload = "smallbank"
-anomaly = "g1c"
-load = false
+
+# MSGT
+dfs = "reduced"
 
 # TATP
 nurand = true
@@ -32,9 +24,3 @@ serializable_rate = 0.5
 queries = 10
 
 
-increase = 1
-decrease = 2
-watermark = 100
-no_wait_write = false
-
-type_aware = false

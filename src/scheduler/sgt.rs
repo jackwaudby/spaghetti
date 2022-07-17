@@ -1,5 +1,4 @@
 use crate::common::error::{NonFatalError, SerializationGraphError};
-use crate::common::statistics::local::LocalStatistics;
 use crate::common::transaction_information::{Operation, OperationType, TransactionInformation};
 use crate::scheduler::{
     common::{Edge, Node},
@@ -58,14 +57,11 @@ impl SerializationGraph {
             .get_clone()
     }
 
-    fn record(
-        &self,
-        op_type: OperationType,
-        table_id: usize,
-        column_id: usize,
-        offset: usize,
-        prv: u64,
-    ) {
+    fn record(&self, op_type: OperationType, vid: ValueId, prv: u64) {
+        let table_id = vid.get_table_id();
+        let column_id = vid.get_column_id();
+        let offset = vid.get_offset();
+
         self.txn_info
             .get()
             .unwrap()
@@ -75,69 +71,54 @@ impl SerializationGraph {
             .add(op_type, table_id, column_id, offset, prv);
     }
 
-    fn insert_and_check(
-        &self,
-        meta: &mut StatsBucket,
-        from: Edge,
-        _stats: &mut LocalStatistics,
-        check: bool,
-    ) -> u8 {
-        let this_ref = unsafe { &*self.get_transaction() };
+    fn insert_and_check(&self, this_ref: &Node, meta: &mut StatsBucket, from: Edge) -> bool {
         let this_id = self.get_transaction() as usize;
 
-        // prepare
-        let (from_id, rw, out_edge) = match from {
-            Edge::ReadWrite(from_id) => (from_id, true, Edge::ReadWrite(this_id)),
-            // Edge::WriteRead(from_id) => (from_id, false, Edge::WriteRead(this_id)),
-            Edge::WriteWrite(from_id) => (from_id, false, Edge::WriteWrite(this_id)),
+        let to = match from {
+            Edge::ReadWrite(_) => Edge::ReadWrite(this_id),
+            Edge::NotReadWrite(_) => Edge::NotReadWrite(this_id),
         };
 
-        if this_id == from_id {
-            return 2; // check for (this) --> (this)
+        let from_id = from.extract_id();
+        let from_ref = unsafe { &*(from_id as *const Node) };
+
+        if is_self_edge(this_ref, from_ref) {
+            return true;
         }
 
         loop {
             if this_ref.incoming_edge_exists(&from) {
-                return 2; // check if (from) --> (this) already exists
+                return true;
             };
 
-            let from_ref = unsafe { &*(from_id as *const Node) };
+            if let Edge::NotReadWrite(_) = from {
+                if from_ref.is_aborted() || from_ref.is_cascading_abort() {
+                    this_ref.set_cascading_abort();
+                    this_ref.set_abort_through(from_id);
+                    meta.set_abort_through(from_id);
 
-            if (from_ref.is_aborted() || from_ref.is_cascading_abort()) && !rw {
-                this_ref.set_cascading_abort();
-                let fid = from_ref.get_id();
-                this_ref.set_abort_through(fid);
-                meta.set_abort_through(fid);
-                return 1;
+                    return false;
+                }
             }
 
             let from_rlock = from_ref.read();
             if from_ref.is_cleaned() {
                 drop(from_rlock);
-                return 2; // if from is cleaned then it has terminated do not insert edge
+                return true;
             }
 
             if from_ref.is_checked() {
                 drop(from_rlock);
-                continue; // if (from) checked in process of terminating so try again
+                continue;
             }
 
-            from_ref.insert_outgoing(out_edge); // (from)
-            this_ref.insert_incoming(from); // (to)
+            from_ref.insert_outgoing(to);
+            this_ref.insert_incoming(from);
             drop(from_rlock);
 
-            let mut is_cycle = false;
+            let is_cycle = self.cycle_cycle_init(this_id);
 
-            if check {
-                is_cycle = self.cycle_cycle_init(this_id);
-            }
-
-            //return !is_cycle;
-            if is_cycle {
-                return 0;
-            } else {
-                return 2;
-            }
+            return !is_cycle;
         }
     }
 
@@ -167,7 +148,7 @@ impl SerializationGraph {
         if !cur.is_cleaned() {
             let incoming = cur.get_incoming();
             for edge in incoming {
-                let id = edge.extract_id() as usize;
+                let id = edge.extract_id();
                 if visit_path.contains(&id) {
                     drop(g);
                     return true;
@@ -202,12 +183,8 @@ impl SerializationGraph {
         return check;
     }
 
-    pub fn needs_abort(&self) -> bool {
-        let this = unsafe { &*self.get_transaction() };
-
-        let aborted = this.is_aborted();
-        let cascading_abort = this.is_cascading_abort();
-        aborted || cascading_abort
+    pub fn needs_abort(&self, this_ref: &Node) -> bool {
+        this_ref.is_aborted() || this_ref.is_cascading_abort()
     }
 
     fn create_node(&self) -> usize {
@@ -223,34 +200,35 @@ impl SerializationGraph {
         id
     }
 
-    fn check_committed(&self, this_node: &Node, database: &Database, ops: &Vec<Operation>) -> bool {
-        if this_node.is_aborted() || this_node.is_cascading_abort() {
+    fn check_committed(&self, this_ref: &Node, database: &Database, ops: &Vec<Operation>) -> bool {
+        if self.needs_abort(this_ref) {
             return false;
         }
 
-        let read_lock = this_node.read();
-        this_node.set_checked(true);
+        let read_lock = this_ref.read();
+        this_ref.set_checked(true);
         drop(read_lock);
 
-        let write_lock = this_node.write();
+        let write_lock = this_ref.write();
         drop(write_lock);
 
-        let read_lock = this_node.read();
-        if this_node.has_incoming() {
-            this_node.set_checked(false);
+        let read_lock = this_ref.read();
+        if this_ref.has_incoming() {
+            this_ref.set_checked(false);
             drop(read_lock);
+
             return false;
         }
         drop(read_lock);
 
-        if this_node.is_aborted() || this_node.is_cascading_abort() {
+        if self.needs_abort(this_ref) {
             return false;
         }
 
-        let success = self.erase_graph_constraints(this_node, database, ops);
+        let success = self.erase_graph_constraints(this_ref, database, ops);
 
         if success {
-            self.cleanup(this_node);
+            self.cleanup(this_ref);
         }
 
         return success;
@@ -262,15 +240,7 @@ impl SerializationGraph {
         database: &Database,
         ops: &Vec<Operation>,
     ) -> bool {
-        // let id = this_node.get_id();
-        // let is_cycle = self.cycle_cycle_init(id);
-        // if is_cycle {
-        //     this_node.set_aborted();
-        // }
-
-        // NFN: different
         self.commit_writes(database, true, &ops);
-
         this_node.set_committed();
 
         true
@@ -292,63 +262,44 @@ impl SerializationGraph {
         vid: ValueId,
         meta: &mut StatsBucket,
         database: &Database,
-        stats: &mut LocalStatistics,
     ) -> Result<Data, NonFatalError> {
-        let table_id = vid.get_table_id();
-        let column_id = vid.get_column_id();
-        let offset = vid.get_offset();
+        let this_ref = unsafe { &*self.get_transaction() };
 
-        if self.needs_abort() {
-            let this = unsafe { &*self.get_transaction() };
-            let id = this.get_abort_through();
+        if self.needs_abort(this_ref) {
+            let id = this_ref.get_abort_through();
             meta.set_abort_through(id);
 
-            return Err(SerializationGraphError::WriteOpCascasde.into()); // check for cascading abort
+            return Err(SerializationGraphError::CascadingAbort.into());
         }
-
+        let table_id = vid.get_table_id();
         let table = database.get_table(table_id);
+
+        let offset = vid.get_offset();
         let rw_table = table.get_rwtable(offset);
-        let prv = rw_table.push_front(Access::Read(meta.get_transaction_id()));
         let lsn = table.get_lsn(offset);
 
-        // Safety: ensures exculsive access to the record.
-        spin(prv, lsn); // busy wait
+        let tid = meta.get_transaction_id();
+        let prv = rw_table.push_front(Access::Read(tid));
 
-        // On acquiring the 'lock' on the record can be clean or dirty.
-        // Dirty is ok here as we allow reads uncommitted data; SGT protects against serializability violations.
-        let guard = &epoch::pin(); // pin thread
+        spin(prv, lsn);
+
+        let guard = &epoch::pin();
         let snapshot = rw_table.iter(guard);
 
         let mut cyclic = false;
 
         for (id, access) in snapshot {
-            // only interested in accesses before this one and that are write operations.
             if id < &prv {
-                match access {
-                    // W-R conflict
-                    Access::Write(from) => {
-                        if let TransactionId::SerializationGraph(from_id) = from {
-                            // stats.inc_conflict_detected();
+                if let Access::Write(from_tid) = access {
+                    meta.inc_wr_conflicts();
+                    if let TransactionId::SerializationGraph(from_id) = from_tid {
+                        let from = Edge::NotReadWrite(*from_id);
 
-                            let outcome = self.insert_and_check(
-                                meta,
-                                Edge::WriteWrite(*from_id),
-                                stats,
-                                true,
-                            );
-
-                            // if !self.insert_and_check(Edge::WriteRead(*from_id), stats, true) {
-                            //     cyclic = true;
-                            //     break;
-                            // }
-
-                            if outcome == 0 {
-                                cyclic = true;
-                                //     break;
-                            }
+                        if !self.insert_and_check(this_ref, meta, from) {
+                            cyclic = true;
+                            break;
                         }
                     }
-                    Access::Read(_) => {}
                 }
             }
         }
@@ -357,29 +308,26 @@ impl SerializationGraph {
         if cyclic {
             rw_table.erase(prv); // remove from rw table
             lsn.store(prv + 1, Ordering::Release); // update lsn
-            return Err(SerializationGraphError::ReadOpCycleFound.into());
+
+            return Err(SerializationGraphError::CycleFound.into());
         }
 
+        let column_id = vid.get_column_id();
         let tuple = table.get_tuple(column_id, offset).get();
         let value = tuple.get_value().unwrap().get_value();
 
-        lsn.store(prv + 1, Ordering::Release); // update lsn
-
-        self.record(OperationType::Read, table_id, column_id, offset, prv); // record operation
+        lsn.store(prv + 1, Ordering::Release);
+        self.record(OperationType::Read, vid, prv);
 
         Ok(value)
     }
 
-    /// Write operation.
-    ///
-    /// A write is executed iff there are no uncommitted writes on a record, else the operation is delayed.
     pub fn write_value(
         &self,
         value: &mut Data,
         vid: ValueId,
         meta: &mut StatsBucket,
         database: &Database,
-        stats: &mut LocalStatistics,
     ) -> Result<(), NonFatalError> {
         let table_id = vid.get_table_id();
         let column_id = vid.get_column_id();
@@ -388,90 +336,61 @@ impl SerializationGraph {
         let rw_table = table.get_rwtable(offset);
         let lsn = table.get_lsn(offset);
         let mut prv;
+        let this_ref = unsafe { &*self.get_transaction() };
 
         loop {
-            if self.needs_abort() {
-                let this = unsafe { &*self.get_transaction() };
-                let id = this.get_abort_through();
+            if self.needs_abort(this_ref) {
+                let id = this_ref.get_abort_through();
                 meta.set_abort_through(id);
-                // self.abort(meta, database);
-                return Err(SerializationGraphError::WriteOpCascasde.into()); // check for cascading abort
+                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
-            prv = rw_table.push_front(Access::Write(meta.get_transaction_id())); // get ticket
+            prv = rw_table.push_front(Access::Write(meta.get_transaction_id()));
 
-            spin(prv, lsn); // Safety: ensures exculsive access to the record
+            spin(prv, lsn);
 
-            // On acquiring the 'lock' on the record it is possible another transaction has an uncommitted write on this record.
-            // In this case the operation is restarted after a cycle check.
-            let guard = &epoch::pin(); // pin thread
+            let guard = &epoch::pin();
             let snapshot = rw_table.iter(guard);
 
-            let mut wait = false; // flag indicating if there is an uncommitted write
-            let mut cyclic = false; // flag indicating if a cycle has been found
-            let mut cascade = false; // flag indicating if a cycle has been found
+            let mut wait = false;
+            let mut cyclic = false;
 
             for (id, access) in snapshot {
                 // only interested in accesses before this one and that are write operations.
                 if id < &prv {
-                    match access {
-                        // W-W conflict
-                        Access::Write(from) => {
-                            if let TransactionId::SerializationGraph(from_addr) = from {
-                                let from = unsafe { &*(*from_addr as *const Node) };
+                    if let Access::Write(from_tid) = access {
+                        meta.inc_ww_conflicts();
 
-                                // check if write access is uncommitted
-                                if !from.is_committed() {
-                                    let outcome = self.insert_and_check(
-                                        meta,
-                                        Edge::WriteWrite(*from_addr),
-                                        stats,
-                                        true,
-                                    );
+                        if let TransactionId::SerializationGraph(from_id) = from_tid {
+                            let from_ref = unsafe { &*(*from_id as *const Node) };
 
-                                    if outcome == 0 {
-                                        cyclic = true;
-                                        // break; // no reason to check other accesses
-                                    }
-
-                                    if outcome == 1 {
-                                        cascade = true;
-                                        // break; // no reason to check other accesses
-                                    }
-
-                                    wait = true; // retry operation
-                                                 // break;
+                            if !from_ref.is_committed() {
+                                let from = Edge::NotReadWrite(*from_id);
+                                if !self.insert_and_check(this_ref, meta, from) {
+                                    cyclic = true;
+                                    break;
                                 }
+
+                                wait = true;
+                                break;
                             }
                         }
-                        Access::Read(_) => {}
                     }
                 }
             }
 
             drop(guard);
 
-            // (i) transaction is in a cycle (cycle = T)
-            // abort transaction
             if cyclic {
-                rw_table.erase(prv); // remove from rw table
-                lsn.store(prv + 1, Ordering::Release); // update lsn
-                                                       // self.abort(meta, database);
-                return Err(SerializationGraphError::WriteOpCycleFound.into());
+                rw_table.erase(prv);
+                lsn.store(prv + 1, Ordering::Release);
+
+                return Err(SerializationGraphError::CycleFound.into());
             }
 
-            if cascade {
-                rw_table.erase(prv); // remove from rw table
-                lsn.store(prv + 1, Ordering::Release); // update lsn
-                                                       // self.abort(meta, database);
-                return Err(SerializationGraphError::WriteOpCascasde.into());
-            }
-
-            // (ii) there is an uncommitted write (wait = T)
-            // restart operation
             if wait {
-                rw_table.erase(prv); // remove from rw table
-                lsn.store(prv + 1, Ordering::Release); // update lsn
+                rw_table.erase(prv);
+                lsn.store(prv + 1, Ordering::Release);
 
                 continue;
             }
@@ -487,43 +406,24 @@ impl SerializationGraph {
 
         for (id, access) in snapshot {
             if id < &prv {
-                match access {
-                    Access::Read(from) => {
-                        // stats.inc_conflict_detected();
-                        // stats.inc_rw_conflict_detected();
-                        if let TransactionId::SerializationGraph(from_addr) = from {
-                            // let from = unsafe { &*(*from_addr as *const Node) };
-                            // if !from.is_committed() {
-                            let outcome = self.insert_and_check(
-                                meta,
-                                Edge::ReadWrite(*from_addr),
-                                stats,
-                                true,
-                            );
-
-                            if outcome == 1 {
-                                panic!("shouldn't cascade");
-                                //     break;
-                            }
-
-                            if outcome == 0 {
-                                cyclic = true;
-                                //     break;
-                            }
-                            // }
+                if let Access::Read(from_tid) = access {
+                    meta.inc_rw_conflicts();
+                    if let TransactionId::SerializationGraph(from_id) = from_tid {
+                        let from = Edge::ReadWrite(*from_id);
+                        if !self.insert_and_check(this_ref, meta, from) {
+                            cyclic = true;
+                            break;
                         }
                     }
-                    Access::Write(_) => {}
                 }
             }
         }
 
         drop(guard);
 
-        // (iv) transaction is in a cycle (cycle = T)
         if cyclic {
-            rw_table.erase(prv); // remove from rw table
-            lsn.store(prv + 1, Ordering::Release); // update lsn
+            rw_table.erase(prv);
+            lsn.store(prv + 1, Ordering::Release);
 
             return Err(SerializationGraphError::CycleFound.into());
         }
@@ -538,8 +438,8 @@ impl SerializationGraph {
             ); // Assert: never write to an uncommitted value.
         }
 
-        lsn.store(prv + 1, Ordering::Release); // update lsn, giving next operation access.
-        self.record(OperationType::Write, table_id, column_id, offset, prv); // record operation
+        lsn.store(prv + 1, Ordering::Release);
+        self.record(OperationType::Write, vid, prv);
 
         Ok(())
     }
@@ -589,7 +489,7 @@ impl SerializationGraph {
         let incoming = this.get_incoming().clone();
         for edge in incoming {
             match edge {
-                Edge::WriteWrite(id) => {
+                Edge::NotReadWrite(id) => {
                     meta.add_problem_transaction(id);
                 }
                 // Edge::WriteRead(id) => {
@@ -644,7 +544,7 @@ impl SerializationGraph {
                 }
 
                 // (this) -[ww]-> (to)
-                Edge::WriteWrite(that_id) => {
+                Edge::NotReadWrite(that_id) => {
                     let that = unsafe { &*(*that_id as *const Node) };
                     if this.is_aborted() {
                         let id = this.get_id();
@@ -653,7 +553,7 @@ impl SerializationGraph {
                     } else {
                         let that_rlock = that.read();
                         if !that.is_cleaned() {
-                            that.remove_incoming(&Edge::WriteWrite(this_id));
+                            that.remove_incoming(&Edge::NotReadWrite(this_id));
                         }
                         drop(that_rlock);
                     }
@@ -756,4 +656,11 @@ fn spin(prv: u64, lsn: &AtomicU64) {
             std::thread::yield_now();
         }
     }
+}
+
+fn is_self_edge(this_ref: &Node, from_ref: &Node) -> bool {
+    let this_id = this_ref.get_id();
+    let from_id = from_ref.get_id();
+
+    this_id == from_id
 }

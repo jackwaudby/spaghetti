@@ -1,8 +1,5 @@
 use crate::common::isolation_level::IsolationLevel;
-use crate::common::{
-    error::NonFatalError, statistics::local::LocalStatistics, stats_bucket::StatsBucket,
-    value_id::ValueId,
-};
+use crate::common::{error::NonFatalError, stats_bucket::StatsBucket, value_id::ValueId};
 use crate::scheduler::{
     msgt::MixedSerializationGraph, nocc::NoConcurrencyControl, sgt::SerializationGraph,
 };
@@ -70,12 +67,11 @@ impl Scheduler {
         vid: ValueId,
         meta: &mut StatsBucket,
         database: &Database,
-        stats: &mut LocalStatistics,
     ) -> Result<Data, NonFatalError> {
         use Scheduler::*;
 
         match self {
-            SerializationGraph(sg) => sg.read_value(vid, meta, database, stats),
+            SerializationGraph(sg) => sg.read_value(vid, meta, database),
             MixedSerializationGraph(sg) => sg.read_value(vid, meta, database),
             NoConcurrencyControl(nocc) => nocc.read_value(vid, meta, database),
         }
@@ -87,12 +83,11 @@ impl Scheduler {
         vid: ValueId,
         meta: &mut StatsBucket,
         database: &Database,
-        stats: &mut LocalStatistics,
     ) -> Result<(), NonFatalError> {
         use Scheduler::*;
 
         match self {
-            SerializationGraph(sg) => sg.write_value(value, vid, meta, database, stats),
+            SerializationGraph(sg) => sg.write_value(value, vid, meta, database),
             MixedSerializationGraph(sg) => sg.write_value(value, vid, meta, database),
             NoConcurrencyControl(nocc) => nocc.write_value(value, vid, meta, database),
         }

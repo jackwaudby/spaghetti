@@ -85,8 +85,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                 let transaction_id = meta.get_transaction_id();
                 stats.start_tx();
 
-                response =
-                    execute_logic(&mut meta, request.clone(), scheduler, database, &mut stats);
+                response = execute_logic(&mut meta, request.clone(), scheduler, database);
 
                 // if transaction was restarted and had some locks
                 if guards.guards.is_some() {
@@ -103,9 +102,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         match commit_res {
                             Ok(_) => {
                                 stats.inc_commits();
-
-                                // inc conflicts detected
-                                stats.inc_ww_conflict_detected(meta.get_ww_conflict_detected());
+                                stats.inc_conflicts(&meta);
 
                                 break;
                             }
@@ -119,6 +116,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                     stats.inc_aborts();
                                     record_cycle_type(&mut meta, &mut stats);
                                     record_path_len(&mut meta, &mut stats);
+                                    stats.inc_conflicts(&meta);
 
                                     stats.start_wait_manager();
                                     let mut problem_transactions = meta.get_problem_transactions();
@@ -140,6 +138,7 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                             stats.inc_aborts();
                             record_cycle_type(&mut meta, &mut stats);
                             record_path_len(&mut meta, &mut stats);
+                            stats.inc_conflicts(&meta);
 
                             stats.start_wait_manager();
                             let mut problem_transactions = meta.get_problem_transactions();
@@ -153,12 +152,14 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                         NonFatalError::SmallBankError(_) => {
                             scheduler.abort(&mut meta, database);
                             stats.inc_not_found();
+                            stats.inc_conflicts(&meta);
 
                             break;
                         }
                         NonFatalError::RowNotFound => {
                             scheduler.abort(&mut meta, database);
                             stats.inc_not_found();
+                            stats.inc_conflicts(&meta);
 
                             break;
                         }
@@ -200,7 +201,6 @@ pub fn execute_logic<'a>(
     request: Request,
     scheduler: &'a Scheduler,
     database: &'a Database,
-    stats: &mut LocalStatistics,
 ) -> Result<(), NonFatalError> {
     use SmallBankTransactionProfile::*;
     let parameters = request.get_parameters();
@@ -208,80 +208,44 @@ pub fn execute_logic<'a>(
     match parameters {
         Parameters::SmallBank(p) => match p {
             Amalgamate(params) => {
-                smallbank::procedures::amalgmate(meta, params.clone(), scheduler, database, stats)
+                smallbank::procedures::amalgmate(meta, params.clone(), scheduler, database)
             }
             Balance(params) => {
-                smallbank::procedures::balance(meta, params.clone(), scheduler, database, stats)
+                smallbank::procedures::balance(meta, params.clone(), scheduler, database)
             }
             SmallBankTransactionProfile::DepositChecking(params) => {
-                smallbank::procedures::deposit_checking(
-                    meta,
-                    params.clone(),
-                    scheduler,
-                    database,
-                    stats,
-                )
+                smallbank::procedures::deposit_checking(meta, params.clone(), scheduler, database)
             }
             SmallBankTransactionProfile::SendPayment(params) => {
-                smallbank::procedures::send_payment(
-                    meta,
-                    params.clone(),
-                    scheduler,
-                    database,
-                    stats,
-                )
+                smallbank::procedures::send_payment(meta, params.clone(), scheduler, database)
             }
             SmallBankTransactionProfile::TransactSaving(params) => {
-                smallbank::procedures::transact_savings(
-                    meta,
-                    params.clone(),
-                    scheduler,
-                    database,
-                    stats,
-                )
+                smallbank::procedures::transact_savings(meta, params.clone(), scheduler, database)
             }
             SmallBankTransactionProfile::WriteCheck(params) => {
-                smallbank::procedures::write_check(meta, params.clone(), scheduler, database, stats)
+                smallbank::procedures::write_check(meta, params.clone(), scheduler, database)
             }
         },
         Parameters::Ycsb(p) => match p {
             YcsbTransactionProfile::General(params) => {
-                ycsb::procedures::transaction(meta, params.clone(), scheduler, database, stats)
+                ycsb::procedures::transaction(meta, params.clone(), scheduler, database)
             }
         },
         Parameters::Tatp(p) => match p {
             TatpTransactionProfile::GetSubscriberData(params) => {
-                tatp::procedures::get_subscriber_data(
-                    meta,
-                    params.clone(),
-                    scheduler,
-                    database,
-                    stats,
-                )
+                tatp::procedures::get_subscriber_data(meta, params.clone(), scheduler, database)
             }
             TatpTransactionProfile::GetAccessData(params) => {
-                tatp::procedures::get_access_data(meta, params.clone(), scheduler, database, stats)
+                tatp::procedures::get_access_data(meta, params.clone(), scheduler, database)
             }
             TatpTransactionProfile::GetNewDestination(params) => {
-                tatp::procedures::get_new_destination(
-                    meta,
-                    params.clone(),
-                    scheduler,
-                    database,
-                    stats,
-                )
+                tatp::procedures::get_new_destination(meta, params.clone(), scheduler, database)
             }
             TatpTransactionProfile::UpdateLocationData(params) => {
-                tatp::procedures::update_location(meta, params.clone(), scheduler, database, stats)
+                tatp::procedures::update_location(meta, params.clone(), scheduler, database)
             }
             TatpTransactionProfile::UpdateSubscriberData(params) => {
-                tatp::procedures::update_subscriber_data(
-                    meta,
-                    params.clone(),
-                    scheduler,
-                    database,
-                    stats,
-                )
+                tatp::procedures::update_subscriber_data(meta, params.clone(), scheduler, database)
             }
         },
     }

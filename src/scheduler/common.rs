@@ -15,23 +15,20 @@ unsafe impl<'a> Sync for Node {}
 
 pub type EdgeSet = Mutex<FxHashSet<Edge>>;
 
-// (from/to, thread id)
 #[derive(Clone, Eq, Hash, PartialEq)]
 pub enum Edge {
     ReadWrite(usize),
-    WriteWrite(usize),
-    // WriteRead(usize),
+    NotReadWrite(usize),
 }
 
 impl Edge {
-    pub fn extract_id(&self) -> u64 {
+    pub fn extract_id(&self) -> usize {
         let id = match &self {
             Edge::ReadWrite(id) => id,
-            // Edge::WriteRead(id) => id,
-            Edge::WriteWrite(id) => id,
+            Edge::NotReadWrite(id) => id,
         };
 
-        *id as u64
+        *id
     }
 }
 
@@ -53,12 +50,10 @@ pub struct Node {
 
 impl Node {
     pub fn read(&self) -> SharedMutexGuard<u8> {
-        // self.lock.acquire_shared()
         self.lock.read()
     }
 
     pub fn write(&self) -> MutexGuard<u8> {
-        // self.lock.acquire()
         self.lock.write()
     }
 
@@ -301,7 +296,7 @@ impl std::fmt::Debug for Edge {
         use Edge::*;
         match &*self {
             ReadWrite(txn_id) => write!(f, "{}", format!("[rw: {:x}]", txn_id)),
-            WriteWrite(txn_id) => write!(f, "{}", format!("[ww: {:x}]", txn_id)),
+            NotReadWrite(txn_id) => write!(f, "{}", format!("[ww: {:x}]", txn_id)),
             // WriteRead(txn_id) => write!(f, "{}", format!("[wr: {:x}]", txn_id)),
         }
     }
@@ -328,14 +323,14 @@ pub enum MsgEdge {
 }
 
 impl MsgEdge {
-    pub fn extract_id(&self) -> u64 {
+    pub fn extract_id(&self) -> usize {
         let id = match &self {
             MsgEdge::ReadWrite(id) => id,
             MsgEdge::WriteRead(id) => id,
             MsgEdge::WriteWrite(id) => id,
         };
 
-        *id as u64
+        *id
     }
 }
 
@@ -359,12 +354,10 @@ pub struct MsgNode {
 
 impl MsgNode {
     pub fn read(&self) -> SharedMutexGuard<u8> {
-        // self.lock.acquire_shared()
         self.lock.read()
     }
 
     pub fn write(&self) -> MutexGuard<u8> {
-        // self.lock.acquire()
         self.lock.write()
     }
 
