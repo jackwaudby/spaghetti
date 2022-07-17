@@ -237,6 +237,7 @@ impl GlobalStatistics {
             g0: self.g0,
             g1: self.g1,
             g2: self.g2,
+            path_len: self.path_len,
         })
         .unwrap();
     }
@@ -267,4 +268,5 @@ struct CsvOutput {
     g0: u64,
     g1: u64,
     g2: u64,
+    path_len: usize,
 }
