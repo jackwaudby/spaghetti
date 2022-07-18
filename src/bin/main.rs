@@ -118,6 +118,10 @@ fn main() {
     let global_state = GlobalState::new(config.clone(), scheduler, database, wait_manager);
 
     info!("Starting execution");
+    let warmup = config.get_int("warmup").unwrap() as f64 / 60.0;
+    info!("Warmup phase (mins): {:.2}", warmup);
+    let execution = config.get_int("execution").unwrap() as f64 / 60.0;
+    info!("Measurement phase (mins): {:.2}", execution);
     global_stats.start();
 
     thread::scope(|s| {
@@ -158,7 +162,7 @@ fn main() {
 
     global_stats.print_to_console();
 
-    global_stats.validate();
+    // global_stats.validate();
 
     global_stats.write_to_file(&config);
 }

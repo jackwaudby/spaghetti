@@ -23,6 +23,7 @@ use crate::workloads::ycsb::{
 use config::Config;
 use serde::{Deserialize, Serialize};
 use std::sync::mpsc;
+use std::time::{Duration, Instant};
 use tracing::debug;
 
 struct WaitGuards<'a> {
@@ -53,9 +54,49 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
     let database = global_state.get_database();
     let wait_manager = global_state.get_wait_manager();
 
+    let warmup = config.get_int("warmup").unwrap() as u64;
+    let warmup_st = Instant::now();
+    let warmup_dur = Duration::new(warmup, 0);
+    let warmup_end = warmup_st + warmup_dur;
+
     // local state
     let mut stats = LocalStatistics::new();
     let mut transaction_generator = get_transaction_generator(config, core_id);
+
+    debug!("Begin warmup phase");
+    while warmup_end > Instant::now() {
+        let request = transaction_generator.get_next();
+        let isolation_level = request.get_isolation_level();
+        let mut meta = scheduler.begin(isolation_level);
+        let response = execute_logic(&mut meta, request.clone(), scheduler, database);
+
+        match response {
+            Ok(_) => {
+                let commit_res = scheduler.commit(&mut meta, database);
+
+                if let Err(e) = commit_res {
+                    if let NonFatalError::SerializationGraphError(_) = e {
+                        scheduler.abort(&mut meta, database);
+                    }
+                }
+            }
+            Err(e) => {
+                if let NonFatalError::SerializationGraphError(_)
+                | NonFatalError::SmallBankError(_)
+                | NonFatalError::RowNotFound = e
+                {
+                    scheduler.abort(&mut meta, database);
+                }
+            }
+        }
+    }
+
+    debug!("Warmup phase complete");
+
+    let execution = config.get_int("execution").unwrap() as u64;
+    let execution_st = Instant::now();
+    let execution_dur = Duration::new(execution, 0);
+    let execution_end = execution_st + execution_dur;
 
     stats.start_worker();
 
@@ -65,6 +106,9 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
     loop {
         if completed_transactions == max_transactions {
             debug!("Max transactions completed: {} ", completed_transactions);
+            break;
+        } else if execution_end < Instant::now() {
+            debug!("Timed out");
             break;
         } else {
             let request = transaction_generator.get_next();

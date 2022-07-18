@@ -82,10 +82,12 @@ impl GlobalStatistics {
     }
 
     pub fn get_runtime(&self) -> u64 {
-        match self.end {
-            Some(elasped) => elasped.as_millis() as u64,
-            None => 0,
-        }
+        // match self.end {
+        //     Some(elasped) => elasped.as_millis() as u64,
+        //     None => 0,
+        // }
+
+        self.get_total_time() / self.cores
     }
 
     pub fn validate(&self) {

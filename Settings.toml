@@ -6,6 +6,8 @@ protocol="sgt"
 cores = 1
 scale_factor = 1
 workload = "smallbank"
+warmup = 30
+execution = 120
 
 # MSGT
 dfs = "reduced"
