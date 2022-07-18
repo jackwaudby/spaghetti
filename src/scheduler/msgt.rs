@@ -165,6 +165,12 @@ impl MixedSerializationGraph {
                 continue;
             }
 
+            match from {
+                Edge::WriteWrite(_) => meta.inc_ww_conflicts(),
+                Edge::WriteRead(_) => meta.inc_wr_conflicts(),
+                Edge::ReadWrite(_) => meta.inc_rw_conflicts(),
+            }
+
             from_ref.insert_outgoing(to);
             this_ref.insert_incoming(from.clone());
             drop(from_rlock);
@@ -582,7 +588,6 @@ impl MixedSerializationGraph {
         for (id, access) in snapshot {
             if id < &prv {
                 if let Access::Write(from_tid) = access {
-                    meta.inc_wr_conflicts();
                     if let TransactionId::SerializationGraph(from_id) = from_tid {
                         let from = Edge::WriteRead(*from_id);
 
@@ -677,7 +682,6 @@ impl MixedSerializationGraph {
             for (id, access) in snapshot {
                 if id < &prv {
                     if let Access::Write(from_tid) = access {
-                        meta.inc_ww_conflicts();
                         if let TransactionId::SerializationGraph(from_id) = from_tid {
                             let from_ref = unsafe { &*(*from_id as *const Node) };
                             if !from_ref.is_committed() {
@@ -724,7 +728,6 @@ impl MixedSerializationGraph {
         for (id, access) in snapshot {
             if id < &prv {
                 if let Access::Read(from_tid) = access {
-                    meta.inc_rw_conflicts();
                     if let TransactionId::SerializationGraph(from_id) = from_tid {
                         let from = Edge::ReadWrite(*from_id);
                         if !self.insert_and_check(this_ref, meta, from) {
