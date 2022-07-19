@@ -31,20 +31,6 @@ renameProtocols <- function(df) {
   
   return(df)
 }
-renameProtocolsTPCTC <- function(df) {
-  for (i in 1:nrow(df)) {
-    if (df[i,2] == "msgt") {
-      df[i,2] = "MSGT"
-    }
-    
-    if (df[i,2] == "sgt") {
-      df[i,2] = "SGT"
-    }
-   
-  }
-  
-  return(df)
-}
 computeMetrics <- function(df) {
   df$thpt = ((df$commits + df$not_found) / (df$runtime / 1000)) / 1000000
   df$abr = (df$aborts / (df$commits + df$not_found+ df$aborts))*100
