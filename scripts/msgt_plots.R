@@ -5,6 +5,7 @@ library(dplyr)
 library(patchwork)
 library(scales)
 library(latex2exp)
+library(tidyverse)
 
 col_names = c("sf","protocol","workload","cores",
               "theta","serializable_rate","update_rate",
@@ -26,6 +27,20 @@ renameProtocols <- function(df) {
     if (df[i,9] == "reduced" && df[i,2] == "msgt") {
       df[i,2] = "msgt-red"
     }
+  }
+  
+  return(df)
+}
+renameProtocolsTPCTC <- function(df) {
+  for (i in 1:nrow(df)) {
+    if (df[i,2] == "msgt") {
+      df[i,2] = "MSGT"
+    }
+    
+    if (df[i,2] == "sgt") {
+      df[i,2] = "SGT"
+    }
+   
   }
   
   return(df)
@@ -74,15 +89,13 @@ for (w in c("smallbank","ycsb","tatp")) {
 #### Isolation Experiment ####
 file = "../results/exp-isolation-results.csv"
 df = read_csv(file = file, col_names = col_names)
-df = renameProtocols(df) 
+df = renameProtocolsTPCTC(df) 
 df = computeMetrics(df)
 
-ggplot(data = df, 
-       aes(x = serializable_rate, 
-           y = thpt, 
-           group = protocol, 
-           colour = protocol)) +
-  geom_line()
+(p1 = ggplot(data = df, aes(x = serializable_rate, y = thpt, group = protocol, colour = protocol)) +
+    geom_line() + xlab(TeX('% of Serializable Transactions ($\\omega$)')) + ylab("thpt (million/s)") + 
+    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)) + 
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
 ggplot(data = df, 
        aes(x = serializable_rate, 
