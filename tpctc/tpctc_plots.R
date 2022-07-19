@@ -136,6 +136,7 @@ scal_file_root = "ycsb_scalability"
 # percentage increase = ((new - old)/old)*100
 ((df$thpt[1:5] - df$thpt[6:10])/ df$thpt[6:10]) * 100
 
+# Throughput
 (s1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
    geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
    theme(legend.position="top",text = element_text(size = 18)) +
@@ -163,4 +164,35 @@ ggsave(paste0(scal_file_root,"_abr.png"), s2, width = 6, height = 4,device = "pn
 
 ggsave(paste0(scal_file_root,"_lat.pdf"), s3, width = 6, height = 4,device = "pdf")
 ggsave(paste0(scal_file_root,"_lat.png"), s3, width = 6, height = 4,device = "png")
+
+#### Update Rate Experiment ####
+dat_file = "./exp-update-rate-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
+ur_file_root = "ycsb_update_rate"
+
+(u1 = ggplot(data = raw, aes(x = update_rate,y = thpt,group = protocol,colour = protocol)) +
+    geom_line() + xlab(TeX('% of Update Transactions ($U$)')) + ylab("thpt (million/s)") + 
+    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+# Abort rate 
+(u2 = ggplot(data = raw, aes(x = update_rate,y = abr,group = protocol,colour = protocol)) +
+    geom_line() + xlab(TeX('% of Update Transactions ($U$)')) + ylab("abort rate") + 
+    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+# Latency
+(u3 = ggplot(data = raw, aes(x = update_rate,y = lat,group = protocol,colour = protocol)) +
+    geom_line() + xlab(TeX('% of Update Transactions ($U$)')) + ylab("av latency (ms)") + theme_bw() + scale_y_log10() + 
+    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+ggsave(paste0(ur_file_root,"_thpt.pdf"), u1, width = 6, height = 4,device = "pdf")
+ggsave(paste0(ur_file_root,"_thpt.pdf"), u2, width = 6, height = 4,device = "pdf")
+ggsave(paste0(ur_file_root,"_thpt.pdf"), u3, width = 6, height = 4,device = "pdf")
+
+
+
 
