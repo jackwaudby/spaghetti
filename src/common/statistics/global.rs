@@ -113,9 +113,9 @@ impl GlobalStatistics {
         self.wait_manager += local.get_wait_manager_cum();
         self.latency += local.get_latency_cum();
 
-        self.rw_conflicts += local.get_ww_conflicts();
+        self.rw_conflicts += local.get_rw_conflicts();
         self.wr_conflicts += local.get_wr_conflicts();
-        self.ww_conflicts += local.get_rw_conflicts();
+        self.ww_conflicts += local.get_ww_conflicts();
 
         self.g0 += local.get_g0();
         self.g1 += local.get_g1();

@@ -111,11 +111,6 @@ impl YcsbGenerator {
         n < self.update_rate
     }
 
-    fn is_update_operation(&mut self) -> bool {
-        let x: f32 = self.rng.gen();
-        x < 0.5
-    }
-
     fn get_parameters(&mut self) -> YcsbTransactionProfile {
         let mut operations = Vec::new();
         let mut unique = HashSet::new();
@@ -139,7 +134,7 @@ impl YcsbGenerator {
                 }
             }
 
-            if self.is_update_transaction() && self.is_update_operation() {
+            if self.is_update_transaction() {
                 let value = helper::generate_random_string(&mut self.rng);
                 operations.push(Operation::Update(offset - 1, value));
             } else {
