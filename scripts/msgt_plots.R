@@ -198,7 +198,6 @@ ggplot(data = raw, aes(x = serializable_rate, y = lat, group = protocol, colour 
 combined <- p1 + p2 + p3 & theme(legend.position = "top", text = element_text(size = 20))
 combined + plot_layout(guides = "collect")
 
-
 file_root = "ycsb_isolation"
 
 ggsave(paste0(dir_root,file_root,"_thpt.pdf"), p1, width = 6, height = 4,device = "pdf")
