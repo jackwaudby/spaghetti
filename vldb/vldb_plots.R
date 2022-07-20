@@ -159,3 +159,53 @@ combined <- c1 + c2 + c3 & theme(legend.position = "top", text = element_text(si
 (cAll = combined + plot_layout(guides = "collect"))
 
 ggsave(paste0(con_file_root,".pdf"),cAll,width = 18, height = 6,device = "pdf")
+
+
+# SMALLBANK
+dat_file = "./data/exp-smallbank-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
+smb_file_root = "./graphics/smallbank"
+
+# Throughput 
+(sb1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) +
+    geom_line() + ylab("thpt (million/s)") + 
+    xlab(TeX('cores')) +
+    labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+# Abort rate 
+(sb2 = ggplot(data = df, aes(x = cores,y = abr,group = protocol,colour = protocol)) +
+    geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+
+# TATP
+dat_file = "./data/exp-tatp-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
+smb_file_root = "./graphics/tatp"
+
+# Throughput 
+(t1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) +
+    geom_line() + ylab("thpt (million/s)") + 
+    xlab(TeX('cores')) +
+    labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+# Abort rate 
+(t2 = ggplot(data = df, aes(x = cores,y = abr,group = protocol,colour = protocol)) +
+    geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+(t3 = ggplot(data = df, aes(x = cores,y = lat,group = protocol,colour = protocol)) +
+    geom_line() + ylab("av latency (ms)") +
+    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18))+
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
