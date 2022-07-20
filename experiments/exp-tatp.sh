@@ -4,7 +4,7 @@
 # All transactions run at RC
 # NUrand on
 
-cd ../
+cd ../  
 
 rm results.csv
 rm exp-tatp-results.csv

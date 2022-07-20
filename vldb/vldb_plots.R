@@ -16,17 +16,26 @@ col_names = c("sf","protocol","workload","cores",
 
 renameProtocols <- function(df) {
   for (i in 1:nrow(df)) {
-    if (df[i,9] == "relevant" && df[i,2] == "msgt") {
-      df[i,2] = "msgt-rel"
+    if (df[i,2] == "msgt") {
+      df[i,2] = "MSGT"
     }
     
-    if (df[i,9] == "restricted" && df[i,2] == "msgt") {
-      df[i,2] = "msgt-res"
+    if (df[i,2] == "sgt") {
+      df[i,2] = "SGT"
     }
     
-    if (df[i,9] == "reduced" && df[i,2] == "msgt") {
-      df[i,2] = "msgt-red"
-    }
+    # if (df[i,9] == "relevant" && df[i,2] == "msgt") {
+    #   df[i,2] = "msgt-rel"
+    # }
+    # 
+    # if (df[i,9] == "restricted" && df[i,2] == "msgt") {
+    #   df[i,2] = "msgt-res"
+    # }
+    # 
+    # if (df[i,9] == "reduced" && df[i,2] == "msgt") {
+    #   df[i,2] = "msgt-red"
+    # }
+    # 
   }
   
   return(df)
@@ -128,134 +137,111 @@ ggplot(data = df[1:6,],
 
 
 #### SCALABILITY ####
+dat_file = "./data/exp-scalability-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
+scal_file_root = "./graphics/ycsb_scalability"
 
-msgt = raw[raw$protocol == "msgt",]
-sgt = raw[raw$protocol == "sgt",]
-((msgt$thpt / sgt$thpt ) - 1)*100
-(sgt$lat/msgt$lat)
+# Throughput 
+(s1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
+    geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
-sf1 = raw %>%
-  group_by(protocol, cores) %>%
-  summarise(thpt = median(thpt),
-            abr = median(abr),
-            lat = median(lat))
+# Abort rate 
+(s2 = ggplot(data = df, aes(x = cores,y = abr,group = protocol,colour = protocol)) +
+    geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
-
-
-(s1 = ggplot(data = sf1, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
-  geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
-    theme(legend.position="top",text = element_text(size = 18)))
-
-(s2 = ggplot(data = sf1, aes(x = cores,y = abr,group = protocol,colour = protocol)) +
-  geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
-    theme(legend.position="top",text = element_text(size = 18)))
-
-(s3 = ggplot(data = sf1, aes(x = cores,y = lat,group = protocol,colour = protocol)) +
-  geom_line() + ylab("av latency (ms)") + labs(color="")+ theme_bw() + scale_y_log10() + 
-    theme(legend.position="top",text = element_text(size = 18)))
-
-combined <- s1 + s2 + s3 & theme(legend.position = "top",text = element_text(size = 20))
+combined <- s1 + s2 & theme(legend.position = "top",text = element_text(size = 20))
 (sAll = combined + plot_layout(guides = "collect"))
 
-s_root = "ycsb_scalability"
-ggsave(paste0(dir_root,s_root,"_thpt.pdf"), s1, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,s_root,"_abr.pdf"), s2, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,s_root,"_lat.pdf"), s3, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,".pdf"),sAll,width = 18, height = 6,device = "pdf")
+ggsave(paste0(file_root,".pdf"),sAll,width = 18, height = 6,device = "pdf")
 
 #### ISOLATION ####
+dat_file = "./data/exp-isolation-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
+file_root = "./graphics/ycsb_isolation"
 
-raw = raw %>% filter(serializable_rate <= 0.8)
+# Throughput 
+(p1 = ggplot(data = df, aes(x = serializable_rate, y = thpt, group = protocol, colour = protocol)) +
+    geom_line() + 
+    xlab(TeX('% of Serializable Transactions ($\\omega$)')) + 
+    ylab("thpt (million/s)") + 
+    labs(color="") + 
+    theme_bw() + theme(legend.position="top",text = element_text(size = 18)) + 
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
-msgt = raw[raw$protocol == "msgt",]
-sgt = raw[raw$protocol == "sgt",]
+# Abort rate 
+(p2 = ggplot(data = df, aes(x = serializable_rate, y = abr, group = protocol, colour = protocol)) +
+    geom_line() + 
+    xlab(TeX('% of Serializable Transactions ($\\omega$)')) + 
+    ylab("abort rate (%)") +
+    labs(color="") + 
+    theme_bw() + theme(legend.position="top",text = element_text(size = 18)) + 
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
-(msgt$thpt)/sgt$thpt
-
-sgt$abr/(msgt$abr)
-
-ggplot(data = raw, aes(x = serializable_rate, y = thpt, group = protocol, colour = protocol)) +
-  geom_line()
-
-ggplot(data = raw, aes(x = serializable_rate, y = abr, group = protocol, colour = protocol)) +
-  geom_line()
-
-ggplot(data = raw, aes(x = serializable_rate, y = lat, group = protocol, colour = protocol)) +
-  geom_line()
-
-(p1 = ggplot(data = raw, aes(x = serializable_rate, y = thpt, group = protocol, colour = protocol)) +
-  geom_line() + xlab(TeX('% of Serializable Transactions ($\\omega$)')) + ylab("thpt (million/s)") + 
-    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)))
-
-(p2 = ggplot(data = raw, aes(x = serializable_rate, y = abr, group = protocol, colour = protocol)) +
-  geom_line() + xlab(TeX('% of Serializable Transactions ($\\omega$)')) + ylab("abort rate") +
-  labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)))
-
-(p3 = ggplot(data = raw, aes(x = serializable_rate, y = lat, group = protocol, colour = protocol)) +
-  geom_line() + xlab(TeX('% of Serializable Transactions ($\\omega$)')) + ylab("av latency (ms)") + scale_y_log10() +
-  labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)))
+# Latency
+(p3 = ggplot(data = df, aes(x = serializable_rate, y = lat, group = protocol, colour = protocol)) +
+    geom_line() + 
+    xlab(TeX('% of Serializable Transactions ($\\omega$)')) + 
+    ylab("av latency (ms)") + 
+    labs(color="") + 
+    theme_bw() + theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
 combined <- p1 + p2 + p3 & theme(legend.position = "top", text = element_text(size = 20))
-combined + plot_layout(guides = "collect")
+(combined + plot_layout(guides = "collect"))
 
-file_root = "ycsb_isolation"
-
-ggsave(paste0(dir_root,file_root,"_thpt.pdf"), p1, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,file_root,"_abr.pdf"), p2, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,file_root,"_lat.pdf"), p3, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,".pdf"),width = 18, height = 6,device = "pdf")
+ggsave(paste0(file_root,".pdf"),width = 18, height = 6,device = "pdf")
 
 #### UPDATE ####
+dat_file = "./data/exp-update-rate-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
+ur_file_root = "./graphics/ycsb_update_rate"
 
-(u1 = ggplot(data = raw, aes(x = update_rate,y = thpt,group = protocol,colour = protocol)) +
-  geom_line() + xlab(TeX('% of Update Transactions ($U$)')) + ylab("thpt (million/s)") + 
-   labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)))
+# Throughput 
+(u1 = ggplot(data = df, aes(x = update_rate,y = thpt,group = protocol,colour = protocol)) +
+    geom_line() + xlab(TeX('% of Update Transactions ($U$)')) + ylab("thpt (million/s)") + 
+    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
-(u2 = ggplot(data = raw, aes(x = update_rate,y = abr,group = protocol,colour = protocol)) +
-  geom_line() + xlab(TeX('% of Update Transactions ($U$)')) + ylab("abort rate") + 
-  labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)))
-
-(u3 = ggplot(data = raw, aes(x = update_rate,y = lat,group = protocol,colour = protocol)) +
-  geom_line() + xlab(TeX('% of Update Transactions ($U$)')) + ylab("av latency (ms)") + theme_bw() + scale_y_log10() + 
-  labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)))
-
-combined <- u1 + u2 + u3 & theme(legend.position = "top",text = element_text(size = 20))
-uAll = combined + plot_layout(guides = "collect")
-
-ur_root = "ycsb_update_rate"
-ggsave(paste0(dir_root,ur_root,"_thpt.pdf"), u1, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,ur_root,"_abr.pdf"), u2, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,ur_root,"_lat.pdf"), u3, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,".pdf"),uAll,width = 18, height = 6,device = "pdf")
-
+ggsave(paste0(ur_file_root,"_thpt.pdf"), u1, width = 6, height = 4,device = "pdf")
 
 #### CONTENTION ####
+dat_file = "./data/exp-contention-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
+con_file_root = "./graphics/ycsb_contention"
 
-msgt = raw[raw$protocol == "msgt",]
-sgt = raw[raw$protocol == "sgt",]
-((msgt$thpt / sgt$thpt ) - 1)*100
+# Throughput 
+(c1 = ggplot(data = df, aes(x = theta,y = thpt,group = protocol,colour = protocol)) +
+    geom_line() + ylab("thpt (million/s)") + 
+    xlab(TeX('Skew Factor ($\\theta$)')) +
+    labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
-sgt$abr/msgt$abr
-sgt$abr - msgt$abr
-(1-msgt$lat/sgt$lat)*100
+# Abort rate 
+(c2 = ggplot(data = df, aes(x = theta,y = abr,group = protocol,colour = protocol)) +
+    geom_line() + xlab(TeX('Skew Factor ($\\theta$)')) + ylab("abort rate") +
+    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18))+
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
-(c1 = ggplot(data = raw, aes(x = theta,y = thpt,group = protocol,colour = protocol)) +
-  geom_line() + ylab("thpt (million/s)") + xlab(TeX('Skew Factor ($\\theta$)')) +
-  labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)))
-
-(c2 = ggplot(data = raw, aes(x = theta,y = abr,group = protocol,colour = protocol)) +
-  geom_line() + xlab(TeX('Skew Factor ($\\theta$)')) + ylab("abort rate") +
-  labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)))
-
-(c3 = ggplot(data = raw, aes(x = theta,y = lat,group = protocol,colour = protocol)) +
-  geom_line() + xlab(TeX('Skew Factor ($\\theta$)')) + ylab("av latency (ms)") + scale_y_log10() +
-    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18)))
+# Latency 
+(c3 = ggplot(data = df, aes(x = theta,y = lat,group = protocol,colour = protocol)) +
+    geom_line() + xlab(TeX('Skew Factor ($\\theta$)')) + ylab("av latency (ms)") +
+    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18))+
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
 combined <- c1 + c2 + c3 & theme(legend.position = "top", text = element_text(size = 20))
-cAll = combined + plot_layout(guides = "collect")
+(cAll = combined + plot_layout(guides = "collect"))
 
-c_root = "ycsb_contention"
-ggsave(paste0(dir_root,c_root,"_thpt.pdf"), c1, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,c_root,"_abr.pdf"), c2, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,c_root,"_lat.pdf"), c3, width = 6, height = 4,device = "pdf")
-ggsave(paste0(dir_root,".pdf"),cAll,width = 18, height = 6,device = "pdf")
+ggsave(paste0(con_file_root,".pdf"),cAll,width = 18, height = 6,device = "pdf")
