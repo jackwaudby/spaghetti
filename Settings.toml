@@ -17,7 +17,7 @@ nurand = true
 
 # SmallBank
 use_balance_mix = false
-isolation_mix = "mid"
+isolation_mix = "high"
 
 # YCSB
 theta = 0.5
