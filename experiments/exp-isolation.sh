@@ -13,7 +13,7 @@ cargo build --release
 
 for protocol in msgt sgt; do
     for iso in 0.0 0.2 0.4 0.6 0.8 1; do
-        ./target/release/spag -p $protocol -s 2 -c 48 -t $1 -w ycsb -u 0.5 -i $iso -h 0.8 -d reduced -q 10
+        ./target/release/spag -p $protocol -s 3 -c 40 -t $1 -w ycsb -u 0.5 -i $iso -h 0.8 -d reduced -q 10
         sleep 5
     done
 done
