@@ -23,7 +23,7 @@ done
 
 # YCSB, 10M rows, 16 queries, 50% updates, 50% PL-3, medium contention
 for protocol in msgt sgt nocc; do
-    ./target/release/spag -p $protocol -s 3 -c 40 -t $1 -w ycsb -d reduced -h 0.9 -u 0.5 -i 0.5 -q 10
+    ./target/release/spag -p $protocol -s 2 -c 40 -t $1 -w ycsb -d reduced -h 0.9 -u 0.5 -i 0.5 -q 10
     sleep 5
 done
 
