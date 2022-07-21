@@ -231,6 +231,27 @@ ggsave(paste0(tatp_file_root,"_lat.pdf"), t3, width = 6, height = 4,device = "pd
 
 #### OVERHEAD ####
 dat_file = "./data/exp-overhead-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = renameProtocols(df) 
+df = computeMetrics(df)
 
+computeOverhead <- function(df, workload) {
+  temp = df[df$workload == workload,]
+  
+  noccThpt = temp[temp$protocol == "nocc",]$thpt
+  msgtThpt = temp[temp$protocol == "MSGT",]$thpt
+  sgtThpt = temp[temp$protocol == "SGT",]$thpt
+  
+  msgtOverhead = ((noccThpt - msgtThpt) / noccThpt) * 100
+  sgtOverhead = ((noccThpt - sgtThpt) / noccThpt) * 100
+  
+  return(list(noccThpt = noccThpt,
+              msgtThpt = msgtThpt,
+              sgtThpt = sgtThpt,
+              sgtOverhead = sgtOverhead,
+              msgtOverhead = msgtOverhead))
+}
 
-
+computeOverhead(df,"smallbank")
+computeOverhead(df,"tatp")
+computeOverhead(df,"ycsb")
