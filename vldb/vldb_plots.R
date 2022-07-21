@@ -149,11 +149,6 @@ con_file_root = "./graphics/ycsb_contention"
     labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18))+
     scale_color_manual(values=c("#CC6666", "#055099")))
 
-# Latency 
-(c3 = ggplot(data = df, aes(x = theta,y = lat,group = protocol,colour = protocol)) +
-    geom_line() + xlab(TeX('Skew Factor ($\\theta$)')) + ylab("av latency (ms)") +
-    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18))+
-    scale_color_manual(values=c("#CC6666", "#055099")))
 
 combined <- c1 + c2 + c3 & theme(legend.position = "top", text = element_text(size = 20))
 (cAll = combined + plot_layout(guides = "collect"))
@@ -161,7 +156,7 @@ combined <- c1 + c2 + c3 & theme(legend.position = "top", text = element_text(si
 ggsave(paste0(con_file_root,".pdf"),cAll,width = 18, height = 6,device = "pdf")
 
 
-# SMALLBANK
+#### SMALLBANK ####
 dat_file = "./data/exp-smallbank-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = renameProtocols(df) 
@@ -182,8 +177,18 @@ smb_file_root = "./graphics/smallbank"
     theme(legend.position="top",text = element_text(size = 18)) +
     scale_color_manual(values=c("#CC6666", "#055099")))
 
+# Latency
+(sb3 = ggplot(data = df, aes(x = cores,y = lat,group = protocol,colour = protocol)) +
+    geom_line() + ylab("av latency (ms)") +
+    labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18))+
+    scale_color_manual(values=c("#CC6666", "#055099")))
 
-# TATP
+
+ggsave(paste0(smb_file_root,"_thpt.pdf"), sb1, width = 6, height = 4,device = "pdf")
+ggsave(paste0(smb_file_root,"_abr.pdf"), sb2, width = 6, height = 4,device = "pdf")
+ggsave(paste0(smb_file_root,"_lat.pdf"), sb3, width = 6, height = 4,device = "pdf")
+
+#### TATP ####
 dat_file = "./data/exp-tatp-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = renameProtocols(df) 
@@ -208,4 +213,9 @@ smb_file_root = "./graphics/tatp"
     geom_line() + ylab("av latency (ms)") +
     labs(color="") + theme_bw() + theme(legend.position="top",text = element_text(size = 18))+
     scale_color_manual(values=c("#CC6666", "#055099")))
+
+
+ggsave(paste0(tatp_file_root,"_thpt.pdf"), t1, width = 6, height = 4,device = "pdf")
+ggsave(paste0(tatp_file_root,"_abr.pdf"), t2, width = 6, height = 4,device = "pdf")
+ggsave(paste0(tatp_file_root,"_lat.pdf"), t3, width = 6, height = 4,device = "pdf")
 
