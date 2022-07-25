@@ -8,6 +8,7 @@ pub enum NonFatalError {
     NoccError,
     SmallBankError(SmallBankError),
     SerializationGraphError(SerializationGraphError),
+    WaitHitError(WaitHitError),
     RowNotFound,
 }
 
@@ -17,12 +18,27 @@ pub enum SerializationGraphError {
     CascadingAbort,
 }
 
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum WaitHitError {
+    RowDirty,
+    PredecessorAborted,
+    PredecessorActive,
+    Hit,
+}
+
 impl std::error::Error for NonFatalError {}
 impl std::error::Error for SerializationGraphError {}
+impl std::error::Error for WaitHitError {}
 
 impl From<SerializationGraphError> for NonFatalError {
     fn from(error: SerializationGraphError) -> Self {
         NonFatalError::SerializationGraphError(error)
+    }
+}
+
+impl From<WaitHitError> for NonFatalError {
+    fn from(error: WaitHitError) -> Self {
+        NonFatalError::WaitHitError(error)
     }
 }
 
@@ -40,6 +56,7 @@ impl fmt::Display for NonFatalError {
             RowNotFound => write!(f, "row not found error"),
             SmallBankError(ref e) => write!(f, "{}", e),
             SerializationGraphError(ref e) => write!(f, "{}", e),
+            WaitHitError(ref e) => write!(f, "{}", e),
         }
     }
 }
@@ -50,6 +67,19 @@ impl fmt::Display for SerializationGraphError {
         let err_msg = match *self {
             CycleFound => "cycle found",
             CascadingAbort => "cascading abort",
+        };
+        write!(f, "{}", err_msg)
+    }
+}
+
+impl fmt::Display for WaitHitError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use WaitHitError::*;
+        let err_msg = match *self {
+            RowDirty => "row dirty",
+            PredecessorActive => "predecessor active",
+            PredecessorAborted => "predecessor abort",
+            Hit => "hit",
         };
         write!(f, "{}", err_msg)
     }

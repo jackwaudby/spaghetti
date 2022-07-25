@@ -2,6 +2,7 @@ use crate::common::isolation_level::IsolationLevel;
 use crate::common::{error::NonFatalError, stats_bucket::StatsBucket, value_id::ValueId};
 use crate::scheduler::{
     msgt::MixedSerializationGraph, nocc::NoConcurrencyControl, sgt::SerializationGraph,
+    whp::WaitHit,
 };
 use crate::storage::{datatype::Data, Database};
 
@@ -15,6 +16,8 @@ pub mod msgt;
 
 pub mod nocc;
 
+pub mod whp;
+
 #[derive(Debug, Copy, Clone)]
 pub enum TransactionType {
     WriteOnly,
@@ -27,6 +30,7 @@ pub enum Scheduler {
     SerializationGraph(SerializationGraph),
     MixedSerializationGraph(MixedSerializationGraph),
     NoConcurrencyControl(NoConcurrencyControl),
+    WaitHit(WaitHit),
 }
 
 impl Scheduler {
@@ -43,6 +47,7 @@ impl Scheduler {
                     &cycle_check_strategy,
                 ))
             }
+            "whp" => Scheduler::WaitHit(WaitHit::new(cores)),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
             _ => panic!("unknown concurrency control protocol: {}", p),
         };
@@ -57,6 +62,7 @@ impl Scheduler {
             SerializationGraph(sg) => sg.begin(),
             MixedSerializationGraph(sg) => sg.begin(isolation_level),
             NoConcurrencyControl(nocc) => nocc.begin(),
+            WaitHit(wh) => wh.begin(),
         };
 
         StatsBucket::new(transaction_id)
@@ -74,6 +80,7 @@ impl Scheduler {
             SerializationGraph(sg) => sg.read_value(vid, meta, database),
             MixedSerializationGraph(sg) => sg.read_value(vid, meta, database),
             NoConcurrencyControl(nocc) => nocc.read_value(vid, meta, database),
+            WaitHit(wh) => wh.read_value(vid, meta, database),
         }
     }
 
@@ -90,6 +97,7 @@ impl Scheduler {
             SerializationGraph(sg) => sg.write_value(value, vid, meta, database),
             MixedSerializationGraph(sg) => sg.write_value(value, vid, meta, database),
             NoConcurrencyControl(nocc) => nocc.write_value(value, vid, meta, database),
+            WaitHit(wh) => wh.write_value(value, vid, meta, database),
         }
     }
 
@@ -100,6 +108,7 @@ impl Scheduler {
             SerializationGraph(sg) => sg.commit(meta, database),
             MixedSerializationGraph(sg) => sg.commit(meta, database),
             NoConcurrencyControl(nocc) => nocc.commit(meta, database),
+            WaitHit(wh) => wh.commit(meta, database),
         }
     }
 
@@ -114,6 +123,7 @@ impl Scheduler {
             NoConcurrencyControl(nocc) => {
                 nocc.abort(meta, database);
             }
+            WaitHit(wh) => wh.abort(meta, database),
         };
 
         res
