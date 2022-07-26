@@ -16,6 +16,11 @@ renameProtocols <- function(df) {
       df[i,2] = "SGT"
     }
     
+    
+    if (df[i,2] == "whp") {
+      df[i,2] = "WHP"
+    }
+    
   }
   
   return(df)
@@ -255,3 +260,32 @@ computeOverhead <- function(df, workload) {
 computeOverhead(df,"smallbank")
 computeOverhead(df,"tatp")
 computeOverhead(df,"ycsb")
+
+### BASIC-WHP ####
+dat_file = "./data/exp-whp-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = computeMetrics(df)
+df = renameProtocols(df) 
+whp_file_root = "./graphics/whp_scalability"
+
+# Throughput
+(whp1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
+    geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+# Abort rate 
+(whp2 = ggplot(data = df, aes(x = cores,y = abr,group = protocol,colour = protocol)) +
+    geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+# Latency 
+(whp3 = ggplot(data = df, aes(x = cores,y = lat,group = protocol,colour = protocol)) +
+    geom_line() + ylab("av latency (ms)") + labs(color="")+ theme_bw() + scale_y_log10() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099")))
+
+ggsave(paste0(whp_file_root,"_thpt.pdf"), whp1, width = 6, height = 4,device = "pdf")
+ggsave(paste0(whp_file_root,"_abr.pdf"), whp2, width = 6, height = 4,device = "pdf")
+ggsave(paste0(whp_file_root,"_lat.pdf"), whp3, width = 6, height = 4,device = "pdf")
