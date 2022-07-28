@@ -1,3 +1,5 @@
+cd ../
+
 rm results.csv
 rm exp-tpl-results.csv
 
