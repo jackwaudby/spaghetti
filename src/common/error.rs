@@ -9,7 +9,14 @@ pub enum NonFatalError {
     SmallBankError(SmallBankError),
     SerializationGraphError(SerializationGraphError),
     WaitHitError(WaitHitError),
+    TwoPhaseLockingError(TwoPhaseLockingError),
     RowNotFound,
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
+pub enum TwoPhaseLockingError {
+    ReadLockDenied,
+    WriteLockDenied,
 }
 
 #[derive(Serialize, Deserialize, PartialEq, Debug, Clone)]
@@ -29,6 +36,7 @@ pub enum WaitHitError {
 impl std::error::Error for NonFatalError {}
 impl std::error::Error for SerializationGraphError {}
 impl std::error::Error for WaitHitError {}
+impl std::error::Error for TwoPhaseLockingError {}
 
 impl From<SerializationGraphError> for NonFatalError {
     fn from(error: SerializationGraphError) -> Self {
@@ -39,6 +47,12 @@ impl From<SerializationGraphError> for NonFatalError {
 impl From<WaitHitError> for NonFatalError {
     fn from(error: WaitHitError) -> Self {
         NonFatalError::WaitHitError(error)
+    }
+}
+
+impl From<TwoPhaseLockingError> for NonFatalError {
+    fn from(error: TwoPhaseLockingError) -> Self {
+        NonFatalError::TwoPhaseLockingError(error)
     }
 }
 
@@ -57,6 +71,7 @@ impl fmt::Display for NonFatalError {
             SmallBankError(ref e) => write!(f, "{}", e),
             SerializationGraphError(ref e) => write!(f, "{}", e),
             WaitHitError(ref e) => write!(f, "{}", e),
+            TwoPhaseLockingError(ref e) => write!(f, "{}", e),
         }
     }
 }
@@ -80,6 +95,17 @@ impl fmt::Display for WaitHitError {
             PredecessorActive => "predecessor active",
             PredecessorAborted => "predecessor abort",
             Hit => "hit",
+        };
+        write!(f, "{}", err_msg)
+    }
+}
+
+impl fmt::Display for TwoPhaseLockingError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use TwoPhaseLockingError::*;
+        let err_msg = match *self {
+            ReadLockDenied => "read lock denied",
+            WriteLockDenied => "write lock denied",
         };
         write!(f, "{}", err_msg)
     }

@@ -39,6 +39,7 @@ fn main() {
             arg!(-m --isolationmix <ISOLATIONMIX> "Isolation mix (SmallBank only)").required(false),
         )
         .arg(arg!(-d --dfs <DFS> "Cycle shecking DFS (MSGT only)").required(false))
+        .arg(arg!(-j --warmup <WARMUP> "Warmup").required(false))
         .get_matches();
 
     if let Some(w) = matches.get_one::<String>("workload") {
@@ -59,6 +60,10 @@ fn main() {
 
     if let Some(c) = matches.get_one::<String>("cores") {
         config.set("cores", c.clone()).unwrap();
+    }
+
+    if let Some(warmup) = matches.get_one::<String>("warmup") {
+        config.set("warmup", warmup.clone()).unwrap();
     }
 
     // SmallBank

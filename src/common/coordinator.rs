@@ -155,7 +155,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 NonFatalError::SmallBankError(_) => {}
                                 NonFatalError::RowNotFound => {}
                                 NonFatalError::SerializationGraphError(_)
-                                | NonFatalError::WaitHitError(_) => {
+                                | NonFatalError::WaitHitError(_)
+                                | NonFatalError::TwoPhaseLockingError(_) => {
                                     scheduler.abort(&mut meta, database);
 
                                     stats.inc_aborts();
@@ -178,7 +179,8 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     Err(e) => match e {
                         NonFatalError::NoccError => {}
                         NonFatalError::SerializationGraphError(_)
-                        | NonFatalError::WaitHitError(_) => {
+                        | NonFatalError::WaitHitError(_)
+                        | NonFatalError::TwoPhaseLockingError(_) => {
                             scheduler.abort(&mut meta, database);
 
                             stats.inc_aborts();

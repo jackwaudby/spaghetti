@@ -14,7 +14,7 @@ pub enum TransactionId {
     OptimisticWaitHit(usize),
     Attendez(usize),
     WaitHit(u64),
-    TwoPhaseLocking(u64),
+    TwoPhaseLocking((u64, u64)),
 }
 
 impl TransactionId {
@@ -23,6 +23,14 @@ impl TransactionId {
             *id as u64
         } else {
             0
+        }
+    }
+
+    pub fn extract_pair(&self) -> (u64, u64) {
+        if let TransactionId::TwoPhaseLocking(id) = &self {
+            *id
+        } else {
+            panic!("not 2pl");
         }
     }
 }
@@ -49,7 +57,7 @@ impl fmt::Display for TransactionId {
             Attendez(txn) => write!(f, "{}", txn),
             OptimisticWaitHit(txn) => write!(f, "{}", txn),
             WaitHit(txn) => write!(f, "{}", txn),
-            TwoPhaseLocking(txn) => write!(f, "{}", txn),
+            TwoPhaseLocking(txn) => write!(f, "{:?}", txn),
         }
     }
 }

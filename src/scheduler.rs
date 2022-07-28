@@ -8,6 +8,8 @@ use crate::storage::{datatype::Data, Database};
 
 use config::Config;
 
+use self::tpl::TwoPhaseLocking;
+
 pub mod common;
 
 pub mod sgt;
@@ -17,6 +19,8 @@ pub mod msgt;
 pub mod nocc;
 
 pub mod whp;
+
+pub mod tpl;
 
 #[derive(Debug, Copy, Clone)]
 pub enum TransactionType {
@@ -31,6 +35,7 @@ pub enum Scheduler {
     MixedSerializationGraph(MixedSerializationGraph),
     NoConcurrencyControl(NoConcurrencyControl),
     WaitHit(WaitHit),
+    TwoPhaseLocking(TwoPhaseLocking),
 }
 
 impl Scheduler {
@@ -49,6 +54,7 @@ impl Scheduler {
             }
             "whp" => Scheduler::WaitHit(WaitHit::new(cores)),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
+            "tpl" => Scheduler::TwoPhaseLocking(TwoPhaseLocking::new(cores, 5, 100)),
             _ => panic!("unknown concurrency control protocol: {}", p),
         };
 
@@ -63,6 +69,7 @@ impl Scheduler {
             MixedSerializationGraph(sg) => sg.begin(isolation_level),
             NoConcurrencyControl(nocc) => nocc.begin(),
             WaitHit(wh) => wh.begin(),
+            TwoPhaseLocking(tpl) => tpl.begin(),
         };
 
         StatsBucket::new(transaction_id)
@@ -81,6 +88,7 @@ impl Scheduler {
             MixedSerializationGraph(sg) => sg.read_value(vid, meta, database),
             NoConcurrencyControl(nocc) => nocc.read_value(vid, meta, database),
             WaitHit(wh) => wh.read_value(vid, meta, database),
+            TwoPhaseLocking(tpl) => tpl.read_value(vid, meta, database),
         }
     }
 
@@ -98,6 +106,7 @@ impl Scheduler {
             MixedSerializationGraph(sg) => sg.write_value(value, vid, meta, database),
             NoConcurrencyControl(nocc) => nocc.write_value(value, vid, meta, database),
             WaitHit(wh) => wh.write_value(value, vid, meta, database),
+            TwoPhaseLocking(tpl) => tpl.write_value(value, vid, meta, database),
         }
     }
 
@@ -109,6 +118,7 @@ impl Scheduler {
             MixedSerializationGraph(sg) => sg.commit(meta, database),
             NoConcurrencyControl(nocc) => nocc.commit(meta, database),
             WaitHit(wh) => wh.commit(meta, database),
+            TwoPhaseLocking(tpl) => tpl.commit(meta, database),
         }
     }
 
@@ -124,6 +134,7 @@ impl Scheduler {
                 nocc.abort(meta, database);
             }
             WaitHit(wh) => wh.abort(meta, database),
+            TwoPhaseLocking(tpl) => tpl.abort(meta, database),
         };
 
         res
