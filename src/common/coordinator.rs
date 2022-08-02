@@ -148,6 +148,10 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 stats.inc_commits();
                                 stats.inc_conflicts(&meta);
 
+                                if meta.could_have_committed_early() {
+                                    stats.inc_early_commi();
+                                }
+
                                 break;
                             }
                             Err(e) => match e {

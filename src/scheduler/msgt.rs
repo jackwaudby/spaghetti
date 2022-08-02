@@ -482,7 +482,13 @@ impl MixedSerializationGraph {
         id
     }
 
-    fn check_committed(&self, this_ref: &Node, database: &Database, ops: &Vec<Operation>) -> bool {
+    fn check_committed(
+        &self,
+        this_ref: &Node,
+        database: &Database,
+        ops: &Vec<Operation>,
+        meta: &mut StatsBucket,
+    ) -> bool {
         if self.needs_abort(this_ref) {
             return false;
         }
@@ -498,6 +504,22 @@ impl MixedSerializationGraph {
         if this_ref.has_incoming() {
             this_ref.set_checked(false);
             drop(read_lock);
+
+            if !meta.could_have_committed_early() {
+                if let IsolationLevel::ReadCommitted | IsolationLevel::ReadUncommitted =
+                    this_ref.get_isolation_level()
+                {
+                    let incoming = this_ref.get_incoming();
+                    if incoming.len() == 1 {
+                        for edge in incoming.iter() {
+                            if let Edge::ReadWrite(_) = edge {
+                                // could have been an early commit rule
+                                meta.early_commit_possible();
+                            }
+                        }
+                    }
+                }
+            }
 
             return false;
         }
@@ -764,11 +786,7 @@ impl MixedSerializationGraph {
         Ok(())
     }
 
-    pub fn commit(
-        &self,
-        _meta: &mut StatsBucket,
-        database: &Database,
-    ) -> Result<(), NonFatalError> {
+    pub fn commit(&self, meta: &mut StatsBucket, database: &Database) -> Result<(), NonFatalError> {
         let this_node = unsafe { &*self.get_transaction() };
 
         this_node.set_commit_phase();
@@ -785,7 +803,8 @@ impl MixedSerializationGraph {
                 return Err(SerializationGraphError::CycleFound.into());
             }
 
-            all_pending_transactions_committed = self.check_committed(this_node, database, &ops);
+            all_pending_transactions_committed =
+                self.check_committed(this_node, database, &ops, meta);
 
             if all_pending_transactions_committed {
                 self.remove_accesses(database, &ops);

@@ -24,6 +24,7 @@ pub struct LocalStatistics {
     g1: u64,
     g2: u64,
     path_len: usize,
+    early_commit: u64,
 }
 
 impl LocalStatistics {
@@ -49,6 +50,7 @@ impl LocalStatistics {
             g1: 0,
             g2: 0,
             path_len: 0,
+            early_commit: 0,
         }
     }
 
@@ -196,5 +198,13 @@ impl LocalStatistics {
 
     pub fn get_path_len(&self) -> usize {
         self.path_len
+    }
+
+    pub fn inc_early_commi(&mut self) {
+        self.early_commit += 1;
+    }
+
+    pub fn get_early_commit(&mut self) -> u64 {
+        self.early_commit
     }
 }

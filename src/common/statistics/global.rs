@@ -33,6 +33,7 @@ pub struct GlobalStatistics {
     g1: u64,
     g2: u64,
     path_len: usize,
+    early_commit: u64,
 }
 
 impl GlobalStatistics {
@@ -66,6 +67,7 @@ impl GlobalStatistics {
             g1: 0,
             g2: 0,
             path_len: 0,
+            early_commit: 0,
         }
     }
 
@@ -122,6 +124,8 @@ impl GlobalStatistics {
         self.g2 += local.get_g2();
 
         self.path_len += local.get_path_len();
+
+        self.early_commit += local.get_early_commit();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -192,6 +196,7 @@ impl GlobalStatistics {
             "   g2": self.g2,
             "path len": self.path_len,
             "av. path len": self.get_av_path_len() ,
+            "early commits": self.early_commit
         });
 
         tracing::info!("{}", serde_json::to_string_pretty(&pr).unwrap());
@@ -240,6 +245,7 @@ impl GlobalStatistics {
             g1: self.g1,
             g2: self.g2,
             path_len: self.path_len,
+            early_commit: self.early_commit,
         })
         .unwrap();
     }
@@ -271,4 +277,5 @@ struct CsvOutput {
     g1: u64,
     g2: u64,
     path_len: usize,
+    early_commit: u64,
 }

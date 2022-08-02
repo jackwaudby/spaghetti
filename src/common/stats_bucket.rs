@@ -11,6 +11,7 @@ pub struct StatsBucket {
     ww_conflicts: u64,
     wr_conflicts: u64,
     rw_conflicts: u64,
+    early_commit: bool,
 }
 
 impl StatsBucket {
@@ -24,6 +25,7 @@ impl StatsBucket {
             ww_conflicts: 0,
             wr_conflicts: 0,
             rw_conflicts: 0,
+            early_commit: false,
         }
     }
 
@@ -85,5 +87,13 @@ impl StatsBucket {
 
     pub fn add_problem_transaction(&mut self, id: usize) {
         self.problem_transactions.insert(id);
+    }
+
+    pub fn could_have_committed_early(&self) -> bool {
+        self.early_commit
+    }
+
+    pub fn early_commit_possible(&mut self) {
+        self.early_commit = true;
     }
 }

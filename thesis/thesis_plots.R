@@ -25,6 +25,7 @@ renameProtocols <- function(df) {
   
   return(df)
 }
+
 computeMetrics <- function(df) {
   df$thpt = ((df$commits + df$not_found) / (df$runtime / 1000)) / 1000000
   df$abr = (df$aborts / (df$commits + df$not_found+ df$aborts))*100
@@ -41,7 +42,7 @@ col_names = c("sf","protocol","workload","cores",
               "not_found","txn_time","commit_time","wait_time",
               "latency","rw","wr","rw","g0","g1","g2","path")
 
-#### Isolation Experiment ####
+#### ISOLATION ####
 dat_file = "./data/exp-isolation-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = renameProtocols(df) 
@@ -80,7 +81,7 @@ ggsave(paste0(file_root,"_abr.pdf"), p2, width = 6, height = 4,device = "pdf")
 ggsave(paste0(file_root,"_lat.pdf"), p3, width = 6, height = 4,device = "pdf")
 
 
-#### Contention Experiment ####
+#### CONTENTION ####
 dat_file = "./data/exp-contention-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = renameProtocols(df) 
@@ -111,7 +112,7 @@ ggsave(paste0(con_file_root,"_thpt.pdf"), c1, width = 6, height = 4,device = "pd
 ggsave(paste0(con_file_root,"_abr.pdf"), c2, width = 6, height = 4,device = "pdf")
 ggsave(paste0(con_file_root,"_lat.pdf"), c3, width = 6, height = 4,device = "pdf")
 
-#### Scalability Experiment ####
+#### SCALABILITY  ####
 dat_file = "./data/exp-scalability-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = renameProtocols(df) 
@@ -140,7 +141,7 @@ ggsave(paste0(scal_file_root,"_thpt.pdf"), s1, width = 6, height = 4,device = "p
 ggsave(paste0(scal_file_root,"_abr.pdf"), s2, width = 6, height = 4,device = "pdf")
 ggsave(paste0(scal_file_root,"_lat.pdf"), s3, width = 6, height = 4,device = "pdf")
 
-#### Update Rate Experiment ####
+#### UPDATE RATE ####
 dat_file = "./data/exp-update-rate-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = renameProtocols(df) 
@@ -324,24 +325,45 @@ tpl_file_root = "./graphics/tpl_scalability"
 
 ggs
 
-#### CYCLE ####
+#### CYCLE STRATEGIES ####
 dat_file = "./data/exp-cycle-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = computeMetrics(df)
+df = renameProtocolsCycleStrategies(df) 
+file_root = "./graphics/cycle_strategies"
 
-(s1 = ggplot(data = df, aes(x = cores,y = thpt,group = dfs,colour = dfs)) + 
-    geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
-    theme(legend.position="top",text = element_text(size = 18)) +
+red = df[df$dfs == "reduced",]$abr
+rel = df[df$dfs == "relevant",]$abr
+
+((rel / red) - 1) * 100
+
+# Throughput 
+(cy1 = ggplot(data = df, aes(x = serializable_rate, y = thpt, group = dfs, colour = dfs)) +
+    geom_line() + 
+    xlab(TeX('% of Serializable Transactions ($\\omega$)')) + 
+    ylab("thpt (million/s)") + 
+    labs(color="") + 
+    theme_bw() + theme(legend.position="top",text = element_text(size = 18)) + 
     scale_color_manual(values=c("#CC6666", "#055099","#013220")))
 
 # Abort rate 
-(s2 = ggplot(data = df, aes(x = cores,y = abr,group = dfs,colour = dfs)) +
-    geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
-    theme(legend.position="top",text = element_text(size = 18)) +
+(cy2 = ggplot(data = df, aes(x = serializable_rate, y = abr, group = dfs, colour = dfs)) +
+    geom_line() + 
+    xlab(TeX('% of Serializable Transactions ($\\omega$)')) + 
+    ylab("abort rate (%)") +
+    labs(color="") + 
+    theme_bw() + theme(legend.position="top",text = element_text(size = 18)) + 
     scale_color_manual(values=c("#CC6666", "#055099","#013220")))
 
-# Latency 
-(s3 = ggplot(data = df, aes(x = cores,y = lat,group = dfs,colour = dfs)) +
-    geom_line() + ylab("av latency (ms)") + labs(color="")+ theme_bw() + scale_y_log10() + 
-    theme(legend.position="top",text = element_text(size = 18)) +
+# Latency
+(cy3 = ggplot(data = df, aes(x = serializable_rate, y = lat, group = dfs, colour = dfs)) +
+    geom_line() + 
+    xlab(TeX('% of Serializable Transactions ($\\omega$)')) + 
+    ylab("av latency (ms)") + 
+    labs(color="") + 
+    theme_bw() + theme(legend.position="top",text = element_text(size = 18)) +
     scale_color_manual(values=c("#CC6666", "#055099","#013220")))
+
+ggsave(paste0(file_root,"_thpt.pdf"), cy1, width = 6, height = 4,device = "pdf")
+ggsave(paste0(file_root,"_abr.pdf"), cy2, width = 6, height = 4,device = "pdf")
+ggsave(paste0(file_root,"_lat.pdf"), cy3, width = 6, height = 4,device = "pdf")
