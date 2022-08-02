@@ -458,7 +458,7 @@ impl SerializationGraph {
             }
 
             if this_node.is_aborted() {
-                return Err(SerializationGraphError::CycleFound.into());
+                return Err(SerializationGraphError::CascadingAbort.into());
             }
 
             all_pending_transactions_committed = self.check_committed(this_node, database, &ops);
