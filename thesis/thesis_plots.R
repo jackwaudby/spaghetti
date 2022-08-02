@@ -25,7 +25,6 @@ renameProtocols <- function(df) {
   
   return(df)
 }
-
 computeMetrics <- function(df) {
   df$thpt = ((df$commits + df$not_found) / (df$runtime / 1000)) / 1000000
   df$abr = (df$aborts / (df$commits + df$not_found+ df$aborts))*100
@@ -40,7 +39,7 @@ col_names = c("sf","protocol","workload","cores",
               "theta","serializable_rate","update_rate",
               "queries","dfs","runtime","commits","aborts",
               "not_found","txn_time","commit_time","wait_time",
-              "latency","rw","wr","rw","g0","g1","g2","path")
+              "latency","rw","wr","rw","g0","g1","g2","path","early")
 
 #### ISOLATION ####
 dat_file = "./data/exp-isolation-results.csv"
@@ -215,6 +214,8 @@ df = renameProtocols(df)
 df = computeMetrics(df)
 tatp_file_root = "./graphics/tatp"
 
+(df$aborts / (df$commits + df$not_found + df$aborts))*100
+
 # Throughput 
 (t1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) +
     geom_line() + ylab("thpt (million/s)") + 
@@ -329,12 +330,15 @@ ggs
 dat_file = "./data/exp-cycle-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = computeMetrics(df)
-df = renameProtocolsCycleStrategies(df) 
 file_root = "./graphics/cycle_strategies"
 
+# 
+(df$early / df$commits) * 100
+
+
+# Proportion change
 red = df[df$dfs == "reduced",]$abr
 rel = df[df$dfs == "relevant",]$abr
-
 ((rel / red) - 1) * 100
 
 # Throughput 
