@@ -111,9 +111,68 @@ impl YcsbGenerator {
         n < self.update_rate
     }
 
+    fn is_update_operation(&mut self) -> bool {
+        let n: f64 = self.rng.gen();
+        n < 0.5
+    }
+
     fn get_parameters(&mut self) -> YcsbTransactionProfile {
         let mut operations = Vec::new();
         let mut unique = HashSet::new();
+
+        if self.is_update_transaction() {
+            let mut updates = 0;
+
+            for _ in 0..self.queries {
+                let mut offset;
+                loop {
+                    offset = helper::zipf2(
+                        &mut self.rng,
+                        self.cardinality,
+                        self.theta,
+                        self.alpha,
+                        self.zetan,
+                        self.eta,
+                    );
+                    if unique.contains(&offset) {
+                        continue;
+                    } else {
+                        unique.insert(offset);
+                        break;
+                    }
+                }
+
+                if self.is_update_operation() && (updates < (self.queries / 2)) {
+                    let value = helper::generate_random_string(&mut self.rng);
+                    operations.push(Operation::Update(offset - 1, value));
+                    updates += 1;
+                } else {
+                    operations.push(Operation::Read(offset - 1));
+                }
+            }
+        } else {
+            for _ in 0..self.queries {
+                let mut offset;
+                loop {
+                    offset = helper::zipf2(
+                        &mut self.rng,
+                        self.cardinality,
+                        self.theta,
+                        self.alpha,
+                        self.zetan,
+                        self.eta,
+                    );
+                    if unique.contains(&offset) {
+                        continue;
+                    } else {
+                        unique.insert(offset);
+                        break;
+                    }
+                }
+
+                operations.push(Operation::Read(offset - 1));
+            }
+        }
 
         for _ in 0..self.queries {
             let mut offset;
