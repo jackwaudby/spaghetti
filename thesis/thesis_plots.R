@@ -147,6 +147,8 @@ df = renameProtocols(df)
 df = computeMetrics(df)
 ur_file_root = "./graphics/ycsb_update_rate"
 
+((df$thpt[1:6] / df$thpt[7:12]) - 1) * 100
+
 # Throughput 
 (u1 = ggplot(data = df, aes(x = update_rate,y = thpt,group = protocol,colour = protocol)) +
     geom_line() + xlab(TeX('% of Update Transactions ($U$)')) + ylab("thpt (million/s)") + 
@@ -177,6 +179,8 @@ df = computeMetrics(df)
 smb_file_root = "./graphics/smallbank"
 
 df = df %>% filter(cores <= 40)
+
+((df$thpt[7:12] / df$thpt[1:6]) - 1) * 100
 
 # Throughput 
 (sb1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) +
@@ -319,3 +323,25 @@ tpl_file_root = "./graphics/tpl_scalability"
     scale_color_manual(values=c("#CC6666", "#055099")))
 
 ggs
+
+#### CYCLE ####
+dat_file = "./data/exp-cycle-results.csv"
+df = read_csv(file = dat_file, col_names = col_names)
+df = computeMetrics(df)
+
+(s1 = ggplot(data = df, aes(x = cores,y = thpt,group = dfs,colour = dfs)) + 
+    geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099","#013220")))
+
+# Abort rate 
+(s2 = ggplot(data = df, aes(x = cores,y = abr,group = dfs,colour = dfs)) +
+    geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099","#013220")))
+
+# Latency 
+(s3 = ggplot(data = df, aes(x = cores,y = lat,group = dfs,colour = dfs)) +
+    geom_line() + ylab("av latency (ms)") + labs(color="")+ theme_bw() + scale_y_log10() + 
+    theme(legend.position="top",text = element_text(size = 18)) +
+    scale_color_manual(values=c("#CC6666", "#055099","#013220")))
