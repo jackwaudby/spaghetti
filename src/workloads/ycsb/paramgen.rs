@@ -124,23 +124,7 @@ impl YcsbGenerator {
             let mut updates = 0;
 
             for _ in 0..self.queries {
-                let mut offset;
-                loop {
-                    offset = helper::zipf2(
-                        &mut self.rng,
-                        self.cardinality,
-                        self.theta,
-                        self.alpha,
-                        self.zetan,
-                        self.eta,
-                    );
-                    if unique.contains(&offset) {
-                        continue;
-                    } else {
-                        unique.insert(offset);
-                        break;
-                    }
-                }
+                let offset = self.get_unique_offset(&mut unique);
 
                 if self.is_update_operation() && (updates < (self.queries / 2)) {
                     let value = helper::generate_random_string(&mut self.rng);
@@ -152,56 +136,36 @@ impl YcsbGenerator {
             }
         } else {
             for _ in 0..self.queries {
-                let mut offset;
-                loop {
-                    offset = helper::zipf2(
-                        &mut self.rng,
-                        self.cardinality,
-                        self.theta,
-                        self.alpha,
-                        self.zetan,
-                        self.eta,
-                    );
-                    if unique.contains(&offset) {
-                        continue;
-                    } else {
-                        unique.insert(offset);
-                        break;
-                    }
-                }
-
-                operations.push(Operation::Read(offset - 1));
-            }
-        }
-
-        for _ in 0..self.queries {
-            let mut offset;
-            loop {
-                offset = helper::zipf2(
-                    &mut self.rng,
-                    self.cardinality,
-                    self.theta,
-                    self.alpha,
-                    self.zetan,
-                    self.eta,
-                );
-                if unique.contains(&offset) {
-                    continue;
-                } else {
-                    unique.insert(offset);
-                    break;
-                }
-            }
-
-            if self.is_update_transaction() {
-                let value = helper::generate_random_string(&mut self.rng);
-                operations.push(Operation::Update(offset - 1, value));
-            } else {
+                let offset = self.get_unique_offset(&mut unique);
                 operations.push(Operation::Read(offset - 1));
             }
         }
 
         YcsbTransactionProfile::General(Operations(operations))
+    }
+
+    fn get_unique_offset(&mut self, unique: &mut HashSet<usize>) -> usize {
+        let mut offset;
+
+        loop {
+            offset = helper::zipf2(
+                &mut self.rng,
+                self.cardinality,
+                self.theta,
+                self.alpha,
+                self.zetan,
+                self.eta,
+            );
+
+            if unique.contains(&offset) {
+                continue;
+            } else {
+                unique.insert(offset);
+                break;
+            }
+        }
+
+        offset
     }
 }
 
