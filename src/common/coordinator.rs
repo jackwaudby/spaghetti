@@ -1,4 +1,5 @@
 use super::stats_bucket::StatsBucket;
+use crate::common::error::SerializationGraphError;
 use crate::common::message::Parameters;
 use crate::common::{
     error::NonFatalError, global_state::GlobalState, message::Request,
@@ -158,8 +159,33 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                                 NonFatalError::NoccError => {}
                                 NonFatalError::SmallBankError(_) => {}
                                 NonFatalError::RowNotFound => {}
-                                NonFatalError::SerializationGraphError(_)
-                                | NonFatalError::WaitHitError(_)
+                                NonFatalError::SerializationGraphError(e) => {
+                                    scheduler.abort(&mut meta, database);
+
+                                    match e {
+                                        SerializationGraphError::CycleFound => {
+                                            stats.inc_abort_cycle()
+                                        }
+                                        SerializationGraphError::CascadingAbort => {
+                                            stats.inc_abort_cascading()
+                                        }
+                                    }
+
+                                    stats.inc_aborts();
+                                    record_cycle_type(&mut meta, &mut stats);
+                                    record_path_len(&mut meta, &mut stats);
+                                    stats.inc_conflicts(&meta);
+
+                                    stats.start_wait_manager();
+                                    let mut problem_transactions = meta.get_problem_transactions();
+                                    let abort_through = meta.get_abort_through();
+                                    problem_transactions.insert(abort_through);
+                                    let g = wait_manager
+                                        .wait(transaction_id.extract(), problem_transactions);
+                                    guards.guards.replace(g);
+                                    stats.stop_wait_manager()
+                                }
+                                NonFatalError::WaitHitError(_)
                                 | NonFatalError::TwoPhaseLockingError(_) => {
                                     scheduler.abort(&mut meta, database);
 
@@ -182,9 +208,31 @@ pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state
                     }
                     Err(e) => match e {
                         NonFatalError::NoccError => {}
-                        NonFatalError::SerializationGraphError(_)
-                        | NonFatalError::WaitHitError(_)
-                        | NonFatalError::TwoPhaseLockingError(_) => {
+                        NonFatalError::SerializationGraphError(e) => {
+                            scheduler.abort(&mut meta, database);
+
+                            match e {
+                                SerializationGraphError::CycleFound => stats.inc_abort_cycle(),
+                                SerializationGraphError::CascadingAbort => {
+                                    stats.inc_abort_cascading()
+                                }
+                            }
+
+                            stats.inc_aborts();
+                            record_cycle_type(&mut meta, &mut stats);
+                            record_path_len(&mut meta, &mut stats);
+                            stats.inc_conflicts(&meta);
+
+                            stats.start_wait_manager();
+                            let mut problem_transactions = meta.get_problem_transactions();
+                            let abort_through = meta.get_abort_through();
+                            problem_transactions.insert(abort_through);
+                            let g =
+                                wait_manager.wait(transaction_id.extract(), problem_transactions);
+                            guards.guards.replace(g);
+                            stats.stop_wait_manager();
+                        }
+                        NonFatalError::WaitHitError(_) | NonFatalError::TwoPhaseLockingError(_) => {
                             scheduler.abort(&mut meta, database);
 
                             stats.inc_aborts();

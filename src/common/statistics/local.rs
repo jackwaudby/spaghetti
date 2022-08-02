@@ -7,6 +7,8 @@ pub struct LocalStatistics {
     worker_start: Instant,
     commits: u64,
     aborts: u64,
+    abort_cascading: u64,
+    abort_cycle: u64,
     not_found: u64,
     tx_cum: u128,
     commit_start: Instant,
@@ -33,6 +35,8 @@ impl LocalStatistics {
             worker_start: Instant::now(),
             commits: 0,
             aborts: 0,
+            abort_cascading: 0,
+            abort_cycle: 0,
             not_found: 0,
             tx_cum: 0,
             commit_start: Instant::now(),
@@ -206,5 +210,21 @@ impl LocalStatistics {
 
     pub fn get_early_commit(&mut self) -> u64 {
         self.early_commit
+    }
+
+    pub fn inc_abort_cascading(&mut self) {
+        self.abort_cascading += 1;
+    }
+
+    pub fn inc_abort_cycle(&mut self) {
+        self.abort_cycle += 1;
+    }
+
+    pub fn get_abort_cascading(&mut self) -> u64 {
+        self.abort_cascading
+    }
+
+    pub fn get_abort_cycle(&mut self) -> u64 {
+        self.abort_cycle
     }
 }

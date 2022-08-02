@@ -21,6 +21,8 @@ pub struct GlobalStatistics {
     total_time: u128,
     commits: u64,
     aborts: u64,
+    abort_cascading: u64,
+    abort_cycle: u64,
     not_found: u64,
     tx: u128,
     commit: u128,
@@ -55,6 +57,8 @@ impl GlobalStatistics {
             total_time: 0,
             commits: 0,
             aborts: 0,
+            abort_cascading: 0,
+            abort_cycle: 0,
             not_found: 0,
             tx: 0,
             commit: 0,
@@ -126,6 +130,9 @@ impl GlobalStatistics {
         self.path_len += local.get_path_len();
 
         self.early_commit += local.get_early_commit();
+
+        self.abort_cycle += local.get_abort_cycle();
+        self.abort_cascading += local.get_abort_cascading();
     }
 
     fn get_total_time(&self) -> u64 {
@@ -179,6 +186,8 @@ impl GlobalStatistics {
             "cum_runtime (ms)":  self.get_total_time(),
             "commits": self.commits,
             "aborts": self.aborts,
+            "   cascading": self.abort_cascading,
+            "   cycle found": self.abort_cycle,
             "not_found": self.not_found as u64,
             "txn_time (ms)": self.get_txn_time(),
             "commit_time (ms)": self.get_commit_time(),
