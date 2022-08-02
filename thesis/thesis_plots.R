@@ -176,6 +176,8 @@ df = renameProtocols(df)
 df = computeMetrics(df)
 smb_file_root = "./graphics/smallbank"
 
+df = df %>% filter(cores <= 40)
+
 # Throughput 
 (sb1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) +
     geom_line() + ylab("thpt (million/s)") + 
