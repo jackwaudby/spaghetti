@@ -286,7 +286,7 @@ impl<'a> ManyCoreWaitHit<'a> {
         Ok(())
     }
 
-    fn wait_phase(&self, meta: &mut StatsBucket, database: &Database) -> Result<(), NonFatalError> {
+    fn wait_phase(&self) -> Result<(), NonFatalError> {
         let transaction = self.get_transaction();
 
         let wait_list = transaction.get_predecessors(PredecessorUpon::Read);
@@ -308,11 +308,7 @@ impl<'a> ManyCoreWaitHit<'a> {
     }
 
     /// Commit a transaction.
-    pub fn commit<'g>(
-        &self,
-        meta: &mut StatsBucket,
-        database: &Database,
-    ) -> Result<(), NonFatalError> {
+    pub fn commit<'g>(&self, database: &Database) -> Result<(), NonFatalError> {
         let transaction = self.get_transaction();
 
         // CHECK //
@@ -329,7 +325,7 @@ impl<'a> ManyCoreWaitHit<'a> {
             return Err(WaitHitError::Hit.into());
         }
 
-        self.wait_phase(meta, database)?;
+        self.wait_phase()?;
 
         // CHECK //
         if let TransactionState::Aborted = transaction.get_state() {

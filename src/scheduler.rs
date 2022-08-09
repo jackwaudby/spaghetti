@@ -125,7 +125,7 @@ impl<'a> Scheduler<'a> {
             MixedSerializationGraph(sg) => sg.commit(meta, database),
             NoConcurrencyControl(nocc) => nocc.commit(meta, database),
             WaitHit(wh) => wh.commit(meta, database),
-            ManyCoreWaitHit(wh) => wh.commit(meta, database),
+            ManyCoreWaitHit(wh) => wh.commit(database),
             TwoPhaseLocking(tpl) => tpl.commit(meta, database),
         }
     }
