@@ -322,19 +322,19 @@ df = rbind(df,df2)
 (tpl1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
     geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
     theme(legend.position="top",text = element_text(size = 18)) +
-    scale_color_manual(values=c("#CC6666", "#055099")))
+    scale_color_manual(values=c("#CC6666", "#055099","#013220")))
 
 # Abort rate 
 (tpl2 = ggplot(data = df, aes(x = cores,y = abr,group = protocol,colour = protocol)) +
     geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
     theme(legend.position="top",text = element_text(size = 18)) +
-    scale_color_manual(values=c("#CC6666", "#055099")))
+    scale_color_manual(values=c("#CC6666", "#055099","#013220")))
 
 # Latency 
 (tpl3 = ggplot(data = df, aes(x = cores,y = lat,group = protocol,colour = protocol)) +
     geom_line() + ylab("av latency (ms)") + labs(color="")+ theme_bw() + scale_y_log10() + 
     theme(legend.position="top",text = element_text(size = 18)) +
-    scale_color_manual(values=c("#CC6666", "#055099")))
+    scale_color_manual(values=c("#CC6666", "#055099","#013220")))
 
 
 

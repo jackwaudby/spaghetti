@@ -180,6 +180,8 @@ pub fn run<'a>(
                                     record_path_len(&mut meta, &mut stats);
                                     stats.inc_conflicts(&meta);
 
+                                    break;
+
                                     stats.start_wait_manager();
                                     let mut problem_transactions = meta.get_problem_transactions();
                                     let abort_through = meta.get_abort_through();
@@ -197,6 +199,8 @@ pub fn run<'a>(
                                     record_cycle_type(&mut meta, &mut stats);
                                     record_path_len(&mut meta, &mut stats);
                                     stats.inc_conflicts(&meta);
+
+                                    break;
 
                                     stats.start_wait_manager();
                                     let mut problem_transactions = meta.get_problem_transactions();
@@ -227,6 +231,8 @@ pub fn run<'a>(
                             record_path_len(&mut meta, &mut stats);
                             stats.inc_conflicts(&meta);
 
+                            break;
+
                             stats.start_wait_manager();
                             let mut problem_transactions = meta.get_problem_transactions();
                             let abort_through = meta.get_abort_through();
@@ -243,6 +249,8 @@ pub fn run<'a>(
                             record_cycle_type(&mut meta, &mut stats);
                             record_path_len(&mut meta, &mut stats);
                             stats.inc_conflicts(&meta);
+
+                            break;
 
                             stats.start_wait_manager();
                             let mut problem_transactions = meta.get_problem_transactions();
