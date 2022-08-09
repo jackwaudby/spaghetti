@@ -302,12 +302,21 @@ ggsave(paste0(whp_file_root,"_abr.pdf"), whp2, width = 6, height = 4,device = "p
 ggsave(paste0(whp_file_root,"_lat.pdf"), whp3, width = 6, height = 4,device = "pdf")
 
 
-### 2PL ####
+### WHP ####
 dat_file = "./data/exp-tpl-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = computeMetrics(df)
 df = renameProtocols(df) 
 tpl_file_root = "./graphics/tpl_scalability"
+
+
+dat_file2 = "./data/exp-mc-whp-results.csv"
+df2 = read_csv(file = dat_file2, col_names = col_names)
+df2 = df2[,-25]
+df2 = computeMetrics(df2)
+df2 = renameProtocols(df2) 
+
+df = rbind(df,df2)
 
 # Throughput
 (tpl1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
@@ -327,7 +336,7 @@ tpl_file_root = "./graphics/tpl_scalability"
     theme(legend.position="top",text = element_text(size = 18)) +
     scale_color_manual(values=c("#CC6666", "#055099")))
 
-ggs
+
 
 #### CYCLE STRATEGIES ####
 dat_file = "./data/exp-cycle-results.csv"
