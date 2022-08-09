@@ -1,8 +1,8 @@
 use crate::common::isolation_level::IsolationLevel;
 use crate::common::{error::NonFatalError, stats_bucket::StatsBucket, value_id::ValueId};
 use crate::scheduler::{
-    msgt::MixedSerializationGraph, nocc::NoConcurrencyControl, sgt::SerializationGraph,
-    whp::WaitHit,
+    mcwhp::ManyCoreWaitHit, msgt::MixedSerializationGraph, nocc::NoConcurrencyControl,
+    sgt::SerializationGraph, whp::WaitHit,
 };
 use crate::storage::{datatype::Data, Database};
 
@@ -22,6 +22,8 @@ pub mod whp;
 
 pub mod tpl;
 
+pub mod mcwhp;
+
 #[derive(Debug, Copy, Clone)]
 pub enum TransactionType {
     WriteOnly,
@@ -30,15 +32,16 @@ pub enum TransactionType {
 }
 
 #[derive(Debug)]
-pub enum Scheduler {
+pub enum Scheduler<'a> {
     SerializationGraph(SerializationGraph),
     MixedSerializationGraph(MixedSerializationGraph),
     NoConcurrencyControl(NoConcurrencyControl),
     WaitHit(WaitHit),
+    ManyCoreWaitHit(ManyCoreWaitHit<'a>),
     TwoPhaseLocking(TwoPhaseLocking),
 }
 
-impl Scheduler {
+impl<'a> Scheduler<'a> {
     pub fn new(config: &Config) -> crate::Result<Self> {
         let cores = config.get_int("cores")? as usize;
         let p = config.get_str("protocol")?;
@@ -53,6 +56,7 @@ impl Scheduler {
                 ))
             }
             "whp" => Scheduler::WaitHit(WaitHit::new(cores)),
+            "mcwhp" => Scheduler::ManyCoreWaitHit(ManyCoreWaitHit::new(cores)),
             "nocc" => Scheduler::NoConcurrencyControl(NoConcurrencyControl::new(cores)),
             "tpl" => Scheduler::TwoPhaseLocking(TwoPhaseLocking::new(cores, 5, 100)),
             _ => panic!("unknown concurrency control protocol: {}", p),
@@ -69,6 +73,7 @@ impl Scheduler {
             MixedSerializationGraph(sg) => sg.begin(isolation_level),
             NoConcurrencyControl(nocc) => nocc.begin(),
             WaitHit(wh) => wh.begin(),
+            ManyCoreWaitHit(wh) => wh.begin(),
             TwoPhaseLocking(tpl) => tpl.begin(),
         };
 
@@ -88,6 +93,7 @@ impl Scheduler {
             MixedSerializationGraph(sg) => sg.read_value(vid, meta, database),
             NoConcurrencyControl(nocc) => nocc.read_value(vid, meta, database),
             WaitHit(wh) => wh.read_value(vid, meta, database),
+            ManyCoreWaitHit(wh) => wh.read_value(vid, meta, database),
             TwoPhaseLocking(tpl) => tpl.read_value(vid, meta, database),
         }
     }
@@ -106,6 +112,7 @@ impl Scheduler {
             MixedSerializationGraph(sg) => sg.write_value(value, vid, meta, database),
             NoConcurrencyControl(nocc) => nocc.write_value(value, vid, meta, database),
             WaitHit(wh) => wh.write_value(value, vid, meta, database),
+            ManyCoreWaitHit(wh) => wh.write_value(value, vid, meta, database),
             TwoPhaseLocking(tpl) => tpl.write_value(value, vid, meta, database),
         }
     }
@@ -118,6 +125,7 @@ impl Scheduler {
             MixedSerializationGraph(sg) => sg.commit(meta, database),
             NoConcurrencyControl(nocc) => nocc.commit(meta, database),
             WaitHit(wh) => wh.commit(meta, database),
+            ManyCoreWaitHit(wh) => wh.commit(meta, database),
             TwoPhaseLocking(tpl) => tpl.commit(meta, database),
         }
     }
@@ -134,6 +142,7 @@ impl Scheduler {
                 nocc.abort(meta, database);
             }
             WaitHit(wh) => wh.abort(meta, database),
+            ManyCoreWaitHit(wh) => wh.abort(meta, database),
             TwoPhaseLocking(tpl) => tpl.abort(meta, database),
         };
 

@@ -48,7 +48,11 @@ struct AbortReason {
     abort_through: usize,
 }
 
-pub fn run(core_id: usize, stats_tx: mpsc::Sender<LocalStatistics>, global_state: &GlobalState) {
+pub fn run<'a>(
+    core_id: usize,
+    stats_tx: mpsc::Sender<LocalStatistics>,
+    global_state: &'a GlobalState,
+) {
     // global state
     let config = global_state.get_config();
     let scheduler = global_state.get_scheduler();
