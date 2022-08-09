@@ -18,8 +18,17 @@ renameProtocols <- function(df) {
     
     
     if (df[i,2] == "whp") {
-      df[i,2] = "WHP"
+      df[i,2] = "B-WHP"
     }
+    
+    if (df[i,2] == "mcwhp") {
+      df[i,2] = "MC-WHP"
+    }
+    
+    if (df[i,2] == "tpl") {
+      df[i,2] = "2PL"
+    }
+    
     
   }
   
@@ -302,7 +311,7 @@ ggsave(paste0(whp_file_root,"_abr.pdf"), whp2, width = 6, height = 4,device = "p
 ggsave(paste0(whp_file_root,"_lat.pdf"), whp3, width = 6, height = 4,device = "pdf")
 
 
-### WHP ####
+### MC-WHP ####
 dat_file = "./data/exp-tpl-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = computeMetrics(df)
@@ -312,7 +321,6 @@ tpl_file_root = "./graphics/tpl_scalability"
 
 dat_file2 = "./data/exp-mc-whp-results.csv"
 df2 = read_csv(file = dat_file2, col_names = col_names)
-df2 = df2[,-25]
 df2 = computeMetrics(df2)
 df2 = renameProtocols(df2) 
 
