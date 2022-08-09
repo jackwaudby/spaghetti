@@ -214,7 +214,10 @@ df = renameProtocols(df)
 df = computeMetrics(df)
 tatp_file_root = "./graphics/tatp"
 
-(df$aborts / (df$commits + df$not_found + df$aborts))*100
+df = df %>% filter(cores <= 40)
+
+((df$thpt[1:7] / df$thpt[8:14]) - 1) * 100
+((df$abr[8:14] / df$abr[1:7]) - 1) * 100
 
 # Throughput 
 (t1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) +
@@ -332,8 +335,11 @@ df = read_csv(file = dat_file, col_names = col_names)
 df = computeMetrics(df)
 file_root = "./graphics/cycle_strategies"
 
-# 
-(df$early / df$commits) * 100
+
+rel = df %>% filter(dfs =="relevant")
+
+((rel$early / rel$commits) * 100) / ((1 - rel$serializable_rate))
+
 
 
 # Proportion change
