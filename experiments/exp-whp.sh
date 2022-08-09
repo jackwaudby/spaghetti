@@ -3,7 +3,7 @@
 cd ../
 
 rm results.csv
-rm exp-mc-whp-results.csv
+rm exp-whp-results.csv
 
 cargo build --release
 
@@ -12,6 +12,6 @@ for cores in 1 5 10 20 30 40; do
     sleep 5
 done
 
-mv results.csv results/exp-mc-whp-results.csv
+mv results.csv results/exp-whp-results.csv
 
 cd experiments
