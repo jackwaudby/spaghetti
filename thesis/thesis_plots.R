@@ -316,7 +316,7 @@ dat_file = "./data/exp-tpl-results.csv"
 df = read_csv(file = dat_file, col_names = col_names)
 df = computeMetrics(df)
 df = renameProtocols(df) 
-tpl_file_root = "./graphics/tpl_scalability"
+tpl_file_root = "./graphics/mc_whp_scalability"
 
 
 dat_file2 = "./data/exp-mc-whp-results.csv"
@@ -325,24 +325,36 @@ df2 = computeMetrics(df2)
 df2 = renameProtocols(df2) 
 
 df = rbind(df,df2)
+sf = c(1,2,3)
 
-# Throughput
-(tpl1 = ggplot(data = df, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
-    geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
-    theme(legend.position="top",text = element_text(size = 18)) +
-    scale_color_manual(values=c("#CC6666", "#055099","#013220")))
+for (i in 1:3) {
+  dat = df %>% filter(sf == i)
+  
+  print(dat$sf)
+  
+  (tpl1 = ggplot(data = dat, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
+      geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 
+      theme(legend.position="top",text = element_text(size = 18)) +
+      scale_color_manual(values=c("#CC6666", "#055099","#013220")))
+  
+  (tpl2 = ggplot(data = dat, aes(x = cores,y = abr,group = protocol,colour = protocol)) +
+      geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
+      theme(legend.position="top",text = element_text(size = 18)) +
+      scale_color_manual(values=c("#CC6666", "#055099","#013220")))
+  
+  (tpl3 = ggplot(data = dat, aes(x = cores,y = lat,group = protocol,colour = protocol)) +
+      geom_line() + ylab("av latency (ms)") + labs(color="")+ theme_bw() + scale_y_log10() + 
+      theme(legend.position="top",text = element_text(size = 18)) +
+      scale_color_manual(values=c("#CC6666", "#055099","#013220")))
+  
+  combined <- tpl1 + tpl2 + tpl3 & theme(legend.position = "top", text = element_text(size = 20))
+  (all = combined + plot_layout(guides = "collect"))
+  print(all)
+  
+  ggsave(paste0(tpl_file_root,"_",i,".pdf"),all,width = 18, height = 6,device = "pdf")
+}
 
-# Abort rate 
-(tpl2 = ggplot(data = df, aes(x = cores,y = abr,group = protocol,colour = protocol)) +
-    geom_line() + ylab("abort rate") + labs(color="") + theme_bw() + 
-    theme(legend.position="top",text = element_text(size = 18)) +
-    scale_color_manual(values=c("#CC6666", "#055099","#013220")))
 
-# Latency 
-(tpl3 = ggplot(data = df, aes(x = cores,y = lat,group = protocol,colour = protocol)) +
-    geom_line() + ylab("av latency (ms)") + labs(color="")+ theme_bw() + scale_y_log10() + 
-    theme(legend.position="top",text = element_text(size = 18)) +
-    scale_color_manual(values=c("#CC6666", "#055099","#013220")))
 
 
 
