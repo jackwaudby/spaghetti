@@ -325,12 +325,13 @@ df2 = computeMetrics(df2)
 df2 = renameProtocols(df2) 
 
 df = rbind(df,df2)
-sf = c(1,2,3)
+w = c("tatp","smallbank","ycsb")
 
 for (i in 1:3) {
-  dat = df %>% filter(sf == i)
   
-  print(dat$sf)
+  i = 1
+  
+  dat = df %>% filter(workload == w[i])
   
   (tpl1 = ggplot(data = dat, aes(x = cores,y = thpt,group = protocol,colour = protocol)) + 
       geom_line() + ylab("thpt (million/s)") + labs(color="") + theme_bw() + 

@@ -19,7 +19,7 @@ done
 
 # ycsb
 for cores in 1 5 10 20 30 40; do
-    ./target/release/spag --protocol tpl --scalefactor 1 --cores $cores --workload ycsb --transactions $1 --theta 0.8
+    ./target/release/spag --protocol tpl --scalefactor 2 --cores $cores --workload ycsb --transactions $1 --theta 0.8
     sleep 5
 done
 
