@@ -7,7 +7,8 @@ cores = 1
 scale_factor = 1
 workload = "smallbank"
 warmup = 30
-execution = 120
+execution = 10
+livelock = true
 
 # MSGT
 dfs = "reduced"

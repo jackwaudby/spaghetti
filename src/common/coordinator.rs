@@ -69,32 +69,7 @@ pub fn run<'a>(
     let mut transaction_generator = get_transaction_generator(config, core_id);
 
     debug!("Begin warmup phase");
-    while warmup_end > Instant::now() {
-        let request = transaction_generator.get_next();
-        let isolation_level = request.get_isolation_level();
-        let mut meta = scheduler.begin(isolation_level);
-        let response = execute_logic(&mut meta, request.clone(), scheduler, database);
-
-        match response {
-            Ok(_) => {
-                let commit_res = scheduler.commit(&mut meta, database);
-
-                if let Err(e) = commit_res {
-                    if let NonFatalError::SerializationGraphError(_) = e {
-                        scheduler.abort(&mut meta, database);
-                    }
-                }
-            }
-            Err(e) => {
-                if let NonFatalError::SerializationGraphError(_)
-                | NonFatalError::SmallBankError(_)
-                | NonFatalError::RowNotFound = e
-                {
-                    scheduler.abort(&mut meta, database);
-                }
-            }
-        }
-    }
+    execute_warmup(warmup_end, &mut transaction_generator, scheduler, database);
 
     debug!("Warmup phase complete");
 
@@ -107,6 +82,8 @@ pub fn run<'a>(
 
     let max_transactions = config.get_int("transactions").unwrap() as u32;
     let mut completed_transactions = 0;
+
+    let livelock = config.get_bool("livelock").unwrap();
 
     loop {
         if completed_transactions == max_transactions {
@@ -180,7 +157,9 @@ pub fn run<'a>(
                                     record_path_len(&mut meta, &mut stats);
                                     stats.inc_conflicts(&meta);
 
-                                    break;
+                                    if !livelock {
+                                        break;
+                                    }
 
                                     stats.start_wait_manager();
                                     let mut problem_transactions = meta.get_problem_transactions();
@@ -200,7 +179,9 @@ pub fn run<'a>(
                                     record_path_len(&mut meta, &mut stats);
                                     stats.inc_conflicts(&meta);
 
-                                    break;
+                                    if !livelock {
+                                        break;
+                                    }
 
                                     stats.start_wait_manager();
                                     let mut problem_transactions = meta.get_problem_transactions();
@@ -231,7 +212,9 @@ pub fn run<'a>(
                             record_path_len(&mut meta, &mut stats);
                             stats.inc_conflicts(&meta);
 
-                            break;
+                            if !livelock {
+                                break;
+                            }
 
                             stats.start_wait_manager();
                             let mut problem_transactions = meta.get_problem_transactions();
@@ -250,7 +233,9 @@ pub fn run<'a>(
                             record_path_len(&mut meta, &mut stats);
                             stats.inc_conflicts(&meta);
 
-                            break;
+                            if !livelock {
+                                break;
+                            }
 
                             stats.start_wait_manager();
                             let mut problem_transactions = meta.get_problem_transactions();
@@ -290,6 +275,40 @@ pub fn run<'a>(
     stats.stop_worker();
 
     stats_tx.send(stats).unwrap();
+}
+
+fn execute_warmup(
+    warmup_end: Instant,
+    transaction_generator: &mut ParameterGenerator,
+    scheduler: &Scheduler,
+    database: &Database,
+) {
+    while warmup_end > Instant::now() {
+        let request = transaction_generator.get_next();
+        let isolation_level = request.get_isolation_level();
+        let mut meta = scheduler.begin(isolation_level);
+        let response = execute_logic(&mut meta, request.clone(), scheduler, database);
+
+        match response {
+            Ok(_) => {
+                let commit_res = scheduler.commit(&mut meta, database);
+
+                if let Err(e) = commit_res {
+                    if let NonFatalError::SerializationGraphError(_) = e {
+                        scheduler.abort(&mut meta, database);
+                    }
+                }
+            }
+            Err(e) => {
+                if let NonFatalError::SerializationGraphError(_)
+                | NonFatalError::SmallBankError(_)
+                | NonFatalError::RowNotFound = e
+                {
+                    scheduler.abort(&mut meta, database);
+                }
+            }
+        }
+    }
 }
 
 fn record_path_len(meta: &mut StatsBucket, stats: &mut LocalStatistics) {

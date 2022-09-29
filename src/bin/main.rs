@@ -1,8 +1,7 @@
-use spaghetti::common::coordinator;
-use spaghetti::common::global_state::GlobalState;
-use spaghetti::common::statistics::global::GlobalStatistics;
-use spaghetti::common::utils;
-use spaghetti::common::wait_manager::WaitManager;
+use spaghetti::common::{
+    coordinator, global_state::GlobalState, statistics::global::GlobalStatistics, utils,
+    wait_manager::WaitManager,
+};
 use spaghetti::scheduler::Scheduler;
 use spaghetti::storage::Database;
 
@@ -40,6 +39,7 @@ fn main() {
         )
         .arg(arg!(-d --dfs <DFS> "Cycle shecking DFS (MSGT only)").required(false))
         .arg(arg!(-j --warmup <WARMUP> "Warmup").required(false))
+        .arg(arg!(-l --livelock <LIVELOCK> "Livelock detection").required(false))
         .get_matches();
 
     if let Some(w) = matches.get_one::<String>("workload") {
@@ -64,6 +64,10 @@ fn main() {
 
     if let Some(warmup) = matches.get_one::<String>("warmup") {
         config.set("warmup", warmup.clone()).unwrap();
+    }
+
+    if let Some(livelock) = matches.get_one::<String>("livelock") {
+        config.set("livelock", livelock.clone()).unwrap();
     }
 
     // SmallBank
@@ -127,6 +131,10 @@ fn main() {
     info!("Warmup phase (mins): {:.2}", warmup);
     let execution = config.get_int("execution").unwrap() as f64 / 60.0;
     info!("Measurement phase (mins): {:.2}", execution);
+
+    let livelock = config.get_bool("livelock").unwrap();
+    info!("Livelock: {}", livelock);
+
     global_stats.start();
 
     thread::scope(|s| {
