@@ -17,3 +17,4 @@ Cargo.lock
 
 /scripts/plots.R
 plot.sh
+moyen_key.pem
